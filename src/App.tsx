@@ -38,12 +38,26 @@ import { TestingView } from './views/TestingView';
 import { DatabaseManagerView } from './views/DatabaseManagerView';
 import { ProgramDetailView } from './views/ProgramDetailView';
 
+import { ToastContainer, ToastMessage } from './components/common/Toast';
+
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(3);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Toasts state
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (toast: Omit<ToastMessage, 'id'>) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((prev) => [...prev, { ...toast, id }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // Entities state
   const [stories, setStories] = useState<Story[]>([]);
@@ -60,7 +74,7 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
   // Selection state
-  const [selectedNewsItem, Story, setSelectedNewsItem] = useState<NewsItem | null>(null);
+  const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>('prg-1');
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
@@ -100,6 +114,11 @@ export default function App() {
   const handleSwitchUser = (user: User) => {
     apiService.setCurrentUser(user);
     setCurrentUser(user);
+    addToast({
+      type: 'info',
+      title: 'تبديل المستخدم',
+      message: `تم التبديل إلى: ${user.fullName} (${user.role})`,
+    });
   };
 
   // Breaking news ticker items
@@ -114,8 +133,17 @@ export default function App() {
       refreshData();
       setSelectedNewsItem(saved);
       setActiveNav('news');
+      addToast({
+        type: 'success',
+        title: 'تم الحفظ بنجاح',
+        message: `تم حفظ الخبر: "${saved.title?.slice(0, 40)}..."`,
+      });
     } catch (err: any) {
-      alert(err.message || 'حدث خطأ أثناء حفظ الخبر');
+      addToast({
+        type: 'error',
+        title: 'خطأ في الحفظ',
+        message: err.message || 'حدث خطأ أثناء حفظ الخبر',
+      });
     }
   };
 
@@ -123,16 +151,38 @@ export default function App() {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment);
       refreshData();
+      addToast({
+        type: 'success',
+        title: 'تحديث الحالة',
+        message: `تم تحديث حالة الخبر إلى: ${toStatus}`,
+      });
     } catch (err: any) {
-      alert(err.message || 'حدث خطأ أثناء تحديث حالة الخبر');
+      addToast({
+        type: 'error',
+        title: 'فشل التحديث',
+        message: err.message || 'حدث خطأ أثناء تحديث حالة الخبر',
+      });
     }
   };
 
   const handleDeleteNews = (newsId: string) => {
-    apiService.deleteNews(newsId, currentUser);
-    refreshData();
-    if (selectedNewsItem?.id === newsId) {
-      setSelectedNewsItem(null);
+    try {
+      apiService.deleteNews(newsId, currentUser);
+      refreshData();
+      if (selectedNewsItem?.id === newsId) {
+        setSelectedNewsItem(null);
+      }
+      addToast({
+        type: 'warning',
+        title: 'حذف الخبر',
+        message: 'تم نقل الخبر إلى الأرشيف (Soft Delete)',
+      });
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'خطأ في الحذف',
+        message: err.message || 'تعذر حذف الخبر',
+      });
     }
   };
 
@@ -150,8 +200,17 @@ export default function App() {
         }
       });
       refreshData();
+      addToast({
+        type: 'success',
+        title: 'إجراء جماعي مكتمل',
+        message: `تم تنفيذ عملية (${action}) على ${newsIds.length} من الأخبار المحددة`,
+      });
     } catch (err: any) {
-      alert(err.message || 'حدث خطأ أثناء تنفيذ الإجراء الجماعي');
+      addToast({
+        type: 'error',
+        title: 'خطأ في الإجراء الجماعي',
+        message: err.message || 'حدث خطأ أثناء تنفيذ الإجراء الجماعي',
+      });
     }
   };
 
@@ -518,6 +577,9 @@ export default function App() {
         onSelectEpisode={handleSelectEpisode}
         onSelectProgram={handleSelectProgram}
       />
+
+      {/* Global Toast Notifications */}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   );
 }

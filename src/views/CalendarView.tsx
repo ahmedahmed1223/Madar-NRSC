@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -7,6 +7,12 @@ import {
   Tv,
   Filter,
   Video,
+  AlertTriangle,
+  Radio,
+  CheckCircle2,
+  CalendarDays,
+  Grid3X3,
+  Layers,
 } from 'lucide-react';
 import { Episode, Program } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -23,143 +29,364 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectEpisode,
 }) => {
   const [selectedProgram, setSelectedProgram] = useState('ALL');
-  const [viewMode, setViewMode] = useState<'WEEK' | 'MONTH'>('WEEK');
+  const [selectedStudio, setSelectedStudio] = useState('ALL');
+  const [viewMode, setViewMode] = useState<'WEEK' | 'MONTH' | 'STUDIO'>('WEEK');
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  // Days in current Arabic calendar week view
-  const days = [
-    { name: 'السبت', date: '2026-09-12' },
-    { name: 'الأحد', date: '2026-09-13', isToday: true },
-    { name: 'الاثنين', date: '2026-09-14' },
-    { name: 'الثلاثاء', date: '2026-09-15' },
-    { name: 'الأربعاء', date: '2026-09-16' },
-    { name: 'الخميس', date: '2026-09-17' },
-    { name: 'الجمعة', date: '2026-09-18' },
-  ];
+  // Studios list
+  const studios = useMemo(() => {
+    const s = new Set<string>();
+    episodes.forEach((ep) => {
+      if (ep.studioName) s.add(ep.studioName);
+    });
+    return Array.from(s);
+  }, [episodes]);
 
-  const filteredEpisodes = (episodes || []).filter((ep) => {
-    if (selectedProgram !== 'ALL' && ep.programId !== selectedProgram) return false;
-    return true;
-  });
+  // Generate week dates based on weekOffset
+  const currentWeekDays = useMemo(() => {
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + weekOffset * 7);
+    
+    // Find current week Saturday (start of week in AR)
+    const dayOfWeek = baseDate.getDay(); // 0 is Sunday, 6 is Saturday
+    const diff = (dayOfWeek + 1) % 7; // distance from Saturday
+    const saturday = new Date(baseDate);
+    saturday.setDate(baseDate.getDate() - diff);
+
+    const arabicDays = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+    const days = [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(saturday);
+      d.setDate(saturday.getDate() + i);
+      const isoStr = d.toISOString().split('T')[0];
+      days.push({
+        name: arabicDays[i],
+        date: isoStr,
+        displayDate: `${d.getDate()} / ${d.getMonth() + 1}`,
+        isToday: isoStr === todayStr,
+      });
+    }
+    return days;
+  }, [weekOffset]);
+
+  // Conflict detector: check if 2 episodes have same studio & date & overlapping time
+  const conflicts = useMemo(() => {
+    const map = new Map<string, Episode[]>();
+    episodes.forEach((ep) => {
+      if (ep.studioName && ep.broadcastDate && ep.startTime) {
+        const key = `${ep.broadcastDate}_${ep.studioName}_${ep.startTime}`;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(ep);
+      }
+    });
+
+    const conflictingIds = new Set<string>();
+    map.forEach((eps) => {
+      if (eps.length > 1) {
+        eps.forEach((ep) => conflictingIds.add(ep.id));
+      }
+    });
+    return conflictingIds;
+  }, [episodes]);
+
+  const filteredEpisodes = useMemo(() => {
+    return episodes.filter((ep) => {
+      if (selectedProgram !== 'ALL' && ep.programId !== selectedProgram) return false;
+      if (selectedStudio !== 'ALL' && ep.studioName !== selectedStudio) return false;
+      return true;
+    });
+  }, [episodes, selectedProgram, selectedStudio]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Top Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            جدول ومواعيد البث التلفزيوني
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            الخريطة البرامجية الأسبوعية، توزيع الاستوديوهات، ومواعيد البث المباشر
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+              <CalendarIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                جدول ومواعيد البث التلفزيوني
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                الخريطة البرامجية الذكية، إدارة حجز الاستوديوهات، ومراقبة البث المباشر
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 text-xs">
+        {/* View Switchers & Controls */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Navigation Offset */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
             <button
               type="button"
-              onClick={() => setViewMode('WEEK')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                viewMode === 'WEEK' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600'
-              }`}
+              onClick={() => setWeekOffset((prev) => prev - 1)}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+              title="الأسبوع السابق"
             >
-              جدول أسبوعي
+              <ChevronRight className="w-4 h-4" />
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('MONTH')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
-                viewMode === 'MONTH' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600'
+              onClick={() => setWeekOffset(0)}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${
+                weekOffset === 0 ? 'text-blue-600 bg-blue-50' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
-              شهري
+              الأسبوع الحالي
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeekOffset((prev) => prev + 1)}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+              title="الأسبوع القادم"
+            >
+              <ChevronLeft className="w-4 h-4" />
             </button>
           </div>
 
-          <select
-            value={selectedProgram}
-            onChange={(e) => setSelectedProgram(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ALL">جميع البرامج</option>
-            {programs.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          {/* Mode switch */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-2xs text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode('WEEK')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'WEEK'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              أسبوعي
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('STUDIO')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'STUDIO'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Grid3X3 className="w-3.5 h-3.5" />
+              الاستوديوهات
+            </button>
+          </div>
+
+          {/* Filters */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedProgram}
+              onChange={(e) => setSelectedProgram(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 font-medium"
+            >
+              <option value="ALL">جميع البرامج</option>
+              {programs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedStudio}
+              onChange={(e) => setSelectedStudio(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 font-medium"
+            >
+              <option value="ALL">جميع الاستوديوهات</option>
+              {studios.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Week Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-        {days.map((day) => {
-          // Episodes on this day (or dummy match)
-          const dayEpisodes = filteredEpisodes.filter((ep) => ep.broadcastDate === day.date || day.isToday);
+      {/* Conflict Warning Banner if any */}
+      {conflicts.size > 0 && (
+        <div className="flex items-center gap-3 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs animate-in fade-in">
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="font-semibold">
+            تنبيه تعارض مواعيد: تم رصد {conflicts.size} حلقات تشترك في نفس الاستوديو وتوقيت البث. يرجى مراجعة الاستوديوهات المحددة باللون الأحمر.
+          </div>
+        </div>
+      )}
 
-          return (
-            <div
-              key={day.date}
-              className={`rounded-2xl border flex flex-col min-h-[500px] transition-all ${
-                day.isToday
-                  ? 'bg-blue-50/40 border-blue-300 shadow-xs'
-                  : 'bg-white border-slate-200 shadow-2xs'
-              }`}
-            >
-              {/* Day Header */}
+      {/* WEEK VIEW */}
+      {viewMode === 'WEEK' && (
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+          {currentWeekDays.map((day) => {
+            const dayEpisodes = filteredEpisodes.filter(
+              (ep) => ep.broadcastDate === day.date || (weekOffset === 0 && day.isToday)
+            );
+
+            return (
               <div
-                className={`p-3 text-center border-b rounded-t-2xl ${
+                key={day.date}
+                className={`rounded-2xl border flex flex-col min-h-[520px] transition-all ${
                   day.isToday
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-slate-50 border-slate-200 text-slate-700'
+                    ? 'bg-blue-50/40 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-white border-slate-200 shadow-2xs'
                 }`}
               >
-                <div className="text-xs font-bold">{day.name}</div>
-                <div className="text-[11px] font-mono mt-0.5 opacity-90">{day.date}</div>
-              </div>
+                {/* Day Header */}
+                <div
+                  className={`p-3 text-center border-b rounded-t-2xl ${
+                    day.isToday
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <div className="text-xs font-black">{day.name}</div>
+                  <div className="text-[11px] font-mono mt-0.5 opacity-90">{day.displayDate}</div>
+                </div>
 
-              {/* Day Episodes list */}
-              <div className="p-2 space-y-2.5 flex-1 overflow-y-auto">
-                {dayEpisodes.length === 0 ? (
-                  <div className="py-12 text-center text-slate-300 text-xs">
-                    لا توجد برامج مجدولة
-                  </div>
-                ) : (
-                  dayEpisodes.map((ep) => (
-                    <div
-                      key={ep.id}
-                      onClick={() => onSelectEpisode(ep.id)}
-                      className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-blue-500 hover:shadow-md cursor-pointer transition-all space-y-2 group"
-                    >
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                          {ep.startTime}
-                        </span>
-                        <Badge
-                          variant={ep.status === 'READY_FOR_BROADCAST' ? 'success' : 'warning'}
-                          size="sm"
-                        >
-                          {ep.durationMinutes} د
-                        </Badge>
-                      </div>
-
-                      <h4 className="text-xs font-bold text-slate-800 leading-snug group-hover:text-blue-600">
-                        {ep.title}
-                      </h4>
-
-                      <div className="text-[10px] text-slate-500 space-y-0.5">
-                        <div className="font-semibold text-slate-700">{ep.programName}</div>
-                        <div>{ep.studioName}</div>
-                        <div>المقدم: {ep.presenterName}</div>
-                      </div>
+                {/* Day Episodes list */}
+                <div className="p-2 space-y-2.5 flex-1 overflow-y-auto">
+                  {dayEpisodes.length === 0 ? (
+                    <div className="py-16 text-center text-slate-300 text-xs">
+                      لا توجد برامج
                     </div>
-                  ))
-                )}
+                  ) : (
+                    dayEpisodes.map((ep) => {
+                      const isConflict = conflicts.has(ep.id);
+                      const isLive = ep.status === 'LIVE';
+
+                      return (
+                        <div
+                          key={ep.id}
+                          onClick={() => onSelectEpisode(ep.id)}
+                          className={`p-3 rounded-xl border transition-all space-y-2 cursor-pointer group ${
+                            isConflict
+                              ? 'bg-rose-50/80 border-rose-300 hover:border-rose-500 shadow-2xs'
+                              : isLive
+                              ? 'bg-red-50 border-red-300 ring-2 ring-red-500/30'
+                              : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-md'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span
+                              className={`font-mono font-black px-2 py-0.5 rounded ${
+                                isLive
+                                  ? 'bg-red-600 text-white animate-pulse'
+                                  : 'bg-blue-50 text-blue-700'
+                              }`}
+                            >
+                              {ep.startTime || '20:00'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-bold">
+                              {ep.durationMinutes || 45} دقيقة
+                            </span>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+                            {ep.title}
+                          </h4>
+
+                          <div className="text-[10px] text-slate-500 space-y-1 pt-1 border-t border-slate-100">
+                            <div className="font-semibold text-slate-700 truncate">
+                              {ep.programName}
+                            </div>
+                            <div className="flex items-center justify-between text-slate-500">
+                              <span>{ep.studioName || 'استوديو الأخبار'}</span>
+                              <span className="text-slate-600 font-medium truncate max-w-[80px]">
+                                {ep.presenterName}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* STUDIO GRID VIEW */}
+      {viewMode === 'STUDIO' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Tv className="w-4 h-4 text-blue-600" />
+              مخطط تشغيل الاستوديوهات لليوم الحالي
+            </h3>
+            <span className="text-xs text-slate-400 font-mono">تحديث مباشر</span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {(studios.length > 0 ? studios : ['استوديو 1 (الأخبار)', 'استوديو 2 (الحواري)', 'استوديو البث الافتراضي']).map(
+              (studioName) => {
+                const studioEps = filteredEpisodes.filter(
+                  (ep) => (ep.studioName || 'استوديو 1 (الأخبار)') === studioName
+                );
+
+                return (
+                  <div
+                    key={studioName}
+                    className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        {studioName}
+                      </h4>
+                      <Badge variant="neutral" size="sm">
+                        {studioEps.length} حلقات
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-2">
+                      {studioEps.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                          الاستوديو متاح
+                        </div>
+                      ) : (
+                        studioEps.map((ep) => (
+                          <div
+                            key={ep.id}
+                            onClick={() => onSelectEpisode(ep.id)}
+                            className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-500 cursor-pointer transition-all space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-mono font-bold text-blue-600">
+                                {ep.startTime}
+                              </span>
+                              <Badge
+                                variant={
+                                  ep.status === 'READY_FOR_BROADCAST'
+                                    ? 'success'
+                                    : ep.status === 'LIVE'
+                                    ? 'danger'
+                                    : 'warning'
+                                }
+                                size="sm"
+                              >
+                                {ep.status === 'LIVE' ? 'مباشر الآن' : ep.status}
+                              </Badge>
+                            </div>
+                            <div className="text-xs font-bold text-slate-800">{ep.title}</div>
+                            <div className="text-[11px] text-slate-500">{ep.presenterName}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
