@@ -15,6 +15,7 @@ import {
   Activity,
   Database,
   Menu,
+  Globe,
 } from 'lucide-react';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
@@ -31,6 +32,7 @@ interface TopbarProps {
   onCreateEpisode?: () => void;
   onCreateTask?: () => void;
   onNavigate?: (view: string) => void;
+  onOpenLiveWire?: () => void;
   unreadNotificationsCount?: number;
   onToggleMobileMenu?: () => void;
 }
@@ -46,6 +48,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onCreateEpisode = () => {},
   onCreateTask = () => {},
   onNavigate,
+  onOpenLiveWire,
   unreadNotificationsCount,
   onToggleMobileMenu,
 }) => {
@@ -141,6 +144,22 @@ export const Topbar: React.FC<TopbarProps> = ({
           <span className="font-bold text-[11px]">SQLite 3</span>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </button>
+
+        {/* Live Wire Feeds Button */}
+        {onOpenLiveWire && (
+          <button
+            type="button"
+            onClick={onOpenLiveWire}
+            title="شريط برقيات وكالات الأنباء العالمية المباشرة (رويترز، واس، أ ف ب، بلومبرغ)"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-900/90 hover:bg-blue-800 text-blue-200 rounded-xl text-xs font-semibold border border-blue-500/30 transition-all cursor-pointer shadow-2xs"
+          >
+            <Globe className="w-3.5 h-3.5 text-blue-400 animate-spin-slow" />
+            <span className="font-bold text-[11px]">برقيات الوكالات</span>
+            <span className="px-1.5 py-0.2 bg-red-600 text-white font-mono text-[9px] font-bold rounded-full">
+              LIVE
+            </span>
+          </button>
+        )}
 
         {/* Mobile Search Button */}
         <button

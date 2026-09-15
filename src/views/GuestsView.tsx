@@ -12,6 +12,9 @@ import {
   MessageSquare,
   Award,
   Trash2,
+  X,
+  Check,
+  Sparkles,
 } from 'lucide-react';
 import { Guest, User } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -43,8 +46,33 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState<number>(5);
   const [avatarUrl, setAvatarUrl] = useState('');
+
+  const SPECIALTY_PRESETS = [
+    'علاقات دولية ودبلوماسية',
+    'اقتصاد وأسواق مالية',
+    'أمن ودفاع واستراتيجيا',
+    'طاقة ونفط ومناخ',
+    'ذكاء اصطناعي وتقنية',
+    'قانون دستوري وتشريع',
+    'شؤون اجتماعية وصحة',
+  ];
+
+  const ORG_PRESETS = [
+    'مركز الدراسات الاستراتيجية',
+    'جامعة الملك سعود',
+    'منظمة الصحة العالمية',
+    'صندوق النقد والبنك الدولي',
+    'هيئة الفضاء والتقنية',
+  ];
+
+  const AVATAR_PRESETS = [
+    { label: 'صورة 1', url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80' },
+    { label: 'صورة 2', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80' },
+    { label: 'صورة 3', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' },
+    { label: 'صورة 4', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80' },
+  ];
 
   const specialties = Array.from(new Set(guests.map((g) => g.specialty)));
 
@@ -259,14 +287,25 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">الاسم الكامل *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">الاسم الكامل واللقب العلمي *</label>
+              {fullName && (
+                <button
+                  type="button"
+                  onClick={() => setFullName('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <input
               type="text"
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="الاسم الثلاثي أو اللقب الرسمي"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              placeholder="مثال: د. عبد الله السعيد أو سعادة السفير..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -277,8 +316,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 type="text"
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="مثال: خبير اقتصادي"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                placeholder="مثال: كبير المحللين الماليين"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -287,45 +326,88 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 type="text"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
-                placeholder="مثال: مركز الدراسات الاستراتيجية"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                placeholder="مثال: مركز الدراسات الدولية"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+
+          {/* Quick Organization Presets */}
+          <div className="flex flex-wrap gap-1">
+            <span className="text-[10px] text-slate-400 font-bold">مقترحات جهات:</span>
+            {ORG_PRESETS.map((org) => (
+              <button
+                key={org}
+                type="button"
+                onClick={() => setOrganization(org)}
+                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+              >
+                {org}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">مجال التخصص والخبرة</label>
+            <input
+              type="text"
+              value={specialty}
+              onChange={(e) => setSpecialty(e.target.value)}
+              placeholder="مثال: علاقات دولية، نفط وغاز، ذكاء اصطناعي"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            />
+            {/* Quick Specialty Chips */}
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {SPECIALTY_PRESETS.map((sp) => (
+                <button
+                  key={sp}
+                  type="button"
+                  onClick={() => setSpecialty(sp)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full transition-all ${
+                    specialty === sp
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {sp}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Star Rating Interactive Selector */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700">تقييم الموثوقية والأداء التلفزيوني</label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setRating(s)}
+                  className="p-1 hover:scale-125 transition-transform"
+                >
+                  <Star
+                    className={`w-5 h-5 ${
+                      s <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+                    }`}
+                  />
+                </button>
+              ))}
+              <span className="text-xs font-mono font-bold text-slate-700 mr-2">
+                ({rating} من 5)
+              </span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">مجال التخصص</label>
-              <input
-                type="text"
-                value={specialty}
-                onChange={(e) => setSpecialty(e.target.value)}
-                placeholder="مثال: علاقات دولية، طاقة"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">التقييم (1 - 5)</label>
-              <input
-                type="number"
-                min="1"
-                max="5"
-                value={rating}
-                onChange={(e) => setRating(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-center font-mono focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف والتواصل المباشر</label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+966 50 000 0000"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
                 dir="ltr"
               />
             </div>
@@ -336,32 +418,57 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="expert@domain.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
                 dir="ltr"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">رابط الصورة الشخصية (URL)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">رابط الصورة الشخصية (Avatar URL)</label>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <input
               type="url"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
               placeholder="https://...jpg"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-left focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
               dir="ltr"
             />
+            {/* Quick Avatar Presets */}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] text-slate-400 font-bold">نماذج سريعة:</span>
+              {AVATAR_PRESETS.map((av) => (
+                <button
+                  key={av.label}
+                  type="button"
+                  onClick={() => setAvatarUrl(av.url)}
+                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md"
+                >
+                  {av.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات التحرير والتنسيق</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات التحرير والتنسيق والتوفر</label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="أوقات التوفر المفضلة، اللغات التي يتحدث بها، أي قيود..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              placeholder="أوقات التوفر المفضلة، اللغات التي يتحدث بها، أي قيود أو اشتراطات..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -369,13 +476,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               حفظ في الأرشيف
             </button>

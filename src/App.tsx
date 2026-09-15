@@ -39,6 +39,8 @@ import { DatabaseManagerView } from './views/DatabaseManagerView';
 import { ProgramDetailView } from './views/ProgramDetailView';
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
+import { LiveWireFeedModal } from './components/news/LiveWireFeedModal';
+import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -78,6 +80,64 @@ export default function App() {
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>('prg-1');
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
+  const [isLiveWireModalOpen, setIsLiveWireModalOpen] = useState(false);
+
+  const handleConvertWireToNews = (wireItem: {
+    title: string;
+    body: string;
+    source: string;
+    urgency: string;
+    topic: string;
+  }) => {
+    // Convert wire item into a draft NewsItem
+    const newDraft: NewsItem = {
+      id: `news-${Date.now()}`,
+      title: wireItem.title,
+      shortTitle: wireItem.title.slice(0, 40),
+      slug: `wire-${Date.now()}`,
+      summary: wireItem.body.slice(0, 160) + '...',
+      content: `<p><strong>${wireItem.source} — </strong>${wireItem.body}</p>`,
+      mainImageUrl: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=80',
+      status: 'DRAFT',
+      priority: wireItem.urgency === 'FLASH' ? 'URGENT' : 'NORMAL',
+      categoryId: categories[0]?.id || 'cat-1',
+      categoryName: categories[0]?.nameAr || 'أخبار عاجلة',
+      sourceId: sources[0]?.id || 'src-1',
+      sourceName: wireItem.source,
+      authorId: currentUser.id,
+      authorName: currentUser.fullName,
+      editorId: undefined,
+      locationName: 'غرفة الأخبار المركزية',
+      eventDate: new Date().toISOString(),
+      isBreaking: wireItem.urgency === 'FLASH' || wireItem.urgency === 'BULLETIN',
+      keywords: [wireItem.source, wireItem.topic, 'برقية إخبارية'],
+      workflowLogs: [
+        {
+          id: `log-${Date.now()}`,
+          newsId: `news-${Date.now()}`,
+          fromStatus: 'DRAFT',
+          toStatus: 'DRAFT',
+          changedBy: {
+            id: currentUser.id,
+            name: currentUser.fullName,
+            role: currentUser.role,
+          },
+          comment: `تم استيراد الخبر من برقيات ${wireItem.source}`,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      viewsCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedNewsItem(newDraft);
+    setActiveNav('news-editor');
+    addToast({
+      title: 'تم استيراد البرقية بنجاح',
+      message: `تم تحويل برقية ${wireItem.source} إلى مسودة خبرية جاهزة للتحرير والبث.`,
+      type: 'success',
+    });
+  };
 
   // Load all initial data from apiService
   const refreshData = () => {
@@ -286,6 +346,39 @@ export default function App() {
     refreshData();
   };
 
+  // --- STORIES ACTIONS ---
+  const handleSaveStory = (storyData: Partial<Story>) => {
+    try {
+      const saved = apiService.saveStory(storyData, currentUser);
+      refreshData();
+      addToast({
+        title: 'تم حفظ القصة التحريرية',
+        message: `تم حفظ قصة "${saved.title}" بنجاح`,
+        type: 'success',
+      });
+    } catch {
+      addToast({
+        title: 'خطأ في الحفظ',
+        message: 'تعذر حفظ القصة الإخبارية',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleDeleteStory = (id: string) => {
+    try {
+      apiService.deleteStory(id, currentUser);
+      refreshData();
+      addToast({
+        title: 'تمت أرشفة القصة',
+        message: 'تم نقل التغطية إلى الأرشيف بنجاح',
+        type: 'info',
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   // --- MEDIA ACTIONS ---
   const handleUploadMedia = (mediaData: Partial<MediaAsset>) => {
     apiService.saveMediaAsset(mediaData, currentUser);
@@ -366,6 +459,7 @@ export default function App() {
             currentUser={currentUser}
             onSwitchUser={handleSwitchUser}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenLiveWire={() => setIsLiveWireModalOpen(true)}
             onNavigate={(nav) => {
               setActiveNav(nav);
               setIsMobileSidebarOpen(false);
@@ -408,8 +502,14 @@ export default function App() {
               <StoriesView
                 stories={stories}
                 newsList={newsList}
-                onSelectStory={(id) => console.log('Selected story', id)}
-                onCreateStory={() => console.log('Create story')}
+                categories={categories}
+                currentUser={currentUser}
+                onSaveStory={handleSaveStory}
+                onDeleteStory={handleDeleteStory}
+                onSelectNews={(id) => handleEditNewsClick(id)}
+                onCreateNewsForStory={(_storyId) => {
+                  handleCreateNewNewsClick();
+                }}
               />
             )}
             {activeNav === 'news' && (
@@ -580,6 +680,16 @@ export default function App() {
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
+
+      {/* Live Wire Feeds Modal */}
+      <LiveWireFeedModal
+        isOpen={isLiveWireModalOpen}
+        onClose={() => setIsLiveWireModalOpen(false)}
+        onConvertWireToNews={handleConvertWireToNews}
+      />
+
+      {/* Global Newsroom Intercom & Audio Production Drawer */}
+      <NewsroomIntercomDrawer currentUser={currentUser} />
     </div>
   );
 }

@@ -19,6 +19,9 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  X,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   Episode,
@@ -72,6 +75,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   // Script state
   const [introScript, setIntroScript] = useState(episode.introScript || '');
+  const [copiedScript, setCopiedScript] = useState(false);
+
+  const handleCopyScript = () => {
+    if (!introScript) return;
+    navigator.clipboard.writeText(introScript);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
+  };
 
   // Status updates
   const handleUpdateStatus = (newStatus: EpisodeStatus) => {
@@ -522,7 +533,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       {/* TAB 4: SCRIPT & AUTOCUE */}
       {activeTab === 'SCRIPT' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">
                 سكريبت المقدمة الترحيبية (Autocue Script)
@@ -531,14 +542,75 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 النص الكامل لقراءة المذيع في افتتاحية الحلقة على شاشة الأوتوكيو
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleSaveIntroScript}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              <Save className="w-4 h-4" />
-              حفظ السكريبت
-            </button>
+            <div className="flex items-center gap-2">
+              {introScript && (
+                <button
+                  type="button"
+                  onClick={handleCopyScript}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                  title="نسخ السكريبت"
+                >
+                  {copiedScript ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span className="text-emerald-700">تم النسخ</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>نسخ النص</span>
+                    </>
+                  )}
+                </button>
+              )}
+              {introScript && (
+                <button
+                  type="button"
+                  onClick={() => setIntroScript('')}
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-xl text-xs font-bold transition-all"
+                  title="مسح النص"
+                >
+                  <X className="w-4 h-4" />
+                  <span>مسح</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveIntroScript}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                <Save className="w-4 h-4" />
+                حفظ السكريبت
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Script Presets */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500 ml-1">قوالب جاهزة:</span>
+            {[
+              {
+                label: 'نشرة الأخبار الرئيسية',
+                text: `أهلاً بكم مشاهدينا الكرام في هذه النشرة الإخبارية الرئيسية من برنامج ${episode.programName}، نسلط الضوء الليلة على أبرز الملفات والتطورات السياسية والاقتصادية على الساحتين الإقليمية والدولية. نبدأ معكم بأبرز العناوين...`,
+              },
+              {
+                label: 'تغطية خاصة وعاجلة',
+                text: `مشاهدونا الأعزاء، نرحب بكم في هذه التغطية المباشرة والمفتوحة لمواكبة التطورات المتسارعة، حيث نتابع مع شبكة مراسلينا وضيوفنا تفاصيل المشهد والقرارات الحاسمة الصادرة للتو...`,
+              },
+              {
+                label: 'برنامج حواري مسائي',
+                text: `مساء الخير وأهلاً بكم في حلقة جديدة من ${episode.programName}. ملفات ساخنة وقراءة في كواليس الأحداث نناقشها الليلة مع ضيوفنا في الاستوديو وعبر الأقمار الصناعية...`,
+              },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => setIntroScript(preset.text)}
+                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
+              >
+                +{preset.label}
+              </button>
+            ))}
           </div>
 
           <textarea
@@ -565,62 +637,129 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       >
         <form onSubmit={handleSaveQuestion} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">المحور العام</label>
-            <input
-              type="text"
-              required
-              value={qTopic}
-              onChange={(e) => setQTopic(e.target.value)}
-              placeholder="مثال: التداعيات الاقتصادية، المحور المالي"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">المحور العام *</label>
+              {qTopic && (
+                <button
+                  type="button"
+                  onClick={() => setQTopic('')}
+                  className="text-[10px] text-slate-400 hover:text-slate-600"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                value={qTopic}
+                onChange={(e) => setQTopic(e.target.value)}
+                placeholder="مثال: التداعيات الاقتصادية، المحور المالي"
+                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              />
+              {qTopic && (
+                <button
+                  type="button"
+                  onClick={() => setQTopic('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {['المحور السياسي', 'التداعيات الاقتصادية', 'المسار الدبلوماسي', 'الوضع الميداني', 'سؤال ختامي'].map((tp) => (
+                <button
+                  key={tp}
+                  type="button"
+                  onClick={() => setQTopic(tp)}
+                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                >
+                  +{tp}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">صيغة السؤال المباشر *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">صيغة السؤال المباشر *</label>
+              {qText && (
+                <button
+                  type="button"
+                  onClick={() => setQText('')}
+                  className="text-[10px] text-slate-400 hover:text-slate-600"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <textarea
               rows={3}
               required
               value={qText}
               onChange={(e) => setQText(e.target.value)}
-              placeholder="اكتب صيغة السؤال الصحفي بدقة..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              placeholder="اكتب صيغة السؤال الصحفي بدقة وبشكل مباشر للمذيع..."
+              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 leading-relaxed"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">الضيف الموجه له (اختياري)</label>
-            <input
-              type="text"
-              value={qSpeaker}
-              onChange={(e) => setQSpeaker(e.target.value)}
-              placeholder="اسم الضيف المستهدف بالإجابة"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={qSpeaker}
+                onChange={(e) => setQSpeaker(e.target.value)}
+                placeholder="اسم الضيف المستهدف بالإجابة"
+                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              />
+              {qSpeaker && (
+                <button
+                  type="button"
+                  onClick={() => setQSpeaker('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">توجيهات أو معلومات إضافية للمذيع</label>
-            <input
-              type="text"
-              value={qNotes}
-              onChange={(e) => setQNotes(e.target.value)}
-              placeholder="أرقام وإحصائيات داعمة للمحاورة..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={qNotes}
+                onChange={(e) => setQNotes(e.target.value)}
+                placeholder="أرقام وإحصائيات داعمة للمحاورة..."
+                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              />
+              {qNotes && (
+                <button
+                  type="button"
+                  onClick={() => setQNotes('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={() => setIsQuestionModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+              className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               حفظ السؤال
             </button>
@@ -641,7 +780,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <select
               value={selectedGuestId}
               onChange={(e) => setSelectedGuestId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
             >
               {allGuests.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -656,7 +795,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <select
               value={guestConnectionType}
               onChange={(e) => setGuestConnectionType(e.target.value as any)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
             >
               <option value="STUDIO">حضور مباشر داخل الاستوديو</option>
               <option value="SATELLITE">عبر الأقمار الصناعية (SNG / Satellite)</option>
@@ -666,14 +805,48 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">موضوع المداخلة أو الفقرة</label>
-            <input
-              type="text"
-              value={guestSegmentTopic}
-              onChange={(e) => setGuestSegmentTopic(e.target.value)}
-              placeholder="مثال: مناقشة تقرير أسواق المال"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">موضوع المداخلة أو الفقرة</label>
+              {guestSegmentTopic && (
+                <button
+                  type="button"
+                  onClick={() => setGuestSegmentTopic('')}
+                  className="text-[10px] text-slate-400 hover:text-slate-600"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={guestSegmentTopic}
+                onChange={(e) => setGuestSegmentTopic(e.target.value)}
+                placeholder="مثال: مناقشة تقرير أسواق المال"
+                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              />
+              {guestSegmentTopic && (
+                <button
+                  type="button"
+                  onClick={() => setGuestSegmentTopic('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {['تحليل التطورات السياسية', 'قراءة في المؤشرات الاقتصادية', 'المتابعة الميدانية والشهادات', 'حوار طاولة مستديرة'].map((top) => (
+                <button
+                  key={top}
+                  type="button"
+                  onClick={() => setGuestSegmentTopic(top)}
+                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                >
+                  +{top}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -681,7 +854,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <select
               value={guestArrivalStatus}
               onChange={(e) => setGuestArrivalStatus(e.target.value as any)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
             >
               <option value="CONFIRMED">تم تأكيد الموعد مع الضيف</option>
               <option value="ARRIVED">وصل للاستوديو / متصل على الخط</option>
@@ -693,13 +866,13 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <button
               type="button"
               onClick={() => setIsGuestModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+              className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               ربط بالحلقة
             </button>

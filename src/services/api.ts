@@ -1429,6 +1429,49 @@ export class ApiService {
   static getMosExportUrl(episodeId: string): string {
     return `/api/v1/episodes/${episodeId}/export/mos`;
   }
+
+  // Client-Side Full Backup Export & Import
+  static exportClientBackup(): string {
+    const backupData: Record<string, any> = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      station: 'News 24 HD Network',
+      data: {},
+    };
+
+    Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
+      try {
+        const item = localStorage.getItem(storageKey);
+        if (item) {
+          backupData.data[keyName] = JSON.parse(item);
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    return JSON.stringify(backupData, null, 2);
+  }
+
+  static restoreClientBackup(jsonString: string): boolean {
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (!parsed || !parsed.data) {
+        throw new Error('الملف غير صالح أو لا يحتوي على بنية بيانات صحيحة');
+      }
+
+      Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
+        if (parsed.data[keyName] !== undefined) {
+          localStorage.setItem(storageKey, JSON.stringify(parsed.data[keyName]));
+        }
+      });
+
+      return true;
+    } catch (e) {
+      console.error('Failed to restore backup:', e);
+      return false;
+    }
+  }
 }
 
 export const apiService = ApiService;

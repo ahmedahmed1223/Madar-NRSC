@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Tv,
   Trash2,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { Episode, Program, EpisodeStatus, User } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -53,8 +55,40 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [durationMinutes, setDurationMinutes] = useState(50);
   const [presenterName, setPresenterName] = useState(currentUser.fullName);
   const [producerName, setProducerName] = useState(currentUser.fullName);
-  const [studioName, setStudioName] = useState('استوديو A1');
+  const [studioName, setStudioName] = useState('استوديو الأخبار A1');
   const [description, setDescription] = useState('');
+
+  const STUDIO_PRESETS = [
+    'استوديو الأخبار A1',
+    'استوديو البرامج B2',
+    'استوديو الحوارات C',
+    'الاستوديو الافتراضي VR',
+  ];
+
+  const DURATION_PRESETS = [30, 45, 50, 60, 90];
+
+  const calculateEndTime = (start: string, durationMin: number) => {
+    try {
+      const [h, m] = start.split(':').map(Number);
+      if (isNaN(h) || isNaN(m)) return start;
+      const totalMin = h * 60 + m + durationMin;
+      const endH = Math.floor(totalMin / 60) % 24;
+      const endM = totalMin % 60;
+      return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    } catch {
+      return start;
+    }
+  };
+
+  const handleDurationChange = (minutes: number) => {
+    setDurationMinutes(minutes);
+    setEndTime(calculateEndTime(startTime, minutes));
+  };
+
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart);
+    setEndTime(calculateEndTime(newStart, durationMinutes));
+  };
 
   const statusBadgeInfo: Record<EpisodeStatus, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'default' }> = {
     PLANNING: { label: 'مرحلة التخطيط', variant: 'default' },
@@ -165,8 +199,17 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بعنوان الحلقة أو البرنامج..."
-            className="w-full pr-9 pl-4 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
@@ -175,9 +218,9 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <select
               value={selectedProgId}
               onChange={(e) => setSelectedProgId(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-semibold"
             >
-              <option value="ALL">جميع البرامج</option>
+              <option value="ALL">جميع البرامج ({programs.length})</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -191,7 +234,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-semibold"
             >
               <option value="ALL">جميع الحالات</option>
               <option value="PLANNING">تخطيط</option>
@@ -345,7 +388,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               <select
                 value={programId}
                 onChange={(e) => setProgramId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
               >
                 {programs.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -356,14 +399,25 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">عنوان موضوع الحلقة *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">عنوان موضوع الحلقة *</label>
+                {title && (
+                  <button
+                    type="button"
+                    onClick={() => setTitle('')}
+                    className="text-[10px] text-slate-400 hover:text-rose-500"
+                  >
+                    مسح
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="مثال: مستقبل الطاقة المتجددة في الشرق الأوسط"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -376,7 +430,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 value={episodeNumber}
                 onChange={(e) => setEpisodeNumber(Number(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -386,7 +440,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 value={seasonNumber}
                 onChange={(e) => setSeasonNumber(Number(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -394,8 +448,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               <input
                 type="time"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => handleStartTimeChange(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -403,9 +457,33 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               <input
                 type="number"
                 value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => handleDurationChange(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+
+          {/* Duration Presets & End Time Calculation */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-blue-700 font-bold">المدة الموصى بها:</span>
+              {DURATION_PRESETS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleDurationChange(m)}
+                  className={`text-[10px] px-2 py-0.5 rounded-md font-mono transition-all ${
+                    durationMinutes === m
+                      ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                      : 'bg-white text-blue-800 hover:bg-blue-100 border border-blue-200'
+                  }`}
+                >
+                  {m}د
+                </button>
+              ))}
+            </div>
+            <div className="text-[11px] text-blue-900 font-medium">
+              نهاية البث التقديرية: <strong className="font-mono text-blue-700">{endTime}</strong>
             </div>
           </div>
 
@@ -416,7 +494,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 type="date"
                 value={broadcastDate}
                 onChange={(e) => setBroadcastDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -425,8 +503,20 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 type="text"
                 value={studioName}
                 onChange={(e) => setStudioName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
               />
+              <div className="mt-1 flex flex-wrap gap-1">
+                {STUDIO_PRESETS.map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setStudioName(st)}
+                    className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -436,8 +526,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="وصف مختصر لمحاور الحلقة الرئيسية..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              placeholder="وصف مختصر لمحاور الحلقة الرئيسية ومسار الحوار..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -445,13 +535,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               بدء إعداد الحلقة
             </button>

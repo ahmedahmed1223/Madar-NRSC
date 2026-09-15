@@ -7,11 +7,16 @@ import {
   FileText,
   Search,
   Tag,
-  Download,
   Trash2,
   Eye,
-  Plus,
-  Filter,
+  X,
+  Sparkles,
+  Copy,
+  Check,
+  ExternalLink,
+  Clock,
+  Layers,
+  HardDrive,
 } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -24,6 +29,65 @@ interface MediaLibraryViewProps {
   onDeleteMedia: (id: string) => void;
 }
 
+const SAMPLE_MEDIA_PRESETS = [
+  {
+    title: 'لقطات البث الحي من استوديو الأخبار الرئيسي',
+    type: 'IMAGE' as MediaType,
+    url: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
+    tags: 'استوديو، غرفة_الأخبار، بث_مباشر',
+    label: 'استوديو رئيسي',
+  },
+  {
+    title: 'تغطية وقائع المؤتمر الصحفي الرئاسي',
+    type: 'IMAGE' as MediaType,
+    url: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80',
+    tags: 'مؤتمر_صحفي، تصريحات، عاجل',
+    label: 'مؤتمر صحفي',
+  },
+  {
+    title: 'تقرير رسوم بيانية وتداولات أسواق المال',
+    type: 'IMAGE' as MediaType,
+    url: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=1200&q=80',
+    tags: 'اقتصاد، بورصة، أسواق',
+    label: 'شاشات مالية',
+  },
+  {
+    title: 'مقطع فيديو: تقرير وثائقي عن الابتكار التقني',
+    type: 'VIDEO' as MediaType,
+    url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80',
+    tags: 'تكنولوجيا، ذكاء_اصطناعي، تقرير',
+    label: 'فيديو تقني',
+    duration: 180,
+  },
+  {
+    title: 'تسجيل صوتي: مداخلة مراسلنا الميداني',
+    type: 'AUDIO' as MediaType,
+    url: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=1200&q=80',
+    tags: 'صوتيات، مراسل، تسجيل',
+    label: 'مكالمة مراسل',
+    duration: 120,
+  },
+];
+
+const TAG_SUGGESTIONS = [
+  'أخبار_عاجلة',
+  'تقرير_ميداني',
+  'مؤتمر_صحفي',
+  'استوديو_وتحليل',
+  'اقتصاد_وأسواق',
+  'حوار_خاص',
+  'أرشيف_وثائقي',
+];
+
+const DURATION_PRESETS = [
+  { label: '30 ثانية', value: 30 },
+  { label: 'دقيقة (60ث)', value: 60 },
+  { label: 'دقيقتان (120ث)', value: 120 },
+  { label: '3 دقائق (180ث)', value: 180 },
+  { label: '5 دقائق (300ث)', value: 300 },
+  { label: '10 دقائق (600ث)', value: 600 },
+];
+
 export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   mediaAssets = [],
   currentUser,
@@ -34,6 +98,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Upload modal fields
   const [title, setTitle] = useState('');
@@ -41,43 +106,79 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [fileUrl, setFileUrl] = useState('');
   const [durationSeconds, setDurationSeconds] = useState(120);
   const [tagsInput, setTagsInput] = useState('');
+  const [description, setDescription] = useState('');
 
   const handleOpenUpload = () => {
     setTitle('');
     setMediaType('IMAGE');
     setFileUrl('https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80');
     setDurationSeconds(120);
-    setTagsInput('أخبار, تغطية');
+    setTagsInput('أخبار، تغطية');
+    setDescription('');
     setIsUploadModalOpen(true);
+  };
+
+  const handleApplyPreset = (preset: typeof SAMPLE_MEDIA_PRESETS[0]) => {
+    setTitle(preset.title);
+    setMediaType(preset.type);
+    setFileUrl(preset.url);
+    setTagsInput(preset.tags);
+    if (preset.duration) setDurationSeconds(preset.duration);
+  };
+
+  const handleAddTag = (tag: string) => {
+    const existing = tagsInput
+      .split(/[,،]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (!existing.includes(tag)) {
+      setTagsInput(existing.length > 0 ? `${tagsInput}، ${tag}` : tag);
+    }
   };
 
   const handleSaveUpload = (e: React.FormEvent) => {
     e.preventDefault();
-    const tags = tagsInput.split(/[,،]/).map((t) => t.trim()).filter(Boolean);
+    if (!title.trim()) return;
+
+    const tags = tagsInput
+      .split(/[,،]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     onUploadMedia({
-      title: title || 'ملف وسائط جديد',
+      title: title.trim(),
       mediaType,
-      fileUrl,
-      fileName: `${title || 'asset'}.${mediaType === 'VIDEO' ? 'mp4' : mediaType === 'AUDIO' ? 'mp3' : 'jpg'}`,
+      fileUrl: fileUrl.trim(),
+      url: fileUrl.trim(),
+      fileName: `${title.trim().replace(/\s+/g, '_')}.${
+        mediaType === 'VIDEO' ? 'mp4' : mediaType === 'AUDIO' ? 'mp3' : mediaType === 'DOCUMENT' ? 'pdf' : 'jpg'
+      }`,
       fileSize: 4500000,
       durationSeconds: mediaType === 'VIDEO' || mediaType === 'AUDIO' ? Number(durationSeconds) : undefined,
       uploadedById: currentUser.id,
       uploadedByName: currentUser.fullName,
-      tags,
+      description: description.trim(),
+      tags: tags.length > 0 ? tags : ['عام'],
     });
 
     setIsUploadModalOpen(false);
+  };
+
+  const handleCopyUrl = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const filteredAssets = (mediaAssets || []).filter((a) => {
     if (selectedType !== 'ALL' && a.mediaType !== selectedType) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return (
-        a.title.toLowerCase().includes(q) ||
-        (a.tags || []).some((t) => t.toLowerCase().includes(q))
-      );
+      const matchTitle = a.title?.toLowerCase().includes(q);
+      const matchName = a.fileName?.toLowerCase().includes(q);
+      const matchDesc = a.description?.toLowerCase().includes(q);
+      const matchTags = (a.tags || []).some((t) => t.toLowerCase().includes(q));
+      return matchTitle || matchName || matchDesc || matchTags;
     }
     return true;
   });
@@ -91,21 +192,27 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       case 'AUDIO':
         return <Music className="w-5 h-5 text-purple-500" />;
       case 'DOCUMENT':
+      default:
         return <FileText className="w-5 h-5 text-amber-500" />;
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            مكتبة وأرشيف الوسائط (MAM System)
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            إدارة الصور، مقاطع الفيديو للبث، التسجيلات الصوتية، والمواد الوثائقية
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+            <HardDrive className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-800 tracking-tight">
+              مكتبة وأرشيف الوسائط (MAM System)
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              إدارة أصول الصور، لقطات الفيديو للبث، التسجيلات الصوتية، والمواد الوثائقية مع نظام وسوم متقدم
+            </p>
+          </div>
         </div>
 
         <button
@@ -126,34 +233,55 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالعنوان أو الوسوم..."
-            className="w-full pr-9 pl-4 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            placeholder="بحث بالعنوان، اسم الملف، أو الوسوم..."
+            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
-          {['ALL', 'IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setSelectedType(t)}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap ${
-                selectedType === t
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {t === 'ALL'
-                ? 'الكل'
-                : t === 'IMAGE'
-                ? 'الصور'
-                : t === 'VIDEO'
-                ? 'الفيديو'
-                : t === 'AUDIO'
-                ? 'الصوتيات'
-                : 'الوثائق'}
-            </button>
-          ))}
+          {[
+            { key: 'ALL', label: 'الكل' },
+            { key: 'IMAGE', label: 'الصور' },
+            { key: 'VIDEO', label: 'الفيديو' },
+            { key: 'AUDIO', label: 'الصوتيات' },
+            { key: 'DOCUMENT', label: 'الوثائق' },
+          ].map(({ key, label }) => {
+            const count =
+              key === 'ALL'
+                ? mediaAssets.length
+                : mediaAssets.filter((a) => a.mediaType === key).length;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSelectedType(key)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  selectedType === key
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>{label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                    selectedType === key ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -165,40 +293,52 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
           >
             {/* Visual Thumbnail */}
-            <div className="relative h-40 bg-slate-900 flex items-center justify-center overflow-hidden">
+            <div className="relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
                 <img
-                  src={asset.fileUrl}
+                  src={asset.fileUrl || asset.url}
                   alt={asset.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
               ) : asset.mediaType === 'VIDEO' ? (
                 <div className="w-full h-full relative flex items-center justify-center bg-slate-950">
                   <img
-                    src="https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=400&q=80"
+                    src={asset.fileUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=400&q=80'}
                     alt=""
                     className="w-full h-full object-cover opacity-60"
                   />
-                  <div className="absolute w-10 h-10 rounded-full bg-blue-600/90 text-white flex items-center justify-center">
+                  <div className="absolute w-11 h-11 rounded-full bg-blue-600/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                     <Video className="w-5 h-5" />
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-400">
-                  {getMediaIcon(asset.mediaType)}
-                  <span className="text-xs font-mono">{asset.mediaType}</span>
+                <div className="flex flex-col items-center gap-2 text-slate-400 p-4 text-center">
+                  <div className="p-3 bg-slate-800 rounded-2xl text-blue-400">
+                    {getMediaIcon(asset.mediaType)}
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-300">
+                    {asset.mediaType}
+                  </span>
                 </div>
               )}
 
               <div className="absolute top-2 right-2">
                 <Badge variant="default" size="sm">
-                  {asset.mediaType}
+                  {asset.mediaType === 'IMAGE'
+                    ? 'صورة'
+                    : asset.mediaType === 'VIDEO'
+                    ? 'فيديو'
+                    : asset.mediaType === 'AUDIO'
+                    ? 'صوت'
+                    : 'وثيقة'}
                 </Badge>
               </div>
 
               {asset.durationSeconds && (
-                <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
-                  {Math.floor(asset.durationSeconds / 60)}:{(asset.durationSeconds % 60).toString().padStart(2, '0')}
+                <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-xs">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  {Math.floor(asset.durationSeconds / 60)}:
+                  {(asset.durationSeconds % 60).toString().padStart(2, '0')}
                 </div>
               )}
             </div>
@@ -206,28 +346,35 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             {/* Content info */}
             <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
               <div>
-                <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug">
-                  {asset.title}
+                <h4
+                  onClick={() => setPreviewAsset(asset)}
+                  className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug cursor-pointer hover:text-blue-600 transition-colors"
+                >
+                  {asset.title || asset.fileName}
                 </h4>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {asset.tags.map((tg) => (
-                    <span
-                      key={tg}
-                      className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded"
-                    >
-                      #{tg}
-                    </span>
-                  ))}
-                </div>
+                {asset.tags && asset.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {asset.tags.map((tg) => (
+                      <span
+                        key={tg}
+                        className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md"
+                      >
+                        #{tg}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span className="text-[11px]">{asset.uploadedByName}</span>
+                <span className="text-[11px] truncate max-w-[120px]" title={asset.uploadedByName}>
+                  {asset.uploadedByName || 'النظام'}
+                </span>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setPreviewAsset(asset)}
-                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="معاينة المادة"
                   >
                     <Eye className="w-4 h-4" />
@@ -235,7 +382,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onDeleteMedia(asset.id)}
-                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                     title="حذف من الأرشيف"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -245,6 +392,14 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             </div>
           </div>
         ))}
+
+        {filteredAssets.length === 0 && (
+          <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <HardDrive className="w-12 h-12 mb-3 text-slate-300" />
+            <p className="font-semibold text-sm">لا توجد وسائط مطابقة لمعايير البحث</p>
+            <p className="text-xs text-slate-400 mt-1">اضغط على زر "رفع مادة وسائط جديدة" لتسجيل ملف جديد بالأرشيف</p>
+          </div>
+        )}
       </div>
 
       {/* Upload Modal */}
@@ -252,68 +407,188 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         title="رفع وتسجيل مادة وسائط جديدة"
-        maxWidth="md"
+        subtitle="أرشفة الصور، التقارير المرئية، والمقاطع الصوتية في بنك الوسائط المركزي"
+        maxWidth="lg"
       >
         <form onSubmit={handleSaveUpload} className="space-y-4">
+          {/* Quick Presets Bar */}
+          <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-1.5">
+            <span className="text-[11px] font-bold text-blue-800 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              نماذج سريعة جاهزة للاستخدام:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {SAMPLE_MEDIA_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => handleApplyPreset(p)}
+                  className="text-[10px] bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-2 py-1 rounded-lg transition-colors font-medium shadow-2xs"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">عنوان المادة أو الملف *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">عنوان المادة أو الملف *</label>
+              {title && (
+                <button
+                  type="button"
+                  onClick={() => setTitle('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="مثال: لقطات من المؤتمر الصحفي الاقتصادي"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">نوع الوسيط</label>
               <select
                 value={mediaType}
                 onChange={(e) => setMediaType(e.target.value as MediaType)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
               >
                 <option value="IMAGE">صورة فوتوغرافية (JPG/PNG)</option>
                 <option value="VIDEO">مقطع فيديو للبث (MP4)</option>
-                <option value="AUDIO">ملف صوتي (MP3/WAV)</option>
-                <option value="DOCUMENT">وثيقة صحفية (PDF/DOC)</option>
+                <option value="AUDIO">ملف صوتي / مكالمة (MP3/WAV)</option>
+                <option value="DOCUMENT">وثيقة صحفية / بيان (PDF/DOC)</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المدة بالثواني (للفيديو والصوت)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">المدة (للفيديو والصوت)</label>
               <input
                 type="number"
                 value={durationSeconds}
                 onChange={(e) => setDurationSeconds(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                disabled={mediaType !== 'VIDEO' && mediaType !== 'AUDIO'}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
               />
+              {(mediaType === 'VIDEO' || mediaType === 'AUDIO') && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {DURATION_PRESETS.map((dp) => (
+                    <button
+                      key={dp.value}
+                      type="button"
+                      onClick={() => setDurationSeconds(dp.value)}
+                      className="text-[9px] bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
+                    >
+                      {dp.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">رابط الملف المباشر (URL أو مسار السيرفر) *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">رابط الملف المباشر (URL أو مسار التخزين) *</label>
+              {fileUrl && (
+                <button
+                  type="button"
+                  onClick={() => setFileUrl('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <input
               type="url"
               required
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
               placeholder="https://..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-left focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left focus:ring-2 focus:ring-blue-500 font-mono"
               dir="ltr"
             />
+            {fileUrl && (mediaType === 'IMAGE' || mediaType === 'VIDEO') && (
+              <div className="mt-2 p-2 bg-slate-100 rounded-xl flex items-center gap-3">
+                <img
+                  src={fileUrl}
+                  alt="معاينة"
+                  className="w-16 h-12 object-cover rounded-lg bg-slate-900 shrink-0"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+                <span className="text-[11px] text-slate-600">معاينة حية للرابط</span>
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">الوسوم والكلمات الدلالية (مفصولة بفواصل)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">الوسوم والكلمات الدلالية (مفصولة بفواصل)</label>
+              {tagsInput && (
+                <button
+                  type="button"
+                  onClick={() => setTagsInput('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
             <input
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="أخبار, اقتصاد, مباشر"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+              placeholder="أخبار، اقتصاد، مباشر..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                <Tag className="w-3 h-3 text-slate-400" />
+                اقتراحات:
+              </span>
+              {TAG_SUGGESTIONS.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleAddTag(tag)}
+                  className="text-[9px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                >
+                  +{tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">وصف المادة وسياق الاستخدام التحريري</label>
+              {description && (
+                <button
+                  type="button"
+                  onClick={() => setDescription('')}
+                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+            <textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="ملاحظات حول حقوق الملكية، المصدر الأصلي، أو البرامج المستهدفة..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -321,13 +596,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             <button
               type="button"
               onClick={() => setIsUploadModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               تسجيل في الأرشيف
             </button>
@@ -340,36 +615,90 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         <Modal
           isOpen={true}
           onClose={() => setPreviewAsset(null)}
-          title={`معاينة: ${previewAsset.title}`}
+          title={`معاينة المادة: ${previewAsset.title || previewAsset.fileName}`}
+          subtitle="استعراض الأصل الرقمي والتفاصيل التقنية للوسيط"
           maxWidth="lg"
         >
           <div className="space-y-4">
             {previewAsset.mediaType === 'IMAGE' ? (
               <img
-                src={previewAsset.fileUrl}
+                src={previewAsset.fileUrl || previewAsset.url}
                 alt={previewAsset.title}
                 className="w-full max-h-96 object-contain rounded-xl bg-slate-950"
               />
+            ) : previewAsset.mediaType === 'VIDEO' ? (
+              <div className="relative rounded-xl overflow-hidden bg-slate-950">
+                <img
+                  src={previewAsset.fileUrl || previewAsset.url}
+                  alt=""
+                  className="w-full max-h-80 object-cover opacity-70"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="p-4 bg-blue-600/90 text-white rounded-full shadow-lg">
+                    <Video className="w-8 h-8" />
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="p-8 bg-slate-900 rounded-xl text-center text-white space-y-2">
-                <Video className="w-12 h-12 mx-auto text-blue-400" />
-                <p className="text-xs font-mono">{previewAsset.fileUrl}</p>
+                <Music className="w-12 h-12 mx-auto text-purple-400" />
+                <p className="text-xs font-mono">{previewAsset.fileName}</p>
               </div>
             )}
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
               <div className="flex justify-between">
                 <span className="text-slate-500">اسم الملف:</span>
                 <span className="font-mono text-slate-700">{previewAsset.fileName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">تم الرفع بواسطة:</span>
-                <span className="font-semibold text-slate-800">{previewAsset.uploadedByName}</span>
+                <span className="text-slate-500">النوع:</span>
+                <span className="font-semibold text-slate-800">{previewAsset.mediaType}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">الحجم:</span>
-                <span className="font-mono text-slate-700">{(previewAsset.fileSize / (1024 * 1024)).toFixed(2)} MB</span>
+                <span className="text-slate-500">تم الرفع بواسطة:</span>
+                <span className="font-semibold text-slate-800">{previewAsset.uploadedByName || 'النظام'}</span>
               </div>
+              {previewAsset.durationSeconds && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">المدة:</span>
+                  <span className="font-mono text-slate-700 font-bold">
+                    {Math.floor(previewAsset.durationSeconds / 60)}:
+                    {(previewAsset.durationSeconds % 60).toString().padStart(2, '0')} دقيقة
+                  </span>
+                </div>
+              )}
+              {previewAsset.tags && previewAsset.tags.length > 0 && (
+                <div className="flex items-center gap-1 pt-1 border-t border-slate-200">
+                  <span className="text-slate-500">الوسوم:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {previewAsset.tags.map((t) => (
+                      <span key={t} className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-700">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => handleCopyUrl(previewAsset.fileUrl || previewAsset.url || '')}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedLink ? 'تم نسخ الرابط' : 'نسخ رابط الملف'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewAsset(null)}
+                className="px-4 py-1.5 text-xs font-bold bg-slate-800 text-white hover:bg-slate-900 rounded-xl"
+              >
+                إغلاق
+              </button>
             </div>
           </div>
         </Modal>

@@ -11,3 +11,29 @@
     text-align: right;
   }
 }
+
+@media print {
+  header, nav, aside, button, .no-print {
+    display: none !important;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th, td {
+    border: 1px solid #94a3b8 !important;
+    padding: 6px 8px !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}

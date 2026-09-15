@@ -21,10 +21,14 @@ import {
   Download,
   Database,
   Tv,
+  Radio,
+  Search,
+  X,
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
 import { TeleprompterModal } from './TeleprompterModal';
+import { LivePcrMasterControlModal } from './LivePcrMasterControlModal';
 import { formatSecondsToTime, apiService } from '../../services/api';
 
 interface RundownTableProps {
@@ -53,12 +57,29 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   const [isSyncingDb, setIsSyncingDb] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [isPrompterOpen, setIsPrompterOpen] = useState(false);
+  const [isPcrOpen, setIsPcrOpen] = useState(false);
   const [draggedSegmentIdx, setDraggedSegmentIdx] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('ALL');
 
   // Total runtime calculation
   const totalRundownSeconds = segments.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
   const plannedSeconds = plannedDurationMinutes * 60;
   const differenceSeconds = totalRundownSeconds - plannedSeconds;
+
+  const displayedSegments = segments.filter((s) => {
+    if (filterType !== 'ALL' && s.segmentType !== filterType) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = s.title.toLowerCase().includes(q);
+      const matchScript = s.scriptText?.toLowerCase().includes(q);
+      const matchPresenter = s.presenterName?.toLowerCase().includes(q);
+      const matchGuest = s.guestName?.toLowerCase().includes(q);
+      const matchNotes = s.notes?.toLowerCase().includes(q);
+      if (!matchTitle && !matchScript && !matchPresenter && !matchGuest && !matchNotes) return false;
+    }
+    return true;
+  });
 
   const handleManualDbSync = async () => {
     if (!episodeId) return;
@@ -217,7 +238,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
             <a
               href={apiService.getMosExportUrl(episodeId)}
               download={`episode_${episodeId}_mos.xml`}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors border border-indigo-200"
               title="تصدير بروتوكول MOS Protocol 2.8.5 لأنظمة أتمتة البث وغرف الأخبار"
             >
               <Download className="w-4 h-4" />
@@ -230,7 +251,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               type="button"
               onClick={handleManualDbSync}
               disabled={isSyncingDb}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
               title="حفظ ومزامنة فورية مع قاعدة بيانات SQLite"
             >
               <Database className={`w-4 h-4 ${isSyncingDb ? 'animate-spin text-blue-600' : ''}`} />
@@ -240,8 +261,18 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
           <button
             type="button"
+            onClick={() => setIsPcrOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-xs border border-red-500"
+            title="فتح لوحة تحكم مخرج البث المباشر (PCR Master Control Desk)"
+          >
+            <Radio className="w-4 h-4 text-white animate-pulse" />
+            <span>لوحة مخرج البث (PCR Live)</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsPrompterOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 shadow-2xs"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors border border-purple-200 shadow-2xs"
             title="فتح شاشة الملقن التفاعلية (Prompter) للمذيع ومخرج الاستوديو"
           >
             <Tv className="w-4 h-4 text-purple-600" />
@@ -251,7 +282,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
             title="طباعة نسخة ورقية لاستوديو البث وغرفة المخرج"
           >
             <Printer className="w-4 h-4" />
@@ -264,7 +295,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                 setEditingSegment(null);
                 setIsAddModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-xs"
             >
               <Plus className="w-4 h-4" />
               إضافة فقرة
@@ -272,6 +303,66 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           )}
         </div>
       </div>
+
+      {/* Segments Quick Search & Filter Bar */}
+      {segments.length > 0 && (
+        <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="بحث في عنوان الفقرة، السكريبت، المذيع أو الضيف..."
+              className="w-full pr-8 pl-8 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-medium">نوع الفقرة:</span>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+            >
+              <option value="ALL">جميع الفقرات ({segments.length})</option>
+              <option value="INTRO">شارة / مقدمة</option>
+              <option value="REPORT">تقرير مصور VT</option>
+              <option value="LIVE_INTERVIEW">حوار مباشر</option>
+              <option value="NEWS_ITEM">خبر قارئ</option>
+              <option value="DISCUSSION">طاولة حوار</option>
+              <option value="BREAK">فاصل إعلاني</option>
+              <option value="OUTRO">تتر النهاية</option>
+            </select>
+
+            {(searchQuery || filterType !== 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilterType('ALL');
+                }}
+                className="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-bold"
+              >
+                إلغاء التصفية
+              </button>
+            )}
+
+            <div className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
+              {displayedSegments.length} من {segments.length}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rundown Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
@@ -298,8 +389,24 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                     لا توجد فقرات في جدول الرانداون بعد. انقر على "إضافة فقرة" لبدء تنظيم الحلقة.
                   </td>
                 </tr>
+              ) : displayedSegments.length === 0 ? (
+                <tr>
+                  <td colSpan={canEdit ? 10 : 9} className="py-10 text-center text-slate-400">
+                    لا توجد فقرات تطابق بحثك أو التصفية الحالية.
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setFilterType('ALL');
+                      }}
+                      className="text-blue-600 hover:underline font-bold mr-2"
+                    >
+                      إعادة عرض جميع الفقرات
+                    </button>
+                  </td>
+                </tr>
               ) : (
-                segments.map((seg, idx) => {
+                displayedSegments.map((seg, idx) => {
                   const badgeInfo = typeBadges[seg.segmentType] || { label: seg.segmentType, variant: 'default' };
                   const durationMins = Math.floor(seg.durationSeconds / 60);
                   const durationSecs = seg.durationSeconds % 60;
@@ -496,6 +603,19 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         onClose={() => setIsPrompterOpen(false)}
         segments={segments}
         episodeTitle="شاشة الملقن للفقرات (Teleprompter)"
+      />
+
+      {/* Live PCR Master Control Room Modal */}
+      <LivePcrMasterControlModal
+        isOpen={isPcrOpen}
+        onClose={() => setIsPcrOpen(false)}
+        episode={{
+          id: episodeId || 'ep-live',
+          title: 'النشرة الإخبارية الرئيسية',
+          plannedDurationMinutes,
+        } as any}
+        segments={segments}
+        onUpdateSegments={onUpdateRundown}
       />
     </div>
   );
