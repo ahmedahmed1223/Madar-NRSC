@@ -53,7 +53,14 @@ export async function getDatabase(): Promise<Database> {
     try {
       const fileBuffer = fs.readFileSync(DB_FILE_PATH);
       dbInstance = new SQL.Database(fileBuffer);
-      console.log(`[SQLite] Loaded existing database from ${DB_FILE_PATH} (${fileBuffer.length} bytes)`);
+      // Run SQLite integrity check
+      const integrity = dbInstance.exec('PRAGMA integrity_check;');
+      if (integrity.length && integrity[0].values?.[0]?.[0] === 'ok') {
+        console.log(`[SQLite Self-Healing] Loaded database integrity OK from ${DB_FILE_PATH} (${fileBuffer.length} bytes)`);
+      } else {
+        console.warn('[SQLite Self-Healing] Database integrity degraded, recreating fresh store with schema repair');
+        dbInstance = new SQL.Database();
+      }
     } catch (readErr) {
       console.warn('[SQLite] Corrupted database file, creating fresh instance:', readErr);
       dbInstance = new SQL.Database();
@@ -611,6 +618,19 @@ export function createDatabaseBackup(): DbBackupFileInfo {
 
   const buffer = getDatabaseBuffer();
   fs.writeFileSync(targetPath, buffer);
+
+  // Self-Healing 24/7 Disk Hygiene: Keep latest 20 backups and prune older ones
+  try {
+    const existing = fs.readdirSync(BACKUPS_DIR).filter((f) => f.endsWith('.sqlite')).sort();
+    if (existing.length > 20) {
+      const toPrune = existing.slice(0, existing.length - 20);
+      toPrune.forEach((oldFile) => {
+        try {
+          fs.unlinkSync(path.join(BACKUPS_DIR, oldFile));
+        } catch {}
+      });
+    }
+  } catch {}
 
   const stat = fs.statSync(targetPath);
   return {

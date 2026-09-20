@@ -131,34 +131,37 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         {activeTab === 'GUEST' && (
           <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">اسم الضيف كاملاً *</label>
+              <label htmlFor="cg-guest-name" className="block text-xs font-bold text-slate-700 mb-1">اسم الضيف كاملاً *</label>
               <input
+                id="cg-guest-name"
                 type="text"
                 value={guestName}
                 onChange={(e) => setGuestName(e.target.value)}
                 placeholder="مثال: د. عبد الله بن خالد الشمري"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-semibold"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الصفة أو اللقب التحريري</label>
+                <label htmlFor="cg-guest-title" className="block text-xs font-bold text-slate-700 mb-1">الصفة أو اللقب التحريري</label>
                 <input
+                  id="cg-guest-title"
                   type="text"
                   value={guestTitle}
                   onChange={(e) => setGuestTitle(e.target.value)}
                   placeholder="مثال: باحث أول في العلاقات الدولية"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">المؤسسة أو جهة العمل</label>
+                <label htmlFor="cg-guest-org" className="block text-xs font-bold text-slate-700 mb-1">المؤسسة أو جهة العمل</label>
                 <input
+                  id="cg-guest-org"
                   type="text"
                   value={guestOrg}
                   onChange={(e) => setGuestOrg(e.target.value)}
                   placeholder="مثال: مركز الدراسات الاستراتيجية"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
             </div>
@@ -168,23 +171,25 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         {activeTab === 'HEADLINE' && (
           <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">العنوان الرئيسي للشريط *</label>
+              <label htmlFor="cg-headline-text" className="block text-xs font-bold text-slate-700 mb-1">العنوان الرئيسي للشريط *</label>
               <input
+                id="cg-headline-text"
                 type="text"
                 value={headlineText}
                 onChange={(e) => setHeadlineText(e.target.value)}
                 placeholder="مثال: قمة الرياض للطاقة والمناخ"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-bold"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">السطر الثاني (فرعي / تفاصيل)</label>
+              <label htmlFor="cg-subheadline-text" className="block text-xs font-bold text-slate-700 mb-1">السطر الثاني (فرعي / تفاصيل)</label>
               <input
+                id="cg-subheadline-text"
                 type="text"
                 value={subHeadlineText}
                 onChange={(e) => setSubHeadlineText(e.target.value)}
                 placeholder="مثال: اتفاقيات استراتيجية لخفض الانبعاثات الكربونية"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
@@ -193,34 +198,37 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         {activeTab === 'LOCATION' && (
           <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">اسم المراسل الميداني</label>
+              <label htmlFor="cg-reporter-name" className="block text-xs font-bold text-slate-700 mb-1">اسم المراسل الميداني</label>
               <input
+                id="cg-reporter-name"
                 type="text"
                 value={reporterName}
                 onChange={(e) => setReporterName(e.target.value)}
                 placeholder="مثال: أحمد المنصور"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-semibold"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">المدينة / العاصمة</label>
+                <label htmlFor="cg-location-city" className="block text-xs font-bold text-slate-700 mb-1">المدينة / العاصمة</label>
                 <input
+                  id="cg-location-city"
                   type="text"
                   value={locationCity}
                   onChange={(e) => setLocationCity(e.target.value)}
                   placeholder="مثال: جنيف"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الدولة أو المقر</label>
+                <label htmlFor="cg-location-country" className="block text-xs font-bold text-slate-700 mb-1">الدولة أو المقر</label>
                 <input
+                  id="cg-location-country"
                   type="text"
                   value={locationCountry}
                   onChange={(e) => setLocationCountry(e.target.value)}
                   placeholder="مثال: سويسرا (مقر الأمم المتحدة)"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
             </div>
@@ -230,13 +238,14 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         {activeTab === 'BREAKING' && (
           <div className="space-y-3 bg-red-50/50 p-4 rounded-xl border border-red-200">
             <div>
-              <label className="block text-xs font-bold text-red-900 mb-1">نص الخبر العاجل في الشريط السفلي *</label>
+              <label htmlFor="cg-breaking-text" className="block text-xs font-bold text-red-900 mb-1">نص الخبر العاجل في الشريط السفلي *</label>
               <textarea
+                id="cg-breaking-text"
                 rows={2}
                 value={breakingText}
                 onChange={(e) => setBreakingText(e.target.value)}
                 placeholder="اكتب جملة الخبر العاجل بوضوح واختصار..."
-                className="w-full px-3 py-2 border border-red-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-red-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-red-300 rounded-xl text-xs text-slate-800 placeholder:text-red-300 focus:outline-hidden focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all"
               />
             </div>
           </div>

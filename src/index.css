@@ -10,6 +10,62 @@
     direction: rtl;
     text-align: right;
   }
+
+  /* Unified Form Inputs, Selects, and Textareas */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+  select,
+  textarea {
+    font-family: inherit;
+    border-color: #cbd5e1; /* slate-300 */
+    border-radius: 0.75rem; /* rounded-xl */
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  /* Consistent Focus Ring on all inputs, selects, and textareas */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: none !important;
+    border-color: #3b82f6 !important; /* blue-500 */
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+  }
+
+  /* Native Checkbox and Radio styling */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: #2563eb;
+    cursor: pointer;
+  }
+
+  /* Bi-directional Text & RTL Optimization */
+  input:not([dir="ltr"]):not([type="url"]):not([type="email"]):not([type="number"]):not([type="time"]):not([type="date"]):not([type="datetime-local"]):not([type="tel"]),
+  textarea:not([dir="ltr"]) {
+    direction: rtl;
+    text-align: right;
+  }
+
+  /* Inputs that contain technical/Latin values default to LTR */
+  input[type="url"],
+  input[type="email"],
+  input[type="number"],
+  input[type="time"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="tel"],
+  input[dir="ltr"],
+  textarea[dir="ltr"],
+  .input-ltr {
+    direction: ltr !important;
+    text-align: left !important;
+  }
+
+  /* Select elements in RTL mode */
+  select {
+    direction: rtl;
+    text-align: right;
+  }
 }
 
 @media print {
@@ -37,3 +93,4 @@
     display: block !important;
   }
 }
+

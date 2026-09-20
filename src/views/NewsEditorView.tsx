@@ -33,6 +33,7 @@ import {
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { RichTextEditor } from '../components/editor/RichTextEditor';
 import { Badge } from '../components/common/Badge';
+import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { hasPermission } from '../services/api';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
@@ -385,6 +386,24 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Contextual Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: 'غرفة الأخبار', onClick: onCancel },
+          { label: newsItem ? (newsItem.title ? `تحرير: ${newsItem.title.slice(0, 35)}...` : 'تحرير الخبر') : 'إنشاء مادة إخبارية جديدة' },
+        ]}
+        statusBadge={
+          newsItem
+            ? {
+                label: `الحالة: ${newsItem.status}`,
+                variant: newsItem.status === 'PUBLISHED' ? 'success' : newsItem.status === 'APPROVED' ? 'primary' : 'warning',
+              }
+            : undefined
+        }
+        onBack={onCancel}
+        backLabel="العودة لقائمة الأخبار"
+      />
+
       {/* Emergency Draft Recovery Alert */}
       {hasEmergencyDraft && (
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
@@ -586,7 +605,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Title Input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+                <label htmlFor="news-headline-input" className="block text-xs font-bold text-slate-700">
                   العنوان الرئيسي للمادة الصحفية *
                 </label>
                 <div className="flex items-center gap-2">
@@ -620,12 +639,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
               <div className="relative">
                 <input
+                  id="news-headline-input"
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="اكتب عنواناً جذاباً ودقيقاً يصف جوهر الحدث..."
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl text-base font-bold focus:ring-2 focus:ring-blue-500 placeholder:font-normal"
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
                 {title && (
                   <button
@@ -643,7 +663,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Short Title & Ticker Simulator */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+                <label htmlFor="news-short-title-input" className="block text-xs font-bold text-slate-700">
                   العنوان المختصر (يستخدم في شريط البث السفلي Ticker والأوتوكيو)
                 </label>
                 <div className="flex items-center gap-2">
@@ -665,11 +685,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
               <div className="relative">
                 <input
+                  id="news-short-title-input"
                   type="text"
                   value={shortTitle}
                   onChange={(e) => setShortTitle(e.target.value)}
                   placeholder="عنوان مختصر ومكثف لا يتجاوز 10 كلمات..."
-                  className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  maxLength={120}
                 />
                 {shortTitle && (
                   <button
@@ -703,7 +725,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Summary / Lead Paragraph */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+                <label htmlFor="news-summary-textarea" className="block text-xs font-bold text-slate-700">
                   المقدمة والملخص الإخباري (Lead Paragraph)
                 </label>
                 <div className="flex items-center gap-2">
@@ -724,11 +746,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
 
               <textarea
+                id="news-summary-textarea"
                 rows={3}
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder="يجيب عن الأسئلة الصحفية الستة (من، ماذا، أين، متى، لماذا، كيف)..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs leading-relaxed focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
 
               {/* Quick Lead Templates */}
@@ -835,11 +858,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Category */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">القسم الصحفي *</label>
+              <label htmlFor="news-category-select" className="block text-xs font-bold text-slate-700 mb-1">القسم الصحفي *</label>
               <select
+                id="news-category-select"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -851,11 +875,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Source */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">مصدر الخبر *</label>
+              <label htmlFor="news-source-select" className="block text-xs font-bold text-slate-700 mb-1">مصدر الخبر *</label>
               <select
+                id="news-source-select"
                 value={sourceId}
                 onChange={(e) => setSourceId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 text-slate-800"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
               >
                 {sources.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -867,11 +892,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Priority */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الأولوية والخطورة</label>
+              <label htmlFor="news-priority-select" className="block text-xs font-bold text-slate-700 mb-1">الأولوية والخطورة</label>
               <select
+                id="news-priority-select"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs bg-white font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 <option value="URGENT">🔴 عاجل جداً (Urgent)</option>
                 <option value="HIGH">🟠 أولوية عالية (High)</option>
@@ -884,7 +910,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <label htmlFor="news-location-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
                     مكان الحدث والمكتب
                   </label>
@@ -900,11 +926,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </div>
                 <div className="relative">
                   <input
+                    id="news-location-input"
                     type="text"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
                     placeholder="مثال: الرياض، القاهرة، جنيف..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-semibold"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   />
                 </div>
                 {/* Location Quick Presets */}
@@ -928,7 +955,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <label htmlFor="news-event-date-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
                     تاريخ وتوقيت وقوع الحدث
                   </label>
@@ -952,10 +979,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   </div>
                 </div>
                 <input
+                  id="news-event-date-input"
                   type="datetime-local"
                   value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   dir="ltr"
                 />
               </div>
@@ -1012,7 +1040,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Image URL */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label htmlFor="news-image-url-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                   <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
                   رابط الصورة البارزة (URL)
                 </label>
@@ -1028,11 +1056,15 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
 
               <input
+                id="news-image-url-input"
                 type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck="false"
                 value={mainImageUrl}
                 onChange={(e) => setMainImageUrl(e.target.value)}
                 placeholder="https://...jpg"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 dir="ltr"
               />
 
@@ -1054,7 +1086,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <div className="relative mt-2 rounded-xl overflow-hidden border border-slate-200 group">
                   <img
                     src={mainImageUrl}
-                    alt="معاينة"
+                    alt="معاينة الصورة"
                     className="w-full h-32 object-cover"
                   />
                   <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-[9px] font-mono text-white rounded">
@@ -1067,7 +1099,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Video Playout URL */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label htmlFor="news-video-url-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                   <Video className="w-3.5 h-3.5 text-slate-400" />
                   رابط الفيديو وسيرفر البث (Playout)
                 </label>
@@ -1083,11 +1115,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
 
               <input
+                id="news-video-url-input"
                 type="text"
+                autoCapitalize="none"
+                spellCheck="false"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
                 placeholder="https://...mp4 أو سيرفر البث"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 dir="ltr"
               />
 
@@ -1109,10 +1144,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           {/* Keywords / Tags with Trending Suggestions */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <label htmlFor="news-tag-input" className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                 <Tag className="w-3.5 h-3.5 text-blue-500" />
                 الكلمات المفتاحية والوسوم
-              </h3>
+              </label>
               {keywords.length > 0 && (
                 <button
                   type="button"
@@ -1126,12 +1161,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             <div className="relative">
               <input
+                id="news-tag-input"
                 type="text"
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleAddTag}
                 placeholder="اكتب الوسم واضغط Enter للإضافة..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
 
@@ -1203,11 +1239,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل التدقيق الأمني والتحريري:
             </p>
             <textarea
+              id="status-transition-comment"
               rows={3}
               value={statusComment}
               onChange={(e) => setStatusComment(e.target.value)}
               placeholder="مثال: تم تدقيق الأسماء، مطابقة المصادر، والتأكد من الصياغة اللغوية..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <div className="flex justify-end gap-2 pt-2">
               <button

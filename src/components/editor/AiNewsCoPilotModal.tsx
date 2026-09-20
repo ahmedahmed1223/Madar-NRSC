@@ -207,10 +207,14 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <label htmlFor="ai-tone-select" className="text-xs font-bold text-slate-700 sr-only">
+              نبرة التحرير
+            </label>
             <select
+              id="ai-tone-select"
               value={tone}
               onChange={(e) => setTone(e.target.value as any)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-700 font-semibold focus:ring-2 focus:ring-blue-500"
+              className="px-3.5 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             >
               <option value="NEUTRAL_FORMAL">أسلوب إخباري رصين</option>
               <option value="URGENT">تغطية عاجلة وميدانية</option>

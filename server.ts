@@ -28,6 +28,14 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+// Enterprise Security Headers (Safe for embedded environments & preview)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 // In-memory backend database state
 const backendStore = {
   systemStatus: 'ONLINE',
@@ -324,15 +332,38 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+          } else if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$/)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
     app.get('*', (req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[NRCS Server] Running broadcast newsroom server on http://localhost:${PORT}`);
   });
+
+  const gracefulShutdown = () => {
+    console.log('[NRCS Server] Received termination signal. Closing HTTP server gracefully...');
+    server.close(() => {
+      console.log('[NRCS Server] HTTP server closed cleanly.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 }
 
 startServer().catch((err) => {

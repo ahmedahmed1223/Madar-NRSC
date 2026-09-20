@@ -180,22 +180,24 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="tasks-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم أو الشخص المسؤول..."
-            className="w-full pr-9 pl-4 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            className="w-full pr-9 pl-4 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">الحالة:</span>
+          <label htmlFor="tasks-status-filter" className="text-xs text-slate-600 font-medium">الحالة:</label>
           <select
+            id="tasks-status-filter"
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
           >
             <option value="ALL">جميع الحالات</option>
             <option value="TODO">مطلوبة</option>
@@ -393,7 +395,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">عنوان المهمة الصحفية *</label>
+              <label htmlFor="task-title-input" className="block text-xs font-bold text-slate-700">عنوان المهمة الصحفية *</label>
               {title && (
                 <button
                   type="button"
@@ -405,6 +407,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               )}
             </div>
             <input
+              id="task-title-input"
               type="text"
               required
               value={title}
@@ -429,8 +432,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">التفاصيل والتوجيهات الفنية</label>
+            <label htmlFor="task-desc-textarea" className="block text-xs font-bold text-slate-700 mb-1">التفاصيل والتوجيهات الفنية</label>
             <textarea
+              id="task-desc-textarea"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -440,8 +444,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">المكلف بالمهمة الصحفية</label>
+            <label htmlFor="task-assignee-input" className="block text-xs font-bold text-slate-700 mb-1">المكلف بالمهمة الصحفية</label>
             <input
+              id="task-assignee-input"
               type="text"
               value={assignedToName}
               onChange={(e) => setAssignedToName(e.target.value)}
@@ -469,8 +474,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">درجة الأولوية</label>
+              <label htmlFor="task-priority-select" className="block text-xs font-bold text-slate-700 mb-1">درجة الأولوية</label>
               <select
+                id="task-priority-select"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
@@ -483,8 +489,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">حالة المعالجة</label>
+              <label htmlFor="task-status-select" className="block text-xs font-bold text-slate-700 mb-1">حالة المعالجة</label>
               <select
+                id="task-status-select"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
@@ -499,7 +506,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">تاريخ وموعد التسليم النهائي</label>
+              <label htmlFor="task-due-date-input" className="block text-xs font-bold text-slate-700">تاريخ وموعد التسليم النهائي</label>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -525,6 +532,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </div>
             </div>
             <input
+              id="task-due-date-input"
               type="datetime-local"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}

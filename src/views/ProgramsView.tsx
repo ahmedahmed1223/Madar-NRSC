@@ -185,19 +185,23 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="programs-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم، مقدم البرنامج، أو المنتج..."
-            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            autoComplete="off"
+            spellCheck="false"
+            className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -205,11 +209,12 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs text-slate-500 shrink-0 font-medium">نوع البرنامج:</span>
+          <label htmlFor="programs-type-filter" className="text-xs text-slate-600 shrink-0 font-medium">نوع البرنامج:</label>
           <select
+            id="programs-type-filter"
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
+            className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto transition-all"
           >
             <option value="ALL">جميع الأنواع ({programTypes.length})</option>
             {programTypes.map((t) => (
@@ -354,7 +359,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">اسم البرنامج *</label>
+                <label htmlFor="program-name-input" className="block text-xs font-bold text-slate-700">اسم البرنامج *</label>
                 {name && (
                   <button
                     type="button"
@@ -366,20 +371,22 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 )}
               </div>
               <input
+                id="program-name-input"
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="مثال: المشهد السياسي، نبض الاقتصاد"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">نوع وتصنيف البرنامج</label>
+              <label htmlFor="program-type-select" className="block text-xs font-bold text-slate-700 mb-1">نوع وتصنيف البرنامج</label>
               <select
+                id="program-type-select"
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs bg-white font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {programTypes.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -392,7 +399,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">وصف ورؤية البرنامج</label>
+              <label htmlFor="program-desc-textarea" className="block text-xs font-bold text-slate-700">وصف ورؤية البرنامج</label>
               {description && (
                 <button
                   type="button"
@@ -404,31 +411,34 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               )}
             </div>
             <textarea
+              id="program-desc-textarea"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="وصف موجز لطبيعة البرنامج وأهدافه التحريرية والجمهور المستهدف..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">مقدم البرنامج الرئيسي</label>
+              <label htmlFor="program-presenter-input" className="block text-xs font-bold text-slate-700 mb-1">مقدم البرنامج الرئيسي</label>
               <input
+                id="program-presenter-input"
                 type="text"
                 value={presenterName}
                 onChange={(e) => setPresenterName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المنتج المنفذ</label>
+              <label htmlFor="program-producer-input" className="block text-xs font-bold text-slate-700 mb-1">المنتج المنفذ</label>
               <input
+                id="program-producer-input"
                 type="text"
                 value={producerName}
                 onChange={(e) => setProducerName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
@@ -484,23 +494,26 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">وقت البث</label>
+              <label htmlFor="program-time-input" className="block text-xs font-bold text-slate-700 mb-1">وقت البث</label>
               <input
+                id="program-time-input"
                 type="time"
                 value={broadcastTime}
                 onChange={(e) => setBroadcastTime(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المدة (بالدقائق)</label>
+              <label htmlFor="program-duration-input" className="block text-xs font-bold text-slate-700 mb-1">المدة (بالدقائق)</label>
               <input
+                id="program-duration-input"
                 type="number"
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
                 min="10"
-                max="180"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-center font-mono focus:ring-2 focus:ring-blue-500"
+                max="360"
+                inputMode="numeric"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               <div className="mt-1 flex items-center justify-center gap-1">
                 {DURATION_PRESETS.map((d) => (
@@ -520,12 +533,13 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الاستوديو</label>
+              <label htmlFor="program-studio-input" className="block text-xs font-bold text-slate-700 mb-1">الاستوديو</label>
               <input
+                id="program-studio-input"
                 type="text"
                 value={studioName}
                 onChange={(e) => setStudioName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               <div className="mt-1 flex flex-wrap gap-1">
                 {STUDIO_PRESETS.slice(0, 2).map((st) => (
@@ -544,7 +558,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">رابط صورة الغلاف أو الشارة (URL)</label>
+              <label htmlFor="program-cover-input" className="block text-xs font-bold text-slate-700">رابط صورة الغلاف أو الشارة (URL)</label>
               {coverImageUrl && (
                 <button
                   type="button"
@@ -556,11 +570,15 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               )}
             </div>
             <input
+              id="program-cover-input"
               type="url"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck="false"
               value={coverImageUrl}
               onChange={(e) => setCoverImageUrl(e.target.value)}
               placeholder="https://...jpg"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono transition-all"
               dir="ltr"
             />
             {/* Cover Presets */}

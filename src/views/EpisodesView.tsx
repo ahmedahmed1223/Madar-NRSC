@@ -193,19 +193,23 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="episodes-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بعنوان الحلقة أو البرنامج..."
-            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            autoComplete="off"
+            spellCheck="false"
+            className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -213,12 +217,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          <div className="flex items-center gap-1 text-xs text-slate-600">
-            <span>البرنامج:</span>
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <label htmlFor="episodes-program-filter" className="font-medium">البرنامج:</label>
             <select
+              id="episodes-program-filter"
               value={selectedProgId}
               onChange={(e) => setSelectedProgId(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-semibold"
+              className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold transition-all"
             >
               <option value="ALL">جميع البرامج ({programs.length})</option>
               {programs.map((p) => (
@@ -229,12 +234,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-slate-600">
-            <span>الحالة:</span>
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <label htmlFor="episodes-status-filter" className="font-medium">الحالة:</label>
             <select
+              id="episodes-status-filter"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-semibold"
+              className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold transition-all"
             >
               <option value="ALL">جميع الحالات</option>
               <option value="PLANNING">تخطيط</option>
@@ -384,11 +390,12 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
         <form onSubmit={handleCreateEpisode} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">البرنامج التابع له *</label>
+              <label htmlFor="episode-program-select" className="block text-xs font-bold text-slate-700 mb-1">البرنامج التابع له *</label>
               <select
+                id="episode-program-select"
                 value={programId}
                 onChange={(e) => setProgramId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {programs.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -400,7 +407,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">عنوان موضوع الحلقة *</label>
+                <label htmlFor="episode-title-input" className="block text-xs font-bold text-slate-700">عنوان موضوع الحلقة *</label>
                 {title && (
                   <button
                     type="button"
@@ -412,53 +419,63 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 )}
               </div>
               <input
+                id="episode-title-input"
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="مثال: مستقبل الطاقة المتجددة في الشرق الأوسط"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الحلقة</label>
+              <label htmlFor="episode-number-input" className="block text-xs font-bold text-slate-700 mb-1">رقم الحلقة</label>
               <input
+                id="episode-number-input"
                 type="number"
                 value={episodeNumber}
                 onChange={(e) => setEpisodeNumber(Number(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                inputMode="numeric"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الموسم</label>
+              <label htmlFor="episode-season-input" className="block text-xs font-bold text-slate-700 mb-1">الموسم</label>
               <input
+                id="episode-season-input"
                 type="number"
                 value={seasonNumber}
                 onChange={(e) => setSeasonNumber(Number(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                inputMode="numeric"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">وقت البدء</label>
+              <label htmlFor="episode-start-time-input" className="block text-xs font-bold text-slate-700 mb-1">وقت البدء</label>
               <input
+                id="episode-start-time-input"
                 type="time"
                 value={startTime}
                 onChange={(e) => handleStartTimeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المدة (دقيقة)</label>
+              <label htmlFor="episode-duration-input" className="block text-xs font-bold text-slate-700 mb-1">المدة (دقيقة)</label>
               <input
+                id="episode-duration-input"
                 type="number"
+                min="1"
+                max="480"
+                inputMode="numeric"
                 value={durationMinutes}
                 onChange={(e) => handleDurationChange(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
@@ -489,21 +506,23 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">تاريخ البث المقرر</label>
+              <label htmlFor="episode-broadcast-date-input" className="block text-xs font-bold text-slate-700 mb-1">تاريخ البث المقرر</label>
               <input
+                id="episode-broadcast-date-input"
                 type="date"
                 value={broadcastDate}
                 onChange={(e) => setBroadcastDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الاستوديو المخصص</label>
+              <label htmlFor="episode-studio-input" className="block text-xs font-bold text-slate-700 mb-1">الاستوديو المخصص</label>
               <input
+                id="episode-studio-input"
                 type="text"
                 value={studioName}
                 onChange={(e) => setStudioName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               <div className="mt-1 flex flex-wrap gap-1">
                 {STUDIO_PRESETS.map((st) => (
@@ -521,13 +540,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">مقدمة ووصف الحلقة</label>
+            <label htmlFor="episode-desc-input" className="block text-xs font-bold text-slate-700 mb-1">مقدمة ووصف الحلقة</label>
             <textarea
+              id="episode-desc-input"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="وصف مختصر لمحاور الحلقة الرئيسية ومسار الحوار..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 

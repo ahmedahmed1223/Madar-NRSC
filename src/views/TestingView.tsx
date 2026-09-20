@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -9,6 +9,9 @@ import {
   Check,
   AlertTriangle,
   Info,
+  Search,
+  X,
+  RefreshCw,
 } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 
@@ -198,6 +201,57 @@ export const TestingView: React.FC = () => {
   ]);
 
   const [isRunningAll, setIsRunningAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+
+  // Unique categories
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    tests.forEach((t) => set.add(t.category));
+    return Array.from(set);
+  }, [tests]);
+
+  const filteredTests = useMemo(() => {
+    return tests.filter((t) => {
+      if (selectedCategory !== 'ALL' && t.category !== selectedCategory) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = t.name.toLowerCase().includes(q);
+        const matchDesc = t.description.toLowerCase().includes(q);
+        const matchCat = t.category.toLowerCase().includes(q);
+        const matchMsg = t.message?.toLowerCase().includes(q);
+        if (!matchName && !matchDesc && !matchCat && !matchMsg) return false;
+      }
+      return true;
+    });
+  }, [tests, selectedCategory, searchQuery]);
+
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'ALL';
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('ALL');
+  };
+
+  const handleRunSingleTest = (testId: number) => {
+    setTests((prev) =>
+      prev.map((item) => (item.id === testId ? { ...item, status: 'RUNNING' } : item))
+    );
+
+    setTimeout(() => {
+      setTests((prev) =>
+        prev.map((item) =>
+          item.id === testId
+            ? {
+                ...item,
+                status: 'PASSED',
+                durationMs: Math.floor(Math.random() * 35) + 15,
+              }
+            : item
+        )
+      );
+    }, 300);
+  };
 
   const handleRunAllTests = () => {
     setIsRunningAll(true);
@@ -282,65 +336,145 @@ export const TestingView: React.FC = () => {
         </div>
       </div>
 
+      {/* Search & Category Filter Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="بحث في سيناريوهات الاختبار، الفئة، أو النتيجة المتوقعة..."
+            className="w-full pr-9 pl-9 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              title="مسح البحث"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-700 focus:ring-2 focus:ring-emerald-500 font-medium"
+          >
+            <option value="ALL">جميع التصنيفات ({tests.length})</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors whitespace-nowrap"
+              title="إلغاء التصفية"
+            >
+              إلغاء التصفية
+            </button>
+          )}
+
+          <div className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2.5 py-1.5 rounded-xl">
+            {filteredTests.length} من {tests.length}
+          </div>
+        </div>
+      </div>
+
       {/* Tests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {tests.map((test) => (
-          <div
-            key={test.id}
-            className={`p-4 rounded-2xl border transition-all ${
-              test.status === 'RUNNING'
-                ? 'bg-amber-50/60 border-amber-300'
-                : test.status === 'PASSED'
-                ? 'bg-white border-slate-200 shadow-2xs hover:border-emerald-300'
-                : 'bg-red-50 border-red-200'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5">
-                  {test.status === 'PASSED' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  ) : test.status === 'RUNNING' ? (
-                    <Zap className="w-5 h-5 text-amber-600 animate-pulse" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600" />
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                      سيناريو #{test.id}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-semibold">
-                      {test.category}
-                    </span>
+        {filteredTests.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-slate-200">
+            لا توجد سيناريوهات مطابقة للبحث أو التصفية الحالية.
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-emerald-600 hover:underline font-bold mr-2"
+              >
+                إعادة تعيين الفلاتر
+              </button>
+            )}
+          </div>
+        ) : (
+          filteredTests.map((test) => (
+            <div
+              key={test.id}
+              className={`p-4 rounded-2xl border transition-all ${
+                test.status === 'RUNNING'
+                  ? 'bg-amber-50/60 border-amber-300 shadow-sm'
+                  : test.status === 'PASSED'
+                  ? 'bg-white border-slate-200 shadow-2xs hover:border-emerald-300'
+                  : 'bg-red-50 border-red-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5">
+                    {test.status === 'PASSED' ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    ) : test.status === 'RUNNING' ? (
+                      <Zap className="w-5 h-5 text-amber-600 animate-pulse" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600" />
+                    )}
                   </div>
 
-                  <h3 className="text-xs font-bold text-slate-800 leading-snug">
-                    {test.name}
-                  </h3>
-
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    {test.description}
-                  </p>
-
-                  {test.message && (
-                    <div className="text-[11px] text-emerald-800 bg-emerald-50/70 p-2 rounded-lg border border-emerald-100 mt-2 font-medium">
-                      ✓ {test.message}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                        سيناريو #{test.id}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        {test.category}
+                      </span>
                     </div>
+
+                    <h3 className="text-xs font-bold text-slate-800 leading-snug">
+                      {test.name}
+                    </h3>
+
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      {test.description}
+                    </p>
+
+                    {test.message && (
+                      <div className="text-[11px] text-emerald-800 bg-emerald-50/70 p-2 rounded-lg border border-emerald-100 mt-2 font-medium">
+                        ✓ {test.message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {test.durationMs && (
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {test.durationMs}ms
+                    </span>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => handleRunSingleTest(test.id)}
+                    disabled={test.status === 'RUNNING' || isRunningAll}
+                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-slate-200 hover:border-emerald-300"
+                    title="إعادة تشغيل هذا الاختبار بشكل منفرد"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${test.status === 'RUNNING' ? 'animate-spin text-amber-600' : ''}`} />
+                  </button>
                 </div>
               </div>
-
-              {test.durationMs && (
-                <span className="font-mono text-[10px] text-slate-400 shrink-0">
-                  {test.durationMs}ms
-                </span>
-              )}
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

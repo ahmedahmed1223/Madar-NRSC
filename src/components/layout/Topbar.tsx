@@ -16,10 +16,17 @@ import {
   Database,
   Menu,
   Globe,
+  ShieldCheck,
+  Lock,
+  Keyboard,
 } from 'lucide-react';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
 import { NotificationDropdown } from './NotificationDropdown';
+import { PWAInstallButton } from '../common/PWAInstallButton';
+import { ProductionEnvironmentModal } from '../common/ProductionEnvironmentModal';
+import { SelfHealingModal } from '../common/SelfHealingModal';
+import { useSystemHealth } from '../../hooks/useSystemHealth';
 
 interface TopbarProps {
   currentUser: User;
@@ -27,6 +34,7 @@ interface TopbarProps {
   onSwitchUser?: (user: User) => void;
   onOpenSearch?: () => void;
   onOpenCommandPalette?: () => void;
+  onOpenShortcuts?: () => void;
   onCreateNews?: () => void;
   onCreateProgram?: () => void;
   onCreateEpisode?: () => void;
@@ -35,6 +43,8 @@ interface TopbarProps {
   onOpenLiveWire?: () => void;
   unreadNotificationsCount?: number;
   onToggleMobileMenu?: () => void;
+  isLiveLockActive?: boolean;
+  onToggleLiveLock?: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -43,6 +53,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onSwitchUser,
   onOpenSearch,
   onOpenCommandPalette,
+  onOpenShortcuts,
   onCreateNews = () => {},
   onCreateProgram = () => {},
   onCreateEpisode = () => {},
@@ -51,11 +62,16 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenLiveWire,
   unreadNotificationsCount,
   onToggleMobileMenu,
+  isLiveLockActive = false,
+  onToggleLiveLock = () => {},
 }) => {
   const [timeStr, setTimeStr] = useState('');
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProductionModalOpen, setIsProductionModalOpen] = useState(false);
+  const [isSelfHealingOpen, setIsSelfHealingOpen] = useState(false);
+  const { report } = useSystemHealth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
@@ -133,6 +149,35 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         </div>
 
+        {/* Official Production Readiness Badge */}
+        <button
+          id="official-production-status-btn"
+          type="button"
+          onClick={() => setIsProductionModalOpen(true)}
+          title="بيئة العمل والإنتاج الرسمي (فحص الأنظمة التشغيلية، النسخ الاحتياطي، قفل البث)"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 rounded-xl text-xs font-semibold border border-emerald-500/30 transition-all cursor-pointer shadow-2xs"
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="font-bold text-[11px] hidden sm:inline">بيئة الإنتاج</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          {isLiveLockActive && <Lock className="w-3 h-3 text-amber-300" />}
+        </button>
+
+        {/* 24/7 Self-Healing & System Health Badge */}
+        <button
+          id="system-self-healing-btn"
+          type="button"
+          onClick={() => setIsSelfHealingOpen(true)}
+          title="مركز الاستقرار والتعافي الذاتي 24/7 (انقر للفحص والإصلاح الشامل)"
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-teal-950/90 hover:bg-teal-900 text-teal-300 rounded-xl text-xs font-semibold border border-teal-500/30 transition-all cursor-pointer shadow-2xs"
+        >
+          <Activity className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
+          <span className="font-bold text-[11px]">التعافي الذاتي 24/7</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-teal-500/20 text-teal-200 rounded-md">
+            {report.healthScore}%
+          </span>
+        </button>
+
         {/* SQLite 3 Status Badge */}
         <button
           type="button"
@@ -187,6 +232,9 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Left side (RTL End): Quick Actions, Notifications, Role Switcher */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* PWA Workstation Install Prompt */}
+        <PWAInstallButton />
+
         {/* Quick Create Dropdown */}
         <div className="relative">
           <button
@@ -275,6 +323,18 @@ export const Topbar: React.FC<TopbarProps> = ({
           />
         </div>
 
+        {/* Keyboard Shortcuts Trigger Button */}
+        {onOpenShortcuts && (
+          <button
+            type="button"
+            onClick={onOpenShortcuts}
+            className="hidden sm:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+            title="اختصارات لوحة المفاتيح والإنتاج السريع (?)"
+          >
+            <Keyboard className="w-5 h-5" />
+          </button>
+        )}
+
         {/* User Account / Role Switcher (RBAC Live Test) */}
         <div className="relative">
           <button
@@ -347,6 +407,21 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Official Production Environment & Broadcast Readiness Modal */}
+      <ProductionEnvironmentModal
+        isOpen={isProductionModalOpen}
+        onClose={() => setIsProductionModalOpen(false)}
+        isLiveLockActive={isLiveLockActive}
+        onToggleLiveLock={onToggleLiveLock}
+        onNavigate={onNavigate}
+      />
+
+      {/* 24/7 Self-Healing & System Health Operations Hub Modal */}
+      <SelfHealingModal
+        isOpen={isSelfHealingOpen}
+        onClose={() => setIsSelfHealingOpen(false)}
+      />
     </header>
   );
 };

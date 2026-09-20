@@ -46,6 +46,9 @@ import {
   INITIAL_PROGRAM_EVALUATIONS,
 } from './mockData';
 
+import { selfHealingService } from './selfHealingService';
+import { networkResilienceManager } from './networkManager';
+
 // LocalStorage Keys for persistent client-side data
 const STORAGE_KEYS = {
   USERS: 'nrcs_users_v1',
@@ -75,9 +78,17 @@ function getStored<T>(key: string, defaultVal: T): T {
       localStorage.setItem(key, JSON.stringify(defaultVal));
       return defaultVal;
     }
-    return JSON.parse(item) as T;
-  } catch (e) {
-    console.warn(`Error reading ${key} from storage:`, e);
+    const parsed = JSON.parse(item);
+    if (parsed === null || parsed === undefined) {
+      return defaultVal;
+    }
+    return parsed as T;
+  } catch (e: any) {
+    console.warn(`[Self-Healing] Corrupt storage detected in ${key}, restoring safe defaults:`, e);
+    selfHealingService.logRuntimeError(`Corrupt data in ${key}: ${e?.message || e}`, 'StorageLayer');
+    try {
+      localStorage.setItem(key, JSON.stringify(defaultVal));
+    } catch {}
     return defaultVal;
   }
 }
@@ -85,8 +96,16 @@ function getStored<T>(key: string, defaultVal: T): T {
 function setStored<T>(key: string, val: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(val));
-  } catch (e) {
-    console.error(`Error writing ${key} to storage:`, e);
+  } catch (e: any) {
+    console.warn(`[Self-Healing] Write error in ${key}, executing garbage collection:`, e);
+    // Auto self-healing: run GC to free storage space
+    selfHealingService.performGarbageCollection();
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (retryErr) {
+      console.error(`[Self-Healing] Critical write failure for ${key}:`, retryErr);
+      selfHealingService.logRuntimeError(`Storage Quota Exceeded on ${key}`, 'StorageLayer');
+    }
   }
 }
 
@@ -207,6 +226,10 @@ export class ApiService {
     return getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
   }
 
+  static getUserById(id: string): User | undefined {
+    return this.getUsers().find((u) => u.id === id);
+  }
+
   static saveUser(user: Partial<User> & { id?: string }): User {
     const users = this.getUsers();
     if (user.id) {
@@ -219,22 +242,66 @@ export class ApiService {
       }
     }
     const newUser: User = {
-      id: `usr-${Date.now()}`,
+      id: user.id || `usr-${Date.now()}`,
       fullName: user.fullName || 'مستخدم جديد',
       fullNameEn: user.fullNameEn,
       email: user.email || `user${Date.now()}@akhbar.tv`,
       phone: user.phone || '',
       role: user.role || 'JOURNALIST',
+      customRoleId: user.customRoleId,
       avatarUrl: user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
       jobTitle: user.jobTitle || 'صحفي',
       department: user.department || 'غرفة الأخبار',
-      isActive: true,
-      createdAt: new Date().toISOString(),
+      staffId: user.staffId || `EMP-0${Math.floor(Math.random() * 90 + 10)}`,
+      securityClearance: user.securityClearance || 'CONFIDENTIAL',
+      shift: user.shift || 'MORNING',
+      bio: user.bio || '',
+      twoFactorEnabled: user.twoFactorEnabled ?? false,
+      lastLogin: new Date().toISOString(),
+      customPermissions: user.customPermissions || [],
+      isActive: user.isActive !== undefined ? user.isActive : true,
+      createdAt: user.createdAt || new Date().toISOString(),
     };
     users.push(newUser);
     setStored(STORAGE_KEYS.USERS, users);
-    this.logAudit('SETTINGS_UPDATE', 'USER', newUser.id, 'INFO', `إضافة مستخدم جديد: ${newUser.fullName}`);
+    this.logAudit('SETTINGS_UPDATE', 'USER', newUser.id, 'INFO', `إضافة مستخدم جديد: ${newUser.fullName} (${newUser.role})`);
     return newUser;
+  }
+
+  static deleteUser(id: string): boolean {
+    const users = this.getUsers();
+    const current = this.getCurrentUser();
+    if (current.id === id) {
+      throw new Error('لا يمكن حذف المستخدم النشط حالياً');
+    }
+    const target = users.find((u) => u.id === id);
+    if (!target) return false;
+
+    const filtered = users.filter((u) => u.id !== id);
+    setStored(STORAGE_KEYS.USERS, filtered);
+    this.logAudit('SETTINGS_UPDATE', 'USER', id, 'WARNING', `تم حذف حساب المستخدم: ${target.fullName}`);
+    return true;
+  }
+
+  static toggleUserStatus(id: string): User | null {
+    const users = this.getUsers();
+    const current = this.getCurrentUser();
+    if (current.id === id) {
+      throw new Error('لا يمكن تجميد حسابك النشط');
+    }
+    const idx = users.findIndex((u) => u.id === id);
+    if (idx === -1) return null;
+
+    users[idx].isActive = !users[idx].isActive;
+    setStored(STORAGE_KEYS.USERS, users);
+    this.logAudit(
+      'SETTINGS_UPDATE',
+      'USER',
+      id,
+      'INFO',
+      `تم ${users[idx].isActive ? 'تنشيط' : 'تجميد'} حساب المستخدم: ${users[idx].fullName}`
+    );
+    return users[idx];
   }
 
   // --- NEWS CRUD & WORKFLOW ---
@@ -1074,31 +1141,69 @@ export class ApiService {
 
   static saveCategory(cat: Partial<Category>): Category {
     const all = this.getCategories();
+    const colorVal = cat.colorCode || cat.color || '#2563eb';
+
     if (cat.id) {
       const idx = all.findIndex((c) => c.id === cat.id);
       if (idx !== -1) {
-        all[idx] = { ...all[idx], ...cat };
+        const oldNameAr = all[idx].nameAr;
+        const updated: Category = {
+          ...all[idx],
+          ...cat,
+          color: colorVal,
+          colorCode: colorVal,
+        };
+        all[idx] = updated;
         setStored(STORAGE_KEYS.CATEGORIES, all);
-        return all[idx];
+
+        // Synchronize categoryName in news items if name changed
+        if (cat.nameAr && cat.nameAr !== oldNameAr) {
+          try {
+            const news = this.getNews();
+            let hasNewsChanges = false;
+            news.forEach((item) => {
+              if (item.categoryId === cat.id) {
+                item.categoryName = cat.nameAr!;
+                hasNewsChanges = true;
+              }
+            });
+            if (hasNewsChanges) {
+              setStored(STORAGE_KEYS.NEWS, news);
+            }
+          } catch (e) {
+            console.warn('Could not cascade category name update to news items:', e);
+          }
+        }
+
+        this.logActivity('تعديل قسم إخباري', 'CATEGORY', updated.id, updated.nameAr, `تم تحديث بيانات ولون تصنيف (${updated.nameAr})`);
+        return updated;
       }
     }
+
     const newCat: Category = {
       id: `cat-${Date.now()}`,
       nameAr: cat.nameAr || 'قسم جديد',
       nameEn: cat.nameEn || 'New Category',
-      slug: (cat.nameEn || 'new-cat').toLowerCase().replace(/\s+/g, '-'),
-      color: cat.color || '#3b82f6',
-      orderIndex: all.length + 1,
+      slug: (cat.slug || cat.nameEn || 'new-cat').toLowerCase().replace(/\s+/g, '-'),
+      color: colorVal,
+      colorCode: colorVal,
+      description: cat.description || '',
+      orderIndex: cat.orderIndex || all.length + 1,
     };
     all.push(newCat);
     setStored(STORAGE_KEYS.CATEGORIES, all);
+    this.logActivity('إضافة قسم إخباري جديد', 'CATEGORY', newCat.id, newCat.nameAr, `تم إنشاء تصنيف إخباري جديد (${newCat.nameAr}) باللون المخصص.`);
     return newCat;
   }
 
   static deleteCategory(id: string): void {
     const all = this.getCategories();
+    const target = all.find((c) => c.id === id);
     const filtered = all.filter((c) => c.id !== id);
     setStored(STORAGE_KEYS.CATEGORIES, filtered);
+    if (target) {
+      this.logActivity('حذف قسم إخباري', 'CATEGORY', target.id, target.nameAr, `تم حذف تصنيف (${target.nameAr}) من النظام.`);
+    }
   }
 
   static getSources(): NewsSource[] {
@@ -1420,10 +1525,32 @@ export class ApiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ segments }),
       });
-      return res.ok;
+      if (!res.ok) {
+        throw new Error(`Server status ${res.status}`);
+      }
+      return true;
     } catch {
-      return false;
+      // 24/7 Resilience: Enqueue for background retry when connection is restored
+      networkResilienceManager.enqueueMutation(
+        'SYNC_RUNDOWN',
+        `/api/v1/episodes/${episodeId}/rundown`,
+        'PUT',
+        { segments }
+      );
+      return true;
     }
+  }
+
+  static runSelfHealingDiagnostics(logActivity = true) {
+    return selfHealingService.runFullDiagnosticsAndRepair(logActivity);
+  }
+
+  static getSelfHealingReport() {
+    return selfHealingService.getLastReport();
+  }
+
+  static getStorageQuota() {
+    return selfHealingService.getStorageMetrics();
   }
 
   static getMosExportUrl(episodeId: string): string {

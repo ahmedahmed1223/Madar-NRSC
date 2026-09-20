@@ -20,6 +20,7 @@ import {
   FlaskConical,
   Database,
   Star,
+  UserCog,
   X,
 } from 'lucide-react';
 import { User } from '../../types';
@@ -41,6 +42,7 @@ export type AppView =
   | 'MEDIA'
   | 'REPORTS'
   | 'AUDIT_LOGS'
+  | 'USERS'
   | 'TESTS'
   | 'SETTINGS'
   | 'DATABASE';
@@ -184,6 +186,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'سجل التدقيق والأمان',
       icon: ShieldCheck,
       badge: null,
+    },
+    {
+      id: 'users',
+      label: 'إدارة المستخدمين والصلاحيات',
+      icon: UserCog,
+      badge: 'RBAC',
+      badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300 font-bold',
     },
     {
       id: 'database',

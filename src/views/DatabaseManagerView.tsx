@@ -18,6 +18,7 @@ import {
   Archive,
   RefreshCw,
   Copy,
+  X,
 } from 'lucide-react';
 import { DbStats, SqlQueryResult, DbBackupFileInfo } from '../types';
 import { apiService } from '../services/api';
@@ -321,14 +322,28 @@ export const DatabaseManagerView: React.FC = () => {
               </div>
 
               <div className="relative mb-3">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  id="db-table-search-input"
                   type="text"
+                  aria-label="البحث عن جدول"
                   value={tableSearch}
                   onChange={(e) => setTableSearch(e.target.value)}
                   placeholder="ابحث عن جدول..."
-                  className="w-full pl-3 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  autoComplete="off"
+                  spellCheck="false"
+                  className="w-full pr-9 pl-8 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                 />
+                {tableSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setTableSearch('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="مسح البحث"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
@@ -403,6 +418,10 @@ export const DatabaseManagerView: React.FC = () => {
               {/* SQL Input Area */}
               <div className="relative">
                 <textarea
+                  id="db-sql-query-editor"
+                  aria-label="محرر استعلامات SQL"
+                  spellCheck="false"
+                  autoCapitalize="none"
                   value={activeQuery}
                   onChange={(e) => setActiveQuery(e.target.value)}
                   onKeyDown={(e) => {

@@ -1,0 +1,448 @@
+import React, { useState, useEffect } from 'react';
+import { Modal } from '../common/Modal';
+import { User, UserRole, SecurityClearance, ShiftType } from '../../types';
+import { RbacService, RoleDefinition } from '../../services/rbacService';
+import {
+  User as UserIcon,
+  Mail,
+  Phone,
+  Shield,
+  Briefcase,
+  Building,
+  Clock,
+  KeyRound,
+  Sparkles,
+  Check,
+  AlertCircle,
+} from 'lucide-react';
+
+interface UserFormModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (userData: Partial<User>) => void;
+  userToEdit?: User | null;
+  roles: RoleDefinition[];
+}
+
+const AVATAR_PRESETS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80',
+  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
+];
+
+const DEPARTMENTS = [
+  'غرفة الأخبار',
+  'الإدارة العامة والتحرير',
+  'القسم الدولي',
+  'القسم الاقتصادي',
+  'الإنتاج والبرامج',
+  'المذيعين والتقديم',
+  'المراسلين الميدانيين',
+  'الوسائط والمكتبة',
+  'إدارة البث والعمليات',
+  'التحقيقات والتقارير الخاصة',
+];
+
+export const UserFormModal: React.FC<UserFormModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  userToEdit,
+  roles,
+}) => {
+  const [fullName, setFullName] = useState('');
+  const [fullNameEn, setFullNameEn] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<UserRole>('JOURNALIST');
+  const [jobTitle, setJobTitle] = useState('');
+  const [department, setDepartment] = useState(DEPARTMENTS[0]);
+  const [staffId, setStaffId] = useState('');
+  const [securityClearance, setSecurityClearance] = useState<SecurityClearance>('CONFIDENTIAL');
+  const [shift, setShift] = useState<ShiftType>('MORNING');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(AVATAR_PRESETS[0]);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [isActive, setIsActive] = useState(true);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (userToEdit) {
+      setFullName(userToEdit.fullName || '');
+      setFullNameEn(userToEdit.fullNameEn || '');
+      setEmail(userToEdit.email || '');
+      setPhone(userToEdit.phone || '');
+      setRole(userToEdit.role || 'JOURNALIST');
+      setJobTitle(userToEdit.jobTitle || '');
+      setDepartment(userToEdit.department || DEPARTMENTS[0]);
+      setStaffId(userToEdit.staffId || '');
+      setSecurityClearance(userToEdit.securityClearance || 'CONFIDENTIAL');
+      setShift(userToEdit.shift || 'MORNING');
+      setBio(userToEdit.bio || '');
+      setAvatarUrl(userToEdit.avatarUrl || AVATAR_PRESETS[0]);
+      setTwoFactorEnabled(userToEdit.twoFactorEnabled ?? false);
+      setIsActive(userToEdit.isActive !== undefined ? userToEdit.isActive : true);
+    } else {
+      setFullName('');
+      setFullNameEn('');
+      setEmail('');
+      setPhone('');
+      setRole('JOURNALIST');
+      setJobTitle('');
+      setDepartment(DEPARTMENTS[0]);
+      setStaffId(`EMP-${Math.floor(Math.random() * 900 + 100)}`);
+      setSecurityClearance('CONFIDENTIAL');
+      setShift('MORNING');
+      setBio('');
+      setAvatarUrl(AVATAR_PRESETS[Math.floor(Math.random() * AVATAR_PRESETS.length)]);
+      setTwoFactorEnabled(false);
+      setIsActive(true);
+    }
+    setErrors({});
+  }, [userToEdit, isOpen]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newErrors: Record<string, string> = {};
+
+    if (!fullName.trim()) newErrors.fullName = 'الاسم الكامل بالعربية مطلوب';
+    if (!email.trim()) {
+      newErrors.email = 'البريد الإلكتروني مطلوب';
+    } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+      newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
+    }
+    if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    onSave({
+      id: userToEdit?.id,
+      fullName: fullName.trim(),
+      fullNameEn: fullNameEn.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      role,
+      jobTitle: jobTitle.trim(),
+      department,
+      staffId: staffId.trim(),
+      securityClearance,
+      shift,
+      bio: bio.trim(),
+      avatarUrl,
+      twoFactorEnabled,
+      isActive,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={userToEdit ? 'تعديل بيانات المستخدم والصلاحيات' : 'إضافة مستخدم جديد لطاقم الأخبار'}
+      size="lg"
+    >
+      <form onSubmit={handleSubmit} className="space-y-5 text-right font-sans" dir="rtl">
+        {/* Avatar Preset Selector */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <label className="block text-xs font-bold text-slate-700 mb-2">
+            الصورة الشخصية والرمز التعريفي:
+          </label>
+          <div className="flex items-center gap-4">
+            <img
+              src={avatarUrl}
+              alt="Avatar Preview"
+              className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-600 shadow-md shrink-0"
+            />
+            <div className="flex-1">
+              <div className="flex flex-wrap gap-2">
+                {AVATAR_PRESETS.map((url, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setAvatarUrl(url)}
+                    className={`w-9 h-9 rounded-xl overflow-hidden border-2 transition-transform hover:scale-105 ${
+                      avatarUrl === url ? 'border-blue-600 ring-2 ring-blue-400' : 'border-slate-300 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={url} alt={`preset-${idx}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  placeholder="أو الصق رابط صورة مخصص (URL)..."
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Basic Info Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              الاسم الكامل (بالعربية) <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <UserIcon className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: '' }));
+                }}
+                placeholder="مثال: أحمد المنصوري"
+                className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none ${
+                  errors.fullName ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
+                }`}
+              />
+            </div>
+            {errors.fullName && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.fullName}</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              الاسم بالإنجليزية (English Full Name)
+            </label>
+            <input
+              type="text"
+              value={fullNameEn}
+              onChange={(e) => setFullNameEn(e.target.value)}
+              placeholder="e.g. Ahmed Al-Mansouri"
+              className="w-full text-xs px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left font-sans"
+              dir="ltr"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              البريد الإلكتروني المهني <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+                }}
+                placeholder="user@akhbar.tv"
+                className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${
+                  errors.email ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                dir="ltr"
+              />
+            </div>
+            {errors.email && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.email}</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              رقم الهاتف المباشر / الاتصال
+            </label>
+            <div className="relative">
+              <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+966 50 000 0000"
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left font-mono"
+                dir="ltr"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Professional & Security Parameters */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              الدور والصلاحية (Role) <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Shield className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as UserRole)}
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold text-slate-800"
+              >
+                {roles.map((r) => (
+                  <option key={r.id} value={r.roleCode}>
+                    {r.nameAr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              المسمى الوظيفي (Job Title) <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Briefcase className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <input
+                type="text"
+                value={jobTitle}
+                onChange={(e) => {
+                  setJobTitle(e.target.value);
+                  if (errors.jobTitle) setErrors((prev) => ({ ...prev, jobTitle: '' }));
+                }}
+                placeholder="مثال: رئيس تحرير نشرة التاسعة"
+                className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none ${
+                  errors.jobTitle ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
+                }`}
+              />
+            </div>
+            {errors.jobTitle && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              القسم التحريري / الإداري
+            </label>
+            <div className="relative">
+              <Building className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <select
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+              >
+                {DEPARTMENTS.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Broadcast Shifts, Clearance & Security Flags */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              التصنيف الأمني للمواد (Security Clearance)
+            </label>
+            <select
+              value={securityClearance}
+              onChange={(e) => setSecurityClearance(e.target.value as SecurityClearance)}
+              className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold"
+            >
+              <option value="TOP_SECRET">سري للغاية (Top Secret - سيادي)</option>
+              <option value="RESTRICTED">مقيد / حساس (Restricted)</option>
+              <option value="CONFIDENTIAL">خاص بغرفة الأخبار (Confidential)</option>
+              <option value="PUBLIC">عام للجمهور (Public)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              وردية العمل التلفزيونية (Shift)
+            </label>
+            <div className="relative">
+              <Clock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
+              <select
+                value={shift}
+                onChange={(e) => setShift(e.target.value as ShiftType)}
+                className="w-full text-xs pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+              >
+                <option value="MORNING">الوردية الصباحية (06:00 - 14:00)</option>
+                <option value="EVENING">الوردية المسائية (14:00 - 22:00)</option>
+                <option value="NIGHT_ON_CALL">المناوبة الليلية / الطوارئ (22:00 - 06:00)</option>
+                <option value="FLEXIBLE">مرن / تغطية مفتوحة</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              الرقم الوظيفي (Staff ID)
+            </label>
+            <input
+              type="text"
+              value={staffId}
+              onChange={(e) => setStaffId(e.target.value)}
+              placeholder="EMP-001"
+              className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
+            />
+          </div>
+        </div>
+
+        {/* Bio / Description */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            نبذة مهنية وسجل التخصص التحريري (Bio & Specialization)
+          </label>
+          <textarea
+            rows={2}
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="اكتب نبذة مختصرة عن مسؤوليات وتخصص الموظف في شبكة الأخبار..."
+            className="w-full text-xs p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 leading-relaxed"
+          />
+        </div>
+
+        {/* Security & Active Toggles */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-slate-100/70 rounded-xl">
+          <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={twoFactorEnabled}
+              onChange={(e) => setTwoFactorEnabled(e.target.checked)}
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+            />
+            <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+            <span>تفعيل المصادقة الثنائية (2FA Enforcement)</span>
+          </label>
+
+          <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+            />
+            <span className={isActive ? 'text-emerald-700' : 'text-slate-500'}>
+              الحساب نشط ومصرح له بالدخول للنظام
+            </span>
+          </label>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+          >
+            إلغاء
+          </button>
+          <button
+            type="submit"
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <Check className="w-4 h-4" />
+            <span>{userToEdit ? 'حفظ التعديلات' : 'تسجيل المستخدم'}</span>
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};

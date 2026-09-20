@@ -13,6 +13,9 @@ export type UserRole =
   | 'MEDIA'
   | 'VIEWER';
 
+export type SecurityClearance = 'TOP_SECRET' | 'RESTRICTED' | 'CONFIDENTIAL' | 'PUBLIC';
+export type ShiftType = 'MORNING' | 'EVENING' | 'NIGHT_ON_CALL' | 'FLEXIBLE';
+
 export interface User {
   id: string;
   fullName: string;
@@ -20,11 +23,20 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
+  customRoleId?: string;
   avatarUrl: string;
   jobTitle: string;
   department: string;
+  staffId?: string;
+  securityClearance?: SecurityClearance;
+  shift?: ShiftType;
+  bio?: string;
+  lastLogin?: string;
+  twoFactorEnabled?: boolean;
+  customPermissions?: string[];
   isActive: boolean;
   createdAt: string;
+  deletedAt?: string | null;
 }
 
 export interface Permission {
@@ -33,7 +45,7 @@ export interface Permission {
   category: string;
 }
 
-export type NewsPriority = 'CRITICAL' | 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW';
+export type NewsPriority = 'CRITICAL' | 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW' | 'MEDIUM';
 
 export type NewsStatus =
   | 'DRAFT'
@@ -55,6 +67,7 @@ export interface Category {
   color?: string;
   colorCode?: string;
   orderIndex?: number;
+  description?: string;
 }
 
 export type SourceType =
@@ -64,7 +77,8 @@ export type SourceType =
   | 'INTERVIEW'
   | 'SOCIAL_MEDIA'
   | 'SPECIAL_SOURCE'
-  | 'OTHER';
+  | 'OTHER'
+  | (string & {});
 
 export interface NewsSource {
   id: string;
@@ -179,6 +193,7 @@ export interface BreakingNews {
 export interface ProgramType {
   id: string;
   nameAr: string;
+  name?: string;
   description?: string;
 }
 
@@ -255,15 +270,18 @@ export interface RundownSegment {
   id: string;
   episodeId: string;
   orderIndex: number;
+  orderNumber?: number;
   title: string;
   segmentType: RundownSegmentType;
   startTimeOffset: string; // '00:00:00'
   durationSeconds: number; // e.g. 180 (3 min)
+  plannedDurationFormatted?: string;
   endTimeOffset: string;   // '00:03:00'
   presenterName?: string;
   guestId?: string;
   guestName?: string;
   scriptText: string;
+  script?: string;
   videoAssetUrl?: string;
   newsId?: string;
   newsTitle?: string;
@@ -283,14 +301,20 @@ export interface EpisodeQuestion {
 }
 
 export interface EpisodeGuest {
+  id?: string;
   guestId: string;
   guestName: string;
+  fullName?: string;
   guestAvatar?: string;
+  avatarUrl?: string;
   organization?: string;
   jobTitle?: string;
+  specialty?: string;
   connectionType: 'STUDIO' | 'SATELLITE' | 'ZOOM_SKYPE' | 'PHONE';
   segmentTopic: string;
   arrivalStatus: 'CONFIRMED' | 'PENDING' | 'ARRIVED';
+  orderIndex?: number;
+  notes?: string;
 }
 
 export interface Episode {
@@ -306,12 +330,14 @@ export interface Episode {
   startTime: string;
   endTime: string;
   durationMinutes: number;
+  plannedDurationMinutes?: number;
   presenterId?: string;
   presenterName?: string;
   producerId?: string;
   producerName?: string;
   directorName?: string;
   studioName: string;
+  studioId?: string;
   introScript?: string;
   discussionTopics?: string[];
   directorNotes?: string;
@@ -320,6 +346,7 @@ export interface Episode {
   guests?: (Guest | EpisodeGuest)[];
   questions?: EpisodeQuestion[];
   rundown?: RundownSegment[];
+  rundownSegments?: RundownSegment[];
   linkedNewsIds?: string[];
   attachments?: MediaFile[];
   createdAt?: string;
@@ -347,6 +374,13 @@ export interface Guest {
   }[];
   createdAt: string;
   deletedAt?: string | null;
+  // Compatibility fields when rendered in episode context
+  guestId?: string;
+  guestName?: string;
+  guestAvatar?: string;
+  connectionType?: 'STUDIO' | 'SATELLITE' | 'ZOOM_SKYPE' | 'PHONE';
+  segmentTopic?: string;
+  arrivalStatus?: 'CONFIRMED' | 'PENDING' | 'ARRIVED';
 }
 
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'BLOCKED' | 'DONE' | 'COMPLETED' | 'CANCELLED';

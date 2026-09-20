@@ -20,7 +20,7 @@ import {
   ExternalLink,
   X,
 } from 'lucide-react';
-import { NewsItem, NewsStatus, NewsPriority, User } from '../types';
+import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
@@ -28,6 +28,8 @@ import { hasPermission } from '../services/api';
 
 interface NewsListViewProps {
   newsList: NewsItem[];
+  categories?: Category[];
+  sources?: NewsSource[];
   currentUser: User;
   onEditNews: (newsId: string) => void;
   onCreateNews: () => void;
@@ -39,6 +41,7 @@ interface NewsListViewProps {
 
 export const NewsListView: React.FC<NewsListViewProps> = ({
   newsList = [],
+  categories = [],
   currentUser,
   onEditNews,
   onCreateNews,
@@ -80,7 +83,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     return true;
   });
 
-  const categories = Array.from(new Set((newsList || []).map((n) => n.categoryName)));
+  const categoryOptions = Array.from(
+    new Set([
+      ...(categories || []).map((c) => c.nameAr),
+      ...(newsList || []).map((n) => n.categoryName),
+    ])
+  ).filter(Boolean);
 
   const handleSelectAll = () => {
     if (selectedIds.length === filteredNews.length) {
@@ -128,6 +136,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     CRITICAL: { label: 'خطير (خبر عاجل)', variant: 'danger' },
     URGENT: { label: 'عاجل جداً', variant: 'danger' },
     HIGH: { label: 'أولوية عالية', variant: 'warning' },
+    MEDIUM: { label: 'متوسط', variant: 'default' },
     NORMAL: { label: 'عادي', variant: 'default' },
     LOW: { label: 'منخفض', variant: 'default' },
   };
@@ -229,19 +238,21 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="news-list-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
-            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            className="w-full pr-9 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -252,14 +263,15 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span>القسم:</span>
+            <label htmlFor="news-list-category-select">القسم:</label>
             <select
+              id="news-list-category-select"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-2.5 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأقسام</option>
-              {categories.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -268,11 +280,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <span>الأولوية:</span>
+            <label htmlFor="news-list-priority-select">الأولوية:</label>
             <select
+              id="news-list-priority-select"
               value={selectedPriority}
               onChange={(e) => setSelectedPriority(e.target.value)}
-              className="px-2.5 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأولويات</option>
               <option value="CRITICAL">عاجل وفوري</option>
@@ -448,9 +461,28 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
                       {/* Category */}
                       <td className="py-3.5 px-3">
-                        <Badge variant="primary" size="sm">
-                          {item.categoryName}
-                        </Badge>
+                        {(() => {
+                          const catObj = (categories || []).find(
+                            (c) => c.nameAr === item.categoryName || c.id === item.categoryId
+                          );
+                          const color = catObj?.colorCode || catObj?.color || '#2563eb';
+                          return (
+                            <span
+                              className="px-2 py-0.5 rounded-md text-[11px] font-bold border inline-flex items-center gap-1.5"
+                              style={{
+                                backgroundColor: `${color}15`,
+                                color: color,
+                                borderColor: `${color}30`,
+                              }}
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span>{item.categoryName || catObj?.nameAr}</span>
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Priority */}
@@ -679,7 +711,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">
+              <label htmlFor="news-status-comment-textarea" className="block text-xs font-bold text-slate-700">
                 ملاحظات أو تعليق التحرير (يسجل في سجل التدقيق):
               </label>
               {statusComment && (
@@ -693,11 +725,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               )}
             </div>
             <textarea
+              id="news-status-comment-textarea"
               rows={3}
               value={statusComment}
               onChange={(e) => setStatusComment(e.target.value)}
               placeholder="مثال: تمت مراجعة الأرقام وصحة المصادر والتأكد من صياغة العناوين..."
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 leading-relaxed"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 leading-relaxed transition-all"
             />
             <div className="flex flex-wrap gap-1.5 mt-2">
               {[

@@ -29,6 +29,7 @@ import {
 import { Program, Episode, User, ProgramEvaluation } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { apiService } from '../services/api';
 
 interface ProgramDetailViewProps {
@@ -140,60 +141,61 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Top Breadcrumbs / Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-blue-600 bg-white px-3.5 py-2 rounded-xl border border-slate-200 transition-colors shadow-2xs"
-          >
-            <ArrowRight className="w-4 h-4" />
-            <span>العودة لدليل البرامج</span>
-          </button>
+      {/* Top Contextual Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: 'دليل البرامج التلفزيونية', onClick: onBack },
+          { label: program.name },
+        ]}
+        statusBadge={{
+          label: program.status === 'ACTIVE' ? 'برنامج نشط' : 'متوقف مؤقتاً',
+          variant: program.status === 'ACTIVE' ? 'success' : 'default',
+        }}
+        onBack={onBack}
+        backLabel="العودة لدليل البرامج"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {allPrograms.length > 0 && onSwitchProgram && (
+              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+                <Tv className="w-3.5 h-3.5 text-blue-600" />
+                <label htmlFor="program-switcher-select" className="text-[11px] font-medium text-slate-500">
+                  تبديل:
+                </label>
+                <select
+                  id="program-switcher-select"
+                  value={program.id}
+                  onChange={(e) => onSwitchProgram(e.target.value)}
+                  className="text-xs font-bold text-slate-800 bg-transparent border-none focus:outline-hidden cursor-pointer"
+                >
+                  {allPrograms.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.typeName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-          {allPrograms.length > 0 && onSwitchProgram && (
-            <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-              <Tv className="w-3.5 h-3.5 text-blue-600" />
-              <label htmlFor="program-switcher-select" className="text-[11px] font-medium text-slate-500">
-                البرنامج الحالي:
-              </label>
-              <select
-                id="program-switcher-select"
-                value={program.id}
-                onChange={(e) => onSwitchProgram(e.target.value)}
-                className="text-xs font-bold text-slate-800 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer"
-              >
-                {allPrograms.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.typeName})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => onEditProgram(program)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>تعديل</span>
+            </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onEditProgram(program)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
-          >
-            <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-            <span>تعديل بيانات البرنامج</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onCreateEpisodeForProgram(program.id)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إنشاء حلقة جديدة</span>
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={() => onCreateEpisodeForProgram(program.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>حلقة جديدة</span>
+            </button>
+          </div>
+        }
+      />
 
       {/* Program Hero Banner */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white">

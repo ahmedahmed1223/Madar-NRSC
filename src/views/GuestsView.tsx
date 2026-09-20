@@ -161,22 +161,26 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="guests-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم، المؤسسة، أو التخصص..."
-            className="w-full pr-9 pl-4 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            autoComplete="off"
+            spellCheck="false"
+            className="w-full pr-10 pl-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs text-slate-500 shrink-0">مجال التخصص:</span>
+          <label htmlFor="guests-specialty-filter" className="text-xs text-slate-500 shrink-0 font-medium">مجال التخصص:</label>
           <select
+            id="guests-specialty-filter"
             value={selectedSpecialty}
             onChange={(e) => setSelectedSpecialty(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
+            className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all w-full sm:w-auto"
           >
             <option value="ALL">جميع المجالات</option>
             {specialties.map((s) => (
@@ -288,7 +292,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">الاسم الكامل واللقب العلمي *</label>
+              <label htmlFor="guest-fullname-input" className="block text-xs font-bold text-slate-700">الاسم الكامل واللقب العلمي *</label>
               {fullName && (
                 <button
                   type="button"
@@ -300,34 +304,37 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               )}
             </div>
             <input
+              id="guest-fullname-input"
               type="text"
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="مثال: د. عبد الله السعيد أو سعادة السفير..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المسمى الوظيفي</label>
+              <label htmlFor="guest-jobtitle-input" className="block text-xs font-bold text-slate-700 mb-1">المسمى الوظيفي</label>
               <input
+                id="guest-jobtitle-input"
                 type="text"
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
                 placeholder="مثال: كبير المحللين الماليين"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المؤسسة / الجهة</label>
+              <label htmlFor="guest-organization-input" className="block text-xs font-bold text-slate-700 mb-1">المؤسسة / الجهة</label>
               <input
+                id="guest-organization-input"
                 type="text"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="مثال: مركز الدراسات الدولية"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
@@ -348,13 +355,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">مجال التخصص والخبرة</label>
+            <label htmlFor="guest-specialty-input" className="block text-xs font-bold text-slate-700 mb-1">مجال التخصص والخبرة</label>
             <input
+              id="guest-specialty-input"
               type="text"
               value={specialty}
               onChange={(e) => setSpecialty(e.target.value)}
               placeholder="مثال: علاقات دولية، نفط وغاز، ذكاء اصطناعي"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             {/* Quick Specialty Chips */}
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -377,14 +385,15 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           {/* Star Rating Interactive Selector */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-            <label className="block text-xs font-bold text-slate-700">تقييم الموثوقية والأداء التلفزيوني</label>
-            <div className="flex items-center gap-1">
+            <span className="block text-xs font-bold text-slate-700">تقييم الموثوقية والأداء التلفزيوني</span>
+            <div className="flex items-center gap-1" role="group" aria-label="تقييم الضيف من 1 إلى 5">
               {[1, 2, 3, 4, 5].map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setRating(s)}
-                  className="p-1 hover:scale-125 transition-transform"
+                  aria-label={`${s} نجوم`}
+                  className="p-1 hover:scale-125 transition-transform focus:outline-hidden focus:ring-1 focus:ring-amber-400 rounded"
                 >
                   <Star
                     className={`w-5 h-5 ${
@@ -401,24 +410,30 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف والتواصل المباشر</label>
+              <label htmlFor="guest-phone-input" className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف والتواصل المباشر</label>
               <input
-                type="text"
+                id="guest-phone-input"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+966 50 000 0000"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 dir="ltr"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">البريد الإلكتروني</label>
+              <label htmlFor="guest-email-input" className="block text-xs font-bold text-slate-700 mb-1">البريد الإلكتروني</label>
               <input
+                id="guest-email-input"
                 type="email"
+                inputMode="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="expert@domain.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 dir="ltr"
               />
             </div>
@@ -426,7 +441,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">رابط الصورة الشخصية (Avatar URL)</label>
+              <label htmlFor="guest-avatar-input" className="block text-xs font-bold text-slate-700">رابط الصورة الشخصية (Avatar URL)</label>
               {avatarUrl && (
                 <button
                   type="button"
@@ -438,11 +453,15 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               )}
             </div>
             <input
+              id="guest-avatar-input"
               type="url"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck="false"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
               placeholder="https://...jpg"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
             />
             {/* Quick Avatar Presets */}
@@ -462,13 +481,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات التحرير والتنسيق والتوفر</label>
+            <label htmlFor="guest-notes-textarea" className="block text-xs font-bold text-slate-700 mb-1">ملاحظات التحرير والتنسيق والتوفر</label>
             <textarea
+              id="guest-notes-textarea"
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="أوقات التوفر المفضلة، اللغات التي يتحدث بها، أي قيود أو اشتراطات..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 

@@ -13,6 +13,8 @@ import {
   CalendarDays,
   Grid3X3,
   Layers,
+  Search,
+  X,
 } from 'lucide-react';
 import { Episode, Program } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -32,6 +34,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [selectedStudio, setSelectedStudio] = useState('ALL');
   const [viewMode, setViewMode] = useState<'WEEK' | 'MONTH' | 'STUDIO'>('WEEK');
   const [weekOffset, setWeekOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Studios list
   const studios = useMemo(() => {
@@ -95,9 +98,26 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return episodes.filter((ep) => {
       if (selectedProgram !== 'ALL' && ep.programId !== selectedProgram) return false;
       if (selectedStudio !== 'ALL' && ep.studioName !== selectedStudio) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = ep.title?.toLowerCase().includes(q);
+        const matchProgram = ep.programName?.toLowerCase().includes(q);
+        const matchPresenter = ep.presenterName?.toLowerCase().includes(q);
+        const matchStudio = ep.studioName?.toLowerCase().includes(q);
+        if (!matchTitle && !matchProgram && !matchPresenter && !matchStudio) return false;
+      }
       return true;
     });
-  }, [episodes, selectedProgram, selectedStudio]);
+  }, [episodes, selectedProgram, selectedStudio, searchQuery]);
+
+  const hasActiveFilters = selectedProgram !== 'ALL' || selectedStudio !== 'ALL' || searchQuery.trim() !== '' || weekOffset !== 0;
+
+  const handleResetFilters = () => {
+    setSelectedProgram('ALL');
+    setSelectedStudio('ALL');
+    setSearchQuery('');
+    setWeekOffset(0);
+  };
 
   return (
     <div className="space-y-6">
@@ -178,12 +198,39 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </button>
           </div>
 
-          {/* Filters */}
-          <div className="flex items-center gap-2">
+          {/* Filters & Search */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <label htmlFor="calendar-search-input" className="sr-only">بحث في جدول البث</label>
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                id="calendar-search-input"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="بحث عن حلقة، برنامج، مذيع..."
+                autoComplete="off"
+                spellCheck="false"
+                className="w-48 sm:w-56 pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  title="مسح البحث"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <label htmlFor="calendar-program-filter" className="sr-only">تصفية حسب البرنامج</label>
             <select
+              id="calendar-program-filter"
               value={selectedProgram}
               onChange={(e) => setSelectedProgram(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 font-medium"
+              className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
             >
               <option value="ALL">جميع البرامج</option>
               {programs.map((p) => (
@@ -193,10 +240,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               ))}
             </select>
 
+            <label htmlFor="calendar-studio-filter" className="sr-only">تصفية حسب الاستوديو</label>
             <select
+              id="calendar-studio-filter"
               value={selectedStudio}
               onChange={(e) => setSelectedStudio(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 font-medium"
+              className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
             >
               <option value="ALL">جميع الاستوديوهات</option>
               {studios.map((st) => (
@@ -205,6 +254,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 </option>
               ))}
             </select>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors"
+                title="إعادة تعيين جميع الفلاتر والبحث"
+              >
+                إعادة تعيين
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -257,7 +317,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   ) : (
                     dayEpisodes.map((ep) => {
                       const isConflict = conflicts.has(ep.id);
-                      const isLive = ep.status === 'LIVE';
+                      const isLive = ep.status === 'ON_AIR' || (ep.status as any) === 'LIVE';
 
                       return (
                         <div
@@ -340,7 +400,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                         {studioName}
                       </h4>
-                      <Badge variant="neutral" size="sm">
+                      <Badge variant="default" size="sm">
                         {studioEps.length} حلقات
                       </Badge>
                     </div>
@@ -365,13 +425,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                 variant={
                                   ep.status === 'READY_FOR_BROADCAST'
                                     ? 'success'
-                                    : ep.status === 'LIVE'
+                                    : (ep.status === 'ON_AIR' || (ep.status as any) === 'LIVE')
                                     ? 'danger'
                                     : 'warning'
                                 }
                                 size="sm"
                               >
-                                {ep.status === 'LIVE' ? 'مباشر الآن' : ep.status}
+                                {(ep.status === 'ON_AIR' || (ep.status as any) === 'LIVE') ? 'مباشر الآن' : ep.status}
                               </Badge>
                             </div>
                             <div className="text-xs font-bold text-slate-800">{ep.title}</div>

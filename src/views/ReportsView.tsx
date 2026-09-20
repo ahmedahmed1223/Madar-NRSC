@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -9,6 +9,12 @@ import {
   Users,
   AlertTriangle,
   Award,
+  Calendar,
+  Printer,
+  Download,
+  Filter,
+  Layers,
+  ChevronDown,
 } from 'lucide-react';
 import { NewsItem, Episode, Guest, Category } from '../types';
 
@@ -25,25 +31,160 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   guests = [],
   categories = [],
 }) => {
-  const publishedCount = (newsList || []).filter((n) => n.status === 'PUBLISHED').length;
-  const draftCount = (newsList || []).filter((n) => n.status === 'DRAFT').length;
-  const reviewCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
-  const approvedCount = (newsList || []).filter((n) => n.status === 'APPROVED').length;
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+
+  // Filter news based on selected category
+  const filteredNews = useMemo(() => {
+    return newsList.filter((item) => {
+      if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
+        return false;
+      }
+      return true;
+    });
+  }, [newsList, selectedCategory]);
+
+  const publishedCount = (filteredNews || []).filter((n) => n.status === 'PUBLISHED').length;
+  const draftCount = (filteredNews || []).filter((n) => n.status === 'DRAFT').length;
+  const reviewCount = (filteredNews || []).filter((n) => n.status === 'UNDER_REVIEW').length;
+  const approvedCount = (filteredNews || []).filter((n) => n.status === 'APPROVED').length;
 
   const totalEpisodes = (episodes || []).length;
   const readyEpisodes = (episodes || []).filter((e) => e.status === 'READY_FOR_BROADCAST').length;
   const completedEpisodes = (episodes || []).filter((e) => e.status === 'BROADCASTED').length;
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportCsv = () => {
+    const csvRows = [
+      ['المؤشر الإحصائي', 'القيمة'],
+      ['إجمالي الأخبار المرشحة', String(filteredNews.length)],
+      ['الأخبار المنشورة', String(publishedCount)],
+      ['الأخبار المعتمدة', String(approvedCount)],
+      ['أخبار قيد المراجعة', String(reviewCount)],
+      ['المسودات الأولية', String(draftCount)],
+      ['إجمالي الحلقات التلفزيونية', String(totalEpisodes)],
+      ['حلقات جاهزة للبث المباشر', String(readyEpisodes)],
+      ['حلقات تم بثها', String(completedEpisodes)],
+      ['إجمالي الضيوف المعتمدين', String(guests.length)],
+    ];
+
+    const csvContent = '\uFEFF' + csvRows.map((e) => e.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `nrcs_performance_report_${selectedPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-          التقارير التحليلية ومؤشرات الأداء (KPIs)
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          إحصائيات الإنتاج الإخباري، كفاءة التدقيق التحريري، ودقة الالتزام بجداول البث التلفزيوني
-        </p>
+      {/* Header with Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+            التقارير التحليلية ومؤشرات الأداء (KPIs)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            إحصائيات الإنتاج الإخباري، كفاءة التدقيق التحريري، ودقة الالتزام بجداول البث التلفزيوني
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
+          >
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>تصدير تقرير CSV</span>
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+          >
+            <Printer className="w-4 h-4 text-white" />
+            <span>طباعة التقرير</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter & Period Toolbar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-500" />
+          <span className="font-bold text-slate-700">النطاق الزمني:</span>
+          <div className="inline-flex rounded-xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setSelectedPeriod('today')}
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                selectedPeriod === 'today'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              اليوم
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPeriod('week')}
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                selectedPeriod === 'week'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              آخر 7 أيام
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPeriod('month')}
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                selectedPeriod === 'month'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              هذا الشهر
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPeriod('all')}
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                selectedPeriod === 'all'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              جميع الفترات
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-slate-400" />
+          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">القسم الصحفي:</label>
+          <select
+            id="reports-category-filter"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+          >
+            <option value="ALL">كافة الأقسام ({newsList.length})</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nameAr}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Top Metric Cards */}
@@ -54,11 +195,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <FileText className="w-5 h-5 text-blue-600" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">
-            {newsList.length > 0 ? Math.round((publishedCount / newsList.length) * 100) : 0}%
+            {filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%
           </div>
           <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>{publishedCount} من أصل {newsList.length} مادة معتمدة ومنشورة</span>
+            <span>{publishedCount} من أصل {filteredNews.length} مادة معتمدة ومنشورة</span>
           </p>
         </div>
 

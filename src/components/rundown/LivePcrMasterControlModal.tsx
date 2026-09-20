@@ -39,9 +39,8 @@ export const LivePcrMasterControlModal: React.FC<LivePcrMasterControlModalProps>
   const [activeSegmentIdx, setActiveSegmentIdx] = useState(0);
   const [isOnAir, setIsOnAir] = useState(true);
   const [segmentRemainingSeconds, setSegmentRemainingSeconds] = useState(180);
-  const [showRemainingSeconds, setShowRemainingSeconds] = useState(
-    episode.plannedDurationMinutes ? episode.plannedDurationMinutes * 60 : 1800
-  );
+  const plannedMinutes = episode.durationMinutes || (episode as any).plannedDurationMinutes || 30;
+  const [showRemainingSeconds, setShowRemainingSeconds] = useState(plannedMinutes * 60);
   const [studioTallyCamera, setStudioTallyCamera] = useState<string>('CAM 1 (Presenter)');
   const [activeVtStatus, setActiveVtStatus] = useState<string>('PLAYING 1080p50');
   const [audioMasterMuted, setAudioMasterMuted] = useState(false);
@@ -87,7 +86,7 @@ export const LivePcrMasterControlModal: React.FC<LivePcrMasterControlModalProps>
 
   // Runtime differential calculation
   const totalRundownPlanned = segments.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
-  const scheduledTime = (episode.plannedDurationMinutes || 30) * 60;
+  const scheduledTime = (episode.durationMinutes || (episode as any).plannedDurationMinutes || 30) * 60;
   const timeDifference = totalRundownPlanned - scheduledTime;
 
   // Quick On-Air Actions
@@ -133,7 +132,7 @@ export const LivePcrMasterControlModal: React.FC<LivePcrMasterControlModalProps>
               غرفة التحكم والبث المباشر (PCR Master Control Desk) - {episode.title}
             </h1>
             <span className="text-[11px] text-slate-400">
-              الاستوديو الرئيسي: {episode.studioId || 'Main Studio HD'} • المخرج المناوب: تحكم البث الآلي
+              الاستوديو الرئيسي: {(episode as any).studioId || (episode as any).studio || 'Main Studio HD'} • المخرج المناوب: تحكم البث الآلي
             </span>
           </div>
         </div>

@@ -166,7 +166,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Title */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-xs font-bold text-slate-700">اسم أو موضوع الفقرة *</label>
+            <label htmlFor="segment-title-input" className="block text-xs font-bold text-slate-700">اسم أو موضوع الفقرة *</label>
             {title && (
               <button
                 type="button"
@@ -179,12 +179,13 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
           </div>
           <div className="relative">
             <input
+              id="segment-title-input"
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="مثال: التقرير الافتتاحي للقمة الاقتصادية"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
         </div>
@@ -219,7 +220,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <label htmlFor="segment-duration-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-blue-600" />
                 المدة المقررة للبث (دقيقة : ثانية) *
               </label>
@@ -227,14 +228,16 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
             </div>
 
             <input
+              id="segment-duration-input"
               type="text"
               required
               value={durationInput}
               onChange={(e) => setDurationInput(e.target.value)}
               placeholder="03:00"
               pattern="^[0-9]{1,2}:[0-9]{2}$"
+              inputMode="numeric"
               title="أدخل الوقت بصيغة MM:SS مثل 03:30"
-              className="w-28 px-3 py-1.5 border border-slate-300 rounded-lg text-base font-black text-center font-mono focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-28 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-black text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
             />
           </div>
@@ -258,22 +261,24 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Presenter & Guest */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">المذيع / القارئ</label>
+            <label htmlFor="segment-presenter-input" className="block text-xs font-bold text-slate-700 mb-1">المذيع / القارئ</label>
             <input
+              id="segment-presenter-input"
               type="text"
               value={presenterName}
               onChange={(e) => setPresenterName(e.target.value)}
               placeholder="اسم المذيع أو المعلق"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">الضيف المرتبط (إن وجد)</label>
+            <label htmlFor="segment-guest-select" className="block text-xs font-bold text-slate-700 mb-1">الضيف المرتبط (إن وجد)</label>
             <select
+              id="segment-guest-select"
               value={guestId}
               onChange={(e) => setGuestId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
             >
               <option value="">-- بدون ضيف لهذه الفقرة --</option>
               {guests.map((g) => (
@@ -288,11 +293,12 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Related News & Video URL */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">ربط بخبر من غرفة الأخبار</label>
+            <label htmlFor="segment-news-select" className="block text-xs font-bold text-slate-700 mb-1">ربط بخبر من غرفة الأخبار</label>
             <select
+              id="segment-news-select"
               value={newsId}
               onChange={(e) => setNewsId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
             >
               <option value="">-- بدون ربط بخبر --</option>
               {newsList.map((n) => (
@@ -305,7 +311,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">رابط الفيديو أو معرف السيرفر</label>
+              <label htmlFor="segment-video-input" className="block text-xs font-bold text-slate-700">رابط الفيديو أو معرف السيرفر</label>
               {videoAssetUrl && (
                 <button
                   type="button"
@@ -317,12 +323,15 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               )}
             </div>
             <input
+              id="segment-video-input"
               type="text"
               value={videoAssetUrl}
               onChange={(e) => setVideoAssetUrl(e.target.value)}
               placeholder="Playout Server ID أو رابط MP4"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left font-mono focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
+              autoCapitalize="none"
+              spellCheck="false"
             />
             {/* Quick Server Presets */}
             <div className="mt-1 flex flex-wrap gap-1">
@@ -343,7 +352,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Autocue / Script Text with Live Reading Pace Calculator */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-xs font-bold text-slate-700">نص الأوتوكيو / القراءة للمذيع</label>
+            <label htmlFor="segment-script-textarea" className="block text-xs font-bold text-slate-700">نص الأوتوكيو / القراءة للمذيع</label>
             {scriptSpeechPace && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
@@ -361,23 +370,25 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
             )}
           </div>
           <textarea
+            id="segment-script-textarea"
             rows={3}
             value={scriptText}
             onChange={(e) => setScriptText(e.target.value)}
             placeholder="النص الذي سيظهر على شاشة المذيع أو التوجيه الصوتي على الهواء..."
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs leading-relaxed focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
         </div>
 
         {/* Notes */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات المخرج وغرفة التحكم (MCR)</label>
+          <label htmlFor="segment-notes-input" className="block text-xs font-bold text-slate-700 mb-1">ملاحظات المخرج وغرفة التحكم (MCR)</label>
           <input
+            id="segment-notes-input"
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="مثال: استخدام كاميرا 2، نزول شارة الضيف، خفض الصوت تدريجياً"
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
         </div>
 

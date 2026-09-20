@@ -33,6 +33,7 @@ import { CalendarView } from './views/CalendarView';
 import { MediaLibraryView } from './views/MediaLibraryView';
 import { ReportsView } from './views/ReportsView';
 import { AuditLogsView } from './views/AuditLogsView';
+import { UsersView } from './views/UsersView';
 import { SettingsView } from './views/SettingsView';
 import { TestingView } from './views/TestingView';
 import { DatabaseManagerView } from './views/DatabaseManagerView';
@@ -41,13 +42,17 @@ import { ProgramDetailView } from './views/ProgramDetailView';
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { LiveWireFeedModal } from './components/news/LiveWireFeedModal';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
+import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
+import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(3);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isLiveLockActive, setIsLiveLockActive] = useState(false);
 
   // Toasts state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -55,6 +60,26 @@ export default function App() {
   const addToast = (toast: Omit<ToastMessage, 'id'>) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setToasts((prev) => [...prev, { ...toast, id }]);
+  };
+
+  const handleToggleLiveLock = () => {
+    setIsLiveLockActive((prev) => {
+      const next = !prev;
+      if (next) {
+        addToast({
+          type: 'warning',
+          title: 'تم تفعيل قفل البث المباشر (On-Air Lock)',
+          message: 'تم تأمين الرانداون والفقرات الحية ضد التعديل أو الحذف العرضي أثناء الهواء.',
+        });
+      } else {
+        addToast({
+          type: 'info',
+          title: 'تم تعطيل قفل البث المباشر',
+          message: 'المنظومة الآن في وضع التحرير والإعداد الحر.',
+        });
+      }
+      return next;
+    });
   };
 
   const removeToast = (id: string) => {
@@ -82,35 +107,31 @@ export default function App() {
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
   const [isLiveWireModalOpen, setIsLiveWireModalOpen] = useState(false);
 
-  const handleConvertWireToNews = (wireItem: {
-    title: string;
-    body: string;
-    source: string;
-    urgency: string;
-    topic: string;
-  }) => {
+  const handleConvertWireToNews = (wireItem: any) => {
     // Convert wire item into a draft NewsItem
+    const sourceName = wireItem.sourceAgency || wireItem.source || 'وكالة أنباء';
+    const topic = wireItem.category || wireItem.topic || 'أخبار عاجلة';
     const newDraft: NewsItem = {
       id: `news-${Date.now()}`,
       title: wireItem.title,
       shortTitle: wireItem.title.slice(0, 40),
       slug: `wire-${Date.now()}`,
       summary: wireItem.body.slice(0, 160) + '...',
-      content: `<p><strong>${wireItem.source} — </strong>${wireItem.body}</p>`,
+      content: `<p><strong>${sourceName} — </strong>${wireItem.body}</p>`,
       mainImageUrl: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=80',
       status: 'DRAFT',
       priority: wireItem.urgency === 'FLASH' ? 'URGENT' : 'NORMAL',
       categoryId: categories[0]?.id || 'cat-1',
       categoryName: categories[0]?.nameAr || 'أخبار عاجلة',
       sourceId: sources[0]?.id || 'src-1',
-      sourceName: wireItem.source,
+      sourceName: sourceName,
       authorId: currentUser.id,
       authorName: currentUser.fullName,
       editorId: undefined,
       locationName: 'غرفة الأخبار المركزية',
       eventDate: new Date().toISOString(),
       isBreaking: wireItem.urgency === 'FLASH' || wireItem.urgency === 'BULLETIN',
-      keywords: [wireItem.source, wireItem.topic, 'برقية إخبارية'],
+      keywords: [sourceName, topic, 'برقية إخبارية'],
       workflowLogs: [
         {
           id: `log-${Date.now()}`,
@@ -158,12 +179,45 @@ export default function App() {
     refreshData();
   }, []);
 
-  // Keyboard shortcut for Command Palette (Ctrl+K or Cmd+K)
+  // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+W, Ctrl+Alt+N)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Command Palette (Ctrl+K or Cmd+K)
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Help / Keyboard shortcuts reference (?)
+      const targetTag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      const isInputting = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === '?' && !isInputting) {
+        e.preventDefault();
+        setIsKeyboardShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // Live Lock Toggle (Ctrl+Alt+L)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        handleToggleLiveLock();
+        return;
+      }
+
+      // Live Wire Modal (Ctrl+Alt+W)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        setIsLiveWireModalOpen((prev) => !prev);
+        return;
+      }
+
+      // Quick New News (Ctrl+Alt+N)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        handleCreateNewNewsClick();
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -184,7 +238,7 @@ export default function App() {
   // Breaking news ticker items
   const breakingNewsItems = newsList
     .filter((n) => n.isBreaking)
-    .map((n) => ({ id: n.id, title: n.title, time: n.publishedAt ? n.publishedAt.slice(11, 16) : 'الآن' }));
+    .map((n) => ({ id: n.id, title: n.title, time: n.publishDate ? n.publishDate.slice(11, 16) : 'الآن' }));
 
   // --- NEWS ACTIONS ---
   const handleSaveNews = (newsData: Partial<NewsItem>) => {
@@ -279,8 +333,15 @@ export default function App() {
     setActiveNav('news-editor');
   };
 
-  const handleEditNewsClick = (item: NewsItem) => {
-    setSelectedNewsItem(item);
+  const handleEditNewsClick = (itemOrId: NewsItem | string) => {
+    if (typeof itemOrId === 'string') {
+      const found = newsList.find((n) => n.id === itemOrId);
+      if (found) {
+        setSelectedNewsItem(found);
+      }
+    } else {
+      setSelectedNewsItem(itemOrId);
+    }
     setActiveNav('news-editor');
   };
 
@@ -291,6 +352,14 @@ export default function App() {
   };
 
   const handleDeleteProgram = (programId: string) => {
+    if (isLiveLockActive) {
+      addToast({
+        title: 'قفل البث المباشر نشط',
+        message: 'لا يمكن حذف البرامج أثناء تفعيل وضع البث المباشر (On-Air Lock). قم بتعطيل القفل أولاً.',
+        type: 'warning',
+      });
+      return;
+    }
     apiService.deleteProgram(programId, currentUser);
     refreshData();
   };
@@ -306,6 +375,14 @@ export default function App() {
   };
 
   const handleDeleteEpisode = (episodeId: string) => {
+    if (isLiveLockActive) {
+      addToast({
+        title: 'قفل البث المباشر نشط',
+        message: 'لا يمكن حذف الحلقات والرانداون أثناء وضع البث المباشر (On-Air Lock). قم بتعطيل القفل أولاً.',
+        type: 'warning',
+      });
+      return;
+    }
     apiService.deleteEpisode(episodeId, currentUser);
     refreshData();
     if (selectedEpisodeId === episodeId) {
@@ -392,13 +469,40 @@ export default function App() {
 
   // --- SETTINGS ACTIONS ---
   const handleSaveCategory = (cat: Partial<Category>) => {
-    apiService.saveCategory(cat);
-    refreshData();
+    try {
+      const isNew = !cat.id;
+      const saved = apiService.saveCategory(cat);
+      refreshData();
+      addToast({
+        title: isNew ? 'تمت إضافة القسم بنجاح' : 'تم تحديث بيانات ولون القسم',
+        message: `تم حفظ وتطبيق قسم "${saved.nameAr}" على غرفة الأخبار ولوحة التحكم`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      addToast({
+        title: 'خطأ في حفظ القسم',
+        message: err.message || 'تعذر حفظ القسم الصحفي',
+        type: 'error',
+      });
+    }
   };
 
   const handleDeleteCategory = (id: string) => {
-    apiService.deleteCategory(id);
-    refreshData();
+    try {
+      apiService.deleteCategory(id);
+      refreshData();
+      addToast({
+        title: 'تم حذف التصنيف',
+        message: 'تم حذف التصنيف بنجاح من النظام',
+        type: 'info',
+      });
+    } catch (err: any) {
+      addToast({
+        title: 'خطأ في حذف التصنيف',
+        message: err.message || 'تعذر حذف التصنيف',
+        type: 'error',
+      });
+    }
   };
 
   const handleSaveSource = (source: Partial<NewsSource>) => {
@@ -423,6 +527,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans" dir="rtl">
+      {/* Network Connectivity & Offline Resilience Banner */}
+      <NetworkStatusBanner />
+
       {/* Breaking News Ticker (Topmost) */}
       <BreakingNewsTicker
         items={
@@ -459,7 +566,10 @@ export default function App() {
             currentUser={currentUser}
             onSwitchUser={handleSwitchUser}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)}
             onOpenLiveWire={() => setIsLiveWireModalOpen(true)}
+            isLiveLockActive={isLiveLockActive}
+            onToggleLiveLock={handleToggleLiveLock}
             onNavigate={(nav) => {
               setActiveNav(nav);
               setIsMobileSidebarOpen(false);
@@ -489,10 +599,11 @@ export default function App() {
                 episodes={episodes}
                 tasks={tasks}
                 guests={guests}
+                categories={categories}
                 currentUser={currentUser}
-                onNavigate={(view) => {
-                  if (view === 'episodes') setFilterProgramId(null);
-                  setActiveNav(view);
+                onNavigate={(view: any) => {
+                  if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
+                  setActiveNav(String(view).toLowerCase().replace(/_/g, '-'));
                 }}
                 onSelectEpisode={handleSelectEpisode}
               />
@@ -644,11 +755,26 @@ export default function App() {
 
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
+            {activeNav === 'users' && (
+              <UsersView
+                currentUser={currentUser}
+                onUserSwitch={(usr) => {
+                  setCurrentUser(usr);
+                  addToast({
+                    type: 'success',
+                    title: 'تم تبديل الحساب النشط',
+                    message: `تم التبديل إلى: ${usr.fullName} (${usr.jobTitle})`,
+                  });
+                }}
+              />
+            )}
+
             {activeNav === 'settings' && (
               <SettingsView
                 categories={categories}
                 sources={sources}
                 users={allUsers}
+                newsList={newsList}
                 onSaveCategory={handleSaveCategory}
                 onDeleteCategory={handleDeleteCategory}
                 onSaveSource={handleSaveSource}
@@ -686,6 +812,12 @@ export default function App() {
         isOpen={isLiveWireModalOpen}
         onClose={() => setIsLiveWireModalOpen(false)}
         onConvertWireToNews={handleConvertWireToNews}
+      />
+
+      {/* Keyboard Shortcuts Reference Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isKeyboardShortcutsOpen}
+        onClose={() => setIsKeyboardShortcutsOpen(false)}
       />
 
       {/* Global Newsroom Intercom & Audio Production Drawer */}

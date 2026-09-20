@@ -228,19 +228,23 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="text"
+            id="media-search-input"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالعنوان، اسم الملف، أو الوسوم..."
-            className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            autoComplete="off"
+            spellCheck="false"
+            className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -433,7 +437,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">عنوان المادة أو الملف *</label>
+              <label htmlFor="media-title-input" className="block text-xs font-bold text-slate-700">عنوان المادة أو الملف *</label>
               {title && (
                 <button
                   type="button"
@@ -445,22 +449,24 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
             </div>
             <input
+              id="media-title-input"
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="مثال: لقطات من المؤتمر الصحفي الاقتصادي"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">نوع الوسيط</label>
+              <label htmlFor="media-type-select" className="block text-xs font-bold text-slate-700 mb-1">نوع الوسيط</label>
               <select
+                id="media-type-select"
                 value={mediaType}
                 onChange={(e) => setMediaType(e.target.value as MediaType)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 <option value="IMAGE">صورة فوتوغرافية (JPG/PNG)</option>
                 <option value="VIDEO">مقطع فيديو للبث (MP4)</option>
@@ -470,13 +476,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المدة (للفيديو والصوت)</label>
+              <label htmlFor="media-duration-input" className="block text-xs font-bold text-slate-700 mb-1">المدة (للفيديو والصوت)</label>
               <input
+                id="media-duration-input"
                 type="number"
+                inputMode="numeric"
+                min="0"
                 value={durationSeconds}
                 onChange={(e) => setDurationSeconds(Number(e.target.value))}
                 disabled={mediaType !== 'VIDEO' && mediaType !== 'AUDIO'}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:bg-slate-100 disabled:text-slate-400"
               />
               {(mediaType === 'VIDEO' || mediaType === 'AUDIO') && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -497,7 +506,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">رابط الملف المباشر (URL أو مسار التخزين) *</label>
+              <label htmlFor="media-url-input" className="block text-xs font-bold text-slate-700">رابط الملف المباشر (URL أو مسار التخزين) *</label>
               {fileUrl && (
                 <button
                   type="button"
@@ -509,12 +518,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
             </div>
             <input
+              id="media-url-input"
               type="url"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck="false"
               required
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
               placeholder="https://..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-left focus:ring-2 focus:ring-blue-500 font-mono"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono transition-all"
               dir="ltr"
             />
             {fileUrl && (mediaType === 'IMAGE' || mediaType === 'VIDEO') && (
@@ -534,7 +547,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">الوسوم والكلمات الدلالية (مفصولة بفواصل)</label>
+              <label htmlFor="media-tags-input" className="block text-xs font-bold text-slate-700">الوسوم والكلمات الدلالية (مفصولة بفواصل)</label>
               {tagsInput && (
                 <button
                   type="button"
@@ -546,11 +559,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
             </div>
             <input
+              id="media-tags-input"
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="أخبار، اقتصاد، مباشر..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <div className="mt-1.5 flex flex-wrap gap-1">
               <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
@@ -572,7 +586,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">وصف المادة وسياق الاستخدام التحريري</label>
+              <label htmlFor="media-desc-textarea" className="block text-xs font-bold text-slate-700">وصف المادة وسياق الاستخدام التحريري</label>
               {description && (
                 <button
                   type="button"
@@ -584,11 +598,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
             </div>
             <textarea
+              id="media-desc-textarea"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="ملاحظات حول حقوق الملكية، المصدر الأصلي، أو البرامج المستهدفة..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
 

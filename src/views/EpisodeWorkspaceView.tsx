@@ -36,6 +36,7 @@ import {
 import { RundownTable } from '../components/rundown/RundownTable';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 
 interface EpisodeWorkspaceViewProps {
   episode: Episode;
@@ -176,7 +177,9 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
 
   const handleRemoveGuest = (guestId: string) => {
-    const filtered = (episode.guests || []).filter((g) => g.guestId !== guestId);
+    const filtered = (episode.guests || []).filter(
+      (g) => (g.guestId || (g as any).id) !== guestId
+    );
     onSaveEpisode({ id: episode.id, guests: filtered });
   };
 
@@ -193,7 +196,36 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Breadcrumb & Episode Banner */}
+      {/* Contextual Navigation Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: 'دليل الحلقات', onClick: onBack },
+          { label: episode.programName },
+          { label: `حلقة #${episode.episodeNumber}: ${episode.title}` },
+        ]}
+        statusBadge={{
+          label:
+            episode.status === 'ON_AIR'
+              ? 'على الهواء الآن'
+              : episode.status === 'READY_FOR_BROADCAST'
+              ? 'جاهزة للبث'
+              : episode.status === 'IN_PREPARATION'
+              ? 'قيد الإعداد'
+              : 'مرحلة التخطيط',
+          variant:
+            episode.status === 'ON_AIR'
+              ? 'danger'
+              : episode.status === 'READY_FOR_BROADCAST'
+              ? 'success'
+              : episode.status === 'IN_PREPARATION'
+              ? 'warning'
+              : 'default',
+        }}
+        onBack={onBack}
+        backLabel="العودة للحلقات"
+      />
+
+      {/* Top Episode Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -362,7 +394,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             ) : (
               episode.questions.map((q, idx) => (
                 <div
-                  key={q.id}
+                  key={q.id ? `q-item-${q.id}` : `q-idx-${idx}`}
                   className={`bg-white p-4 rounded-2xl border transition-all ${
                     q.isAsked ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200 shadow-2xs'
                   }`}
@@ -464,13 +496,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 لا يوجد ضيوف مرتبطون بهذه الحلقة حتى الآن. انقر على "ربط ضيف بالحلقة".
               </div>
             ) : (
-              episode.guests.map((g) => {
+              episode.guests.map((g, idx) => {
+                const guestKey = g.guestId || (g as any).id || `ep-gst-${idx}`;
                 const conn = connectionTypeLabels[g.connectionType] || connectionTypeLabels.STUDIO;
                 const Icon = conn.icon;
 
                 return (
                   <div
-                    key={g.guestId}
+                    key={guestKey}
                     className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -490,7 +523,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleRemoveGuest(g.guestId)}
+                        onClick={() => handleRemoveGuest(g.guestId || (g as any).id || guestKey)}
                         className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
                         title="إلغاء مشاركة الضيف"
                       >
@@ -613,12 +646,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             ))}
           </div>
 
+          <label htmlFor="intro-script-textarea" className="sr-only">اسكريبت مقدمة الحلقة التلفزيونية</label>
           <textarea
+            id="intro-script-textarea"
             rows={10}
             value={introScript}
             onChange={(e) => setIntroScript(e.target.value)}
             placeholder="أهلاً بكم مشاهدينا الكرام في حلقة جديدة ومباشرة من برنامج..."
-            className="w-full p-4 border border-slate-300 rounded-xl text-sm leading-loose text-slate-800 focus:ring-2 focus:ring-blue-500"
+            className="w-full p-4 bg-white border border-slate-300 rounded-xl text-sm leading-loose text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
 
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs text-slate-500">
@@ -638,7 +673,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <form onSubmit={handleSaveQuestion} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">المحور العام *</label>
+              <label htmlFor="question-topic-input" className="block text-xs font-bold text-slate-700">المحور العام *</label>
               {qTopic && (
                 <button
                   type="button"
@@ -651,12 +686,13 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </div>
             <div className="relative">
               <input
+                id="question-topic-input"
                 type="text"
                 required
                 value={qTopic}
                 onChange={(e) => setQTopic(e.target.value)}
                 placeholder="مثال: التداعيات الاقتصادية، المحور المالي"
-                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full pr-3.5 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               {qTopic && (
                 <button
@@ -684,7 +720,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">صيغة السؤال المباشر *</label>
+              <label htmlFor="question-text-textarea" className="block text-xs font-bold text-slate-700">صيغة السؤال المباشر *</label>
               {qText && (
                 <button
                   type="button"
@@ -696,24 +732,26 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               )}
             </div>
             <textarea
+              id="question-text-textarea"
               rows={3}
               required
               value={qText}
               onChange={(e) => setQText(e.target.value)}
               placeholder="اكتب صيغة السؤال الصحفي بدقة وبشكل مباشر للمذيع..."
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 leading-relaxed"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 leading-relaxed transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">الضيف الموجه له (اختياري)</label>
+            <label htmlFor="question-speaker-input" className="block text-xs font-bold text-slate-700 mb-1">الضيف الموجه له (اختياري)</label>
             <div className="relative">
               <input
+                id="question-speaker-input"
                 type="text"
                 value={qSpeaker}
                 onChange={(e) => setQSpeaker(e.target.value)}
                 placeholder="اسم الضيف المستهدف بالإجابة"
-                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full pr-3.5 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               {qSpeaker && (
                 <button
@@ -728,14 +766,15 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">توجيهات أو معلومات إضافية للمذيع</label>
+            <label htmlFor="question-notes-input" className="block text-xs font-bold text-slate-700 mb-1">توجيهات أو معلومات إضافية للمذيع</label>
             <div className="relative">
               <input
+                id="question-notes-input"
                 type="text"
                 value={qNotes}
                 onChange={(e) => setQNotes(e.target.value)}
                 placeholder="أرقام وإحصائيات داعمة للمحاورة..."
-                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full pr-3.5 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               {qNotes && (
                 <button
@@ -776,11 +815,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       >
         <form onSubmit={handleLinkGuest} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">اختر الضيف من بنك الضيوف *</label>
+            <label htmlFor="link-guest-select" className="block text-xs font-bold text-slate-700 mb-1">اختر الضيف من بنك الضيوف *</label>
             <select
+              id="link-guest-select"
               value={selectedGuestId}
               onChange={(e) => setSelectedGuestId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             >
               {allGuests.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -791,11 +831,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">وسيلة الاتصال والمشاركة</label>
+            <label htmlFor="guest-connection-select" className="block text-xs font-bold text-slate-700 mb-1">وسيلة الاتصال والمشاركة</label>
             <select
+              id="guest-connection-select"
               value={guestConnectionType}
               onChange={(e) => setGuestConnectionType(e.target.value as any)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             >
               <option value="STUDIO">حضور مباشر داخل الاستوديو</option>
               <option value="SATELLITE">عبر الأقمار الصناعية (SNG / Satellite)</option>
@@ -806,7 +847,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">موضوع المداخلة أو الفقرة</label>
+              <label htmlFor="guest-topic-input" className="block text-xs font-bold text-slate-700">موضوع المداخلة أو الفقرة</label>
               {guestSegmentTopic && (
                 <button
                   type="button"
@@ -819,11 +860,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </div>
             <div className="relative">
               <input
+                id="guest-topic-input"
                 type="text"
                 value={guestSegmentTopic}
                 onChange={(e) => setGuestSegmentTopic(e.target.value)}
                 placeholder="مثال: مناقشة تقرير أسواق المال"
-                className="w-full pr-3 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+                className="w-full pr-3.5 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               {guestSegmentTopic && (
                 <button
@@ -850,11 +892,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">حالة التواجد والتأكيد</label>
+            <label htmlFor="guest-arrival-select" className="block text-xs font-bold text-slate-700 mb-1">حالة التواجد والتأكيد</label>
             <select
+              id="guest-arrival-select"
               value={guestArrivalStatus}
               onChange={(e) => setGuestArrivalStatus(e.target.value as any)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             >
               <option value="CONFIRMED">تم تأكيد الموعد مع الضيف</option>
               <option value="ARRIVED">وصل للاستوديو / متصل على الخط</option>

@@ -1,0 +1,39 @@
+{
+  "id": "/",
+  "name": "نظام إدارة الأخبار وإعداد البرامج | NRCS",
+  "short_name": "غرفة الأخبار",
+  "description": "منظومة إعلامية تلفزيونية متكاملة لغرفة الأخبار وإعداد وإنتاج البرامج والرانداون والضيوف والمهام وسير النشر.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "dir": "rtl",
+  "lang": "ar",
+  "categories": ["news", "productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "محرر الأخبار",
+      "short_name": "الأخبار",
+      "description": "صياغة وتحرير الأخبار العاجلة والنشرات",
+      "url": "/#news",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "إدارة الرانداون",
+      "short_name": "الرانداون",
+      "description": "تسلسل وتوقيت فقرات البث المباشر",
+      "url": "/#episodes",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}
