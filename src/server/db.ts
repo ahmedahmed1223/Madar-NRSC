@@ -1,601 +1,8 @@
-import initSqlJs, { Database } from 'sql.js';
+import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-
-let dbInstance: Database | null = null;
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_FILE_PATH = path.join(DATA_DIR, 'newsroom.sqlite');
-
-/**
- * Ensures data directory exists
- */
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-/**
- * Saves current in-memory SQLite state to persistent disk file
- */
-export function persistDatabase(): void {
-  if (!dbInstance) return;
-  try {
-    ensureDataDir();
-    const data = dbInstance.export();
-    fs.writeFileSync(DB_FILE_PATH, Buffer.from(data));
-  } catch (err) {
-    console.error('[SQLite] Failed to write database to disk:', err);
-  }
-}
-
-/**
- * Exports the SQLite database file buffer for client download
- */
-export function getDatabaseBuffer(): Buffer {
-  if (!dbInstance) {
-    throw new Error('Database not initialized');
-  }
-  const binary = dbInstance.export();
-  return Buffer.from(binary);
-}
-
-/**
- * Initialize SQLite Database
- */
-export async function getDatabase(): Promise<Database> {
-  if (dbInstance) return dbInstance;
-
-  ensureDataDir();
-  const SQL = await initSqlJs();
-
-  if (fs.existsSync(DB_FILE_PATH)) {
-    try {
-      const fileBuffer = fs.readFileSync(DB_FILE_PATH);
-      dbInstance = new SQL.Database(fileBuffer);
-      // Run SQLite integrity check
-      const integrity = dbInstance.exec('PRAGMA integrity_check;');
-      if (integrity.length && integrity[0].values?.[0]?.[0] === 'ok') {
-        console.log(`[SQLite Self-Healing] Loaded database integrity OK from ${DB_FILE_PATH} (${fileBuffer.length} bytes)`);
-      } else {
-        console.warn('[SQLite Self-Healing] Database integrity degraded, recreating fresh store with schema repair');
-        dbInstance = new SQL.Database();
-      }
-    } catch (readErr) {
-      console.warn('[SQLite] Corrupted database file, creating fresh instance:', readErr);
-      dbInstance = new SQL.Database();
-    }
-  } else {
-    console.log('[SQLite] Creating fresh SQLite database file at', DB_FILE_PATH);
-    dbInstance = new SQL.Database();
-  }
-
-  setupSchema(dbInstance);
-  persistDatabase();
-  return dbInstance;
-}
-
-/**
- * Setup SQLite Schema
- */
-function setupSchema(db: Database) {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS news (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      short_title TEXT,
-      summary TEXT,
-      content TEXT,
-      category_id TEXT,
-      category_name TEXT,
-      source_id TEXT,
-      source_name TEXT,
-      priority TEXT DEFAULT 'NORMAL',
-      status TEXT DEFAULT 'DRAFT',
-      is_breaking INTEGER DEFAULT 0,
-      author_id TEXT,
-      author_name TEXT,
-      location_name TEXT,
-      event_date TEXT,
-      main_image_url TEXT,
-      video_url TEXT,
-      keywords_json TEXT,
-      views_count INTEGER DEFAULT 0,
-      created_at TEXT,
-      updated_at TEXT,
-      published_at TEXT,
-      deleted_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS programs (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      name_en TEXT,
-      type_id TEXT,
-      type_name TEXT,
-      category TEXT,
-      periodicity TEXT,
-      broadcast_day TEXT,
-      broadcast_time TEXT,
-      duration_minutes INTEGER DEFAULT 30,
-      presenter_name TEXT,
-      producer_name TEXT,
-      director_name TEXT,
-      studio_name TEXT,
-      description TEXT,
-      cover_image_url TEXT,
-      status TEXT DEFAULT 'ACTIVE',
-      created_at TEXT,
-      deleted_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS episodes (
-      id TEXT PRIMARY KEY,
-      program_id TEXT NOT NULL,
-      program_name TEXT,
-      season_number INTEGER DEFAULT 1,
-      episode_number INTEGER DEFAULT 1,
-      title TEXT NOT NULL,
-      description TEXT,
-      broadcast_date TEXT,
-      start_time TEXT,
-      end_time TEXT,
-      duration_minutes INTEGER DEFAULT 30,
-      presenter_name TEXT,
-      producer_name TEXT,
-      director_name TEXT,
-      studio_name TEXT,
-      status TEXT DEFAULT 'IN_PREPARATION',
-      intro_script TEXT,
-      director_notes TEXT,
-      presenter_notes TEXT,
-      guests_json TEXT,
-      questions_json TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      deleted_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS rundown_segments (
-      id TEXT PRIMARY KEY,
-      episode_id TEXT NOT NULL,
-      order_index INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      segment_type TEXT NOT NULL,
-      start_time_offset TEXT,
-      duration_seconds INTEGER DEFAULT 60,
-      end_time_offset TEXT,
-      presenter_name TEXT,
-      guest_id TEXT,
-      guest_name TEXT,
-      script_text TEXT,
-      video_asset_url TEXT,
-      news_id TEXT,
-      news_title TEXT,
-      notes TEXT,
-      is_completed INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS guests (
-      id TEXT PRIMARY KEY,
-      full_name TEXT NOT NULL,
-      title TEXT,
-      specialty TEXT,
-      organization TEXT,
-      job_title TEXT,
-      country TEXT,
-      phone TEXT,
-      email TEXT,
-      avatar_url TEXT,
-      rating REAL DEFAULT 5.0,
-      appearances_count INTEGER DEFAULT 0,
-      last_appearance_date TEXT,
-      preferred_connection TEXT,
-      notes TEXT,
-      status TEXT DEFAULT 'ACTIVE',
-      created_at TEXT,
-      deleted_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      assigned_to_id TEXT,
-      assigned_to_name TEXT,
-      priority TEXT DEFAULT 'NORMAL',
-      status TEXT DEFAULT 'TODO',
-      due_date TEXT,
-      related_type TEXT,
-      related_id TEXT,
-      related_title TEXT,
-      created_by_name TEXT,
-      created_at TEXT,
-      updated_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS media_assets (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      type TEXT NOT NULL,
-      file_url TEXT NOT NULL,
-      thumbnail_url TEXT,
-      size_bytes INTEGER DEFAULT 0,
-      duration_seconds INTEGER,
-      dimensions TEXT,
-      uploaded_by_name TEXT,
-      tags_json TEXT,
-      created_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      user_name TEXT,
-      user_role TEXT,
-      action TEXT NOT NULL,
-      action_type TEXT,
-      target_entity TEXT,
-      target_id TEXT,
-      details TEXT,
-      severity TEXT DEFAULT 'INFO',
-      ip_address TEXT,
-      created_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS system_settings (
-      key TEXT PRIMARY KEY,
-      value_json TEXT
-    );
-  `);
-
-  // Seed default settings if not exists
-  const settingsCheck = db.exec("SELECT COUNT(*) FROM system_settings WHERE key = 'general'");
-  if (!settingsCheck.length || settingsCheck[0].values[0][0] === 0) {
-    const defaultSettings = JSON.stringify({
-      organizationName: 'شبكة الأخبار والإنتاج التلفزيوني الإقليمية',
-      organizationNameEn: 'Regional News & Broadcast Production Network',
-      logoUrl: '',
-      defaultTimezone: 'Asia/Riyadh (GMT+3)',
-      defaultLanguage: 'ar',
-      primaryChannelName: 'القناة الإخبارية الأولى',
-      autoSaveIntervalSeconds: 30,
-      allowGuestProposals: true,
-      enableAuditLog: true,
-    });
-    db.run("INSERT OR REPLACE INTO system_settings (key, value_json) VALUES ('general', ?)", [defaultSettings]);
-  }
-}
-
-/**
- * Execute arbitrary SQL query with safety measures
- */
-export async function executeRawQuery(sqlQuery: string): Promise<{
-  columns: string[];
-  values: (string | number | boolean | null)[][];
-  rowCount: number;
-  executionTimeMs: number;
-  error?: string;
-}> {
-  const db = await getDatabase();
-  const startTime = Date.now();
-
-  try {
-    const trimmed = sqlQuery.trim();
-    if (!trimmed) {
-      return { columns: [], values: [], rowCount: 0, executionTimeMs: 0 };
-    }
-
-    const res = db.exec(trimmed);
-    const executionTimeMs = Date.now() - startTime;
-
-    // If query modified data, persist
-    const upper = trimmed.toUpperCase();
-    if (upper.startsWith('INSERT') || upper.startsWith('UPDATE') || upper.startsWith('DELETE') || upper.startsWith('DROP') || upper.startsWith('ALTER') || upper.startsWith('CREATE')) {
-      persistDatabase();
-    }
-
-    if (!res || res.length === 0) {
-      return {
-        columns: ['Status'],
-        values: [['تم تنفيذ الأمر بنجاح (لا توجد صفوف مسترجعة)']],
-        rowCount: 0,
-        executionTimeMs,
-      };
-    }
-
-    const first = res[0];
-    return {
-      columns: first.columns,
-      values: first.values as (string | number | boolean | null)[][],
-      rowCount: first.values.length,
-      executionTimeMs,
-    };
-  } catch (err: any) {
-    return {
-      columns: ['Error'],
-      values: [[err.message || 'خطأ أثناء تنفيذ الاستعلام']],
-      rowCount: 0,
-      executionTimeMs: Date.now() - startTime,
-      error: err.message || 'Unknown SQL Error',
-    };
-  }
-}
-
-/**
- * Returns comprehensive database statistics
- */
-export async function getDatabaseStats() {
-  const db = await getDatabase();
-  const tableNames = [
-    'news',
-    'programs',
-    'episodes',
-    'rundown_segments',
-    'guests',
-    'tasks',
-    'media_assets',
-    'audit_logs',
-    'system_settings',
-  ];
-
-  const tables = tableNames.map((tbl) => {
-    let rowCount = 0;
-    const columns: string[] = [];
-
-    try {
-      const countRes = db.exec(`SELECT COUNT(*) FROM ${tbl}`);
-      if (countRes.length && countRes[0].values.length) {
-        rowCount = Number(countRes[0].values[0][0]);
-      }
-
-      const pragmaRes = db.exec(`PRAGMA table_info(${tbl})`);
-      if (pragmaRes.length && pragmaRes[0].values) {
-        pragmaRes[0].values.forEach((row) => {
-          columns.push(String(row[1])); // column name
-        });
-      }
-    } catch {
-      // Table may not exist yet
-    }
-
-    return { name: tbl, rowCount, columns };
-  });
-
-  let fileSizeBytes = 0;
-  if (fs.existsSync(DB_FILE_PATH)) {
-    try {
-      fileSizeBytes = fs.statSync(DB_FILE_PATH).size;
-    } catch {
-      fileSizeBytes = 0;
-    }
-  }
-
-  const totalRows = tables.reduce((sum, t) => sum + t.rowCount, 0);
-
-  return {
-    engine: 'SQLite 3 (Embedded via WebAssembly sql.js)',
-    filePath: DB_FILE_PATH,
-    fileSizeBytes,
-    fileSizeFormatted: `${(fileSizeBytes / 1024).toFixed(1)} KB`,
-    totalTables: tables.length,
-    totalRows,
-    tables,
-    lastSyncAt: new Date().toISOString(),
-    isHealthy: true,
-  };
-}
-
-/**
- * Seed SQLite database from initial application data if tables are empty
- */
-export async function seedDatabaseIfEmpty(initialData: {
-  news: any[];
-  programs: any[];
-  episodes: any[];
-  guests: any[];
-  tasks: any[];
-  media: any[];
-  auditLogs: any[];
-}) {
-  const db = await getDatabase();
-
-  const newsCount = Number(db.exec('SELECT COUNT(*) FROM news')[0]?.values[0][0] || 0);
-  if (newsCount === 0 && initialData.news?.length) {
-    console.log('[SQLite] Seeding news table with initial records...');
-    initialData.news.forEach((n) => {
-      db.run(
-        `INSERT OR REPLACE INTO news (
-          id, title, short_title, summary, content, category_id, category_name,
-          source_id, source_name, priority, status, is_breaking, author_id,
-          author_name, location_name, event_date, main_image_url, video_url,
-          keywords_json, views_count, created_at, updated_at, published_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          n.id,
-          n.title,
-          n.shortTitle || n.title,
-          n.summary || '',
-          n.content || '',
-          n.categoryId || '',
-          n.categoryName || '',
-          n.sourceId || '',
-          n.sourceName || '',
-          n.priority || 'NORMAL',
-          n.status || 'DRAFT',
-          n.isBreaking ? 1 : 0,
-          n.authorId || '',
-          n.authorName || '',
-          n.locationName || '',
-          n.eventDate || '',
-          n.mainImageUrl || '',
-          n.videoUrl || '',
-          JSON.stringify(n.keywords || []),
-          n.viewsCount || 0,
-          n.createdAt || new Date().toISOString(),
-          n.updatedAt || new Date().toISOString(),
-          n.publishedAt || null,
-          n.deletedAt || null,
-        ]
-      );
-    });
-  }
-
-  const progCount = Number(db.exec('SELECT COUNT(*) FROM programs')[0]?.values[0][0] || 0);
-  if (progCount === 0 && initialData.programs?.length) {
-    console.log('[SQLite] Seeding programs table with initial records...');
-    initialData.programs.forEach((p) => {
-      db.run(
-        `INSERT OR REPLACE INTO programs (
-          id, name, name_en, type_id, type_name, category, periodicity,
-          broadcast_day, broadcast_time, duration_minutes, presenter_name,
-          producer_name, director_name, studio_name, description, cover_image_url,
-          status, created_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          p.id,
-          p.name,
-          p.nameEn || '',
-          p.typeId || '',
-          p.typeName || '',
-          p.category || '',
-          p.periodicity || 'WEEKLY',
-          p.broadcastDay || '',
-          p.broadcastTime || '',
-          p.durationMinutes || 30,
-          p.presenterName || '',
-          p.producerName || '',
-          p.directorName || '',
-          p.studioName || '',
-          p.description || '',
-          p.coverImageUrl || '',
-          p.status || 'ACTIVE',
-          p.createdAt || new Date().toISOString(),
-          p.deletedAt || null,
-        ]
-      );
-    });
-  }
-
-  const epCount = Number(db.exec('SELECT COUNT(*) FROM episodes')[0]?.values[0][0] || 0);
-  if (epCount === 0 && initialData.episodes?.length) {
-    console.log('[SQLite] Seeding episodes & rundowns with initial records...');
-    initialData.episodes.forEach((e) => {
-      db.run(
-        `INSERT OR REPLACE INTO episodes (
-          id, program_id, program_name, season_number, episode_number, title,
-          description, broadcast_date, start_time, end_time, duration_minutes,
-          presenter_name, producer_name, director_name, studio_name, status,
-          intro_script, director_notes, presenter_notes, guests_json, questions_json,
-          created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          e.id,
-          e.programId,
-          e.programName || '',
-          e.seasonNumber || 1,
-          e.episodeNumber || 1,
-          e.title,
-          e.description || '',
-          e.broadcastDate || '',
-          e.startTime || '',
-          e.endTime || '',
-          e.durationMinutes || 30,
-          e.presenterName || '',
-          e.producerName || '',
-          e.directorName || '',
-          e.studioName || '',
-          e.status || 'IN_PREPARATION',
-          e.introScript || '',
-          e.directorNotes || '',
-          e.presenterNotes || '',
-          JSON.stringify(e.guests || []),
-          JSON.stringify(e.questions || []),
-          e.createdAt || new Date().toISOString(),
-          e.updatedAt || new Date().toISOString(),
-          e.deletedAt || null,
-        ]
-      );
-
-      // Seed rundown segments
-      if (Array.isArray(e.rundown)) {
-        e.rundown.forEach((seg: any) => {
-          db.run(
-            `INSERT OR REPLACE INTO rundown_segments (
-              id, episode_id, order_index, title, segment_type, start_time_offset,
-              duration_seconds, end_time_offset, presenter_name, guest_id, guest_name,
-              script_text, video_asset_url, news_id, news_title, notes, is_completed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              seg.id,
-              e.id,
-              seg.orderIndex || 1,
-              seg.title,
-              seg.segmentType || 'REPORT',
-              seg.startTimeOffset || '00:00:00',
-              seg.durationSeconds || 60,
-              seg.endTimeOffset || '00:01:00',
-              seg.presenterName || '',
-              seg.guestId || '',
-              seg.guestName || '',
-              seg.scriptText || '',
-              seg.videoAssetUrl || '',
-              seg.newsId || '',
-              seg.newsTitle || '',
-              seg.notes || '',
-              seg.isCompleted ? 1 : 0,
-            ]
-          );
-        });
-      }
-    });
-  }
-
-  const guestCount = Number(db.exec('SELECT COUNT(*) FROM guests')[0]?.values[0][0] || 0);
-  if (guestCount === 0 && initialData.guests?.length) {
-    console.log('[SQLite] Seeding guests table with initial records...');
-    initialData.guests.forEach((g) => {
-      db.run(
-        `INSERT OR REPLACE INTO guests (
-          id, full_name, title, specialty, organization, job_title, country,
-          phone, email, avatar_url, rating, appearances_count, last_appearance_date,
-          preferred_connection, notes, status, created_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          g.id,
-          g.fullName,
-          g.title || '',
-          g.specialty || '',
-          g.organization || '',
-          g.jobTitle || '',
-          g.country || '',
-          g.phone || '',
-          g.email || '',
-          g.avatarUrl || '',
-          g.rating || 5.0,
-          g.appearancesCount || 0,
-          g.lastAppearanceDate || '',
-          g.preferredConnection || 'STUDIO',
-          g.notes || '',
-          g.status || 'ACTIVE',
-          g.createdAt || new Date().toISOString(),
-          g.deletedAt || null,
-        ]
-      );
-    });
-  }
-
-  persistDatabase();
-  console.log('[SQLite] Database seed verification finished.');
-}
-
-const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
-
-function ensureBackupsDir() {
-  if (!fs.existsSync(BACKUPS_DIR)) {
-    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
-  }
-}
+import { CollectionName, EntityRow, isCollectionName } from '../shared/collections';
+import { logger } from './logger';
 
 export interface DbBackupFileInfo {
   fileName: string;
@@ -604,179 +11,551 @@ export interface DbBackupFileInfo {
   createdAt: string;
 }
 
-/**
- * Creates a timestamped backup copy of newsroom.sqlite in data/backups/
- */
-export function createDatabaseBackup(): DbBackupFileInfo {
-  persistDatabase();
-  ensureBackupsDir();
+export interface CredentialRecord {
+  userId: string;
+  email: string;
+  passwordHash: string;
+  mustChangePassword: boolean;
+  failedAttempts: number;
+  lockedUntil: string | null;
+}
 
-  const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, '-');
-  const fileName = `newsroom_backup_${timestamp}.sqlite`;
-  const targetPath = path.join(BACKUPS_DIR, fileName);
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+}
 
-  const buffer = getDatabaseBuffer();
-  fs.writeFileSync(targetPath, buffer);
+interface RawEntityRow {
+  collection: string;
+  id: string;
+  data: string;
+  position: number;
+  version: number;
+  rev: number;
+  deleted: number;
+}
 
-  // Self-Healing 24/7 Disk Hygiene: Keep latest 20 backups and prune older ones
-  try {
-    const existing = fs.readdirSync(BACKUPS_DIR).filter((f) => f.endsWith('.sqlite')).sort();
-    if (existing.length > 20) {
-      const toPrune = existing.slice(0, existing.length - 20);
-      toPrune.forEach((oldFile) => {
-        try {
-          fs.unlinkSync(path.join(BACKUPS_DIR, oldFile));
-        } catch {}
-      });
-    }
-  } catch {}
+const BACKUP_NAME_PATTERN = /^newsroom_backup_[0-9TZ\-]+(?:_[a-z]+)?\.sqlite$/;
 
-  const stat = fs.statSync(targetPath);
-  return {
-    fileName,
-    sizeBytes: stat.size,
-    sizeFormatted: `${(stat.size / 1024).toFixed(1)} KB`,
-    createdAt: now.toISOString(),
+/** Tables from the pre-SQLite-backend prototype; they never held authoritative data. */
+const LEGACY_TABLES = ['news', 'programs', 'episodes', 'rundown_segments', 'guests', 'tasks', 'media_assets', 'audit_logs', 'system_settings'];
+
+const MIGRATIONS: { version: number; sql: string }[] = [
+  {
+    version: 1,
+    sql: `
+      ${LEGACY_TABLES.map((t) => `DROP TABLE IF EXISTS ${t};`).join('\n')}
+
+      CREATE TABLE IF NOT EXISTS meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+      INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0');
+      INSERT OR IGNORE INTO meta (key, value) VALUES ('tombstone_floor', '0');
+
+      CREATE TABLE IF NOT EXISTS entities (
+        collection TEXT NOT NULL,
+        id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        position REAL NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        rev INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        updated_by TEXT,
+        PRIMARY KEY (collection, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_entities_rev ON entities (rev);
+      CREATE INDEX IF NOT EXISTS idx_entities_collection ON entities (collection, deleted, position);
+
+      CREATE TABLE IF NOT EXISTS user_credentials (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TEXT,
+        password_changed_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        ip TEXT,
+        user_agent TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
+    `,
+  },
+];
+
+function formatSize(bytes: number): string {
+  if (bytes > 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function toEntityRow(raw: RawEntityRow): EntityRow {
+  const row: EntityRow = {
+    c: raw.collection as CollectionName,
+    id: raw.id,
+    v: raw.version,
+    p: raw.position,
   };
+  if (raw.deleted) row.deleted = true;
+  else row.d = JSON.parse(raw.data);
+  return row;
 }
 
 /**
- * Lists all available backup files
+ * Durable SQLite store (better-sqlite3, WAL mode). Every mutation runs synchronously
+ * inside the Node process, so concurrent HTTP requests are naturally serialized and
+ * each write is atomic.
  */
-export function listDatabaseBackups(): DbBackupFileInfo[] {
-  ensureBackupsDir();
-  try {
-    const files = fs.readdirSync(BACKUPS_DIR);
-    return files
-      .filter((f) => f.endsWith('.sqlite'))
-      .sort()
-      .reverse()
-      .map((f) => {
-        const fullPath = path.join(BACKUPS_DIR, f);
-        const stat = fs.statSync(fullPath);
-        return {
-          fileName: f,
-          sizeBytes: stat.size,
-          sizeFormatted: `${(stat.size / 1024).toFixed(1)} KB`,
-          createdAt: stat.birthtime.toISOString(),
-        };
-      });
-  } catch {
-    return [];
-  }
-}
+export class NewsroomDatabase {
+  readonly dataDir: string;
+  readonly filePath: string;
+  readonly backupsDir: string;
+  private db!: Database.Database;
 
-/**
- * Restores database from a chosen backup file
- */
-export async function restoreDatabaseBackup(fileName: string): Promise<boolean> {
-  ensureBackupsDir();
-  const safeName = path.basename(fileName);
-  const backupPath = path.join(BACKUPS_DIR, safeName);
-  if (!fs.existsSync(backupPath)) {
-    throw new Error(`Backup file ${safeName} does not exist`);
+  constructor(dataDir: string) {
+    this.dataDir = dataDir;
+    this.filePath = path.join(dataDir, 'newsroom.sqlite');
+    this.backupsDir = path.join(dataDir, 'backups');
+    fs.mkdirSync(this.backupsDir, { recursive: true });
+    this.open();
   }
 
-  const SQL = await initSqlJs();
-  const backupBuffer = fs.readFileSync(backupPath);
-  dbInstance = new SQL.Database(backupBuffer);
-  persistDatabase();
-  return true;
-}
-
-/**
- * Generates official MOS (Media Object Server) Protocol 2.8.5 XML for broadcast automation
- */
-export async function generateEpisodeMosXml(episodeId: string): Promise<string> {
-  const db = await getDatabase();
-  const epRes = db.exec(`SELECT * FROM episodes WHERE id = '${episodeId}'`);
-  if (!epRes.length || !epRes[0].values.length) {
-    throw new Error('Episode not found');
+  private open() {
+    this.db = new Database(this.filePath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('foreign_keys = ON');
+    this.db.pragma('busy_timeout = 5000');
+    this.migrate();
   }
 
-  const cols = epRes[0].columns;
-  const epRow: any = {};
-  cols.forEach((col, idx) => {
-    epRow[col] = epRes[0].values[0][idx];
-  });
+  private migrate() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
+    const applied = new Set(
+      (this.db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]).map((r) => r.version)
+    );
+    for (const m of MIGRATIONS) {
+      if (applied.has(m.version)) continue;
+      this.db.transaction(() => {
+        this.db.exec(m.sql);
+        this.db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(m.version, new Date().toISOString());
+      })();
+      logger.info('database migration applied', { version: m.version });
+    }
+  }
 
-  const segRes = db.exec(`SELECT * FROM rundown_segments WHERE episode_id = '${episodeId}' ORDER BY order_index ASC`);
-  const segments: any[] = [];
-  if (segRes.length && segRes[0].values.length) {
-    const segCols = segRes[0].columns;
-    segRes[0].values.forEach((row) => {
-      const seg: any = {};
-      segCols.forEach((c, idx) => {
-        seg[c] = row[idx];
-      });
-      segments.push(seg);
+  close() {
+    if (this.db?.open) this.db.close();
+  }
+
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
+  isHealthy(): boolean {
+    try {
+      return (this.db.prepare('SELECT 1 AS ok').get() as { ok: number }).ok === 1;
+    } catch {
+      return false;
+    }
+  }
+
+  // --- Change sequence -----------------------------------------------------
+
+  currentRev(): number {
+    return Number((this.db.prepare(`SELECT value FROM meta WHERE key = 'rev'`).get() as { value: string }).value);
+  }
+
+  private nextRev(): number {
+    const row = this.db.prepare(`UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'rev' RETURNING value`).get() as {
+      value: string | number;
+    };
+    return Number(row.value);
+  }
+
+  tombstoneFloor(): number {
+    return Number((this.db.prepare(`SELECT value FROM meta WHERE key = 'tombstone_floor'`).get() as { value: string }).value);
+  }
+
+  getMeta(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  setMeta(key: string, value: string) {
+    this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+  }
+
+  // --- Entities ------------------------------------------------------------
+
+  getRow(collection: CollectionName, id: string, includeDeleted = false): EntityRow | null {
+    const raw = this.db.prepare('SELECT * FROM entities WHERE collection = ? AND id = ?').get(collection, id) as RawEntityRow | undefined;
+    if (!raw || (raw.deleted && !includeDeleted)) return null;
+    return toEntityRow(raw);
+  }
+
+  listCollection(collection: CollectionName, opts: { limit?: number } = {}): EntityRow[] {
+    const sql = `SELECT * FROM entities WHERE collection = ? AND deleted = 0 ORDER BY position ASC${opts.limit ? ' LIMIT ?' : ''}`;
+    const stmt = this.db.prepare(sql);
+    const rows = (opts.limit ? stmt.all(collection, opts.limit) : stmt.all(collection)) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  countCollection(collection: CollectionName): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM entities WHERE collection = ? AND deleted = 0').get(collection) as { n: number }).n;
+  }
+
+  /** Smallest / largest position in a collection, used to place new rows at either end. */
+  positionBounds(collection: CollectionName): { min: number; max: number } {
+    const r = this.db
+      .prepare('SELECT MIN(position) AS min, MAX(position) AS max FROM entities WHERE collection = ? AND deleted = 0')
+      .get(collection) as { min: number | null; max: number | null };
+    return { min: r.min ?? 0, max: r.max ?? 0 };
+  }
+
+  changesSince(sinceRev: number, limit: number): { rows: EntityRow[]; truncated: boolean } {
+    const raws = this.db
+      .prepare('SELECT * FROM entities WHERE rev > ? ORDER BY rev ASC LIMIT ?')
+      .all(sinceRev, limit + 1) as RawEntityRow[];
+    const truncated = raws.length > limit;
+    return {
+      rows: raws.slice(0, limit).filter((r) => isCollectionName(r.collection)).map(toEntityRow),
+      truncated,
+    };
+  }
+
+  /** Insert or replace a row, bumping its version. Caller handles concurrency checks. */
+  writeRow(collection: CollectionName, id: string, data: unknown, position: number, userId: string | null): EntityRow {
+    const now = new Date().toISOString();
+    const rev = this.nextRev();
+    const json = JSON.stringify(data);
+    const existing = this.db.prepare('SELECT version FROM entities WHERE collection = ? AND id = ?').get(collection, id) as
+      | { version: number }
+      | undefined;
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE entities SET data = ?, position = ?, version = version + 1, rev = ?, deleted = 0, updated_at = ?, updated_by = ?
+           WHERE collection = ? AND id = ?`
+        )
+        .run(json, position, rev, now, userId, collection, id);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO entities (collection, id, data, position, version, rev, deleted, created_at, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`
+        )
+        .run(collection, id, json, position, rev, now, now, userId);
+    }
+    return this.getRow(collection, id)!;
+  }
+
+  /** Soft-delete (tombstone) so other browsers learn about the removal via the change feed. */
+  deleteRow(collection: CollectionName, id: string, userId: string | null): EntityRow | null {
+    const rev = this.nextRev();
+    const res = this.db
+      .prepare(
+        `UPDATE entities SET deleted = 1, version = version + 1, rev = ?, updated_at = ?, updated_by = ?
+         WHERE collection = ? AND id = ? AND deleted = 0`
+      )
+      .run(rev, new Date().toISOString(), userId, collection, id);
+    if (res.changes === 0) return null;
+    return this.getRow(collection, id, true);
+  }
+
+  /** Drop tombstones older than `olderThanMs`; clients behind the new floor must re-bootstrap. */
+  purgeTombstones(olderThanMs: number) {
+    const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+    this.transaction(() => {
+      const maxRev = this.db
+        .prepare('SELECT MAX(rev) AS r FROM entities WHERE deleted = 1 AND updated_at < ?')
+        .get(cutoff) as { r: number | null };
+      if (maxRev.r === null) return;
+      this.db.prepare('DELETE FROM entities WHERE deleted = 1 AND updated_at < ?').run(cutoff);
+      this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor' AND CAST(value AS INTEGER) < ?`).run(String(maxRev.r), maxRev.r);
     });
   }
 
-  const escapeXml = (str: string = '') =>
-    String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+  deleteCollections(collections: CollectionName[]) {
+    const stmt = this.db.prepare('DELETE FROM entities WHERE collection = ?');
+    this.transaction(() => {
+      collections.forEach((c) => stmt.run(c));
+      // Force every connected browser to re-bootstrap.
+      const rev = this.nextRev();
+      this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor'`).run(String(rev));
+    });
+  }
 
-  const totalDurationSec = segments.reduce((sum, s) => sum + (Number(s.duration_seconds) || 0), 0);
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<mos>
-  <ncsID>AQ_NEWSROOM_NRCS</ncsID>
-  <roCreate>
-    <roID>${escapeXml(epRow.id)}</roID>
-    <roSlug>${escapeXml(epRow.title)}</roSlug>
-    <roChannel>${escapeXml(epRow.program_name || 'Main Channel')}</roChannel>
-    <roAirDate>${escapeXml(epRow.broadcast_date || new Date().toISOString().slice(0, 10))}</roAirDate>
-    <roAirTime>${escapeXml(epRow.start_time || '20:00:00')}</roAirTime>
-    <roTotalDuration>${totalDurationSec}</roTotalDuration>
-    <roMetadata>
-      <studio>${escapeXml(epRow.studio_name || 'Studio A')}</studio>
-      <presenter>${escapeXml(epRow.presenter_name || '')}</presenter>
-      <producer>${escapeXml(epRow.producer_name || '')}</producer>
-      <director>${escapeXml(epRow.director_name || '')}</director>
-      <status>${escapeXml(epRow.status || 'IN_PREPARATION')}</status>
-    </roMetadata>
-    ${segments
-      .map(
-        (s, idx) => `
-    <story>
-      <storyID>${escapeXml(s.id)}</storyID>
-      <storySlug>${escapeXml(s.title)}</storySlug>
-      <storyNumber>${s.order_index || idx + 1}</storyNumber>
-      <storyType>${escapeXml(s.segment_type)}</storyType>
-      <storyPresenter>${escapeXml(s.presenter_name || '')}</storyPresenter>
-      <storyDuration>${s.duration_seconds || 60}</storyDuration>
-      <storyStartTimeOffset>${escapeXml(s.start_time_offset || '00:00:00')}</storyStartTimeOffset>
-      <storyScript>
-        <p>${escapeXml(s.script_text || '')}</p>
-      </storyScript>
-      ${
-        s.video_asset_url
-          ? `<mosItem>
-        <itemID>${escapeXml(s.id)}_video</itemID>
-        <itemSlug>${escapeXml(s.title)}_VT</itemSlug>
-        <mosAbstract>${escapeXml(s.video_asset_url)}</mosAbstract>
-      </mosItem>`
-          : ''
-      }
-      ${
-        s.guest_name
-          ? `<guestInfo>
-        <guestName>${escapeXml(s.guest_name)}</guestName>
-        <guestId>${escapeXml(s.guest_id || '')}</guestId>
-      </guestInfo>`
-          : ''
-      }
-    </story>`
+  findUserIdByEmail(email: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT id FROM entities WHERE collection = 'users' AND deleted = 0 AND lower(json_extract(data, '$.email')) = lower(?)`
       )
-      .join('')}
-  </roCreate>
-</mos>`;
+      .get(email) as { id: string } | undefined;
+    return row?.id ?? null;
+  }
 
-  return xml;
+  // --- Credentials ---------------------------------------------------------
+
+  private mapCredential(r: any): CredentialRecord {
+    return {
+      userId: r.user_id,
+      email: r.email,
+      passwordHash: r.password_hash,
+      mustChangePassword: !!r.must_change_password,
+      failedAttempts: r.failed_attempts,
+      lockedUntil: r.locked_until,
+    };
+  }
+
+  getCredentialsByEmail(email: string): CredentialRecord | null {
+    const r = this.db.prepare('SELECT * FROM user_credentials WHERE email = ?').get(email);
+    return r ? this.mapCredential(r) : null;
+  }
+
+  getCredentials(userId: string): CredentialRecord | null {
+    const r = this.db.prepare('SELECT * FROM user_credentials WHERE user_id = ?').get(userId);
+    return r ? this.mapCredential(r) : null;
+  }
+
+  countCredentials(): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM user_credentials').get() as { n: number }).n;
+  }
+
+  setPassword(userId: string, email: string, passwordHash: string, mustChange: boolean) {
+    this.db
+      .prepare(
+        `INSERT INTO user_credentials (user_id, email, password_hash, must_change_password, failed_attempts, locked_until, password_changed_at)
+         VALUES (?, ?, ?, ?, 0, NULL, ?)
+         ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, password_hash = excluded.password_hash,
+           must_change_password = excluded.must_change_password, failed_attempts = 0, locked_until = NULL,
+           password_changed_at = excluded.password_changed_at`
+      )
+      .run(userId, email, passwordHash, mustChange ? 1 : 0, new Date().toISOString());
+  }
+
+  updateCredentialEmail(userId: string, email: string) {
+    this.db.prepare('UPDATE user_credentials SET email = ? WHERE user_id = ?').run(email, userId);
+  }
+
+  deleteCredentials(userId: string) {
+    this.db.prepare('DELETE FROM user_credentials WHERE user_id = ?').run(userId);
+  }
+
+  recordFailedLogin(userId: string, maxAttempts: number, lockMs: number) {
+    const cred = this.getCredentials(userId);
+    if (!cred) return;
+    const attempts = cred.failedAttempts + 1;
+    const lockedUntil = attempts >= maxAttempts ? new Date(Date.now() + lockMs).toISOString() : null;
+    this.db
+      .prepare('UPDATE user_credentials SET failed_attempts = ?, locked_until = ? WHERE user_id = ?')
+      .run(lockedUntil ? 0 : attempts, lockedUntil, userId);
+  }
+
+  resetFailedLogins(userId: string) {
+    this.db.prepare('UPDATE user_credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?').run(userId);
+  }
+
+  // --- Sessions ------------------------------------------------------------
+
+  createSession(id: string, userId: string, ttlMs: number, ip: string | undefined, userAgent: string | undefined): SessionRecord {
+    const now = new Date();
+    const record = {
+      id,
+      userId,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+      lastSeenAt: now.toISOString(),
+    };
+    this.db
+      .prepare('INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, userId, record.createdAt, record.expiresAt, record.lastSeenAt, ip ?? null, (userAgent ?? '').slice(0, 300));
+    return record;
+  }
+
+  getSession(id: string): SessionRecord | null {
+    const r = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as any;
+    if (!r) return null;
+    return { id: r.id, userId: r.user_id, createdAt: r.created_at, expiresAt: r.expires_at, lastSeenAt: r.last_seen_at };
+  }
+
+  touchSession(id: string, ttlMs: number) {
+    const now = new Date();
+    this.db
+      .prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?')
+      .run(now.toISOString(), new Date(now.getTime() + ttlMs).toISOString(), id);
+  }
+
+  deleteSession(id: string) {
+    this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  }
+
+  deleteUserSessions(userId: string, exceptSessionId?: string) {
+    if (exceptSessionId) this.db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(userId, exceptSessionId);
+    else this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  }
+
+  purgeExpiredSessions() {
+    this.db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
+  }
+
+  // --- Administration ------------------------------------------------------
+
+  stats() {
+    const tableNames = (
+      this.db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`).all() as {
+        name: string;
+      }[]
+    ).map((t) => t.name);
+
+    const tables = tableNames.map((name) => {
+      const rowCount = (this.db.prepare(`SELECT COUNT(*) AS n FROM "${name.replace(/"/g, '""')}"`).get() as { n: number }).n;
+      const columns = (this.db.prepare(`PRAGMA table_info("${name.replace(/"/g, '""')}")`).all() as { name: string }[]).map((c) => c.name);
+      return { name, rowCount, columns };
+    });
+
+    const collections = this.db
+      .prepare('SELECT collection AS name, COUNT(*) AS rowCount FROM entities WHERE deleted = 0 GROUP BY collection ORDER BY collection')
+      .all() as { name: string; rowCount: number }[];
+
+    let fileSizeBytes = 0;
+    for (const suffix of ['', '-wal']) {
+      try {
+        fileSizeBytes += fs.statSync(this.filePath + suffix).size;
+      } catch {
+        // file may not exist (e.g. no WAL yet)
+      }
+    }
+
+    return {
+      engine: `SQLite ${(this.db.prepare('SELECT sqlite_version() AS v').get() as { v: string }).v} (better-sqlite3, WAL)`,
+      filePath: path.basename(this.filePath),
+      fileSizeBytes,
+      fileSizeFormatted: formatSize(fileSizeBytes),
+      totalTables: tables.length,
+      totalRows: tables.reduce((sum, t) => sum + t.rowCount, 0),
+      tables,
+      collections,
+      lastSyncAt: new Date().toISOString(),
+      isHealthy: this.isHealthy(),
+    };
+  }
+
+  /** Consistent snapshot of the whole database as a Buffer. */
+  serialize(): Buffer {
+    return this.db.serialize();
+  }
+
+  /**
+   * Run an ad-hoc query on a separate read-only connection. Only single, read-only,
+   * row-returning statements are allowed; credential/session tables are off limits.
+   */
+  runReadOnlyQuery(sql: string, maxRows = 1000) {
+    const started = Date.now();
+    const trimmed = sql.trim().replace(/;\s*$/, '');
+    if (!trimmed) throw new Error('الاستعلام فارغ');
+    if (/\b(user_credentials|sessions)\b/i.test(trimmed)) {
+      throw new Error('لا يُسمح بالاستعلام عن جداول بيانات الدخول والجلسات');
+    }
+    const ro = new Database(this.filePath, { readonly: true, fileMustExist: true });
+    try {
+      const stmt = ro.prepare(trimmed);
+      if (!stmt.readonly || !stmt.reader) {
+        throw new Error('وحدة الاستعلام للقراءة فقط: يُسمح بجمل SELECT فقط');
+      }
+      const columns = stmt.columns().map((c) => c.name);
+      const values: unknown[][] = [];
+      stmt.raw(true);
+      for (const row of stmt.iterate() as Iterable<unknown[]>) {
+        values.push(row);
+        if (values.length >= maxRows) break;
+      }
+      return { columns, values, rowCount: values.length, executionTimeMs: Date.now() - started, truncated: values.length >= maxRows };
+    } finally {
+      ro.close();
+    }
+  }
+
+  async createBackup(kind?: 'auto' | 'prerestore', retention = 20): Promise<DbBackupFileInfo> {
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[:.]/g, '-');
+    const fileName = `newsroom_backup_${stamp}${kind ? `_${kind}` : ''}.sqlite`;
+    const target = path.join(this.backupsDir, fileName);
+    await this.db.backup(target);
+    this.pruneBackups(retention);
+    const stat = fs.statSync(target);
+    return { fileName, sizeBytes: stat.size, sizeFormatted: formatSize(stat.size), createdAt: now.toISOString() };
+  }
+
+  private pruneBackups(retention: number) {
+    const files = fs
+      .readdirSync(this.backupsDir)
+      .filter((f) => BACKUP_NAME_PATTERN.test(f))
+      .sort();
+    files.slice(0, Math.max(0, files.length - retention)).forEach((f) => {
+      try {
+        fs.unlinkSync(path.join(this.backupsDir, f));
+      } catch (err) {
+        logger.warn('failed to prune backup', { file: f, error: String(err) });
+      }
+    });
+  }
+
+  listBackups(): DbBackupFileInfo[] {
+    return fs
+      .readdirSync(this.backupsDir)
+      .filter((f) => BACKUP_NAME_PATTERN.test(f))
+      .sort()
+      .reverse()
+      .map((f) => {
+        const stat = fs.statSync(path.join(this.backupsDir, f));
+        return { fileName: f, sizeBytes: stat.size, sizeFormatted: formatSize(stat.size), createdAt: stat.mtime.toISOString() };
+      });
+  }
+
+  /** Replace the live database with a validated backup (a safety backup is taken first). */
+  async restoreBackup(fileName: string, retention = 20) {
+    if (!BACKUP_NAME_PATTERN.test(fileName)) throw new Error('اسم ملف النسخة الاحتياطية غير صالح');
+    const source = path.join(this.backupsDir, fileName);
+    if (!fs.existsSync(source)) throw new Error('ملف النسخة الاحتياطية غير موجود');
+
+    const probe = new Database(source, { readonly: true, fileMustExist: true });
+    try {
+      const integrity = probe.pragma('integrity_check', { simple: true });
+      if (integrity !== 'ok') throw new Error('النسخة الاحتياطية تالفة ولا يمكن استعادتها');
+      const hasEntities = probe.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`).get();
+      if (!hasEntities) throw new Error('النسخة الاحتياطية لا تنتمي إلى هذا الإصدار من النظام');
+    } finally {
+      probe.close();
+    }
+
+    await this.createBackup('prerestore', retention);
+    this.db.close();
+    try {
+      for (const suffix of ['-wal', '-shm']) {
+        if (fs.existsSync(this.filePath + suffix)) fs.unlinkSync(this.filePath + suffix);
+      }
+      fs.copyFileSync(source, this.filePath);
+    } finally {
+      this.open();
+    }
+    // Clients must re-bootstrap after a restore.
+    this.transaction(() => {
+      const rev = this.nextRev();
+      this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor'`).run(String(rev));
+    });
+  }
 }

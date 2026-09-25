@@ -26,124 +26,50 @@ import {
   ProgramEvaluation,
 } from '../types';
 
-import {
-  INITIAL_USERS,
-  INITIAL_CATEGORIES,
-  INITIAL_SOURCES,
-  INITIAL_PROGRAM_TYPES,
-  INITIAL_GUESTS,
-  INITIAL_NEWS,
-  INITIAL_BREAKING_NEWS,
-  INITIAL_PROGRAMS,
-  INITIAL_EPISODES,
-  INITIAL_TASKS,
-  INITIAL_MEDIA_FILES,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_ACTIVITY_LOGS,
-  INITIAL_AUDIT_LOGS,
-  INITIAL_SETTINGS,
-  INITIAL_STORIES,
-  INITIAL_PROGRAM_EVALUATIONS,
-} from './mockData';
+import { INITIAL_SETTINGS } from './mockData';
+import { dataStore } from './dataStore';
+import { authClient } from './authClient';
+import { apiFetch } from './http';
+import { newId } from '../shared/ids';
+import { COLLECTIONS } from '../shared/collections';
+import { RbacService } from './rbacService';
+export { formatSecondsToTime, parseTimeToSeconds, recalculateRundown } from '../shared/rundown';
+import { recalculateRundown } from '../shared/rundown';
 
 import { selfHealingService } from './selfHealingService';
 import { networkResilienceManager } from './networkManager';
 
-// LocalStorage Keys for persistent client-side data
+// Storage keys of the server-synchronised collections (see src/shared/collections.ts).
 const STORAGE_KEYS = {
-  USERS: 'nrcs_users_v1',
-  CURRENT_USER: 'nrcs_curr_user_v1',
-  NEWS: 'nrcs_news_v1',
-  STORIES: 'nrcs_stories_v1',
-  BREAKING: 'nrcs_breaking_v1',
-  PROGRAMS: 'nrcs_programs_v1',
-  PROGRAM_EVALUATIONS: 'nrcs_prg_evals_v1',
-  EPISODES: 'nrcs_episodes_v1',
-  GUESTS: 'nrcs_guests_v1',
-  TASKS: 'nrcs_tasks_v1',
-  MEDIA: 'nrcs_media_v1',
-  CATEGORIES: 'nrcs_categories_v1',
-  SOURCES: 'nrcs_sources_v1',
-  PROGRAM_TYPES: 'nrcs_prg_types_v1',
-  NOTIFICATIONS: 'nrcs_notifs_v1',
-  ACTIVITY_LOGS: 'nrcs_activity_v1',
-  AUDIT_LOGS: 'nrcs_audit_v1',
-  SETTINGS: 'nrcs_settings_v1',
+  USERS: COLLECTIONS.users.storageKey,
+  NEWS: COLLECTIONS.news.storageKey,
+  STORIES: COLLECTIONS.stories.storageKey,
+  BREAKING: COLLECTIONS.breaking.storageKey,
+  PROGRAMS: COLLECTIONS.programs.storageKey,
+  PROGRAM_EVALUATIONS: COLLECTIONS.programEvaluations.storageKey,
+  EPISODES: COLLECTIONS.episodes.storageKey,
+  GUESTS: COLLECTIONS.guests.storageKey,
+  TASKS: COLLECTIONS.tasks.storageKey,
+  MEDIA: COLLECTIONS.media.storageKey,
+  CATEGORIES: COLLECTIONS.categories.storageKey,
+  SOURCES: COLLECTIONS.sources.storageKey,
+  PROGRAM_TYPES: COLLECTIONS.programTypes.storageKey,
+  NOTIFICATIONS: COLLECTIONS.notifications.storageKey,
+  ACTIVITY_LOGS: COLLECTIONS.activityLogs.storageKey,
+  AUDIT_LOGS: COLLECTIONS.auditLogs.storageKey,
+  SETTINGS: COLLECTIONS.settings.storageKey,
 };
 
+/**
+ * Reads come from the in-memory mirror of the server database; writes are diffed
+ * and synchronised to SQLite on the server (with conflict detection).
+ */
 function getStored<T>(key: string, defaultVal: T): T {
-  try {
-    const item = localStorage.getItem(key);
-    if (!item) {
-      localStorage.setItem(key, JSON.stringify(defaultVal));
-      return defaultVal;
-    }
-    const parsed = JSON.parse(item);
-    if (parsed === null || parsed === undefined) {
-      return defaultVal;
-    }
-    return parsed as T;
-  } catch (e: any) {
-    console.warn(`[Self-Healing] Corrupt storage detected in ${key}, restoring safe defaults:`, e);
-    selfHealingService.logRuntimeError(`Corrupt data in ${key}: ${e?.message || e}`, 'StorageLayer');
-    try {
-      localStorage.setItem(key, JSON.stringify(defaultVal));
-    } catch {}
-    return defaultVal;
-  }
+  return dataStore.get<T>(key, defaultVal);
 }
 
 function setStored<T>(key: string, val: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(val));
-  } catch (e: any) {
-    console.warn(`[Self-Healing] Write error in ${key}, executing garbage collection:`, e);
-    // Auto self-healing: run GC to free storage space
-    selfHealingService.performGarbageCollection();
-    try {
-      localStorage.setItem(key, JSON.stringify(val));
-    } catch (retryErr) {
-      console.error(`[Self-Healing] Critical write failure for ${key}:`, retryErr);
-      selfHealingService.logRuntimeError(`Storage Quota Exceeded on ${key}`, 'StorageLayer');
-    }
-  }
-}
-
-// Format seconds into HH:MM:SS
-export function formatSecondsToTime(totalSeconds: number): string {
-  const hrs = Math.floor(totalSeconds / 3600);
-  const mins = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
-  return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-// Convert HH:MM:SS or MM:SS to seconds
-export function parseTimeToSeconds(timeStr: string): number {
-  if (!timeStr) return 0;
-  const parts = timeStr.split(':').map(Number);
-  if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-  if (parts.length === 2) {
-    return parts[0] * 60 + parts[1];
-  }
-  return Number(timeStr) || 0;
-}
-
-// Rundown recalculation engine
-export function recalculateRundown(segments: RundownSegment[]): RundownSegment[] {
-  let cumulativeSeconds = 0;
-  return segments.map((seg, idx) => {
-    const startSec = cumulativeSeconds;
-    const endSec = startSec + seg.durationSeconds;
-    cumulativeSeconds = endSec;
-    return {
-      ...seg,
-      orderIndex: idx + 1,
-      startTimeOffset: formatSecondsToTime(startSec),
-      endTimeOffset: formatSecondsToTime(endSec),
-    };
-  });
+  dataStore.set(key, val);
 }
 
 // Role-based permission checker
@@ -206,24 +132,16 @@ export function hasPermission(
 
 export class ApiService {
   // --- AUTH & CURRENT USER ---
+  /** The signed-in user (kept fresh from the synchronised users collection). */
   static getCurrentUser(): User {
-    const defaultUser = INITIAL_USERS[0];
-    return getStored<User>(STORAGE_KEYS.CURRENT_USER, defaultUser);
-  }
-
-  static setCurrentUser(user: User): void {
-    setStored(STORAGE_KEYS.CURRENT_USER, user);
-    this.logActivity(
-      'تبديل الحساب النشط',
-      'USER',
-      user.id,
-      user.fullName,
-      `تم التبديل إلى المستخدم: ${user.fullName} (${user.jobTitle})`
-    );
+    const session = authClient.getSession();
+    if (!session) throw new Error('لا توجد جلسة دخول نشطة');
+    const fresh = this.getUsers().find((u) => u.id === session.user.id);
+    return fresh || session.user;
   }
 
   static getUsers(): User[] {
-    return getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    return getStored<User[]>(STORAGE_KEYS.USERS, []);
   }
 
   static getUserById(id: string): User | undefined {
@@ -242,7 +160,7 @@ export class ApiService {
       }
     }
     const newUser: User = {
-      id: user.id || `usr-${Date.now()}`,
+      id: user.id || newId('usr'),
       fullName: user.fullName || 'مستخدم جديد',
       fullNameEn: user.fullNameEn,
       email: user.email || `user${Date.now()}@akhbar.tv`,
@@ -306,7 +224,7 @@ export class ApiService {
 
   // --- NEWS CRUD & WORKFLOW ---
   static getNews(): NewsItem[] {
-    const items = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, INITIAL_NEWS);
+    const items = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     return items.filter((n) => !n.deletedAt);
   }
 
@@ -315,21 +233,25 @@ export class ApiService {
   }
 
   static saveNews(newsData: Partial<NewsItem>, user?: User): NewsItem {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, INITIAL_NEWS);
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
     // --- RBAC Validation ---
     const requestedStatus = newsData.status;
     if (requestedStatus) {
-      if (requestedStatus === 'APPROVED' && !hasPermission(currentUser.role, 'APPROVE_NEWS')) {
+      if (requestedStatus === 'APPROVED' && !RbacService.hasPermission(currentUser, 'news.approve')) {
          this.logAudit('SECURITY_VIOLATION', 'NEWS', newsData.id || 'new', 'CRITICAL', `محاولة غير مصرح بها لحفظ الخبر كمعتمد من قبل: ${currentUser.fullName} (${currentUser.role})`);
          throw new Error('عذراً، صلاحياتك لا تسمح بحفظ الخبر كمعتمد.');
       }
-      if (requestedStatus === 'PUBLISHED' && !hasPermission(currentUser.role, 'PUBLISH_NEWS')) {
+      if (requestedStatus === 'PUBLISHED' && !RbacService.hasPermission(currentUser, 'news.publish')) {
          this.logAudit('SECURITY_VIOLATION', 'NEWS', newsData.id || 'new', 'CRITICAL', `محاولة غير مصرح بها لنشر الخبر مباشرة من قبل: ${currentUser.fullName} (${currentUser.role})`);
          throw new Error('عذراً، صلاحياتك لا تسمح بنشر الخبر.');
       }
+    }
+    const existing = newsData.id ? all.find((n) => n.id === newsData.id) : undefined;
+    if (newsData.isBreaking && !existing?.isBreaking && !RbacService.hasPermission(currentUser, 'news.breaking_push')) {
+      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة.');
     }
     // -----------------------
 
@@ -349,9 +271,9 @@ export class ApiService {
       }
     }
 
-    const newId = `nws-${Date.now()}`;
+    const newsId = newId('nws');
     const newItem: NewsItem = {
-      id: newId,
+      id: newsId,
       title: newsData.title || 'عنوان الخبر بدون اسم',
       shortTitle: newsData.shortTitle || newsData.title || '',
       slug: (newsData.title || 'news-item').toLowerCase().replace(/\s+/g, '-'),
@@ -375,8 +297,8 @@ export class ApiService {
       internalNotes: newsData.internalNotes || '',
       workflowLogs: [
         {
-          id: `log-${Date.now()}`,
-          newsId: newId,
+          id: newId('log'),
+          newsId,
           fromStatus: 'DRAFT',
           toStatus: newsData.status || 'DRAFT',
           changedBy: { id: currentUser.id, name: currentUser.fullName, role: currentUser.role },
@@ -405,7 +327,7 @@ export class ApiService {
   }
 
   static updateNewsStatus(newsId: string, toStatus: NewsStatus, userOrComment?: User | string, optionalComment?: string): NewsItem {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, INITIAL_NEWS);
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const idx = all.findIndex((n) => n.id === newsId);
     if (idx === -1) throw new Error('الخبر غير موجود');
 
@@ -413,12 +335,12 @@ export class ApiService {
     const comment = typeof userOrComment === 'string' ? userOrComment : optionalComment;
 
     // --- RBAC Validation ---
-    if (toStatus === 'APPROVED' && !hasPermission(currentUser.role, 'APPROVE_NEWS')) {
+    if (toStatus === 'APPROVED' && !RbacService.hasPermission(currentUser, 'news.approve')) {
       this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'CRITICAL', `محاولة غير مصرح بها لاعتماد الخبر من قبل: ${currentUser.fullName} (${currentUser.role})`);
       throw new Error('عذراً، صلاحياتك لا تسمح باعتماد الأخبار. يتطلب ذلك صلاحية EDITOR.');
     }
 
-    if (toStatus === 'PUBLISHED' && !hasPermission(currentUser.role, 'PUBLISH_NEWS')) {
+    if (toStatus === 'PUBLISHED' && !RbacService.hasPermission(currentUser, 'news.publish')) {
       this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'CRITICAL', `محاولة غير مصرح بها لنشر الخبر من قبل: ${currentUser.fullName} (${currentUser.role})`);
       throw new Error('عذراً، صلاحياتك لا تسمح بنشر الأخبار. يتطلب ذلك صلاحية PUBLISHER أو EDITOR.');
     }
@@ -429,7 +351,7 @@ export class ApiService {
     const now = new Date().toISOString();
 
     const logEntry = {
-      id: `log-${Date.now()}`,
+      id: newId('log'),
       newsId: item.id,
       fromStatus,
       toStatus,
@@ -469,7 +391,7 @@ export class ApiService {
   }
 
   static deleteNews(newsId: string, user?: User): void {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, INITIAL_NEWS);
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const idx = all.findIndex((n) => n.id === newsId);
     if (idx !== -1) {
       all[idx].deletedAt = new Date().toISOString();
@@ -480,7 +402,7 @@ export class ApiService {
   }
 
   static bulkActionNews(newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE'): void {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, INITIAL_NEWS);
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const currentUser = this.getCurrentUser();
     const now = new Date().toISOString();
 
@@ -512,7 +434,7 @@ export class ApiService {
 
   // --- BREAKING NEWS ---
   static getBreakingNews(): BreakingNews[] {
-    return getStored<BreakingNews[]>(STORAGE_KEYS.BREAKING, INITIAL_BREAKING_NEWS);
+    return getStored<BreakingNews[]>(STORAGE_KEYS.BREAKING, []);
   }
 
   static getActiveBreakingNews(): BreakingNews[] {
@@ -526,7 +448,7 @@ export class ApiService {
     const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours
 
     const newBrk: BreakingNews = {
-      id: `brk-${Date.now()}`,
+      id: newId('brk'),
       title: item.title || 'خبر عاجل بدون نص',
       newsId: item.newsId,
       priority: item.priority || 'HIGH',
@@ -556,7 +478,7 @@ export class ApiService {
 
   // --- PROGRAMS & EPISODES ---
   static getPrograms(): Program[] {
-    const items = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
+    const items = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
     return items.filter((p) => !p.deletedAt);
   }
 
@@ -565,7 +487,7 @@ export class ApiService {
   }
 
   static saveProgram(program: Partial<Program>, user?: User): Program {
-    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
+    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
@@ -580,7 +502,7 @@ export class ApiService {
     }
 
     const newPrg: Program = {
-      id: `prg-${Date.now()}`,
+      id: newId('prg'),
       name: program.name || 'برنامج جديد',
       shortName: program.shortName || program.name || '',
       description: program.description || '',
@@ -609,7 +531,7 @@ export class ApiService {
   }
 
   static deleteProgram(id: string, user?: User): void {
-    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
+    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
     const idx = all.findIndex((p) => p.id === id);
     if (idx !== -1) {
       const progName = all[idx].name;
@@ -622,12 +544,12 @@ export class ApiService {
 
   // --- PROGRAM EVALUATIONS ---
   static getProgramEvaluations(programId: string): ProgramEvaluation[] {
-    const all = getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, INITIAL_PROGRAM_EVALUATIONS);
+    const all = getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, []);
     return all.filter((e) => e.programId === programId).sort((a, b) => new Date(b.evaluatedAt).getTime() - new Date(a.evaluatedAt).getTime());
   }
 
   static getAllProgramEvaluations(): ProgramEvaluation[] {
-    return getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, INITIAL_PROGRAM_EVALUATIONS);
+    return getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, []);
   }
 
   static addProgramEvaluation(evalData: Partial<ProgramEvaluation>, user?: User): ProgramEvaluation {
@@ -649,7 +571,7 @@ export class ApiService {
     const overallRating = evalData.overallRating || calculatedAvg;
 
     const newEval: ProgramEvaluation = {
-      id: `eval-${Date.now()}`,
+      id: newId('eval'),
       programId: evalData.programId || 'prg-1',
       episodeId: evalData.episodeId,
       evaluatorId: currentUser.id,
@@ -736,7 +658,7 @@ export class ApiService {
   }
 
   static getEpisodes(): Episode[] {
-    const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, INITIAL_EPISODES);
+    const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
     return items.filter((e) => !e.deletedAt);
   }
 
@@ -745,7 +667,7 @@ export class ApiService {
   }
 
   static saveEpisode(episodeData: Partial<Episode>, user?: User): Episode {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, INITIAL_EPISODES);
+    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
@@ -764,7 +686,7 @@ export class ApiService {
     }
 
     const newEp: Episode = {
-      id: `ep-${Date.now()}`,
+      id: newId('ep'),
       programId: episodeData.programId || 'prg-1',
       programName: episodeData.programName || 'المشهد السياسي',
       seasonNumber: episodeData.seasonNumber || 1,
@@ -801,7 +723,7 @@ export class ApiService {
   }
 
   static deleteEpisode(id: string, user?: User): void {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, INITIAL_EPISODES);
+    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
     const idx = all.findIndex((e) => e.id === id);
     if (idx !== -1) {
       const epTitle = all[idx].title;
@@ -814,7 +736,7 @@ export class ApiService {
 
   // --- RUNDOWN MANAGEMENT ---
   static updateEpisodeRundown(episodeId: string, rundown: RundownSegment[], user?: User): Episode {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, INITIAL_EPISODES);
+    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
     const idx = all.findIndex((e) => e.id === episodeId);
     if (idx === -1) throw new Error('الحلقة غير موجودة');
 
@@ -832,11 +754,6 @@ export class ApiService {
       `قام ${currentUser.fullName} بتحديث فقرات الرانداون (${calculated.length} فقرة)`
     );
 
-    // Automatically synchronize with SQLite database backend
-    this.syncRundownToDb(episodeId, calculated).catch((err) => {
-      console.warn('SQLite rundown sync failed:', err);
-    });
-
     return all[idx];
   }
 
@@ -845,7 +762,7 @@ export class ApiService {
     if (!episode) throw new Error('الحلقة غير موجودة');
 
     const newSegment: RundownSegment = {
-      id: `seg-${Date.now()}`,
+      id: newId('seg'),
       episodeId,
       orderIndex: (episode.rundown?.length || 0) + 1,
       title: segment.title || 'فقرة جديدة',
@@ -889,7 +806,7 @@ export class ApiService {
       }
     } else {
       questions.push({
-        id: `q-${Date.now()}`,
+        id: newId('q'),
         episodeId,
         topicName: question.topicName || 'محور عام',
         questionText: question.questionText || '',
@@ -913,12 +830,12 @@ export class ApiService {
 
   // --- GUESTS ---
   static getGuests(): Guest[] {
-    const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, INITIAL_GUESTS);
+    const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
     return items.filter((g) => !g.deletedAt);
   }
 
   static saveGuest(guest: Partial<Guest>, user?: User): Guest {
-    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, INITIAL_GUESTS);
+    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
@@ -933,7 +850,7 @@ export class ApiService {
     }
 
     const newGuest: Guest = {
-      id: `gst-${Date.now()}`,
+      id: newId('gst'),
       fullName: guest.fullName || 'ضيف جديد',
       avatarUrl: guest.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
       organization: guest.organization || 'مستقل',
@@ -954,7 +871,7 @@ export class ApiService {
   }
 
   static deleteGuest(id: string, user?: User): void {
-    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, INITIAL_GUESTS);
+    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
     const idx = all.findIndex((g) => g.id === id);
     if (idx !== -1) {
       const guestName = all[idx].fullName;
@@ -967,7 +884,7 @@ export class ApiService {
 
   // --- TASKS ---
   static getTasks(): EditorialTask[] {
-    return getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+    return getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
   }
 
   static saveTask(task: Partial<EditorialTask>, user?: User): EditorialTask {
@@ -986,7 +903,7 @@ export class ApiService {
     }
 
     const newTask: EditorialTask = {
-      id: `tsk-${Date.now()}`,
+      id: newId('tsk'),
       title: task.title || 'مهمة جديدة',
       description: task.description || '',
       assigneeId: task.assigneeId || currentUser.id,
@@ -1031,7 +948,7 @@ export class ApiService {
 
   // --- MEDIA ---
   static getMedia(): MediaFile[] {
-    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, INITIAL_MEDIA_FILES);
+    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []);
   }
 
   static getMediaAssets(): MediaFile[] {
@@ -1048,7 +965,7 @@ export class ApiService {
     const now = new Date().toISOString();
 
     const newMedia: MediaFile = {
-      id: `med-${Date.now()}`,
+      id: newId('med'),
       fileName: file.fileName || `file_${Date.now()}.jpg`,
       originalName: file.originalName || file.fileName || 'ملف مرفوع',
       mimeType: file.mimeType || 'image/jpeg',
@@ -1086,12 +1003,12 @@ export class ApiService {
 
   // --- TAXONOMY & CONFIG ---
   static getCategories(): Category[] {
-    return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+    return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
   }
 
   // --- STORIES ---
   static getStories(): Story[] {
-    return getStored<Story[]>(STORAGE_KEYS.STORIES, INITIAL_STORIES);
+    return getStored<Story[]>(STORAGE_KEYS.STORIES, []);
   }
 
   static getStory(id: string): Story | undefined {
@@ -1113,7 +1030,7 @@ export class ApiService {
       }
     } else {
        savedStory = {
-         id: `s-${Date.now()}`,
+         id: newId('s'),
          ...data,
          createdAt: new Date().toISOString(),
          updatedAt: new Date().toISOString(),
@@ -1181,7 +1098,7 @@ export class ApiService {
     }
 
     const newCat: Category = {
-      id: `cat-${Date.now()}`,
+      id: newId('cat'),
       nameAr: cat.nameAr || 'قسم جديد',
       nameEn: cat.nameEn || 'New Category',
       slug: (cat.slug || cat.nameEn || 'new-cat').toLowerCase().replace(/\s+/g, '-'),
@@ -1207,7 +1124,7 @@ export class ApiService {
   }
 
   static getSources(): NewsSource[] {
-    return getStored<NewsSource[]>(STORAGE_KEYS.SOURCES, INITIAL_SOURCES);
+    return getStored<NewsSource[]>(STORAGE_KEYS.SOURCES, []);
   }
 
   static getNewsSources(): NewsSource[] {
@@ -1225,7 +1142,7 @@ export class ApiService {
       }
     }
     const newSrc: NewsSource = {
-      id: `src-${Date.now()}`,
+      id: newId('src'),
       name: src.name || 'مصدر جديد',
       type: src.type || 'SPECIAL_SOURCE',
       reliabilityScore: src.reliabilityScore || 4,
@@ -1252,7 +1169,7 @@ export class ApiService {
   }
 
   static getProgramTypes(): ProgramType[] {
-    return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, INITIAL_PROGRAM_TYPES);
+    return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
   }
 
   // --- SETTINGS ---
@@ -1270,14 +1187,20 @@ export class ApiService {
 
   // --- NOTIFICATIONS ---
   static getNotifications(): AppNotification[] {
-    return getStored<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    return getStored<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
+  }
+
+  /** Notifications addressed to the signed-in user (the full list also holds ones sent to colleagues). */
+  static getMyNotifications(): AppNotification[] {
+    const me = this.getCurrentUser().id;
+    return this.getNotifications().filter((n) => n.userId === me || n.userId === 'all');
   }
 
   static addNotification(item: Partial<AppNotification>): AppNotification {
     const all = this.getNotifications();
     const notif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      userId: item.userId || 'usr-1',
+      id: newId('notif'),
+      userId: item.userId || this.getCurrentUser().id,
       title: item.title || 'إشعار جديد',
       message: item.message || '',
       type: item.type || 'SYSTEM',
@@ -1292,20 +1215,23 @@ export class ApiService {
 
   static markAllNotificationsRead(): void {
     const all = this.getNotifications();
-    all.forEach((n) => (n.isRead = true));
+    const me = this.getCurrentUser().id;
+    all.forEach((n) => {
+      if (n.userId === me) n.isRead = true;
+    });
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }
 
   // --- LOGGING ---
   static getActivityLogs(): ActivityLog[] {
-    return getStored<ActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS, INITIAL_ACTIVITY_LOGS);
+    return getStored<ActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS, []);
   }
 
   static logActivity(action: string, entityType: string, entityId: string, entityTitle: string, summaryAr: string): void {
     const all = this.getActivityLogs();
     const user = this.getCurrentUser();
     const newLog: ActivityLog = {
-      id: `act-${Date.now()}`,
+      id: newId('act'),
       userId: user.id,
       userName: user.fullName,
       userRole: user.role,
@@ -1324,7 +1250,7 @@ export class ApiService {
   }
 
   static getAuditLogs(): AuditLog[] {
-    return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
   }
 
   static logAudit(
@@ -1337,7 +1263,7 @@ export class ApiService {
     const all = this.getAuditLogs();
     const user = this.getCurrentUser();
     const newAudit: AuditLog = {
-      id: `aud-${Date.now()}`,
+      id: newId('aud'),
       userId: user.id,
       userName: user.fullName,
       userRole: user.role,
@@ -1396,83 +1322,26 @@ export class ApiService {
     return { news, programs, episodes, guests, tasks };
   }
 
-  // --- SQLITE DATABASE OPERATIONS ---
+  // --- SQLITE DATABASE OPERATIONS (server administration) ---
 
-  static async getDbStats(): Promise<DbStats> {
-    try {
-      const res = await fetch('/api/v1/db/stats');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          return json.data;
-        }
-      }
-    } catch {
-      // Fallback for offline preview
-    }
-
-    // Client fallback stats
-    const news = this.getNews();
-    const progs = this.getPrograms();
-    const eps = this.getEpisodes();
-    const guests = this.getGuests();
-    const tasks = this.getTasks();
-    const media = this.getMedia();
-    const audit = this.getAuditLogs();
-
-    return {
-      engine: 'SQLite 3 (Embedded via WebAssembly sql.js)',
-      filePath: 'data/newsroom.sqlite',
-      fileSizeBytes: 102400,
-      fileSizeFormatted: '100.0 KB',
-      totalTables: 9,
-      totalRows: news.length + progs.length + eps.length + guests.length + tasks.length + media.length + audit.length,
-      tables: [
-        { name: 'news', rowCount: news.length, columns: ['id', 'title', 'priority', 'status', 'created_at'] },
-        { name: 'programs', rowCount: progs.length, columns: ['id', 'name', 'type_name', 'status'] },
-        { name: 'episodes', rowCount: eps.length, columns: ['id', 'program_name', 'title', 'broadcast_date', 'status'] },
-        { name: 'rundown_segments', rowCount: 15, columns: ['id', 'episode_id', 'title', 'segment_type', 'duration_seconds'] },
-        { name: 'guests', rowCount: guests.length, columns: ['id', 'full_name', 'organization', 'specialty', 'appearances_count'] },
-        { name: 'tasks', rowCount: tasks.length, columns: ['id', 'title', 'assigned_to_name', 'priority', 'status'] },
-        { name: 'media_assets', rowCount: media.length, columns: ['id', 'title', 'type', 'file_url', 'size_bytes'] },
-        { name: 'audit_logs', rowCount: audit.length, columns: ['id', 'user_name', 'action', 'severity', 'created_at'] },
-        { name: 'system_settings', rowCount: 1, columns: ['key', 'value_json'] },
-      ],
-      lastSyncAt: new Date().toISOString(),
-      isHealthy: true,
-    };
+  static async getDbStats(): Promise<DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean }> {
+    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/stats');
+    return res.data;
   }
 
   static async executeSqlQuery(query: string): Promise<SqlQueryResult> {
     try {
-      const res = await fetch('/api/v1/db/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) return json.data;
-      }
-    } catch {
-      // ignore
+      const res = await apiFetch<{ data: SqlQueryResult }>('/api/v1/db/query', { method: 'POST', json: { query } });
+      return res.data;
+    } catch (err: any) {
+      return { columns: ['Error'], values: [[err.message]], rowCount: 0, executionTimeMs: 0, error: err.message } as SqlQueryResult;
     }
-
-    return {
-      columns: ['Notice'],
-      values: [['تم تنفيذ الاستعلام في بيئة التخزين النشطة']],
-      rowCount: 1,
-      executionTimeMs: 1,
-    };
   }
 
   static async resetDatabase(): Promise<DbStats> {
-    const res = await fetch('/api/v1/db/reset', { method: 'POST' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.data) return json.data;
-    }
-    return this.getDbStats();
+    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/reset', { method: 'POST' });
+    await dataStore.pull();
+    return res.data;
   }
 
   static getExportDbUrl(): string {
@@ -1480,65 +1349,19 @@ export class ApiService {
   }
 
   static async getBackups(): Promise<DbBackupFileInfo[]> {
-    try {
-      const res = await fetch('/api/v1/db/backups');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) return json.data;
-      }
-    } catch {
-      // ignore
-    }
-    return [];
+    const res = await apiFetch<{ data: DbBackupFileInfo[] }>('/api/v1/db/backups');
+    return res.data;
   }
 
   static async createBackup(): Promise<DbBackupFileInfo | null> {
-    try {
-      const res = await fetch('/api/v1/db/backups', { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) return json.data;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
+    const res = await apiFetch<{ data: DbBackupFileInfo }>('/api/v1/db/backups', { method: 'POST' });
+    return res.data;
   }
 
   static async restoreBackup(fileName: string): Promise<DbStats> {
-    const res = await fetch('/api/v1/db/backups/restore', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.data) return json.data;
-    }
-    return this.getDbStats();
-  }
-
-  static async syncRundownToDb(episodeId: string, segments: RundownSegment[]): Promise<boolean> {
-    try {
-      const res = await fetch(`/api/v1/episodes/${episodeId}/rundown`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ segments }),
-      });
-      if (!res.ok) {
-        throw new Error(`Server status ${res.status}`);
-      }
-      return true;
-    } catch {
-      // 24/7 Resilience: Enqueue for background retry when connection is restored
-      networkResilienceManager.enqueueMutation(
-        'SYNC_RUNDOWN',
-        `/api/v1/episodes/${episodeId}/rundown`,
-        'PUT',
-        { segments }
-      );
-      return true;
-    }
+    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/backups/restore', { method: 'POST', json: { fileName } });
+    await dataStore.pull();
+    return res.data;
   }
 
   static runSelfHealingDiagnostics(logActivity = true) {
@@ -1553,46 +1376,50 @@ export class ApiService {
     return selfHealingService.getStorageMetrics();
   }
 
-  static getMosExportUrl(episodeId: string): string {
-    return `/api/v1/episodes/${episodeId}/export/mos`;
+  /** Pushes pending local edits now; resolves true when everything reached the server. */
+  static async flushSync(): Promise<boolean> {
+    await dataStore.flush();
+    return dataStore.pendingCount() === 0;
   }
 
-  // Client-Side Full Backup Export & Import
+  static getMosExportUrl(episodeId: string): string {
+    return `/api/v1/episodes/${encodeURIComponent(episodeId)}/export/mos`;
+  }
+
+  // JSON export/import of the collections the current user can see.
   static exportClientBackup(): string {
     const backupData: Record<string, any> = {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
-      station: 'News 24 HD Network',
+      station: this.getSettings().organizationName,
       data: {},
     };
-
     Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
-      try {
-        const item = localStorage.getItem(storageKey);
-        if (item) {
-          backupData.data[keyName] = JSON.parse(item);
-        }
-      } catch {
-        // ignore
-      }
+      backupData.data[keyName] = getStored<any>(storageKey, null);
     });
-
     return JSON.stringify(backupData, null, 2);
   }
 
+  /** Imports through the normal sync path, so server permissions and conflict checks still apply. */
   static restoreClientBackup(jsonString: string): boolean {
     try {
       const parsed = JSON.parse(jsonString);
-      if (!parsed || !parsed.data) {
+      if (!parsed || typeof parsed.data !== 'object') {
         throw new Error('الملف غير صالح أو لا يحتوي على بنية بيانات صحيحة');
       }
-
       Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
-        if (parsed.data[keyName] !== undefined) {
-          localStorage.setItem(storageKey, JSON.stringify(parsed.data[keyName]));
+        const incoming = parsed.data[keyName];
+        if (incoming === undefined || incoming === null || keyName === 'AUDIT_LOGS' || keyName === 'ACTIVITY_LOGS') return;
+        if (Array.isArray(incoming)) {
+          // Merge by id: imported rows overwrite, existing rows not in the file are kept.
+          const current = getStored<any[]>(storageKey, []);
+          const byId = new Map(current.map((it) => [it.id, it]));
+          incoming.forEach((it: any) => it && typeof it.id === 'string' && byId.set(it.id, it));
+          setStored(storageKey, [...byId.values()]);
+        } else {
+          setStored(storageKey, incoming);
         }
       });
-
       return true;
     } catch (e) {
       console.error('Failed to restore backup:', e);

@@ -1,5 +1,4 @@
-import { StoriesView } from './views/StoriesView';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   NewsItem, Story,
   Program,
@@ -15,29 +14,31 @@ import {
   RundownSegment,
 } from './types';
 import { apiService } from './services/api';
+import { dataStore } from './services/dataStore';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
 import { CommandPalette } from './components/layout/CommandPalette';
 
-// Views
-import { DashboardView } from './views/DashboardView';
-import { NewsListView } from './views/NewsListView';
-import { NewsEditorView } from './views/NewsEditorView';
-import { ProgramsView } from './views/ProgramsView';
-import { EpisodesView } from './views/EpisodesView';
-import { EpisodeWorkspaceView } from './views/EpisodeWorkspaceView';
-import { GuestsView } from './views/GuestsView';
-import { TasksView } from './views/TasksView';
-import { CalendarView } from './views/CalendarView';
-import { MediaLibraryView } from './views/MediaLibraryView';
-import { ReportsView } from './views/ReportsView';
-import { AuditLogsView } from './views/AuditLogsView';
-import { UsersView } from './views/UsersView';
-import { SettingsView } from './views/SettingsView';
-import { TestingView } from './views/TestingView';
-import { DatabaseManagerView } from './views/DatabaseManagerView';
-import { ProgramDetailView } from './views/ProgramDetailView';
+// Views are code-split so the first load only ships what is on screen.
+const DashboardView = lazy(() => import('./views/DashboardView').then((m) => ({ default: m.DashboardView })));
+const NewsListView = lazy(() => import('./views/NewsListView').then((m) => ({ default: m.NewsListView })));
+const NewsEditorView = lazy(() => import('./views/NewsEditorView').then((m) => ({ default: m.NewsEditorView })));
+const ProgramsView = lazy(() => import('./views/ProgramsView').then((m) => ({ default: m.ProgramsView })));
+const EpisodesView = lazy(() => import('./views/EpisodesView').then((m) => ({ default: m.EpisodesView })));
+const EpisodeWorkspaceView = lazy(() => import('./views/EpisodeWorkspaceView').then((m) => ({ default: m.EpisodeWorkspaceView })));
+const GuestsView = lazy(() => import('./views/GuestsView').then((m) => ({ default: m.GuestsView })));
+const TasksView = lazy(() => import('./views/TasksView').then((m) => ({ default: m.TasksView })));
+const CalendarView = lazy(() => import('./views/CalendarView').then((m) => ({ default: m.CalendarView })));
+const MediaLibraryView = lazy(() => import('./views/MediaLibraryView').then((m) => ({ default: m.MediaLibraryView })));
+const ReportsView = lazy(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
+const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
+const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
+const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
+const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
+const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
+const StoriesView = lazy(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { LiveWireFeedModal } from './components/news/LiveWireFeedModal';
@@ -45,7 +46,12 @@ import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDraw
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 
-export default function App() {
+interface AppProps {
+  onLogout: () => void;
+  onChangePassword: () => void;
+}
+
+export default function App({ onLogout, onChangePassword }: AppProps) {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -103,7 +109,7 @@ export default function App() {
   // Selection state
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
-  const [selectedProgramId, setSelectedProgramId] = useState<string | null>('prg-1');
+  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
   const [isLiveWireModalOpen, setIsLiveWireModalOpen] = useState(false);
 
@@ -162,6 +168,8 @@ export default function App() {
 
   // Load all initial data from apiService
   const refreshData = () => {
+    setCurrentUser(apiService.getCurrentUser());
+    setProgramTypes(apiService.getProgramTypes());
     setStories(apiService.getStories());
     setNewsList(apiService.getNews());
     setPrograms(apiService.getPrograms());
@@ -177,6 +185,20 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
+    // Re-render when this or another user changes shared data; surface rejected writes.
+    let frame = 0;
+    return dataStore.subscribe((evt) => {
+      if (evt.type === 'data-changed') {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(refreshData);
+      } else if (evt.type === 'sync-error') {
+        addToast({
+          type: evt.code === 'CONFLICT' ? 'warning' : 'error',
+          title: evt.code === 'CONFLICT' ? 'تعارض في التعديل' : 'تم رفض العملية من الخادم',
+          message: evt.message,
+        });
+      }
+    });
   }, []);
 
   // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+W, Ctrl+Alt+N)
@@ -223,17 +245,6 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // User Switcher
-  const handleSwitchUser = (user: User) => {
-    apiService.setCurrentUser(user);
-    setCurrentUser(user);
-    addToast({
-      type: 'info',
-      title: 'تبديل المستخدم',
-      message: `تم التبديل إلى: ${user.fullName} (${user.role})`,
-    });
-  };
 
   // Breaking news ticker items
   const breakingNewsItems = newsList
@@ -543,6 +554,7 @@ export default function App() {
         {/* Main Application Sidebar */}
         <Sidebar
           activeNav={activeNav}
+          currentUser={currentUser}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           onSelectNav={(navId) => {
@@ -564,7 +576,8 @@ export default function App() {
           {/* Topbar */}
           <Topbar
             currentUser={currentUser}
-            onSwitchUser={handleSwitchUser}
+            onLogout={onLogout}
+            onChangePassword={onChangePassword}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)}
             onOpenLiveWire={() => setIsLiveWireModalOpen(true)}
@@ -576,10 +589,7 @@ export default function App() {
             }}
             unreadNotificationsCount={unreadNotificationsCount}
             onToggleMobileMenu={() => setIsMobileSidebarOpen((prev) => !prev)}
-            onCreateNews={() => {
-              setSelectedNewsItem(null);
-              setActiveNav('news_create');
-            }}
+            onCreateNews={handleCreateNewNewsClick}
             onCreateProgram={() => {
               setActiveNav('programs');
             }}
@@ -593,6 +603,9 @@ export default function App() {
 
           {/* Dynamic Page Views */}
           <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+            <Suspense
+              fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
+            >
             {activeNav === 'dashboard' && (
               <DashboardView
                 newsList={newsList}
@@ -601,6 +614,11 @@ export default function App() {
                 guests={guests}
                 categories={categories}
                 currentUser={currentUser}
+                onCreateNews={handleCreateNewNewsClick}
+                onCreateEpisode={() => {
+                  setFilterProgramId(null);
+                  setActiveNav('episodes');
+                }}
                 onNavigate={(view: any) => {
                   if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
                   setActiveNav(String(view).toLowerCase().replace(/_/g, '-'));
@@ -756,17 +774,7 @@ export default function App() {
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (
-              <UsersView
-                currentUser={currentUser}
-                onUserSwitch={(usr) => {
-                  setCurrentUser(usr);
-                  addToast({
-                    type: 'success',
-                    title: 'تم تبديل الحساب النشط',
-                    message: `تم التبديل إلى: ${usr.fullName} (${usr.jobTitle})`,
-                  });
-                }}
-              />
+              <UsersView currentUser={currentUser} />
             )}
 
             {activeNav === 'settings' && (
@@ -785,6 +793,7 @@ export default function App() {
             {activeNav === 'database' && <DatabaseManagerView />}
 
             {activeNav === 'tests' && <TestingView />}
+            </Suspense>
           </main>
         </div>
       </div>

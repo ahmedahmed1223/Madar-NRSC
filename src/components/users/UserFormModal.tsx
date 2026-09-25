@@ -19,7 +19,7 @@ import {
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (userData: Partial<User>) => void;
+  onSave: (userData: Partial<User>, initialPassword?: string) => void;
   userToEdit?: User | null;
   roles: RoleDefinition[];
 }
@@ -69,6 +69,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [avatarUrl, setAvatarUrl] = useState(AVATAR_PRESETS[0]);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [isActive, setIsActive] = useState(true);
+  const [initialPassword, setInitialPassword] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -103,6 +104,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setTwoFactorEnabled(false);
       setIsActive(true);
     }
+    setInitialPassword('');
     setErrors({});
   }, [userToEdit, isOpen]);
 
@@ -117,6 +119,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
     }
     if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
+    if (!userToEdit) {
+      if (initialPassword.length < 10 || !/\d/.test(initialPassword) || !/[A-Za-z\u0600-\u06FF]/.test(initialPassword)) {
+        newErrors.initialPassword = 'كلمة المرور الأولية: 10 أحرف على الأقل وتحتوي على حروف وأرقام';
+      }
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -139,7 +146,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       avatarUrl,
       twoFactorEnabled,
       isActive,
-    });
+    }, userToEdit ? undefined : initialPassword);
     onClose();
   };
 
@@ -250,6 +257,32 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
             {errors.email && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.email}</p>}
           </div>
+
+          {!userToEdit && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                كلمة المرور الأولية <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={initialPassword}
+                  onChange={(e) => {
+                    setInitialPassword(e.target.value);
+                    if (errors.initialPassword) setErrors((prev) => ({ ...prev, initialPassword: '' }));
+                  }}
+                  className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${
+                    errors.initialPassword ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
+                  }`}
+                  dir="ltr"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
+              {errors.initialPassword && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">

@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Lock,
   Keyboard,
+  KeyRound,
+  LogOut,
 } from 'lucide-react';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
@@ -30,8 +32,8 @@ import { useSystemHealth } from '../../hooks/useSystemHealth';
 
 interface TopbarProps {
   currentUser: User;
-  onUserChange?: (user: User) => void;
-  onSwitchUser?: (user: User) => void;
+  onLogout?: () => void;
+  onChangePassword?: () => void;
   onOpenSearch?: () => void;
   onOpenCommandPalette?: () => void;
   onOpenShortcuts?: () => void;
@@ -49,8 +51,8 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({
   currentUser,
-  onUserChange,
-  onSwitchUser,
+  onLogout = () => {},
+  onChangePassword = () => {},
   onOpenSearch,
   onOpenCommandPalette,
   onOpenShortcuts,
@@ -73,9 +75,6 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [isSelfHealingOpen, setIsSelfHealingOpen] = useState(false);
   const { report } = useSystemHealth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-
-  const handleUserSelect = onSwitchUser || onUserChange || (() => {});
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
   useEffect(() => {
@@ -96,15 +95,14 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, []);
 
   useEffect(() => {
-    setNotifications(ApiService.getNotifications());
-    setUsers(ApiService.getUsers());
+    setNotifications(ApiService.getMyNotifications());
   }, [isNotifOpen, isUserMenuOpen]);
 
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
 
   const handleMarkAllRead = () => {
     ApiService.markAllNotificationsRead();
-    setNotifications(ApiService.getNotifications());
+    setNotifications(ApiService.getMyNotifications());
   };
 
   const roleLabels: Record<string, string> = {
@@ -335,13 +333,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         )}
 
-        {/* User Account / Role Switcher (RBAC Live Test) */}
+        {/* Signed-in user menu */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2.5 p-1.5 pr-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-all"
-            title="تبديل الحساب أو الرتبة التحريرية"
+            title="حساب المستخدم"
           >
             <img
               src={currentUser.avatarUrl}
@@ -364,43 +362,37 @@ export const Topbar: React.FC<TopbarProps> = ({
               <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
               <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-right">
                 <div className="px-3 py-2 border-b border-slate-100">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
-                    محاكاة الأدوار والصلاحيات (RBAC Live)
+                  <span className="text-xs font-bold text-slate-800 block">{currentUser.fullName}</span>
+                  <span className="text-[11px] text-slate-500 block" dir="ltr">
+                    {currentUser.email}
                   </span>
-                  <p className="text-xs text-slate-500 leading-normal">
-                    اختر أي دور لتجربة الصلاحيات الحقيقية في التدقيق، النشر، وإدارة الرانداون:
-                  </p>
+                  <span className="text-[10px] text-blue-600 font-semibold block mt-0.5">
+                    {roleLabels[currentUser.role] || currentUser.jobTitle} - {currentUser.department}
+                  </span>
                 </div>
-
-                <div className="max-h-64 overflow-y-auto py-1 space-y-1">
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => {
-                        handleUserSelect(u);
-                        setIsUserMenuOpen(false);
-                      }}
-                      className={`w-full p-2 rounded-xl flex items-center gap-2.5 text-right transition-colors ${
-                        u.id === currentUser.id ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <img
-                        src={u.avatarUrl}
-                        alt={u.fullName}
-                        className="w-7 h-7 rounded-full object-cover"
-                      />
-                      <div className="flex-1 truncate">
-                        <div className="text-xs font-bold leading-tight">{u.fullName}</div>
-                        <div className="text-[10px] text-slate-500 leading-tight">
-                          {roleLabels[u.role]} - {u.department}
-                        </div>
-                      </div>
-                      {u.id === currentUser.id && (
-                        <span className="w-2 h-2 rounded-full bg-blue-600" />
-                      )}
-                    </button>
-                  ))}
+                <div className="py-1 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onChangePassword();
+                    }}
+                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <KeyRound className="w-4 h-4 text-slate-500" />
+                    <span>تغيير كلمة المرور</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>تسجيل الخروج</span>
+                  </button>
                 </div>
               </div>
             </>

@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface RichTextEditorProps {
   value: string;
@@ -243,7 +244,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         {isPreview ? (
           <div
             className="prose prose-slate max-w-none min-h-[300px] text-slate-800 leading-relaxed font-sans"
-            dangerouslySetInnerHTML={{ __html: value || '<p class="text-slate-400">لا يوجد نص للمعاينة بعد...</p>' }}
+            dangerouslySetInnerHTML={{ __html: value ? sanitizeHtml(value) : '<p class="text-slate-400">لا يوجد نص للمعاينة بعد...</p>' }}
           />
         ) : (
           <textarea

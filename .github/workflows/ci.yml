@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Smoke test production build
+        env:
+          NODE_ENV: production
+          DATA_DIR: ${{ runner.temp }}/nrcs-data
+          ADMIN_EMAIL: ci-admin@example.com
+          ADMIN_PASSWORD: CiAdminPassword2026
+          COOKIE_SECURE: 'false'
+          PORT: '3100'
+        run: |
+          node dist/server.cjs &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/api/ready && break; sleep 1; done
+          curl -sf http://127.0.0.1:3100/api/ready
+          curl -sf http://127.0.0.1:3100/ | grep -q '<div id="root">'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'X-NRCS-Client: web' \
+            -d '{"email":"ci-admin@example.com","password":"CiAdminPassword2026"}' http://127.0.0.1:3100/api/v1/auth/login)
+          test "$code" = "200"

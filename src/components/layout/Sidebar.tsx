@@ -1,3 +1,4 @@
+import { RbacService } from '../../services/rbacService';
 import React from 'react';
 import {
   LayoutDashboard,
@@ -104,6 +105,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const newsBadge = badgeCounts?.news ?? pendingReviewCount;
   const tasksBadge = badgeCounts?.tasks ?? pendingTasksCount;
 
+  // Hide administration screens the signed-in user cannot use (the server enforces this too).
+  const NAV_PERMISSIONS: Record<string, string> = {
+    audit: 'audit.view',
+    users: 'users.view',
+    database: 'system.database_manage',
+    settings: 'system.settings',
+    tests: 'system.self_healing',
+  };
+  const canSeeNav = (id: string) => !currentUser || !NAV_PERMISSIONS[id] || RbacService.hasPermission(currentUser, NAV_PERMISSIONS[id]);
+
   const navItems = [
     {
       id: 'dashboard',
@@ -205,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'tests',
       label: 'فحص واختبار النظام',
       icon: FlaskConical,
-      badge: '19 فحص',
+      badge: 'مباشر',
       badgeColor: 'bg-emerald-100 text-emerald-800 font-mono',
     },
     {
@@ -285,7 +296,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation List */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-        {navItems.map((item) => {
+        {navItems.filter((item) => canSeeNav(item.id)).map((item) => {
           const Icon = item.icon;
           const isActive =
             activeIdentifier === item.id ||
@@ -338,7 +349,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {!isCollapsed && (
         <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span>إصدار المنظومة: v2.4.0</span>
+            <span>إصدار المنظومة: v3.0.0</span>
             <span className="text-emerald-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               متصل

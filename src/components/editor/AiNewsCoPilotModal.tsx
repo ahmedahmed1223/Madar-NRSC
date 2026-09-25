@@ -14,6 +14,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { apiFetch, ApiError } from '../../services/http';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface AiNewsCoPilotModalProps {
   isOpen: boolean;
@@ -45,31 +47,29 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedResult, setGeneratedResult] = useState<any>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [isTemplateMode, setIsTemplateMode] = useState(false);
 
   const cleanText = (html: string) => {
     return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim();
   };
 
-  const handleGenerate = () => {
-    setIsProcessing(true);
-    setGeneratedResult(null);
-
+  /** Offline template used only when the server has no GEMINI_API_KEY configured. */
+  const buildTemplateResult = (): any => {
     const rawBody = cleanText(currentContent) || currentSummary || currentTitle || 'خبر إخباري جديد';
     const mainHeadline = currentTitle || 'قمة دولية تبحث استقرار الاقتصاد وتحديات الطاقة النظيفة';
-
-    setTimeout(() => {
       if (activeMode === 'TV_REWRITE') {
         const rewrittenLead = `أكدت المصادر الرسمية في مستهل التطورات المتسارعة، أن الجهود المشتركة تتجه نحو تبني حلول استراتيجية شاملة. وفي هذا السياق، أوضح المتحدثون أن المرحلة الراهنة تتطلب تعزيز التنسيق المباشر بين مختلف الأطراف الفاعلة لضمان استدامة النتائج المحققة ومواكبة متطلبات الميدان.`;
         const tvScript = `<h3>مقدمة المذيع (On-Camera Reader):</h3><p><strong>[CG_ANCHOR: استوديو الأخبار]</strong><br />مساء الخير، نبدأ جولتنا الإخبارية بهذا التطور الميداني الأبرز، حيث تتواصل التحركات الرسمية المكثفة لإنجاز الأهداف المعلنة وسط ترحيب واسع من الأوساط المعنية.</p><h3>متن التقرير المصور (Voice Over VT):</h3><p>${rawBody.slice(0, 300) || rewrittenLead}</p><p>وتشير المعطيات الميدانية إلى أن الساعات القادمة ستشهد إعلاناً رسمياً يتضمن تفاصيل الآليات التنفيذية والجداول الزمنية المعتمدة.</p>`;
 
-        setGeneratedResult({
+        return ({
           type: 'TV_REWRITE',
           title: `تطورات حاسمة: ${mainHeadline.slice(0, 60)}`,
           summary: `متابعة إخبارية حية لأبرز مخرجات التنسيق المشترك والقرارات الاستراتيجية المرتقبة.`,
           content: tvScript,
         });
       } else if (activeMode === 'HEADLINES') {
-        setGeneratedResult({
+        return ({
           type: 'HEADLINES',
           headlines: [
             {
@@ -90,13 +90,13 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
           ],
         });
       } else if (activeMode === 'ANCHOR_LEAD') {
-        setGeneratedResult({
+        return ({
           type: 'ANCHOR_LEAD',
           lead1: `أهلاً بكم، نبدأ نشرتنا من هذا الملف البارز؛ حيث أعلنت الجهات المعنية قبل قليل حزمة من الإجراءات المشتركة، واصفة الخطوة بأنها محطة مفصلية في مسار العمل المستمر. التفاصيل في سياق هذا التقرير:`,
           lead2: `في متابعتنا المباشرة، تتصدر هذه التطورات المشهد الإخباري اليوم، مع ترقب واسع لما ستسفر عنه الاجتماعات المنعقدة حالياً لتحديد الخطوات التنفيذية المقبلة.`,
         });
       } else if (activeMode === 'PROOFREAD') {
-        setGeneratedResult({
+        return ({
           type: 'PROOFREAD',
           correctionsCount: 3,
           notes: [
@@ -108,8 +108,30 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
         });
       }
 
+    return null;
+  };
+
+  const handleGenerate = async () => {
+    setIsProcessing(true);
+    setGeneratedResult(null);
+    setAiError(null);
+    setIsTemplateMode(false);
+    try {
+      const res = await apiFetch<{ data: any }>('/api/v1/ai/copilot', {
+        method: 'POST',
+        json: { mode: activeMode, tone, title: currentTitle, summary: currentSummary, content: currentContent },
+      });
+      setGeneratedResult(res.data);
+    } catch (err: any) {
+      if (err instanceof ApiError && err.code === 'AI_NOT_CONFIGURED') {
+        setIsTemplateMode(true);
+        setGeneratedResult(buildTemplateResult());
+      } else {
+        setAiError(err?.message || 'تعذر الاتصال بالمساعد الذكي');
+      }
+    } finally {
       setIsProcessing(false);
-    }, 1100);
+    }
   };
 
   const handleCopy = (text: string, key: string) => {
@@ -244,6 +266,19 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
         </div>
 
         {/* Results Area */}
+        {aiError && (
+          <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{aiError}</span>
+          </div>
+        )}
+
+        {generatedResult && isTemplateMode && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-semibold">
+            وضع القوالب: خدمة الذكاء الاصطناعي غير مفعّلة على الخادم، والنص أدناه قالب تحريري ثابت وليس صياغة آلية للخبر.
+          </div>
+        )}
+
         {generatedResult && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
             {generatedResult.type === 'TV_REWRITE' && (
@@ -288,7 +323,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                   <span className="text-[11px] text-slate-400 font-bold block">متن التقرير التلفزيوني:</span>
                   <div
                     className="text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1 leading-relaxed space-y-2"
-                    dangerouslySetInnerHTML={{ __html: generatedResult.content }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(generatedResult.content) }}
                   />
                 </div>
               </div>

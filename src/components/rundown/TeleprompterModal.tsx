@@ -14,6 +14,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { RundownSegment } from '../../types';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface TeleprompterModalProps {
   isOpen: boolean;
@@ -321,7 +322,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                   {activeSegment.script ? (
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: activeSegment.script.replace(/\n/g, '<br />'),
+                        __html: sanitizeHtml(activeSegment.script.replace(/\n/g, '<br />')),
                       }}
                     />
                   ) : (

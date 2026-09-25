@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, SecurityClearance, ShiftType } from '../types';
 import { ApiService } from '../services/api';
+import { authClient } from '../services/authClient';
+import { dataStore } from '../services/dataStore';
 import {
   RbacService,
   RoleDefinition,
@@ -81,13 +83,27 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   useEffect(() => {
     loadData();
+    // Reflect changes made by other administrators in real time.
+    return dataStore.subscribe((evt) => {
+      if (evt.type === 'data-changed' && evt.collections.some((c) => c === 'users' || c === 'roles')) loadData();
+    });
   }, []);
 
   // --- USER ACTIONS ---
-  const handleSaveUser = (userData: Partial<User>) => {
-    const saved = ApiService.saveUser(userData);
-    loadData();
-    showToast(`تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
+  const handleSaveUser = async (userData: Partial<User>, initialPassword?: string) => {
+    try {
+      const saved = ApiService.saveUser(userData);
+      loadData();
+      if (initialPassword) {
+        // The account must exist on the server before credentials can be attached.
+        const synced = await ApiService.flushSync();
+        if (!synced) throw new Error('تعذر حفظ المستخدم على الخادم، حاول مرة أخرى');
+        await authClient.setUserPassword(saved.id, initialPassword);
+      }
+      showToast(`تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
+    } catch (e: any) {
+      alert(e.message || 'تعذر حفظ المستخدم');
+    }
   };
 
   const handleToggleStatus = (userId: string) => {
@@ -117,12 +133,18 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     }
   };
 
-  const handleSwitchActive = (user: User) => {
-    ApiService.setCurrentUser(user);
-    if (onUserSwitch) {
-      onUserSwitch(user);
+  /** Issues a random temporary password; the user must replace it at next sign-in. */
+  const handleResetPassword = async (user: User) => {
+    if (!window.confirm(`إصدار كلمة مرور مؤقتة جديدة للمستخدم ${user.fullName}؟ سيتم إنهاء جلساته الحالية.`)) return;
+    const bytes = new Uint8Array(9);
+    crypto.getRandomValues(bytes);
+    const temp = `${btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '')}7a`;
+    try {
+      await authClient.setUserPassword(user.id, temp);
+      window.prompt('كلمة المرور المؤقتة (انسخها وسلّمها للمستخدم بشكل آمن):', temp);
+    } catch (e: any) {
+      alert(e.message || 'تعذر إعادة تعيين كلمة المرور');
     }
-    showToast(`تم التبديل إلى المستخدم: ${user.fullName} (${user.jobTitle})`);
   };
 
   const handleQuickShiftChange = (userId: string, newShift: ShiftType) => {
@@ -593,18 +615,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                     <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() => handleSwitchActive(user)}
-                        disabled={isCurrentActive || !user.isActive}
+                        onClick={() => handleResetPassword(user)}
+                        disabled={isCurrentActive}
                         className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
                           isCurrentActive
                             ? 'bg-blue-100 text-blue-700 cursor-default'
-                            : !user.isActive
-                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                             : 'bg-white hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 shadow-2xs'
                         }`}
                       >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>{isCurrentActive ? 'الحساب الحالي' : 'تبديل للحساب'}</span>
+                        <KeyRound className="w-3.5 h-3.5" />
+                        <span>{isCurrentActive ? 'الحساب الحالي' : 'كلمة مرور مؤقتة'}</span>
                       </button>
 
                       <div className="flex items-center gap-1">
@@ -723,11 +743,12 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleSwitchActive(user)}
-                                disabled={isCurrent || !user.isActive}
+                                onClick={() => handleResetPassword(user)}
+                                disabled={isCurrent}
                                 className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="إصدار كلمة مرور مؤقتة"
                               >
-                                تبديل
+                                كلمة مرور
                               </button>
                               <button
                                 type="button"

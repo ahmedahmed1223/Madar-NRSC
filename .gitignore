@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime data: SQLite database, WAL files and backups must never be committed.
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

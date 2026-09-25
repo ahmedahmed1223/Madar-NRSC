@@ -85,11 +85,11 @@ export const RundownTable: React.FC<RundownTableProps> = ({
     if (!episodeId) return;
     setIsSyncingDb(true);
     try {
-      const ok = await apiService.syncRundownToDb(episodeId, segments);
+      const ok = await apiService.flushSync();
       if (ok) {
         setSyncStatusMsg('تم الحفظ في قاعدة بيانات SQLite');
       } else {
-        setSyncStatusMsg('تم الحفظ محلياً');
+        setSyncStatusMsg('بانتظار الاتصال بالخادم، ستتم المزامنة تلقائياً');
       }
     } catch {
       setSyncStatusMsg('تم الحفظ محلياً');

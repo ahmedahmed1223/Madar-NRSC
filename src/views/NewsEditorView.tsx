@@ -150,7 +150,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setTimeout(() => setCopiedTitle(false), 2000);
   };
 
-  const draftKey = `nrcs_draft_${newsItem?.id || 'new'}`;
+  // Drafts are per user so colleagues sharing a workstation never see each other's unsaved text.
+  const draftKey = `nrcs_draft_${currentUser.id}_${newsItem?.id || 'new'}`;
 
   const handleApplyAiChanges = (data: {
     title?: string;

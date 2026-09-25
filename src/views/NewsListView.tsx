@@ -25,6 +25,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { hasPermission } from '../services/api';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 interface NewsListViewProps {
   newsList: NewsItem[];
@@ -656,7 +657,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             {/* Body */}
             <div
               className="prose prose-slate max-w-none text-slate-800 leading-relaxed text-sm"
-              dangerouslySetInnerHTML={{ __html: previewNews.content }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewNews.content) }}
             />
 
             {/* Workflow Timeline / Audit History */}

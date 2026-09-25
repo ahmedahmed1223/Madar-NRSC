@@ -197,7 +197,8 @@ class NetworkResilienceManager {
       try {
         const res = await fetch(item.endpoint, {
           method: item.method,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
+          credentials: 'same-origin',
           body: item.payload ? JSON.stringify(item.payload) : undefined,
         });
 

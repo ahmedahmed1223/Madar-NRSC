@@ -23,31 +23,32 @@ import {
 import { DbStats, SqlQueryResult, DbBackupFileInfo } from '../types';
 import { apiService } from '../services/api';
 
+// Data is stored as JSON documents per collection in the `entities` table.
 const QUERY_PRESETS = [
   {
-    title: 'أحدث الأخبار المنشورة',
-    desc: 'استعراض آخر 5 أخبار مع حالتها ودرجة الأولوية',
-    sql: 'SELECT id, title, priority, status, created_at FROM news ORDER BY created_at DESC LIMIT 5;',
+    title: 'أحدث الأخبار',
+    desc: 'آخر 5 أخبار مع حالتها ودرجة الأولوية',
+    sql: "SELECT id, json_extract(data, '$.title') AS title, json_extract(data, '$.priority') AS priority, json_extract(data, '$.status') AS status, updated_at FROM entities WHERE collection = 'news' AND deleted = 0 ORDER BY updated_at DESC LIMIT 5;",
   },
   {
     title: 'البرامج وعدد الحلقات',
-    desc: 'تجميع إجمالي الحلقات ومتوسط المدة لكل برنامج',
-    sql: 'SELECT program_name, COUNT(*) as episodes_count, AVG(duration_minutes) as avg_duration_min FROM episodes GROUP BY program_name;',
+    desc: 'إجمالي الحلقات ومتوسط المدة لكل برنامج',
+    sql: "SELECT json_extract(data, '$.programName') AS program_name, COUNT(*) AS episodes_count, AVG(json_extract(data, '$.durationMinutes')) AS avg_duration_min FROM entities WHERE collection = 'episodes' AND deleted = 0 GROUP BY program_name;",
   },
   {
     title: 'تحليل فقرات الرانداون',
-    desc: 'إحصاء أنواع الفقرات التلفزيونية ومجموع مدتها بالثواني',
-    sql: 'SELECT segment_type, COUNT(*) as count, SUM(duration_seconds) as total_seconds FROM rundown_segments GROUP BY segment_type;',
+    desc: 'أنواع الفقرات ومجموع مدتها بالثواني',
+    sql: "SELECT json_extract(seg.value, '$.segmentType') AS segment_type, COUNT(*) AS count, SUM(json_extract(seg.value, '$.durationSeconds')) AS total_seconds FROM entities e, json_each(e.data, '$.rundown') seg WHERE e.collection = 'episodes' AND e.deleted = 0 GROUP BY segment_type;",
   },
   {
-    title: 'بنك الضيوف والأكثر مشاركة',
-    desc: 'الضيوف الأكثر ظهوراً وتقييمهم ومؤسساتهم',
-    sql: 'SELECT full_name, organization, specialty, appearances_count, rating FROM guests ORDER BY appearances_count DESC LIMIT 5;',
+    title: 'حجم كل مجموعة بيانات',
+    desc: 'عدد السجلات الفعالة في كل مجموعة',
+    sql: "SELECT collection, COUNT(*) AS rows, MAX(updated_at) AS last_update FROM entities WHERE deleted = 0 GROUP BY collection ORDER BY rows DESC;",
   },
   {
     title: 'سجل التدقيق والأمان',
-    desc: 'آخر العمليات الإدارية المنفذة في المنظومة',
-    sql: 'SELECT user_name, action, action_type, severity, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 5;',
+    desc: 'آخر العمليات الحساسة المنفذة في المنظومة',
+    sql: "SELECT json_extract(data, '$.userName') AS user_name, json_extract(data, '$.actionType') AS action_type, json_extract(data, '$.severity') AS severity, json_extract(data, '$.timestamp') AS at FROM entities WHERE collection = 'auditLogs' ORDER BY position ASC LIMIT 10;",
   },
 ];
 
@@ -70,8 +71,8 @@ export const DatabaseManagerView: React.FC = () => {
     try {
       const data = await apiService.getDbStats();
       setStats(data);
-    } catch (err) {
-      console.error('Failed to load DB stats:', err);
+    } catch (err: any) {
+      setFeedbackMessage(err?.message || 'تعذر تحميل إحصاءات قاعدة البيانات');
     } finally {
       setIsLoading(false);
     }
@@ -231,21 +232,21 @@ export const DatabaseManagerView: React.FC = () => {
           <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
             <span className="text-[11px] text-slate-400 block mb-1">مسار ملف التخزين</span>
             <span className="text-xs font-mono font-bold text-indigo-300 truncate block dir-ltr text-right">
-              {stats?.filePath || 'data/newsroom.sqlite'}
+              {stats?.filePath || '—'}
             </span>
           </div>
 
           <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
             <span className="text-[11px] text-slate-400 block mb-1">حجم قاعدة البيانات</span>
             <span className="text-xs font-mono font-bold text-slate-200">
-              {stats?.fileSizeFormatted || '100.0 KB'}
+              {stats?.fileSizeFormatted || '—'}
             </span>
           </div>
 
           <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
             <span className="text-[11px] text-slate-400 block mb-1">عدد الجداول العلائقية</span>
             <span className="text-xs font-mono font-bold text-slate-200">
-              {stats?.totalTables || 9} جداول
+              {stats?.totalTables ?? 0} جداول
             </span>
           </div>
 
