@@ -1129,7 +1129,16 @@ export class ApiService {
     return newCat;
   }
 
+  /** Active news/stories that still reference a category or source. */
+  private static countReferences(field: 'categoryId' | 'sourceId', id: string): number {
+    return [STORAGE_KEYS.NEWS, STORAGE_KEYS.STORIES]
+      .flatMap((key) => getStored<any[]>(key, []))
+      .filter((n) => !n.deletedAt && n[field] === id).length;
+  }
+
   static deleteCategory(id: string): void {
+    const inUse = this.countReferences('categoryId', id);
+    if (inUse > 0) throw new Error(`لا يمكن حذف القسم لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة`);
     const all = this.getCategories();
     const target = all.find((c) => c.id === id);
     const filtered = all.filter((c) => c.id !== id);
@@ -1175,6 +1184,8 @@ export class ApiService {
   }
 
   static deleteSource(id: string): void {
+    const inUse = this.countReferences('sourceId', id);
+    if (inUse > 0) throw new Error(`لا يمكن حذف المصدر لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة`);
     const all = this.getSources();
     const filtered = all.filter((s) => s.id !== id);
     setStored(STORAGE_KEYS.SOURCES, filtered);
@@ -1318,6 +1329,15 @@ export class ApiService {
     all.unshift(notif);
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
     return notif;
+  }
+
+  static markNotificationRead(id: string): void {
+    const all = this.getNotifications();
+    const me = this.getCurrentUser().id;
+    const target = all.find((n) => n.id === id && n.userId === me);
+    if (!target || target.isRead) return;
+    target.isRead = true;
+    setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }
 
   static markAllNotificationsRead(): void {

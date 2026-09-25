@@ -6,7 +6,7 @@ import {
   NewsItem,
 } from '../../types';
 import { Modal } from '../common/Modal';
-import { formatSecondsToTime, parseTimeToSeconds } from '../../services/api';
+import { formatSecondsToTime, parseTimeToSeconds, apiService } from '../../services/api';
 import {
   Clock,
   Video,
@@ -123,7 +123,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Empty input means the standard 3 minutes; an explicit value (even 0) is kept.
-    const durationSeconds = durationInput.trim() ? parseTimeToSeconds(durationInput) : 180;
+    const durationSeconds = durationInput.trim() ? parseTimeToSeconds(durationInput) : (apiService.getSettings().defaultSegmentDurationSeconds ?? 180);
     const selectedGuest = guests.find((g) => g.id === guestId);
     const selectedNews = newsList.find((n) => n.id === newsId);
 

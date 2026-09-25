@@ -71,10 +71,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveSource,
   onDeleteSource,
 }) => {
-  const [stationName, setStationName] = useState('قناة الأخبار الدولية (News 24 HD)');
-  const [timezone, setTimezone] = useState('Asia/Riyadh (GMT+3)');
-  const [defaultDuration, setDefaultDuration] = useState(180);
+  const initialSettings = useMemo(() => apiService.getSettings(), []);
+  const [stationName, setStationName] = useState(initialSettings.organizationName || '');
+  const [timezone, setTimezone] = useState(initialSettings.defaultTimezone || 'Asia/Riyadh');
+  const [defaultDuration, setDefaultDuration] = useState(initialSettings.defaultSegmentDurationSeconds ?? 180);
   const [isSaved, setIsSaved] = useState(false);
+  const [generalError, setGeneralError] = useState<string | null>(null);
   const [backupMsg, setBackupMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Search & Filter Categories
@@ -132,6 +134,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
+    setGeneralError(null);
+    const name = stationName.trim();
+    const duration = Math.round(Number(defaultDuration));
+    if (!name) {
+      setGeneralError('اسم المؤسسة مطلوب');
+      return;
+    }
+    if (!Number.isFinite(duration) || duration < 10 || duration > 3600) {
+      setGeneralError('الزمن الافتراضي للفقرة يجب أن يكون بين 10 و 3600 ثانية');
+      return;
+    }
+    try {
+      apiService.saveSettings({
+        organizationName: name,
+        defaultTimezone: timezone.trim() || 'Asia/Riyadh',
+        defaultSegmentDurationSeconds: duration,
+      });
+    } catch (err: any) {
+      setGeneralError(err?.message || 'تعذر حفظ الإعدادات');
+      return;
+    }
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
@@ -617,7 +640,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => setCategoryToDelete(cat)}
+                            onClick={() => {
+                              const inUse = (newsList || []).filter((n) => n.categoryId === cat.id).length;
+                              if (inUse > 0) {
+                                window.alert(`لا يمكن حذف قسم (${cat.nameAr}) لأنه مرتبط بـ ${inUse} مادة إخبارية. انقل المواد إلى قسم آخر أولاً.`);
+                                return;
+                              }
+                              setCategoryToDelete(cat);
+                            }}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="حذف هذا التصنيف"
                           >
@@ -796,9 +826,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onConfirm={handleConfirmDelete}
           title={`تأكيد حذف القسم الصحفي (${categoryToDelete.nameAr})`}
           message={
-            (newsCountByCategory[categoryToDelete.id] || newsCountByCategory[categoryToDelete.nameAr] || 0) > 0
-              ? `تنبيه: يوجد حالياً ${(newsCountByCategory[categoryToDelete.id] || newsCountByCategory[categoryToDelete.nameAr])} من المواد الإخبارية المرتبطة بهذا القسم. هل أنت متأكد من رغبتك في حذف التصنيف من النظام؟`
-              : `هل أنت متأكد من رغبتك في حذف قسم (${categoryToDelete.nameAr})؟ لن تتمكن من استرجاعه إلا بإعادة إنشائه.`
+            `هل أنت متأكد من رغبتك في حذف قسم (${categoryToDelete.nameAr})؟ لن تتمكن من استرجاعه إلا بإعادة إنشائه.`
           }
           confirmLabel="نعم، حذف التصنيف"
           cancelLabel="تراجع"
@@ -875,6 +903,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Save className="w-4 h-4" />
               <span>حفظ الإعدادات العامة</span>
             </button>
+            {generalError && <p className="text-rose-600 font-bold">{generalError}</p>}
           </form>
         </div>
 
@@ -968,7 +997,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => onDeleteSource(src.id)}
+                    onClick={() => {
+                      const inUse = (newsList || []).filter((n) => n.sourceId === src.id).length;
+                      if (inUse > 0) {
+                        window.alert(`لا يمكن حذف المصدر (${src.name}) لأنه مرتبط بـ ${inUse} مادة إخبارية.`);
+                        return;
+                      }
+                      if (window.confirm(`حذف المصدر (${src.name}) نهائياً؟`)) onDeleteSource(src.id);
+                    }}
                     className="text-red-500 hover:text-red-700 p-1"
                   >
                     <Trash2 className="w-4 h-4" />

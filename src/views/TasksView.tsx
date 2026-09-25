@@ -1,4 +1,5 @@
 import { apiService } from '../services/api';
+import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
@@ -47,7 +48,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<NewsPriority>('NORMAL');
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 16));
+  const [dueDate, setDueDate] = useState(toLocalInputValue());
   const [assigneeId, setAssigneeId] = useState(currentUser.id);
   // Tasks are assigned to real accounts so the assignee is notified and can update the task.
   const assignableUsers = apiService.getUsers().filter((u) => u.isActive !== false && !u.deletedAt);
@@ -64,7 +65,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const handleSetDeadlinePreset = (hoursToAdd: number) => {
     const target = new Date(Date.now() + hoursToAdd * 3600 * 1000);
-    setDueDate(target.toISOString().slice(0, 16));
+    setDueDate(toLocalInputValue(target));
   };
 
   const handleOpenAdd = () => {
@@ -72,7 +73,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setTitle('');
     setDescription('');
     setPriority('NORMAL');
-    setDueDate(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
+    setDueDate(toLocalInputValue(new Date(Date.now() + 86400000)));
     setAssigneeId(currentUser.id);
     setStatus('TODO');
     setIsModalOpen(true);
@@ -83,7 +84,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setTitle(t.title);
     setDescription(t.description || '');
     setPriority(t.priority);
-    setDueDate(t.dueDate ? t.dueDate.slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setDueDate(toLocalInputValue(t.dueDate || new Date()));
     setAssigneeId(t.assigneeId || t.assignedToId || currentUser.id);
     setStatus(t.status);
     setIsModalOpen(true);
@@ -98,7 +99,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       title,
       description,
       priority,
-      dueDate,
+      dueDate: fromLocalInputValue(dueDate) || new Date(Date.now() + 86400000).toISOString(),
       assignedToName,
       assigneeName: assignedToName,
       status,
@@ -292,7 +293,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         </div>
                         <div className="flex items-center gap-1 font-mono text-slate-400">
                           <Clock className="w-3 h-3" />
-                          <span>{t.dueDate ? t.dueDate.slice(5, 10) : ''}</span>
+                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' }) : ''}</span>
                         </div>
                       </div>
 
@@ -357,7 +358,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     </Badge>
                   </td>
                   <td className="py-3 px-3 font-semibold text-slate-700">{t.assignedToName}</td>
-                  <td className="py-3 px-3 font-mono text-slate-600">{t.dueDate}</td>
+                  <td className="py-3 px-3 font-mono text-slate-600">{t.dueDate ? new Date(t.dueDate).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                   <td className="py-3 px-3">
                     <Badge
                       variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : 'warning'}

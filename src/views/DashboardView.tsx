@@ -38,6 +38,15 @@ interface DashboardViewProps {
   onCreateTask?: () => void;
 }
 
+const TASK_PRIORITY_LABELS: Record<string, string> = {
+  CRITICAL: 'حرجة',
+  URGENT: 'عاجلة',
+  HIGH: 'عالية',
+  MEDIUM: 'متوسطة',
+  NORMAL: 'عادية',
+  LOW: 'منخفضة',
+};
+
 export const DashboardView: React.FC<DashboardViewProps> = ({
   newsList = [],
   breakingNews = [],
@@ -61,7 +70,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
   const todayEpisodes = (episodes || []).filter((e) => ['READY_FOR_BROADCAST', 'IN_PREPARATION', 'ON_AIR'].includes(e.status));
-  const openTasks = (tasks || []).filter((t) => t.status !== 'COMPLETED');
+  const openTasks = (tasks || []).filter((t) => !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status));
 
   // CRITICAL Priority News
   const criticalNews = (newsList || []).filter((n) => n.priority === 'CRITICAL' && n.status !== 'ARCHIVED' && n.status !== 'UNPUBLISHED');
@@ -502,7 +511,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {tasks.slice(0, 4).map((task) => (
+              {openTasks.length === 0 && (
+                <p className="text-xs text-slate-500 text-center py-4">لا توجد مهام مفتوحة</p>
+              )}
+              {[...openTasks]
+                .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+                .slice(0, 4)
+                .map((task) => (
                 <div
                   key={task.id}
                   className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/60 space-y-1.5"
@@ -512,16 +527,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {task.title}
                     </span>
                     <Badge
-                      variant={task.priority === 'HIGH' ? 'danger' : 'warning'}
+                      variant={['CRITICAL', 'URGENT', 'HIGH'].includes(task.priority) ? 'danger' : 'warning'}
                       size="sm"
                     >
-                      {task.priority === 'HIGH' ? 'مهمة عاجلة' : 'متوسطة'}
+                      {TASK_PRIORITY_LABELS[task.priority] || task.priority}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>المسند إليه: {task.assigneeName}</span>
+                    <span>المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
                     <span className="font-mono text-[10px]">
-                      استحقاق: {new Date(task.dueDate).toLocaleDateString('ar-SA')}
+                      استحقاق: {task.dueDate ? new Date(task.dueDate).toLocaleDateString('ar-EG') : '—'}
                     </span>
                   </div>
                 </div>

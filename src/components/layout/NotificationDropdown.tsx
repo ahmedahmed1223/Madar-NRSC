@@ -7,6 +7,7 @@ interface NotificationDropdownProps {
   onClose: () => void;
   notifications: AppNotification[];
   onMarkAllRead: () => void;
+  onMarkRead?: (id: string) => void;
   onNavigate?: (url?: string) => void;
 }
 
@@ -15,6 +16,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   onClose,
   notifications = [],
   onMarkAllRead,
+  onMarkRead,
   onNavigate,
 }) => {
   if (!isOpen) return null;
@@ -58,6 +60,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
               <div
                 key={notif.id}
                 onClick={() => {
+                  if (!notif.isRead) onMarkRead?.(notif.id);
                   if (notif.linkUrl) onNavigate?.(notif.linkUrl);
                   onClose();
                 }}

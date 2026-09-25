@@ -294,6 +294,10 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClose={() => setIsNotifOpen(false)}
             notifications={notifications}
             onMarkAllRead={handleMarkAllRead}
+            onMarkRead={(id) => {
+              ApiService.markNotificationRead(id);
+              setNotifications(ApiService.getMyNotifications());
+            }}
             onNavigate={(url) => url && onNavigate(url)}
           />
         </div>

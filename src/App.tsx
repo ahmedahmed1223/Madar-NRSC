@@ -573,7 +573,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             isLiveLockActive={isLiveLockActive}
             onToggleLiveLock={handleToggleLiveLock}
             onNavigate={(nav) => {
-              setActiveNav(nav);
+              // Notification links are stored as paths ("/tasks", "/episodes/<id>").
+              const [view, id] = nav.replace(/^\/+/, '').split('/');
+              if (view === 'episodes' && id) handleSelectEpisode(id);
+              else if (view === 'news' && id) handleEditNewsClick(id);
+              else if (view === 'programs' && id) handleSelectProgram(id);
+              else setActiveNav(view || 'dashboard');
               setIsMobileSidebarOpen(false);
             }}
             onToggleMobileMenu={() => setIsMobileSidebarOpen((prev) => !prev)}
@@ -829,6 +834,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         onSelectNews={handleEditNewsClick}
         onSelectEpisode={handleSelectEpisode}
         onSelectProgram={handleSelectProgram}
+        onSelectGuest={() => setActiveNav('guests')}
+        onSelectTask={() => setActiveNav('tasks')}
       />
 
       {/* Global Toast Notifications */}

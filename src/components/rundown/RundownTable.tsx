@@ -140,7 +140,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         title: segmentData.title || 'فقرة جديدة',
         segmentType: segmentData.segmentType || 'REPORT',
         startTimeOffset: '00:00:00',
-        durationSeconds: segmentData.durationSeconds ?? 180,
+        durationSeconds: segmentData.durationSeconds ?? apiService.getSettings().defaultSegmentDurationSeconds ?? 180,
         endTimeOffset: '00:03:00',
         presenterName: segmentData.presenterName || defaultPresenter,
         guestId: segmentData.guestId,

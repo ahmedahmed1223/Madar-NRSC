@@ -193,6 +193,18 @@ const notificationsPolicy: Policy = ({ auth, kind, before }) => {
   return auth.can('system.settings') ? null : DENIED;
 };
 
+/** Reference data (categories/sources) cannot be removed while active news still points at it. */
+const referencedPolicy = (field: 'categoryId' | 'sourceId', label: string): Policy => (input) => {
+  const base = require('system.settings')(input);
+  if (base) return base;
+  const { kind, before, after, list } = input;
+  if (!before || !(kind === 'delete' || isSoftDelete(before, after))) return null;
+  const inUse = ['news', 'stories']
+    .flatMap((c) => list?.(c as CollectionName) || [])
+    .filter((n) => !n.deletedAt && n[field] === before.id).length;
+  return inUse > 0 ? `لا يمكن حذف ${label} لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة؛ انقل المواد إلى ${label} آخر أولاً` : null;
+};
+
 /** Logs are append-only: identity fields are stamped by the server, edits are rejected. */
 const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجلات غير قابلة للتعديل أو الحذف');
 
@@ -211,8 +223,8 @@ export const POLICIES: Record<CollectionName, Policy> = {
   guests: require('guests.manage'),
   tasks: tasksPolicy,
   media: mediaPolicy,
-  categories: require('system.settings'),
-  sources: require('system.settings'),
+  categories: referencedPolicy('categoryId', 'القسم'),
+  sources: referencedPolicy('sourceId', 'المصدر'),
   programTypes: require('system.settings'),
   settings: require('system.settings'),
   notifications: notificationsPolicy,

@@ -45,23 +45,55 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return { onTime, total: withRundown.length };
   }, [episodes]);
 
+  // Start of the selected reporting window (local time); null means no limit.
+  const periodStart = useMemo(() => {
+    if (selectedPeriod === 'all') return null;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (selectedPeriod === 'week') d.setDate(d.getDate() - 6);
+    if (selectedPeriod === 'month') d.setDate(d.getDate() - 29);
+    return d;
+  }, [selectedPeriod]);
+
+  const inPeriod = (value?: string) => {
+    if (!periodStart) return true;
+    if (!value) return false;
+    const t = new Date(value.length === 10 ? `${value}T00:00:00` : value).getTime();
+    return Number.isFinite(t) && t >= periodStart.getTime();
+  };
+
   const filteredNews = useMemo(() => {
     return newsList.filter((item) => {
       if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
         return false;
       }
-      return true;
+      return inPeriod(item.updatedAt || item.createdAt);
     });
-  }, [newsList, selectedCategory]);
+  }, [newsList, selectedCategory, periodStart]);
+
+  const periodEpisodes = useMemo(
+    () => episodes.filter((e) => inPeriod(e.broadcastDate)),
+    [episodes, periodStart]
+  );
+
+  // Average minutes from creation to approval for approved/published items in the window.
+  const avgApprovalMinutes = useMemo(() => {
+    const durations = filteredNews
+      .filter((n) => n.approvedAt && n.createdAt)
+      .map((n) => (new Date(n.approvedAt!).getTime() - new Date(n.createdAt).getTime()) / 60000)
+      .filter((m) => Number.isFinite(m) && m >= 0);
+    if (durations.length === 0) return null;
+    return Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+  }, [filteredNews]);
 
   const publishedCount = (filteredNews || []).filter((n) => n.status === 'PUBLISHED').length;
   const draftCount = (filteredNews || []).filter((n) => n.status === 'DRAFT').length;
   const reviewCount = (filteredNews || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const approvedCount = (filteredNews || []).filter((n) => n.status === 'APPROVED').length;
 
-  const totalEpisodes = (episodes || []).length;
-  const readyEpisodes = (episodes || []).filter((e) => e.status === 'READY_FOR_BROADCAST').length;
-  const completedEpisodes = (episodes || []).filter((e) => e.status === 'BROADCASTED').length;
+  const totalEpisodes = periodEpisodes.length;
+  const readyEpisodes = periodEpisodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length;
+  const completedEpisodes = periodEpisodes.filter((e) => e.status === 'BROADCASTED').length;
 
   const handlePrint = () => {
     window.print();
@@ -322,7 +354,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
 
           <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
-            <strong>مؤشر الكفاءة:</strong> معدل الوقت المستغرق لنقل الخبر من مرحلة الصياغة حتى الاعتماد النهائي هو <strong>18 دقيقة</strong>، وهو يقع ضمن النطاق الأمثل لمعايير غرف الأخبار السريعة.
+            <strong>مؤشر الكفاءة:</strong>{' '}
+            {avgApprovalMinutes === null
+              ? 'لا توجد أخبار معتمدة في الفترة المحددة لحساب متوسط زمن الاعتماد.'
+              : <>متوسط الوقت من إنشاء الخبر حتى اعتماده في الفترة المحددة هو <strong>{avgApprovalMinutes >= 120 ? `${Math.round(avgApprovalMinutes / 60)} ساعة` : `${avgApprovalMinutes} دقيقة`}</strong>.</>}
           </div>
         </div>
       </div>

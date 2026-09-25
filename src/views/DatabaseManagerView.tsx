@@ -53,7 +53,7 @@ const QUERY_PRESETS = [
 ];
 
 export const DatabaseManagerView: React.FC = () => {
-  const [stats, setStats] = useState<DbStats | null>(null);
+  const [stats, setStats] = useState<(DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean }) | null>(null);
   const [backups, setBackups] = useState<DbBackupFileInfo[]>([]);
   const [activeTab, setActiveTab] = useState<'console' | 'backups' | 'schema'>('console');
   const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +71,7 @@ export const DatabaseManagerView: React.FC = () => {
     try {
       const data = await apiService.getDbStats();
       setStats(data);
+      return data;
     } catch (err: any) {
       setFeedbackMessage(err?.message || 'تعذر تحميل إحصاءات قاعدة البيانات');
     } finally {
@@ -88,15 +89,18 @@ export const DatabaseManagerView: React.FC = () => {
   };
 
   useEffect(() => {
-    loadStats();
+    loadStats().then((data) => {
+      // The console is disabled in production unless explicitly enabled.
+      if (data?.sqlConsoleEnabled) handleRunQuery(QUERY_PRESETS[0].sql);
+    });
     loadBackups();
-    // Run default query
-    handleRunQuery(QUERY_PRESETS[0].sql);
   }, []);
+
+  const consoleEnabled = stats?.sqlConsoleEnabled === true;
 
   const handleRunQuery = async (sqlToRun?: string) => {
     const sql = (sqlToRun || activeQuery).trim();
-    if (!sql) return;
+    if (!sql || stats?.sqlConsoleEnabled === false) return;
 
     setIsExecuting(true);
     try {
@@ -125,7 +129,7 @@ export const DatabaseManagerView: React.FC = () => {
       setStats(updated);
       setFeedbackMessage('تمت إعادة تهيئة قاعدة بيانات SQLite بنجاح');
       setTimeout(() => setFeedbackMessage(null), 4000);
-      handleRunQuery(QUERY_PRESETS[0].sql);
+      if (consoleEnabled) handleRunQuery(QUERY_PRESETS[0].sql);
       loadBackups();
     } catch (err: any) {
       alert('فشلت إعادة التهيئة: ' + err.message);
@@ -160,7 +164,7 @@ export const DatabaseManagerView: React.FC = () => {
       setStats(updatedStats);
       setFeedbackMessage(`تمت استعادة قاعدة البيانات بنجاح من: ${fileName}`);
       setTimeout(() => setFeedbackMessage(null), 5000);
-      handleRunQuery(QUERY_PRESETS[0].sql);
+      if (consoleEnabled) handleRunQuery(QUERY_PRESETS[0].sql);
     } catch (err: any) {
       alert('فشلت استعادة النسخة الاحتياطية: ' + err.message);
     } finally {
@@ -171,7 +175,7 @@ export const DatabaseManagerView: React.FC = () => {
   const handleInspectTable = (tableName: string) => {
     const sql = `SELECT * FROM ${tableName} LIMIT 10;`;
     setActiveQuery(sql);
-    handleRunQuery(sql);
+    if (consoleEnabled) handleRunQuery(sql);
   };
 
   const filteredTables = (stats?.tables || []).filter((t) =>
@@ -215,6 +219,7 @@ export const DatabaseManagerView: React.FC = () => {
               تحميل ملف SQLite (.sqlite)
             </a>
 
+            {stats?.resetEnabled && (
             <button
               type="button"
               onClick={handleReset}
@@ -224,6 +229,7 @@ export const DatabaseManagerView: React.FC = () => {
               <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
               إعادة تهيئة وتعبئة
             </button>
+            )}
           </div>
         </div>
 
@@ -416,6 +422,12 @@ export const DatabaseManagerView: React.FC = () => {
                 </span>
               </div>
 
+              {!consoleEnabled && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
+                  محرر SQL معطل في بيئة الإنتاج لحماية البيانات. لتفعيله مؤقتاً اضبط المتغير ENABLE_SQL_CONSOLE=true على الخادم (استعلامات قراءة فقط).
+                </div>
+              )}
+
               {/* SQL Input Area */}
               <div className="relative">
                 <textarea
@@ -424,6 +436,7 @@ export const DatabaseManagerView: React.FC = () => {
                   spellCheck="false"
                   autoCapitalize="none"
                   value={activeQuery}
+                  disabled={!consoleEnabled}
                   onChange={(e) => setActiveQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -434,7 +447,7 @@ export const DatabaseManagerView: React.FC = () => {
                   rows={5}
                   dir="ltr"
                   className="w-full font-mono text-xs sm:text-sm bg-slate-950 text-emerald-400 p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 resize-y leading-relaxed shadow-inner"
-                  placeholder="اكتب استعلام SQL هنا (مثال: SELECT * FROM news LIMIT 5;)..."
+                  placeholder="اكتب استعلام SQL هنا (مثال: SELECT * FROM entities LIMIT 5;)..."
                 />
               </div>
 
@@ -444,7 +457,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleRunQuery()}
-                    disabled={isExecuting}
+                    disabled={isExecuting || !consoleEnabled}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 active:scale-95"
                   >
                     <Play className={`w-3.5 h-3.5 ${isExecuting ? 'animate-spin' : 'fill-current'}`} />
@@ -454,7 +467,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveQuery('SELECT * FROM news LIMIT 10;');
+                      setActiveQuery('SELECT * FROM entities LIMIT 10;');
                     }}
                     className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
                   >

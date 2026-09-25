@@ -78,3 +78,19 @@ describe('category renames', () => {
     expect(row('news', 'nws-2').d.deletedAt).toBeTruthy(); // still in the trash, not destroyed
   });
 });
+
+describe('reference data in use', () => {
+  it('categories and sources referenced by active news cannot be deleted', async () => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const active = server.db.listCollection('news').find((r) => !r.d.deletedAt && r.d.categoryId && r.d.sourceId)!;
+    const cat = await sync(admin, [{ c: 'categories', op: 'delete', id: active.d.categoryId }]);
+    expect(cat.body.results[0].code).toBe('FORBIDDEN');
+    const src = await sync(admin, [{ c: 'sources', op: 'delete', id: active.d.sourceId }]);
+    expect(src.body.results[0].code).toBe('FORBIDDEN');
+
+    const created = await sync(admin, [{ c: 'categories', op: 'upsert', id: 'cat-unused', d: { id: 'cat-unused', nameAr: 'غير مستخدم' } }]);
+    expect(created.body.results[0].ok).toBe(true);
+    const removed = await sync(admin, [{ c: 'categories', op: 'delete', id: 'cat-unused' }]);
+    expect(removed.body.results[0].ok).toBe(true);
+  });
+});

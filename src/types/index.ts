@@ -502,6 +502,7 @@ export interface SystemSettings {
   autoSaveIntervalSeconds: number;
   allowGuestProposals: boolean;
   enableAuditLog: boolean;
+  defaultSegmentDurationSeconds?: number;
 }
 
 export interface DbTableInfo {
