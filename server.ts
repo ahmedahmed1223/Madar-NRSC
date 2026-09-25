@@ -7,6 +7,7 @@ import { NewsroomDatabase } from './src/server/db';
 import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
+import { publishDueScheduledNews } from './src/server/scheduler';
 
 async function main() {
   const config = loadConfig();
@@ -57,6 +58,18 @@ async function main() {
       }
     }, 60 * 60 * 1000)
   );
+  // Scheduled publishing: checked every 30 seconds.
+  timers.push(
+    setInterval(() => {
+      try {
+        publishDueScheduledNews(db);
+      } catch (err) {
+        logger.error('scheduled publishing failed', { error: String(err) });
+      }
+    }, 30_000)
+  );
+  publishDueScheduledNews(db);
+
   if (config.backupIntervalHours > 0) {
     timers.push(
       setInterval(() => {

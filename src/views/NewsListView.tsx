@@ -302,6 +302,15 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab('SCHEDULED')}
+          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
+            activeTab === 'SCHEDULED' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          مجدول ({(newsList || []).filter((n) => n.status === 'SCHEDULED').length})
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('BREAKING')}
           className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
             activeTab === 'BREAKING' ? 'bg-red-600 text-white shadow-xs' : 'text-red-600 hover:bg-red-50'
@@ -544,6 +553,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <span className="text-[11px] text-slate-400 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
+                            {item.status === 'SCHEDULED' && item.scheduledDate && (
+                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                                <Clock className="w-3 h-3" />
+                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' })}
+                              </span>
+                            )}
                             {lock && (
                               <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                                 <Lock className="w-3 h-3" />

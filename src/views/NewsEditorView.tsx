@@ -54,7 +54,7 @@ interface NewsEditorViewProps {
   defaultStoryId?: string;
   /** Returns the saved story, or null if the save was refused. */
   onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => NewsItem | null;
-  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string) => void;
+  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => void;
   onCancel: () => void;
 }
 
@@ -71,6 +71,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 }) => {
   const [storyId, setStoryId] = useState<string>(defaultStoryId || '');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState('');
   // Version of the story this editor is based on; a different server copy means someone else saved.
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>(newsItem?.updatedAt);
   const loadedSnapshotRef = useRef<string>('');
@@ -464,16 +465,19 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
+  const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || new Date(scheduleAt).getTime() < Date.now());
 
   const handleConfirmStatus = () => {
     if (!newsItem?.id || !pendingStatus) return;
     if (needsComment && !statusComment.trim()) return;
+    if (scheduleInvalid) return;
     // Unsaved text is saved first so a transition never silently drops edits.
     if (isDirty && canEditContent) {
       const saved = saveContent(true);
       if (!saved) return;
     }
-    onUpdateStatus(newsItem.id, pendingStatus, statusComment);
+    // datetime-local is local time; send an absolute instant.
+    onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? new Date(scheduleAt).toISOString() : undefined);
     const fresh = apiService.getNewsById(newsItem.id);
     if (fresh) setBaseUpdatedAt(fresh.updatedAt);
     setShowCommentModal(false);
@@ -486,6 +490,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات', className: 'bg-orange-600 hover:bg-orange-700' },
     REJECTED: { label: 'رفض الخبر', className: 'bg-red-700 hover:bg-red-800' },
     PUBLISHED: { label: 'نشر فوري على المنصات', className: 'bg-emerald-600 hover:bg-emerald-700' },
+    SCHEDULED: { label: 'جدولة النشر', className: 'bg-sky-600 hover:bg-sky-700' },
     UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
     ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
   };
@@ -570,6 +575,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 font-semibold flex items-center gap-2">
           <Lock className="w-4 h-4 text-slate-500" />
           للقراءة فقط: {newsItem.status === 'PUBLISHED' || newsItem.status === 'APPROVED' ? 'تعديل خبر معتمد أو منشور يتطلب صلاحية الاعتماد أو النشر.' : 'لا تملك صلاحية تعديل هذا الخبر.'}
+        </div>
+      )}
+
+      {newsItem?.status === 'SCHEDULED' && newsItem.scheduledDate && (
+        <div className="bg-sky-50 border border-sky-200 p-3 rounded-2xl text-xs text-sky-900 font-semibold flex items-center gap-2">
+          <Clock className="w-4 h-4 text-sky-600" />
+          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-SA')}
         </div>
       )}
 
@@ -676,7 +688,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   {t === 'UNDER_REVIEW' && <Send className="w-4 h-4" />}
                   {t === 'APPROVED' && <CheckCircle className="w-4 h-4" />}
                   {t === 'PUBLISHED' && <Radio className="w-4 h-4" />}
-                  {TRANSITION_BUTTONS[t]!.label}
+                  {newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}
                 </button>
               ))}
         </div>
@@ -1402,6 +1414,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 : 'أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل سير العمل (اختياري):'}
               {isDirty && canEditContent && <span className="block mt-1 text-amber-700 font-semibold">سيتم حفظ تعديلاتك غير المحفوظة أولاً.</span>}
             </p>
+            {pendingStatus === 'SCHEDULED' && (
+              <div>
+                <label htmlFor="schedule-at-input" className="block text-xs font-bold text-slate-700 mb-1">موعد النشر (بتوقيت جهازك)</label>
+                <input
+                  id="schedule-at-input"
+                  type="datetime-local"
+                  value={scheduleAt}
+                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                  onChange={(e) => setScheduleAt(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                  dir="ltr"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">ينشر الخادم الخبر تلقائياً في هذا الموعد حتى لو لم يكن أحد متصلاً.</p>
+              </div>
+            )}
             <textarea
               id="status-transition-comment"
               rows={3}
@@ -1421,7 +1448,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmStatus}
-                disabled={needsComment && !statusComment.trim()}
+                disabled={(needsComment && !statusComment.trim()) || scheduleInvalid}
                 className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
               >
                 تأكيد ونقل الحالة

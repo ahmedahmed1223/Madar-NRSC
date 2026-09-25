@@ -48,6 +48,10 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
     const denial = transitionDenial(can, me, kind === 'create' ? null : before, after?.status);
     if (denial) return denial;
   }
+  if (after?.status === 'SCHEDULED') {
+    if (!after.scheduledDate || !Number.isFinite(new Date(after.scheduledDate).getTime())) return 'حدد موعداً صالحاً للنشر المجدول';
+    if (changed(before, after, 'scheduledDate') && !can('news.publish')) return 'صلاحياتك لا تسمح بجدولة النشر';
+  }
 
   // Content edits (anything besides workflow bookkeeping) need edit rights on the story as it was.
   const contentChanged =
@@ -84,6 +88,7 @@ const WORKFLOW_FIELDS = new Set([
   'isBreaking',
   'breakingUntil',
   'slug',
+  'scheduledDate',
 ]);
 
 const usersPolicy: Policy = ({ auth, kind, before, after }) => {

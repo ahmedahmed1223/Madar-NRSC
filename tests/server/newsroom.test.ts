@@ -149,3 +149,31 @@ describe('journalist workflow end to end', () => {
     expect(direct.body.results[0].code).toBe('FORBIDDEN');
   });
 });
+
+describe('scheduled publishing', () => {
+  it('publishes due SCHEDULED stories on the server, with log, audit and history', async () => {
+    const { publishDueScheduledNews } = await import('../../src/server/scheduler');
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const base = { title: 'خبر مجدول', status: 'DRAFT', authorId: 'usr-3', isBreaking: false, keywords: [], workflowLogs: [] };
+    let r = (await sync(journalist, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: base }])).body.results[0].row;
+    r = (await sync(journalist, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'UNDER_REVIEW' }, baseV: r.v }])).body.results[0].row;
+    r = (await sync(editor, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'APPROVED' }, baseV: r.v }])).body.results[0].row;
+
+    // A journalist cannot schedule; missing dates are rejected.
+    const noDate = await sync(editor, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'SCHEDULED' }, baseV: r.v }]);
+    expect(noDate.body.results[0].code).toBe('FORBIDDEN');
+    const when = new Date(Date.now() + 60_000).toISOString();
+    r = (await sync(editor, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'SCHEDULED', scheduledDate: when }, baseV: r.v }])).body.results[0].row;
+    expect(r.d.status).toBe('SCHEDULED');
+
+    expect(publishDueScheduledNews(server.db, new Date())).not.toContain('nws-sched');
+    expect(publishDueScheduledNews(server.db, new Date(Date.now() + 120_000))).toContain('nws-sched');
+    const published = server.db.getRow('news', 'nws-sched')!.d;
+    expect(published.status).toBe('PUBLISHED');
+    expect(published.publishedByName).toBe('النشر المجدول');
+    expect(published.workflowLogs.at(-1).toStatus).toBe('PUBLISHED');
+    const history = await editor.get('/api/v1/history/news/nws-sched');
+    expect(history.body.data[0].data.status).toBe('SCHEDULED');
+  });
+});

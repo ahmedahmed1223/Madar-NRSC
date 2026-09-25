@@ -347,7 +347,13 @@ export class ApiService {
   }
 
   /** Moves a story through the editorial workflow (validated against the shared rules). */
-  static updateNewsStatus(newsId: string, toStatus: NewsStatus, userOrComment?: User | string, optionalComment?: string): NewsItem {
+  static updateNewsStatus(
+    newsId: string,
+    toStatus: NewsStatus,
+    userOrComment?: User | string,
+    optionalComment?: string,
+    opts: { scheduledDate?: string } = {}
+  ): NewsItem {
     const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const idx = all.findIndex((n) => n.id === newsId);
     if (idx === -1) throw new Error('الخبر غير موجود');
@@ -366,6 +372,14 @@ export class ApiService {
       throw new Error(denial);
     }
 
+    let scheduledDate: string | undefined;
+    if (toStatus === 'SCHEDULED') {
+      const when = opts.scheduledDate ? new Date(opts.scheduledDate) : null;
+      if (!when || !Number.isFinite(when.getTime())) throw new Error('حدد موعداً صالحاً للنشر المجدول');
+      if (when.getTime() < Date.now() - 60_000) throw new Error('موعد النشر المجدول يجب أن يكون في المستقبل');
+      scheduledDate = when.toISOString();
+    }
+
     const now = new Date().toISOString();
     const by = { id: currentUser.id, name: currentUser.fullName, role: currentUser.role };
     const updated: NewsItem = {
@@ -379,7 +393,11 @@ export class ApiService {
           fromStatus,
           toStatus,
           changedBy: by,
-          comment: comment || `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`,
+          comment:
+            comment ||
+            (scheduledDate
+              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-SA')}`
+              : `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`),
           timestamp: now,
         },
       ],
@@ -387,7 +405,11 @@ export class ApiService {
       editorName: ['APPROVED', 'PUBLISHED'].includes(toStatus) ? currentUser.fullName : item.editorName,
       updatedAt: now,
     };
-    if (toStatus === 'APPROVED') Object.assign(updated, { approvedById: by.id, approvedByName: by.name, approvedAt: now });
+    if (toStatus === 'SCHEDULED') updated.scheduledDate = scheduledDate;
+    else if (fromStatus === 'SCHEDULED') updated.scheduledDate = undefined; // schedule cancelled or published
+    if (toStatus === 'APPROVED' && fromStatus !== 'SCHEDULED') {
+      Object.assign(updated, { approvedById: by.id, approvedByName: by.name, approvedAt: now });
+    }
     if (toStatus === 'PUBLISHED') {
       Object.assign(updated, { publishedById: by.id, publishedByName: by.name });
       if (!item.publishDate) updated.publishDate = now;

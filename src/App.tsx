@@ -221,9 +221,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
-  const handleUpdateNewsStatus = (newsId: string, toStatus: NewsStatus, comment?: string) => {
+  const handleUpdateNewsStatus = (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => {
     try {
-      apiService.updateNewsStatus(newsId, toStatus, currentUser, comment);
+      apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
       refreshData();
       addToast({
         type: 'success',
