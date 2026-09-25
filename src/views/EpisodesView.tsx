@@ -1,3 +1,5 @@
+import { localDateString } from '../shared/dates';
+import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
   Plus,
@@ -39,6 +41,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   filterProgramId,
   onDeleteEpisode,
 }) => {
+  const canCreate = RbacService.hasPermission(currentUser, 'episodes.create');
+  const canDelete = RbacService.hasPermission(currentUser, 'episodes.edit') || RbacService.hasPermission(currentUser, 'programs.manage');
   const [selectedProgId, setSelectedProgId] = useState(filterProgramId || 'ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,13 +53,29 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [title, setTitle] = useState('');
   const [episodeNumber, setEpisodeNumber] = useState(1);
   const [seasonNumber, setSeasonNumber] = useState(1);
-  const [broadcastDate, setBroadcastDate] = useState(new Date().toISOString().slice(0, 10));
+  const [broadcastDate, setBroadcastDate] = useState(localDateString());
   const [startTime, setStartTime] = useState('21:00');
   const [endTime, setEndTime] = useState('21:50');
   const [durationMinutes, setDurationMinutes] = useState(50);
   const [presenterName, setPresenterName] = useState(currentUser.fullName);
   const [producerName, setProducerName] = useState(currentUser.fullName);
-  const [studioName, setStudioName] = useState('استوديو الأخبار A1');
+  const [studioName, setStudioName] = useState('');
+
+  // Episode numbers run per program (next = highest number in that program + 1).
+  const nextEpisodeNumber = (progId: string) =>
+    episodes.filter((e) => e.programId === progId).reduce((max, e) => Math.max(max, Number(e.episodeNumber) || 0), 0) + 1;
+
+  const selectProgramForNew = (progId: string) => {
+    const prog = programs.find((p) => p.id === progId);
+    setProgramId(progId);
+    setEpisodeNumber(nextEpisodeNumber(progId));
+    if (prog) {
+      setStudioName(prog.studioName || '');
+      setPresenterName(prog.presenterName || currentUser.fullName);
+      setProducerName(prog.producerName || currentUser.fullName);
+      setDurationMinutes(prog.durationMinutes || 50);
+    }
+  };
   const [description, setDescription] = useState('');
 
 
@@ -101,12 +121,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
   const handleOpenAdd = () => {
     setTitle('');
-    setEpisodeNumber(episodes.length + 1);
+    const defaultProgram =
+      (filterProgramId && filterProgramId !== 'ALL' && filterProgramId) ||
+      (selectedProgId !== 'ALL' && selectedProgId) ||
+      programs[0]?.id ||
+      '';
+    selectProgramForNew(defaultProgram);
     setSeasonNumber(1);
-    setBroadcastDate(new Date().toISOString().slice(0, 10));
+    setBroadcastDate(localDateString());
     setStartTime('21:00');
     setEndTime('21:50');
-    setDurationMinutes(50);
     setDescription('');
     setIsAddModalOpen(true);
   };
@@ -117,7 +141,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
     onSaveEpisode({
       programId,
-      programName: selProg?.name || 'البرنامج العام',
+      programName: selProg?.name || '',
       title: title || `الحلقة ${episodeNumber}`,
       episodeNumber: Number(episodeNumber) || 1,
       seasonNumber: Number(seasonNumber) || 1,
@@ -130,22 +154,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       studioName: studioName || selProg?.studioName,
       description,
       status: 'PLANNING',
-      rundown: [
-        {
-          id: `seg-${Date.now()}-1`,
-          episodeId: 'temp',
-          orderIndex: 1,
-          title: 'شارة البداية والمقدمة الترحيبية',
-          segmentType: 'INTRO',
-          startTimeOffset: '00:00:00',
-          durationSeconds: 120,
-          endTimeOffset: '00:02:00',
-          presenterName: presenterName || selProg?.presenterName,
-          scriptText: 'أهلاً بكم مشاهدينا الكرام في حلقة جديدة نتناول فيها أبرز المستجدات...',
-          notes: 'كاميرا 1 مع الشارة الموسيقية',
-          isCompleted: false,
-        },
-      ],
+      rundown: [],
     });
 
     setIsAddModalOpen(false);
@@ -174,6 +183,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           </p>
         </div>
 
+        {canCreate && (
         <button
           type="button"
           onClick={handleOpenAdd}
@@ -182,6 +192,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           <Plus className="w-4 h-4" />
           إعداد حلقة جديدة
         </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -348,7 +359,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
 
-                          {onDeleteEpisode && (
+                          {onDeleteEpisode && canDelete && (
                             <button
                               type="button"
                               onClick={() => {
@@ -388,7 +399,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               <select
                 id="episode-program-select"
                 value={programId}
-                onChange={(e) => setProgramId(e.target.value)}
+                onChange={(e) => selectProgramForNew(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {programs.map((p) => (

@@ -233,6 +233,13 @@ export class DataStore {
       this.markDirty(c, item.id, 'upsert');
     });
 
+    // Safety net: callers often read a list without soft-deleted rows and write it back.
+    // Such rows must survive (trash / restore), so a missing soft-deleted row is kept, not deleted.
+    const previous: any[] = this.data.get(c) || [];
+    const keptSoftDeleted = previous.filter((it) => it && it.deletedAt && !seen.has(it.id));
+    keptSoftDeleted.forEach((it) => seen.add(it.id));
+    if (keptSoftDeleted.length) next.push(...keptSoftDeleted);
+
     for (const id of [...metaMap.keys()]) {
       if (seen.has(id)) continue;
       metaMap.delete(id);

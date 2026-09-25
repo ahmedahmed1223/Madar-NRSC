@@ -25,12 +25,14 @@ export class RbacService {
 
   static saveRole(role: RoleDefinition): RoleDefinition[] {
     const roles = this.getRoleDefinitions();
-    const existingIndex = roles.findIndex((r) => r.id === role.id || r.roleCode === role.roleCode);
-
+    const existingIndex = roles.findIndex((r) => r.id === role.id);
     if (existingIndex !== -1) {
-      roles[existingIndex] = { ...roles[existingIndex], ...role };
+      const current = roles[existingIndex];
+      // A role's identity and system flag never change through an edit.
+      roles[existingIndex] = { ...current, ...role, id: current.id, isSystemRole: current.isSystemRole, roleCode: current.isSystemRole ? current.roleCode : role.roleCode };
     } else {
-      roles.push(role);
+      if (roles.some((r) => r.roleCode === role.roleCode)) throw new Error('يوجد دور بنفس الرمز مسبقاً');
+      roles.push({ ...role, isSystemRole: false });
     }
 
     this.saveRoleDefinitions(roles);

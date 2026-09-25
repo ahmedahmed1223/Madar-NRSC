@@ -70,6 +70,20 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [roleToEdit, setRoleToEdit] = useState<RoleDefinition | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Mirrors the server's users/roles policies so only accepted actions are offered.
+  const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
+  const isSuper = currentUser.role === 'SUPER_ADMIN';
+  const canCreate = can('users.create');
+  const canSuspend = can('users.suspend_delete');
+  const canEditProfile = can('users.edit_profile');
+  const canManageRoles = can('users.manage_roles_permissions');
+  /** Super-admin accounts are only managed by a super admin. */
+  const canTouch = (u: User) => u.role !== 'SUPER_ADMIN' || isSuper;
+  const denyRoles = () => {
+    alert('صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات');
+    return false;
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
@@ -159,6 +173,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   };
 
   const handleQuickShiftChange = (userId: string, newShift: ShiftType) => {
+    if (!canEditProfile) return;
     const user = users.find((u) => u.id === userId);
     if (user) {
       ApiService.saveUser({ ...user, shift: newShift });
@@ -169,12 +184,20 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // --- ROLE & RBAC ACTIONS ---
   const handleSaveRole = (roleData: RoleDefinition) => {
+    if (!canManageRoles) {
+      denyRoles();
+      return;
+    }
     RbacService.saveRole(roleData);
     loadData();
     showToast(`تم تحديث إعدادات الدور: ${roleData.nameAr}`);
   };
 
   const handleDeleteRole = (roleId: string) => {
+    if (!canManageRoles) {
+      denyRoles();
+      return;
+    }
     const res = RbacService.deleteRole(roleId);
     if (!res.success) {
       alert(res.error || 'تعذر حذف الدور');
@@ -185,6 +208,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   };
 
   const handleUpdateRolePermissions = (roleId: string, permCode: string, isEnabled: boolean) => {
+    if (!canManageRoles) {
+      denyRoles();
+      return;
+    }
     const targetRole = roles.find((r) => r.id === roleId);
     if (!targetRole) return;
 
@@ -201,6 +228,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   };
 
   const handleResetDefaults = () => {
+    if (!canManageRoles) {
+      denyRoles();
+      return;
+    }
     if (window.confirm('هل تريد استعادة مصفوفة الصلاحيات الافتراضية لكافة الأدوار الأساسية؟')) {
       const reset = RbacService.resetToDefaults();
       setRoles(reset);
@@ -288,6 +319,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
             <span>تصدير السجل</span>
           </button>
 
+          {canCreate && (
           <button
             type="button"
             onClick={() => {
@@ -299,6 +331,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
             <Plus className="w-4 h-4" />
             <span>إضافة مستخدم جديد</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -624,6 +657,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
                     {/* Card Actions Footer */}
                     <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
+                      {canCreate && canTouch(user) && (
                       <button
                         type="button"
                         onClick={() => handleResetPassword(user)}
@@ -637,9 +671,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         <KeyRound className="w-3.5 h-3.5" />
                         <span>{isCurrentActive ? 'الحساب الحالي' : 'كلمة مرور مؤقتة'}</span>
                       </button>
+                      )}
 
                       <div className="flex items-center gap-1">
-                        {user.twoFactorEnabled && !isCurrentActive && (
+                        {user.twoFactorEnabled && !isCurrentActive && canSuspend && canTouch(user) && (
                           <button
                             type="button"
                             onClick={() => handleResetTwoFactor(user)}
@@ -649,6 +684,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             <ShieldOff className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        {(canEditProfile || canManageRoles) && canTouch(user) && (
                         <button
                           type="button"
                           onClick={() => {
@@ -660,7 +696,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
 
+                        {canSuspend && canTouch(user) && (
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(user.id)}
@@ -674,7 +712,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         >
                           {user.isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
                         </button>
+                        )}
 
+                        {canSuspend && canTouch(user) && (
                         <button
                           type="button"
                           onClick={() => handleDeleteUser(user.id)}
@@ -684,6 +724,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -762,6 +803,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
                           <td className="p-3 text-center">
                             <div className="flex items-center justify-center gap-1.5">
+                              {canCreate && canTouch(user) && (
                               <button
                                 type="button"
                                 onClick={() => handleResetPassword(user)}
@@ -771,6 +813,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                               >
                                 كلمة مرور
                               </button>
+                              )}
+                              {(canEditProfile || canManageRoles) && canTouch(user) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -781,6 +825,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -833,7 +878,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         onClose={() => setIsUserModalOpen(false)}
         onSave={handleSaveUser}
         userToEdit={userToEdit}
-        roles={roles}
+        roles={isSuper ? roles : roles.filter((r) => r.roleCode !== 'SUPER_ADMIN')}
       />
 
       <RoleEditModal

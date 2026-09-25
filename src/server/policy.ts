@@ -10,6 +10,8 @@ export interface PolicyInput {
   kind: WriteKind;
   before: any | null;
   after: any | null;
+  /** Read access to other rows (e.g. to check for duplicate role codes). */
+  list?: (collection: CollectionName) => any[];
 }
 
 /** Returns an Arabic error message when the write is not allowed, otherwise null. */
@@ -94,13 +96,20 @@ const WORKFLOW_FIELDS = new Set([
 const usersPolicy: Policy = ({ auth, kind, before, after }) => {
   const self = auth.user.id;
   const targetId = (after ?? before)?.id;
+  const actorIsSuper = auth.user.role === 'SUPER_ADMIN';
+  // Super-admin accounts can only be touched by a super admin (or themselves for profile fields).
+  const targetIsSuper = before?.role === 'SUPER_ADMIN' || after?.role === 'SUPER_ADMIN';
+  if (targetIsSuper && !actorIsSuper && targetId !== self) return 'فقط مدير النظام العام يمكنه تعديل أو حذف حسابات المدير العام';
+
   if (kind === 'delete' || isSoftDelete(before, after)) {
     if (targetId === self) return 'لا يمكن حذف الحساب النشط حالياً';
     return auth.can('users.suspend_delete') ? null : DENIED;
   }
   if (kind === 'create') {
     if (!auth.can('users.create')) return DENIED;
-    if (after?.role === 'SUPER_ADMIN' && auth.user.role !== 'SUPER_ADMIN') return 'فقط مدير النظام العام يمكنه إنشاء حساب مدير عام';
+    const privileged =
+      ['ADMIN', 'SUPER_ADMIN'].includes(after?.role) || (after?.customPermissions?.length ?? 0) > 0 || !!after?.customRoleId;
+    if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
     return null;
   }
   const privilegedChange = PRIVILEGED_USER_FIELDS.some((f) => changed(before, after, f));
@@ -109,12 +118,38 @@ const usersPolicy: Policy = ({ auth, kind, before, after }) => {
     if (changed(before, after, 'isActive') && !auth.can('users.suspend_delete')) return DENIED;
     const roleFields = PRIVILEGED_USER_FIELDS.filter((f) => f !== 'isActive');
     if (roleFields.some((f) => changed(before, after, f)) && !auth.can('users.manage_roles_permissions')) return DENIED;
-    if ((after?.role === 'SUPER_ADMIN' || before?.role === 'SUPER_ADMIN') && auth.user.role !== 'SUPER_ADMIN') {
-      return 'فقط مدير النظام العام يمكنه تعديل حسابات المدير العام';
-    }
   }
   if (targetId === self) return null; // own profile fields
   return auth.can('users.edit_profile') ? null : DENIED;
+};
+
+/**
+ * Role definitions: nobody may edit the role they hold (no self-escalation), grant permissions
+ * they do not have themselves, or touch the ADMIN/SUPER_ADMIN roles unless super admin.
+ */
+const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  if (!auth.can('users.manage_roles_permissions')) return DENIED;
+  const actorIsSuper = auth.user.role === 'SUPER_ADMIN';
+  const role = after ?? before;
+  const codes = [before?.roleCode, after?.roleCode].filter(Boolean);
+  if (!actorIsSuper) {
+    if (codes.some((c) => c === 'SUPER_ADMIN' || c === 'ADMIN')) return 'فقط مدير النظام العام يمكنه تعديل أدوار الإدارة العليا';
+    const ownRole = codes.includes(auth.user.role) || (auth.user.customRoleId && role?.id === auth.user.customRoleId);
+    if (ownRole) return 'لا يمكنك تعديل الدور الذي تحمله';
+    const added = ((after?.permissions as string[]) || []).filter((p) => !((before?.permissions as string[]) || []).includes(p));
+    const notHeld = added.filter((p) => !auth.can(p));
+    if (notHeld.length) return `لا يمكنك منح صلاحيات لا تملكها: ${notHeld.join('، ')}`;
+  }
+  if (kind === 'delete') return before?.isSystemRole ? 'لا يمكن حذف الأدوار الأساسية للنظام' : null;
+  if (before && (before.isSystemRole !== after?.isSystemRole || (before.isSystemRole && before.roleCode !== after?.roleCode))) {
+    return 'لا يمكن تغيير رمز أو صفة دور أساسي';
+  }
+  if (kind === 'create') {
+    if (after?.isSystemRole) return 'لا يمكن إنشاء دور أساسي جديد';
+    const duplicate = (list?.('roles') || []).some((r) => r.roleCode === after?.roleCode);
+    if (duplicate) return 'يوجد دور بنفس الرمز مسبقاً';
+  }
+  return null;
 };
 
 const episodesPolicy: Policy = ({ auth, kind, before, after }) => {
@@ -163,7 +198,7 @@ const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجل�
 
 export const POLICIES: Record<CollectionName, Policy> = {
   users: usersPolicy,
-  roles: require('users.manage_roles_permissions'),
+  roles: rolesPolicy,
   news: newsPolicy,
   stories: ({ auth, kind, before, after }) =>
     kind === 'delete' || isSoftDelete(before, after)

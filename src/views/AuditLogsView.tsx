@@ -23,15 +23,16 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState('ALL');
 
+  // The server writes actionType/targetEntity/timestamp; older rows may use action/entityType/createdAt.
+  const actionOf = (log: AuditLog) => log.actionType || log.action || '';
+  const entityOf = (log: AuditLog) => log.targetEntity || log.entityType || '';
+  const timeOf = (log: AuditLog) => log.timestamp || log.createdAt || '';
+
   const filteredLogs = (logs || []).filter((log) => {
-    if (selectedAction !== 'ALL' && log.action !== selectedAction) return false;
+    if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return (
-        log.userName.toLowerCase().includes(q) ||
-        log.details.toLowerCase().includes(q) ||
-        log.entityType.toLowerCase().includes(q)
-      );
+      return [log.userName, log.details, entityOf(log), actionOf(log)].some((v) => String(v ?? '').toLowerCase().includes(q));
     }
     return true;
   });
@@ -117,12 +118,14 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all w-full sm:w-auto font-medium"
             >
               <option value="ALL">جميع الإجراءات</option>
-              <option value="PUBLISH">نشر فوري (PUBLISH)</option>
-              <option value="STATUS_CHANGE">تغيير حالة (STATUS_CHANGE)</option>
-              <option value="CREATE">إنشاء جديد (CREATE)</option>
-              <option value="UPDATE">تعديل بيانات (UPDATE)</option>
-              <option value="DELETE">حذف (DELETE)</option>
-              <option value="LOGIN">تسجيل دخول (LOGIN)</option>
+              {[...new Set((logs || []).map(actionOf))]
+                .filter(Boolean)
+                .sort()
+                .map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
             </select>
 
             {hasActiveFilters && (
@@ -199,23 +202,23 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                 filteredLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
-                      {log.createdAt ? log.createdAt.replace('T', ' ').slice(0, 19) : ''}
+                      {timeOf(log) ? new Date(timeOf(log)).toLocaleString('ar-SA') : ''}
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
                       <div className="text-[10px] text-slate-400 font-mono">{log.userId}</div>
                     </td>
-                    <td className="py-3 px-3">{getActionBadge(log.action)}</td>
+                    <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">
                       <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                        {log.entityType}
+                        {entityOf(log)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">
                       {log.details}
                     </td>
                     <td className="py-3 px-3 font-mono text-slate-400 text-[11px]" dir="ltr">
-                      {log.ipAddress || '192.168.1.50'}
+                      {log.ipAddress || '—'}
                     </td>
                   </tr>
                 ))

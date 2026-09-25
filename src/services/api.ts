@@ -179,7 +179,7 @@ export class ApiService {
       id: user.id || newId('usr'),
       fullName: user.fullName || 'مستخدم جديد',
       fullNameEn: user.fullNameEn,
-      email: user.email || `user${Date.now()}@akhbar.tv`,
+      email: user.email || '',
       phone: user.phone || '',
       role: user.role || 'JOURNALIST',
       customRoleId: user.customRoleId,
@@ -482,7 +482,12 @@ export class ApiService {
   // --- PROGRAMS & EPISODES ---
   static getPrograms(): Program[] {
     const items = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
-    return items.filter((p) => !p.deletedAt);
+    // Episode counts are derived from the episodes themselves (never a stale stored counter).
+    const counts = new Map<string, number>();
+    getStored<Episode[]>(STORAGE_KEYS.EPISODES, []).forEach((e) => {
+      if (!e.deletedAt) counts.set(e.programId, (counts.get(e.programId) || 0) + 1);
+    });
+    return items.filter((p) => !p.deletedAt).map((p) => ({ ...p, episodesCount: counts.get(p.id) || 0 }));
   }
 
   static getProgramById(id: string): Program | undefined {
@@ -575,7 +580,7 @@ export class ApiService {
 
     const newEval: ProgramEvaluation = {
       id: newId('eval'),
-      programId: evalData.programId || 'prg-1',
+      programId: evalData.programId || '',
       episodeId: evalData.episodeId,
       evaluatorId: currentUser.id,
       evaluatorName: currentUser.fullName,
@@ -617,14 +622,14 @@ export class ApiService {
     const evals = this.getProgramEvaluations(programId);
     if (evals.length === 0) {
       return {
-        average: 4.5,
+        average: 0,
         count: 0,
         criteriaAverages: {
-          editorialQuality: 4.5,
-          timeCommitment: 4.5,
-          guestRelevance: 4.5,
-          visualDirection: 4.5,
-          viewerEngagement: 4.5,
+          editorialQuality: 0,
+          timeCommitment: 0,
+          guestRelevance: 0,
+          visualDirection: 0,
+          viewerEngagement: 0,
         },
       };
     }
@@ -662,7 +667,9 @@ export class ApiService {
 
   static getEpisodes(): Episode[] {
     const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
-    return items.filter((e) => !e.deletedAt);
+    // Episodes of a deleted program disappear with it (calendar, lists, search).
+    const deletedPrograms = new Set(getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => p.deletedAt).map((p) => p.id));
+    return items.filter((e) => !e.deletedAt && !deletedPrograms.has(e.programId));
   }
 
   static getEpisodeById(id: string): Episode | undefined {
@@ -690,8 +697,8 @@ export class ApiService {
 
     const newEp: Episode = {
       id: newId('ep'),
-      programId: episodeData.programId || 'prg-1',
-      programName: episodeData.programName || 'المشهد السياسي',
+      programId: episodeData.programId || '',
+      programName: episodeData.programName || '',
       seasonNumber: episodeData.seasonNumber || 1,
       episodeNumber: episodeData.episodeNumber || 1,
       title: episodeData.title || 'حلقة جديدة',
@@ -834,7 +841,15 @@ export class ApiService {
   // --- GUESTS ---
   static getGuests(): Guest[] {
     const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
-    return items.filter((g) => !g.deletedAt);
+    // Appearances = episodes the guest is linked to.
+    const appearances = new Map<string, number>();
+    this.getEpisodes().forEach((e) =>
+      (e.guests || []).forEach((g: any) => {
+        const id = g.guestId || g.id;
+        if (id) appearances.set(id, (appearances.get(id) || 0) + 1);
+      })
+    );
+    return items.filter((g) => !g.deletedAt).map((g) => ({ ...g, totalAppearances: appearances.get(g.id) || 0 }));
   }
 
   static saveGuest(guest: Partial<Guest>, user?: User): Guest {
@@ -893,6 +908,12 @@ export class ApiService {
   static saveTask(task: Partial<EditorialTask>, user?: User): EditorialTask {
     const all = this.getTasks();
     const currentUser = user || this.getCurrentUser();
+    const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
+    const existingTask = task.id ? all.find((t) => t.id === task.id) : undefined;
+    // Same rule as the server: assignees may progress their own tasks, everything else needs tasks.create_assign.
+    if (!canAssign && !(existingTask && existingTask.assigneeId === currentUser.id && (!task.assigneeId || task.assigneeId === currentUser.id))) {
+      throw new Error('صلاحياتك لا تسمح بإنشاء المهام أو تعديلها');
+    }
     const now = new Date().toISOString();
 
     if (task.id) {
@@ -942,6 +963,9 @@ export class ApiService {
   }
 
   static deleteTask(taskId: string, user?: User): void {
+    if (!RbacService.hasPermission(user || this.getCurrentUser(), 'tasks.create_assign')) {
+      throw new Error('صلاحياتك لا تسمح بحذف المهام');
+    }
     const all = this.getTasks();
     const filtered = all.filter((t) => t.id !== taskId);
     setStored(STORAGE_KEYS.TASKS, filtered);
@@ -1074,7 +1098,6 @@ export class ApiService {
     if (cat.id) {
       const idx = all.findIndex((c) => c.id === cat.id);
       if (idx !== -1) {
-        const oldNameAr = all[idx].nameAr;
         const updated: Category = {
           ...all[idx],
           ...cat,
@@ -1084,25 +1107,7 @@ export class ApiService {
         all[idx] = updated;
         setStored(STORAGE_KEYS.CATEGORIES, all);
 
-        // Synchronize categoryName in news items if name changed
-        if (cat.nameAr && cat.nameAr !== oldNameAr) {
-          try {
-            const news = this.getNews();
-            let hasNewsChanges = false;
-            news.forEach((item) => {
-              if (item.categoryId === cat.id) {
-                item.categoryName = cat.nameAr!;
-                hasNewsChanges = true;
-              }
-            });
-            if (hasNewsChanges) {
-              setStored(STORAGE_KEYS.NEWS, news);
-            }
-          } catch (e) {
-            console.warn('Could not cascade category name update to news items:', e);
-          }
-        }
-
+        // News items pick up the new name from the server (see server sync), not from this client.
         this.logActivity('تعديل قسم إخباري', 'CATEGORY', updated.id, updated.nameAr, `تم تحديث بيانات ولون تصنيف (${updated.nameAr})`);
         return updated;
       }
@@ -1487,31 +1492,37 @@ export class ApiService {
     return JSON.stringify(backupData, null, 2);
   }
 
-  /** Imports through the normal sync path, so server permissions and conflict checks still apply. */
-  static restoreClientBackup(jsonString: string): boolean {
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (!parsed || typeof parsed.data !== 'object') {
-        throw new Error('الملف غير صالح أو لا يحتوي على بنية بيانات صحيحة');
-      }
-      Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
-        const incoming = parsed.data[keyName];
-        if (incoming === undefined || incoming === null || keyName === 'AUDIT_LOGS' || keyName === 'ACTIVITY_LOGS') return;
-        if (Array.isArray(incoming)) {
-          // Merge by id: imported rows overwrite, existing rows not in the file are kept.
-          const current = getStored<any[]>(storageKey, []);
-          const byId = new Map(current.map((it) => [it.id, it]));
-          incoming.forEach((it: any) => it && typeof it.id === 'string' && byId.set(it.id, it));
-          setStored(storageKey, [...byId.values()]);
-        } else {
-          setStored(storageKey, incoming);
-        }
-      });
-      return true;
-    } catch (e) {
-      console.error('Failed to restore backup:', e);
-      return false;
+  /**
+   * Imports a JSON backup *additively*: only records whose id does not exist yet are added
+   * (through the normal sync path, so server permissions still apply). Existing records,
+   * accounts, settings and logs are never overwritten, so newer work by colleagues is safe.
+   */
+  static restoreClientBackup(jsonString: string): { added: number; skipped: number } {
+    const parsed = JSON.parse(jsonString);
+    if (!parsed || typeof parsed.data !== 'object') {
+      throw new Error('الملف غير صالح أو لا يحتوي على بنية بيانات صحيحة');
     }
+    const NEVER_IMPORT = new Set(['USERS', 'SETTINGS', 'NOTIFICATIONS', 'AUDIT_LOGS', 'ACTIVITY_LOGS']);
+    let added = 0;
+    let skipped = 0;
+    Object.entries(STORAGE_KEYS).forEach(([keyName, storageKey]) => {
+      const incoming = parsed.data[keyName];
+      if (!Array.isArray(incoming)) return;
+      if (NEVER_IMPORT.has(keyName)) {
+        skipped += incoming.length;
+        return;
+      }
+      const current = getStored<any[]>(storageKey, []);
+      const existing = new Set(current.map((it) => it.id));
+      const fresh = incoming.filter((it: any) => it && typeof it.id === 'string' && !existing.has(it.id));
+      skipped += incoming.length - fresh.length;
+      if (fresh.length) {
+        setStored(storageKey, [...current, ...fresh]);
+        added += fresh.length;
+      }
+    });
+    this.logAudit('SETTINGS_UPDATE', 'BACKUP', 'import', 'WARNING', `استيراد نسخة JSON: إضافة ${added} سجل وتخطي ${skipped}`);
+    return { added, skipped };
   }
 }
 

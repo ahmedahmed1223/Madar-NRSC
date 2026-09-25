@@ -1,3 +1,4 @@
+import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
   Plus,
@@ -33,6 +34,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   onSaveGuest,
   onDeleteGuest,
 }) => {
+  const canManage = RbacService.hasPermission(currentUser, 'guests.manage');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -142,6 +144,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </p>
         </div>
 
+        {canManage && (
         <button
           type="button"
           onClick={handleOpenAdd}
@@ -150,6 +153,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           <Plus className="w-4 h-4" />
           إضافة ضيف جديد
         </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -209,6 +213,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {canManage && (
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(guest)}
@@ -217,8 +222,9 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
+                  )}
 
-                  {onDeleteGuest && (
+                  {canManage && onDeleteGuest && (
                     <button
                       type="button"
                       onClick={() => {

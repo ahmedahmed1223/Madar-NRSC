@@ -1,4 +1,5 @@
 import { apiService } from '../services/api';
+import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
   Plus,
@@ -34,6 +35,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onSaveTask,
   onDeleteTask,
 }) => {
+  // Assignees may still move their own tasks; creating, reassigning and deleting need tasks.create_assign.
+  const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
   const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>('KANBAN');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
@@ -163,6 +166,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </button>
           </div>
 
+          {canAssign && (
           <button
             type="button"
             onClick={handleOpenAdd}
@@ -171,6 +175,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <Plus className="w-4 h-4" />
             تكليف بمهمة
           </button>
+          )}
         </div>
       </div>
 
@@ -253,6 +258,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           {t.priority}
                         </Badge>
                         <div className="flex items-center gap-1">
+                          {canAssign && (
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(t)}
@@ -260,6 +266,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
+                          )}
+                          {canAssign && (
                           <button
                             type="button"
                             onClick={() => onDeleteTask(t.id)}
@@ -267,6 +275,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          )}
                         </div>
                       </div>
 
@@ -359,6 +368,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </td>
                   <td className="py-3 px-4 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      {canAssign && (
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(t)}
@@ -366,6 +376,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
+                      )}
+                      {canAssign && (
                       <button
                         type="button"
                         onClick={() => onDeleteTask(t.id)}
@@ -373,6 +385,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      )}
                     </div>
                   </td>
                 </tr>

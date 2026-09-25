@@ -89,6 +89,8 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
 export class SyncService {
   constructor(private db: NewsroomDatabase, private dataDir: string) {}
 
+  private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
+
   private visible(auth: AuthContext, row: EntityRow): boolean {
     return row.deleted ? true : canRead(auth, row.c, row.d);
   }
@@ -169,7 +171,7 @@ export class SyncService {
 
         if (op.op === 'delete') {
           if (!current) return { ok: true, row: { c: collection, id, v: 0, p: 0, deleted: true } } as SyncOpResult;
-          const denied = POLICIES[collection]({ auth, collection, kind: 'delete', before, after: null });
+          const denied = POLICIES[collection]({ auth, collection, kind: 'delete', before, after: null, list: this.listData });
           if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
           if (collection === 'users') {
             this.db.deleteCredentials(id);
@@ -210,7 +212,7 @@ export class SyncService {
           after = { ...after, ownerId: owner.id, ownerName: owner.name, uploadedById: owner.id, uploadedByName: owner.name };
         }
 
-        const denied = POLICIES[collection]({ auth, collection, kind, before, after });
+        const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
         if (collection === 'users') {
@@ -242,6 +244,16 @@ export class SyncService {
             const upload = this.db.getUpload(uploadId);
             if (!upload) throw new SyncReject('INVALID', 'الملف المرفوع غير موجود');
             if (upload.uploadedBy !== auth.user.id && !auth.can('media.delete')) throw new SyncReject('FORBIDDEN', 'لا يمكنك إرفاق ملف رفعه مستخدم آخر');
+          }
+        }
+
+        // Category renames are propagated by the server (system write): the renamer may lack
+        // rights on every story, and stories may be locked by their editors.
+        if (collection === 'categories' && before && before.nameAr !== after.nameAr) {
+          for (const newsRow of this.db.listCollection('news')) {
+            if (newsRow.d?.categoryId === id && newsRow.d.categoryName !== after.nameAr) {
+              this.db.writeRow('news', newsRow.id, { ...newsRow.d, categoryName: after.nameAr }, newsRow.p, null);
+            }
           }
         }
 

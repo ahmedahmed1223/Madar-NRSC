@@ -1,3 +1,4 @@
+import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
 import {
@@ -55,6 +56,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   onUploadMedia,
   onDeleteMedia,
 }) => {
+  const canUpload = RbacService.hasPermission(currentUser, 'media.upload');
+  // Same rule as the server: media.delete, or the owner with upload rights.
+  const canDeleteAsset = (a: MediaAsset) =>
+    RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id));
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -198,6 +203,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           </div>
         </div>
 
+        {canUpload && (
         <button
           type="button"
           onClick={handleOpenUpload}
@@ -206,6 +212,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           <UploadCloud className="w-4 h-4" />
           رفع مادة وسائط جديدة
         </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -366,14 +373,18 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   >
                     <Eye className="w-4 h-4" />
                   </button>
+                  {canDeleteAsset(asset) && (
                   <button
                     type="button"
-                    onClick={() => onDeleteMedia(asset.id)}
+                    onClick={() => {
+                      if (window.confirm(`حذف المادة «${asset.title || asset.fileName}» نهائياً مع ملفها؟`)) onDeleteMedia(asset.id);
+                    }}
                     className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                     title="حذف من الأرشيف"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  )}
                 </div>
               </div>
             </div>

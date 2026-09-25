@@ -1,3 +1,4 @@
+import { localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import {
   Calendar as CalendarIcon,
@@ -58,12 +59,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
     const arabicDays = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
     const days = [];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(saturday);
       d.setDate(saturday.getDate() + i);
-      const isoStr = d.toISOString().split('T')[0];
+      const isoStr = localDateString(d);
       days.push({
         name: arabicDays[i],
         date: isoStr,
@@ -284,7 +285,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
           {currentWeekDays.map((day) => {
             const dayEpisodes = filteredEpisodes.filter(
-              (ep) => ep.broadcastDate === day.date || (weekOffset === 0 && day.isToday)
+              (ep) => ep.broadcastDate === day.date
             );
 
             return (

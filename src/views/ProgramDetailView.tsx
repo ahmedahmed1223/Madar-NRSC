@@ -1,3 +1,6 @@
+import { RbacService } from '../services/rbacService';
+import { localDateString } from '../shared/dates';
+import { formatSecondsToTime } from '../shared/rundown';
 import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
@@ -58,13 +61,11 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
   onSwitchProgram,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'evaluations' | 'episodes' | 'template' | 'team'>('overview');
-  const [evaluations, setEvaluations] = useState<ProgramEvaluation[]>(() => apiService.getProgramEvaluations(program.id));
+  // Read on every render so colleagues' evaluations (and server rejections) are reflected.
+  const evaluations: ProgramEvaluation[] = apiService.getProgramEvaluations(program.id);
   const [isAddEvalModalOpen, setIsAddEvalModalOpen] = useState(false);
-
-  // Sync evaluations if program changes
-  useEffect(() => {
-    setEvaluations(apiService.getProgramEvaluations(program.id));
-  }, [program.id]);
+  const canEvaluate = RbacService.hasPermission(currentUser, 'episodes.evaluate');
+  const canManageProgram = RbacService.hasPermission(currentUser, 'programs.manage');
 
   // New evaluation form state
   const [evalRating, setEvalRating] = useState(5);
@@ -78,9 +79,22 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
   const [evalNotes, setEvalNotes] = useState('');
 
   // Filter episodes belonging to this program
-  const programEpisodes = (allEpisodes || []).filter(
-    (e) => e.programId === program.id || e.programName === program.name
-  );
+  const programEpisodes = (allEpisodes || []).filter((e) => e.programId === program.id);
+  const today = localDateString();
+  const nextEpisode = [...programEpisodes]
+    .filter((e) => (e.broadcastDate || '') >= today)
+    .sort((a, b) => `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`))[0];
+  // The structure of the latest episode that has a rundown serves as the program's template.
+  const templateSource = [...programEpisodes]
+    .filter((e) => (e.rundown || []).length > 0)
+    .sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''))[0];
+  const templateSegments = (templateSource?.rundown || []).map((seg, i) => ({
+    index: i + 1,
+    title: seg.title,
+    type: seg.segmentType,
+    duration: formatSecondsToTime(seg.durationSeconds || 0).slice(3),
+    notes: seg.notes || '',
+  }));
 
   // Ratings calculation
   const ratingSummary = apiService.getProgramRatingSummary(program.id);
@@ -96,7 +110,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const newEval = apiService.addProgramEvaluation(
+    apiService.addProgramEvaluation(
       {
         programId: program.id,
         overallRating: evalRating,
@@ -107,14 +121,13 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
           visualDirection,
           viewerEngagement,
         },
-        strengths: strengthsArr.length > 0 ? strengthsArr : ['أداء تحريري متقن ومحتوى متميز.'],
+        strengths: strengthsArr,
         improvements: improvementsArr,
         notes: evalNotes,
       },
       currentUser
     );
 
-    setEvaluations([newEval, ...evaluations]);
     setIsAddEvalModalOpen(false);
 
     // Reset form
@@ -176,6 +189,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               </div>
             )}
 
+            {canManageProgram && (
             <button
               type="button"
               onClick={() => onEditProgram(program)}
@@ -184,6 +198,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <Edit2 className="w-3.5 h-3.5 text-slate-500" />
               <span>تعديل</span>
             </button>
+            )}
 
             <button
               type="button"
@@ -264,9 +279,9 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             </span>
             <div className="flex items-center gap-2 my-1">
               <span className="text-3xl sm:text-4xl font-black text-amber-400 font-mono">
-                {ratingSummary.average}
+                {ratingSummary.count > 0 ? ratingSummary.average : '—'}
               </span>
-              <span className="text-slate-400 text-sm">/ 5.0</span>
+              <span className="text-slate-400 text-sm">{ratingSummary.count > 0 ? '/ 5.0' : 'لا تقييمات بعد'}</span>
             </div>
             <div className="flex items-center gap-1 text-amber-400 mb-2">
               {[1, 2, 3, 4, 5].map((s) => (
@@ -284,6 +299,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               بناءً على {ratingSummary.count || evaluations.length} تقييماً تحريرياً
             </span>
 
+            {canEvaluate && (
             <button
               type="button"
               onClick={() => {
@@ -295,6 +311,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <Star className="w-3.5 h-3.5 fill-slate-950" />
               <span>تقييم البرنامج الآن</span>
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -405,7 +422,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-amber-500 font-mono">
-                    {ratingSummary.average}
+                    {ratingSummary.count > 0 ? ratingSummary.average : '—'}
                   </span>
                   <span className="text-[11px] text-slate-500">معدل التقييم</span>
                 </div>
@@ -489,7 +506,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   الحلقة القادمة
                 </span>
                 <span className="text-[10px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
-                  {programEpisodes[0]?.broadcastDate || 'الأحد القادم'}
+                  {nextEpisode ? `${nextEpisode.broadcastDate} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
                 </span>
               </div>
 
@@ -544,6 +561,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </p>
               </div>
 
+              {canEvaluate && (
               <button
                 type="button"
                 onClick={() => setIsAddEvalModalOpen(true)}
@@ -552,6 +570,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>إضافة تقييم تحريري جديد</span>
               </button>
+              )}
             </div>
 
             {/* Criteria Progress Bars */}
@@ -636,6 +655,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
                   كن أول من يقيم أداء هذا البرنامج من خلال إضافة التقييم التحريري الأول.
                 </p>
+                {canEvaluate && (
                 <button
                   type="button"
                   onClick={() => setIsAddEvalModalOpen(true)}
@@ -644,6 +664,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   <Plus className="w-4 h-4" />
                   <span>إضافة تقييم الآن</span>
                 </button>
+                )}
               </div>
             ) : (
               evaluations.map((ev) => (
@@ -855,50 +876,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
           </div>
 
           <div className="space-y-3">
-            {[
-              {
-                index: 1,
-                title: 'شارة البرنامج ومقدمة المذيع الترحيبية (Autocue & Teaser)',
-                type: 'شارة ومقدمة',
-                duration: '02:30',
-                notes: 'استعراض أبرز العناوين وطرح السؤال المحوري مع شاشات الاستوديو.',
-              },
-              {
-                index: 2,
-                title: 'تقرير استهلالي مصور (VT Report)',
-                type: 'تقرير ميداني',
-                duration: '04:00',
-                notes: 'تقرير تمهيدي بالصوت والصورة مع المؤثرات والأرقام الإحصائية.',
-              },
-              {
-                index: 3,
-                title: 'المحور الأول: مناقشة في الاستوديو مع الضيف الرئيسي',
-                type: 'حوار استوديو',
-                duration: '12:30',
-                notes: 'تفكيك الموضوع المحوري ومواجهة الضيف بالوثائق والمعطيات.',
-              },
-              {
-                index: 4,
-                title: 'فاصل إعلاني وموجز أنباء سريع',
-                type: 'فاصل تجاري',
-                duration: '03:00',
-                notes: 'شريط الأخبار العاجلة وبرومو البرامج التالية.',
-              },
-              {
-                index: 5,
-                title: 'المحور الثاني: مداخلة عبر الأقمار الصناعية ومشاركة الجمهور',
-                type: 'مداخلة أقمار / زووم',
-                duration: '15:00',
-                notes: 'توسيع دائرة النقاش بمحلل إقليمي واستعراض تفاعلات وسائل التواصل.',
-              },
-              {
-                index: 6,
-                title: 'خلاصة الحلقة، التوصيات، والوداع الموسيقي (Outro)',
-                type: 'خاتمة وتتر',
-                duration: '03:00',
-                notes: 'شكر الضيوف، التنويه بموضوع الحلقة القادمة، وظهور أسماء فريق العمل.',
-              },
-            ].map((seg) => (
+            {templateSegments.length === 0 && (
+              <p className="text-xs text-slate-500 py-6 text-center">لا يوجد رانداون محفوظ لحلقات هذا البرنامج بعد؛ سيظهر هيكل آخر حلقة هنا.</p>
+            )}
+            {templateSegments.map((seg) => (
               <div
                 key={seg.index}
                 className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3"
@@ -931,13 +912,12 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
       {activeTab === 'team' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { role: 'مقدم ومحاور رئيسي', name: program.presenterName, dept: 'إدارة التقديم والمذيعين' },
-            { role: 'المنتج المنفذ', name: program.producerName, dept: 'إدارة الإنتاج البرامجي' },
-            { role: 'المخرج التلفزيوني', name: 'هاني بن رضوان', dept: 'الإخراج الفني وغرفة التحكم (PCR)' },
-            { role: 'رئيس فريق الإعداد', name: 'طارق الهاشمي', dept: 'غرفة الأخبار والتحرير' },
-            { role: 'مسؤول المونتاج والمكتبة', name: 'عمر الدوسري', dept: 'المكتبة الرقمية والأرشيف' },
-            { role: 'مهندس الإضاءة والصوت', name: 'أحمد كمال', dept: 'العمليات الفنية والهندسية' },
-          ].map((member, idx) => (
+            { role: 'مقدم ومحاور رئيسي', name: program.presenterName, dept: 'التقديم' },
+            { role: 'المنتج المنفذ', name: program.producerName, dept: 'الإنتاج البرامجي' },
+            ...(program.teamMembers || [])
+              .filter((m) => m && m !== program.presenterName && m !== program.producerName)
+              .map((m) => ({ role: 'عضو فريق البرنامج', name: m, dept: '' })),
+          ].filter((m) => !!m.name).map((member, idx) => (
             <div
               key={idx}
               className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-4"

@@ -1,3 +1,4 @@
+import { newId } from '../../shared/ids';
 import React, { useState } from 'react';
 import {
   RundownSegment,
@@ -97,15 +98,25 @@ export const RundownTable: React.FC<RundownTableProps> = ({
     }
   };
 
+  /**
+   * Moves a segment next to its visible neighbour. Indexes come from the (possibly filtered)
+   * displayed list, so they are mapped to the full rundown by id before splicing.
+   */
+  const moveById = (movedId: string, targetId: string) => {
+    const from = segments.findIndex((s) => s.id === movedId);
+    const to = segments.findIndex((s) => s.id === targetId);
+    if (from === -1 || to === -1 || from === to) return;
+    const newSegments = [...segments];
+    const [moved] = newSegments.splice(from, 1);
+    newSegments.splice(to, 0, moved);
+    onUpdateRundown(newSegments);
+  };
+
   const handleMove = (index: number, direction: 'UP' | 'DOWN') => {
     if (!canEdit) return;
     const targetIdx = direction === 'UP' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= segments.length) return;
-
-    const newSegments = [...segments];
-    const [moved] = newSegments.splice(index, 1);
-    newSegments.splice(targetIdx, 0, moved);
-    onUpdateRundown(newSegments);
+    if (targetIdx < 0 || targetIdx >= displayedSegments.length) return;
+    moveById(displayedSegments[index].id, displayedSegments[targetIdx].id);
   };
 
   const handleDelete = (segmentId: string) => {
@@ -123,13 +134,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
       setEditingSegment(null);
     } else {
       const newSeg: RundownSegment = {
-        id: `seg-${Date.now()}`,
+        id: newId('seg'),
         episodeId: episodeId || segments[0]?.episodeId || 'ep-temp',
         orderIndex: segments.length + 1,
         title: segmentData.title || 'فقرة جديدة',
         segmentType: segmentData.segmentType || 'REPORT',
         startTimeOffset: '00:00:00',
-        durationSeconds: segmentData.durationSeconds || 180,
+        durationSeconds: segmentData.durationSeconds ?? 180,
         endTimeOffset: '00:03:00',
         presenterName: segmentData.presenterName || defaultPresenter,
         guestId: segmentData.guestId,
@@ -146,6 +157,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   };
 
   const toggleComplete = (segmentId: string) => {
+    if (!canEdit) return;
     const updated = segments.map((s) =>
       s.id === segmentId ? { ...s, isCompleted: !s.isCompleted } : s
     );
@@ -154,10 +166,9 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
   const handleDragReorder = (sourceIdx: number, destinationIdx: number) => {
     if (!canEdit || sourceIdx === destinationIdx) return;
-    const newSegments = Array.from(segments);
-    const [removed] = newSegments.splice(sourceIdx, 1);
-    newSegments.splice(destinationIdx, 0, removed);
-    onUpdateRundown(newSegments);
+    const source = displayedSegments[sourceIdx];
+    const target = displayedSegments[destinationIdx];
+    if (source && target) moveById(source.id, target.id);
   };
 
   const typeBadges: Record<RundownSegmentType, { label: string; variant: 'primary' | 'success' | 'danger' | 'purple' | 'info' | 'warning' | 'default' }> = {

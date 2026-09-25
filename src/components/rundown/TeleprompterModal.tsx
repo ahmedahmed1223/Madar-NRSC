@@ -14,6 +14,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { RundownSegment } from '../../types';
+import { formatSecondsToTime } from '../../shared/rundown';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface TeleprompterModalProps {
@@ -58,13 +59,13 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   // Smooth auto-scroll loop
   useEffect(() => {
     const scrollStep = () => {
-      if (isPlaying && scrollContainerRef.current) {
+      if (isPlaying && isOpen && scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop += scrollSpeed * 0.8;
       }
       animationFrameRef.current = requestAnimationFrame(scrollStep);
     };
 
-    if (isPlaying) {
+    if (isPlaying && isOpen) {
       animationFrameRef.current = requestAnimationFrame(scrollStep);
     } else if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -75,7 +76,12 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, scrollSpeed]);
+  }, [isPlaying, scrollSpeed, isOpen]);
+
+  // Closing the prompter must stop the scroll loop (it would otherwise keep running hidden).
+  useEffect(() => {
+    if (!isOpen) setIsPlaying(false);
+  }, [isOpen]);
 
   // Reset scroll and timer on segment change
   const handleSelectSegment = (idx: number) => {
@@ -267,8 +273,8 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-[11px] text-slate-500">#{seg.orderNumber || idx + 1}</span>
-                    <span className="font-mono text-[10px] text-slate-400">{seg.plannedDurationFormatted}</span>
+                    <span className="font-mono text-[11px] text-slate-500">#{seg.orderIndex || idx + 1}</span>
+                    <span className="font-mono text-[10px] text-slate-400">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
                   </div>
                   <div className="truncate text-xs">{seg.title}</div>
                   {seg.presenterName && (
@@ -302,7 +308,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 {/* Segment Meta Info Header */}
                 <div className="border-b border-slate-800 pb-4">
                   <div className="text-amber-400/80 font-mono text-sm mb-1">
-                    الفقرة: {activeSegment.orderNumber} • النوع: {activeSegment.segmentType} • المستهدف: {activeSegment.plannedDurationFormatted}
+                    الفقرة: {activeSegment.orderIndex || currentSegmentIndex + 1} • النوع: {activeSegment.segmentType} • المستهدف: {formatSecondsToTime(activeSegment.durationSeconds || 0)}
                   </div>
                   <h1 className="text-2xl sm:text-4xl font-extrabold text-white">
                     {activeSegment.title}
@@ -319,10 +325,10 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                   style={{ fontSize: `${fontSize}px`, lineHeight: 1.7 }}
                   className={`font-sans font-medium text-right leading-relaxed ${themeTextColor}`}
                 >
-                  {activeSegment.script ? (
+                  {(activeSegment.scriptText || activeSegment.script) ? (
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(activeSegment.script.replace(/\n/g, '<br />')),
+                        __html: sanitizeHtml((activeSegment.scriptText || activeSegment.script || '').replace(/\n/g, '<br />')),
                       }}
                     />
                   ) : (

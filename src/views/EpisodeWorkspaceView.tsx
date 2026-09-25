@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import { RbacService } from '../services/rbacService';
+import { newId } from '../shared/ids';
+import React, { useState , useRef, useEffect} from 'react';
 import {
   ArrowRight,
   ListOrdered,
@@ -74,8 +76,21 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const [guestSegmentTopic, setGuestSegmentTopic] = useState('');
   const [guestArrivalStatus, setGuestArrivalStatus] = useState<'CONFIRMED' | 'PENDING' | 'ARRIVED'>('CONFIRMED');
 
-  // Script state
+  // What this user may change (mirrors the server's episodesPolicy).
+  const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
+  const canEditEpisode = can('episodes.edit');
+  const canEditRundown = canEditEpisode || can('rundown.edit') || can('rundown.reorder');
+  const canEditQuestions = canEditEpisode || can('rundown.presenter_teleprompter');
+
+  // Script state (follows the server copy unless the user has unsaved edits)
   const [introScript, setIntroScript] = useState(episode.introScript || '');
+  const loadedScriptRef = useRef(episode.introScript || '');
+  useEffect(() => {
+    const incoming = episode.introScript || '';
+    if (introScript === loadedScriptRef.current) setIntroScript(incoming);
+    loadedScriptRef.current = incoming;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [episode.introScript]);
   const [copiedScript, setCopiedScript] = useState(false);
 
   const handleCopyScript = () => {
@@ -87,6 +102,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   // Status updates
   const handleUpdateStatus = (newStatus: EpisodeStatus) => {
+    if (!canEditEpisode) return;
     onSaveEpisode({ id: episode.id, status: newStatus });
   };
 
@@ -128,7 +144,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       onSaveEpisode({ id: episode.id, questions: updated });
     } else {
       const newQ: EpisodeQuestion = {
-        id: `q-${Date.now()}`,
+        id: newId('q'),
         episodeId: episode.id,
         topicName: qTopic,
         questionText: qText,
@@ -143,6 +159,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
 
   const toggleQuestionAsked = (questionId: string) => {
+    if (!canEditQuestions) return;
     const updated = (episode.questions || []).map((q) =>
       q.id === questionId ? { ...q, isAsked: !q.isAsked } : q
     );
@@ -161,6 +178,10 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     if (!guestObj) return;
 
     const currentGuests = [...(episode.guests || [])];
+    if (currentGuests.some((g) => (g.guestId || (g as any).id) === guestObj.id)) {
+      setIsGuestModalOpen(false);
+      return; // already linked
+    }
     const newEpGuest: EpisodeGuest = {
       guestId: guestObj.id,
       guestName: guestObj.fullName,
@@ -185,6 +206,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   const handleSaveIntroScript = () => {
     onSaveEpisode({ id: episode.id, introScript });
+    loadedScriptRef.current = introScript;
   };
 
   const connectionTypeLabels = {
@@ -259,6 +281,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <select
                 value={episode.status}
                 onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
+                disabled={!canEditEpisode}
                 className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
               >
                 <option value="PLANNING">مرحلة التخطيط</option>
@@ -361,7 +384,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           guests={allGuests}
           newsList={allNews}
           defaultPresenter={episode.presenterName}
-          canEdit={true}
+          canEdit={canEditRundown}
           episodeId={episode.id}
         />
       )}
@@ -376,6 +399,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 قائمة الأسئلة المنظمة للمذيع داخل الاستوديو مع إمكانية التأشير على الأسئلة المطروحة
               </p>
             </div>
+            {canEditQuestions && (
             <button
               type="button"
               onClick={handleOpenAddQuestion}
@@ -384,6 +408,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <Plus className="w-4 h-4" />
               إضافة سؤال جديد
             </button>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -445,6 +470,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                           موجه إلى: {q.assignedToName}
                         </span>
                       )}
+                      {canEditQuestions && (
                       <button
                         type="button"
                         onClick={() => handleOpenEditQuestion(q)}
@@ -453,6 +479,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
+                      )}
+                      {canEditQuestions && (
                       <button
                         type="button"
                         onClick={() => handleDeleteQuestion(q.id)}
@@ -461,6 +489,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -480,6 +509,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 إدارة وسيلة الاتصال، الحضور، وتأكيد جاهزية الضيوف قبل وأثناء البث
               </p>
             </div>
+            {canEditEpisode && (
             <button
               type="button"
               onClick={() => setIsGuestModalOpen(true)}
@@ -488,6 +518,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <Plus className="w-4 h-4" />
               ربط ضيف بالحلقة
             </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -521,6 +552,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                         </div>
                       </div>
 
+                      {canEditEpisode && (
                       <button
                         type="button"
                         onClick={() => handleRemoveGuest(g.guestId || (g as any).id || guestKey)}
@@ -529,6 +561,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      )}
                     </div>
 
                     <div className="p-2.5 bg-slate-50 rounded-xl space-y-2 text-xs">
@@ -607,6 +640,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                   <span>مسح</span>
                 </button>
               )}
+              {canEditEpisode && (
               <button
                 type="button"
                 onClick={handleSaveIntroScript}
@@ -615,6 +649,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 <Save className="w-4 h-4" />
                 حفظ السكريبت
               </button>
+              )}
             </div>
           </div>
 

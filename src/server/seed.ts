@@ -90,6 +90,18 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
  * edit them again (news.edit_own was missing).
  */
 function migrateRoleDefaults(db: NewsroomDatabase) {
+  if (db.getMeta('roles_migration_2') !== '1') {
+    // Presenters may tick questions, not rewrite whole episodes.
+    db.transaction(() => {
+      for (const row of db.listCollection('roles')) {
+        const role = row.d;
+        if (role?.roleCode === 'PRESENTER' && role.isSystemRole && role.permissions?.includes('episodes.edit')) {
+          db.writeRow('roles', row.id, { ...role, permissions: role.permissions.filter((p: string) => p !== 'episodes.edit') }, row.p, null);
+        }
+      }
+      db.setMeta('roles_migration_2', '1');
+    });
+  }
   if (db.getMeta('roles_migration') === '1') return;
   db.transaction(() => {
     for (const row of db.listCollection('roles')) {

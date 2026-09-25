@@ -591,7 +591,6 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'rundown.view',
       'rundown.presenter_teleprompter',
       'programs.view',
-      'episodes.edit',
       'guests.view',
       'media.view',
       'tasks.view',

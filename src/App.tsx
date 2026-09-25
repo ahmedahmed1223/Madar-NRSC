@@ -88,6 +88,17 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
+  /** Runs a data action; a refused action shows its reason instead of crashing the view. */
+  const attempt = (title: string, action: () => unknown): boolean => {
+    try {
+      action();
+      return true;
+    } catch (err: any) {
+      addToast({ type: 'error', title, message: err?.message || 'تعذر تنفيذ العملية' });
+      return false;
+    }
+  };
+
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
@@ -109,6 +120,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Selection state
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
   const [newNewsStoryId, setNewNewsStoryId] = useState<string | null>(null);
+  const [editProgramId, setEditProgramId] = useState<string | null>(null);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
@@ -329,7 +341,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- PROGRAMS & EPISODES ACTIONS ---
   const handleSaveProgram = (progData: Partial<Program>) => {
-    apiService.saveProgram(progData, currentUser);
+    if (!attempt('حفظ البرنامج', () => apiService.saveProgram(progData, currentUser))) return;
     refreshData();
   };
 
@@ -342,7 +354,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       });
       return;
     }
-    apiService.deleteProgram(programId, currentUser);
+    if (!attempt('حذف البرنامج', () => apiService.deleteProgram(programId, currentUser))) return;
     refreshData();
   };
 
@@ -352,7 +364,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleSaveEpisode = (epData: Partial<Episode>) => {
-    apiService.saveEpisode(epData, currentUser);
+    if (!attempt('حفظ الحلقة', () => apiService.saveEpisode(epData, currentUser))) return;
     refreshData();
   };
 
@@ -365,7 +377,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       });
       return;
     }
-    apiService.deleteEpisode(episodeId, currentUser);
+    if (!attempt('حذف الحلقة', () => apiService.deleteEpisode(episodeId, currentUser))) return;
     refreshData();
     if (selectedEpisodeId === episodeId) {
       setSelectedEpisodeId(null);
@@ -379,29 +391,29 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleUpdateRundown = (episodeId: string, segments: RundownSegment[]) => {
-    apiService.updateEpisodeRundown(episodeId, segments, currentUser);
+    if (!attempt('تحديث الرانداون', () => apiService.updateEpisodeRundown(episodeId, segments, currentUser))) return;
     refreshData();
   };
 
   // --- GUESTS ACTIONS ---
   const handleSaveGuest = (guestData: Partial<Guest>) => {
-    apiService.saveGuest(guestData, currentUser);
+    if (!attempt('حفظ الضيف', () => apiService.saveGuest(guestData, currentUser))) return;
     refreshData();
   };
 
   const handleDeleteGuest = (guestId: string) => {
-    apiService.deleteGuest(guestId, currentUser);
+    if (!attempt('حذف الضيف', () => apiService.deleteGuest(guestId, currentUser))) return;
     refreshData();
   };
 
   // --- TASKS ACTIONS ---
   const handleSaveTask = (taskData: Partial<EditorialTask>) => {
-    apiService.saveTask(taskData, currentUser);
+    if (!attempt('حفظ المهمة', () => apiService.saveTask(taskData, currentUser))) return;
     refreshData();
   };
 
   const handleDeleteTask = (taskId: string) => {
-    apiService.deleteTask(taskId, currentUser);
+    if (!attempt('حذف المهمة', () => apiService.deleteTask(taskId, currentUser))) return;
     refreshData();
   };
 
@@ -450,7 +462,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleDeleteMedia = (id: string) => {
-    apiService.deleteMediaAsset(id, currentUser);
+    if (!attempt('حذف الوسائط', () => apiService.deleteMediaAsset(id, currentUser))) return;
     refreshData();
   };
 
@@ -493,12 +505,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleSaveSource = (source: Partial<NewsSource>) => {
-    apiService.saveNewsSource(source);
+    if (!attempt('حفظ المصدر', () => apiService.saveNewsSource(source))) return;
     refreshData();
   };
 
   const handleDeleteSource = (id: string) => {
-    apiService.deleteNewsSource(id);
+    if (!attempt('حذف المصدر', () => apiService.deleteNewsSource(id))) return;
     refreshData();
   };
 
@@ -512,8 +524,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const editorNewsItem = selectedNewsItem?.id ? newsList.find((n) => n.id === selectedNewsItem.id) || selectedNewsItem : selectedNewsItem;
 
   // Resolve current active episode and active program
-  const activeEpisode = episodes.find((e) => e.id === selectedEpisodeId) || episodes[0];
-  const activeProgram = programs.find((p) => p.id === selectedProgramId) || programs[0];
+  // Never fall back to another record: if the open one was deleted, say so instead of editing a different one.
+  const activeEpisode = selectedEpisodeId ? episodes.find((e) => e.id === selectedEpisodeId) : undefined;
+  const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans" dir="rtl">
@@ -669,6 +682,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSelectProgramEpisodes={handleSelectProgramEpisodes}
                 onSelectProgram={handleSelectProgram}
                 onDeleteProgram={handleDeleteProgram}
+                initialEditProgramId={editProgramId}
+                onInitialEditHandled={() => setEditProgramId(null)}
               />
             )}
 
@@ -680,7 +695,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onBack={() => setActiveNav('programs')}
                 onSelectEpisode={handleSelectEpisode}
-                onEditProgram={handleSaveProgram}
+                onEditProgram={(p) => {
+                  setEditProgramId(p.id);
+                  setActiveNav('programs');
+                }}
                 onCreateEpisodeForProgram={(prgId) => {
                   setFilterProgramId(prgId);
                   setActiveNav('episodes');
@@ -705,8 +723,18 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
+            {activeNav === 'episode-workspace' && !activeEpisode && (
+              <div className="py-24 text-center space-y-3">
+                <p className="text-sm font-bold text-slate-700">هذه الحلقة لم تعد متاحة (ربما حُذفت).</p>
+                <button type="button" onClick={() => setActiveNav('episodes')} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">
+                  العودة لقائمة الحلقات
+                </button>
+              </div>
+            )}
+
             {activeNav === 'episode-workspace' && activeEpisode && (
               <EpisodeWorkspaceView
+                key={activeEpisode.id}
                 episode={activeEpisode}
                 allGuests={guests}
                 allNews={newsList}

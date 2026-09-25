@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { RbacService } from '../services/rbacService';
+import React, { useState , useEffect} from 'react';
 import {
   Plus,
   Tv,
@@ -30,6 +31,9 @@ interface ProgramsViewProps {
   onSelectProgramEpisodes: (programId: string) => void;
   onSelectProgram?: (programId: string) => void;
   onDeleteProgram?: (programId: string) => void;
+  /** Opens the edit form for this program on arrival (e.g. from the program page). */
+  initialEditProgramId?: string | null;
+  onInitialEditHandled?: () => void;
 }
 
 
@@ -44,7 +48,10 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   onSelectProgramEpisodes,
   onSelectProgram,
   onDeleteProgram,
+  initialEditProgramId,
+  onInitialEditHandled,
 }) => {
+  const canManage = RbacService.hasPermission(currentUser, 'programs.manage');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,8 +67,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const [broadcastDays, setBroadcastDays] = useState<string[]>(['الأحد']);
   const [broadcastTime, setBroadcastTime] = useState('20:00');
   const [durationMinutes, setDurationMinutes] = useState(50);
-  const [channelName, setChannelName] = useState('القناة الإخبارية الأولى');
-  const [studioName, setStudioName] = useState('استوديو الأخبار الرئيسي (A1)');
+  const [channelName, setChannelName] = useState('');
+  const [studioName, setStudioName] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
 
   const daysOfWeek = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
@@ -99,6 +106,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setCoverImageUrl(prog.coverImageUrl || '');
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!initialEditProgramId) return;
+    const prog = programs.find((p) => p.id === initialEditProgramId);
+    if (prog && canManage) handleOpenEditModal(prog);
+    onInitialEditHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditProgramId]);
 
   const handleToggleDay = (day: string) => {
     if (broadcastDays.includes(day)) {
@@ -160,6 +175,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           </p>
         </div>
 
+        {canManage && (
         <button
           type="button"
           onClick={handleOpenAddModal}
@@ -168,6 +184,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           <Plus className="w-4 h-4" />
           إضافة برنامج جديد
         </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -241,7 +258,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   </Badge>
                   <span className="flex items-center gap-1 bg-slate-900/80 backdrop-blur-md px-2 py-0.5 rounded-lg text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30">
                     <Star className="w-3 h-3 fill-amber-400" />
-                    {rating.average}
+                    {rating.count > 0 ? rating.average : '—'}
                   </span>
                 </div>
                 <div className="absolute bottom-3 right-3 left-3 text-white">
@@ -290,7 +307,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     <span>شاشة البرنامج والتقييم</span>
                     <span className="bg-blue-800/80 text-amber-300 font-mono px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1">
                       <Star className="w-2.5 h-2.5 fill-amber-300" />
-                      {rating.average} / 5
+                      {rating.count > 0 ? `${rating.average} / 5` : 'لا تقييمات'}
                     </span>
                   </button>
 
@@ -304,6 +321,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                       <span>الحلقات ({prog.episodesCount || 0})</span>
                     </button>
 
+                    {canManage && (
                     <button
                       type="button"
                       onClick={() => handleOpenEditModal(prog)}
@@ -312,8 +330,9 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
+                    )}
 
-                    {onDeleteProgram && (
+                    {onDeleteProgram && canManage && (
                       <button
                         type="button"
                         onClick={() => {

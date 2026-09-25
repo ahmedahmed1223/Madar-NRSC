@@ -163,14 +163,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.onload = (event) => {
       const content = event.target?.result as string;
       if (content) {
-        const ok = apiService.restoreClientBackup(content);
-        if (ok) {
-          setBackupMsg({ text: 'تمت استعادة البيانات بنجاح! جاري تحديث التطبيق...', type: 'success' });
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } else {
-          setBackupMsg({ text: 'فشل استعادة البيانات. تأكد من صحة ملف JSON.', type: 'error' });
+        if (!window.confirm('سيتم إضافة السجلات غير الموجودة فقط من الملف، دون تعديل أي بيانات أو حسابات حالية. متابعة؟')) return;
+        try {
+          const { added, skipped } = apiService.restoreClientBackup(content);
+          setBackupMsg({
+            text: `أُرسلت ${added} سجلاً جديداً للخادم، وتُخطي ${skipped} (موجود مسبقاً أو غير قابل للاستيراد). أي سجل يرفضه الخادم يظهر في تنبيه منفصل.`,
+            type: 'success',
+          });
+        } catch (err: any) {
+          setBackupMsg({ text: err?.message || 'فشل استعادة البيانات. تأكد من صحة ملف JSON.', type: 'error' });
         }
       }
     };
