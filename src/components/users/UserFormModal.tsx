@@ -24,16 +24,6 @@ interface UserFormModalProps {
   roles: RoleDefinition[];
 }
 
-const AVATAR_PRESETS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&q=80',
-  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
-];
 
 const DEPARTMENTS = [
   'غرفة الأخبار',
@@ -66,7 +56,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [securityClearance, setSecurityClearance] = useState<SecurityClearance>('CONFIDENTIAL');
   const [shift, setShift] = useState<ShiftType>('MORNING');
   const [bio, setBio] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState(AVATAR_PRESETS[0]);
+  const [avatarUrl, setAvatarUrl] = useState('/avatar.svg');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [initialPassword, setInitialPassword] = useState('');
@@ -85,7 +75,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setSecurityClearance(userToEdit.securityClearance || 'CONFIDENTIAL');
       setShift(userToEdit.shift || 'MORNING');
       setBio(userToEdit.bio || '');
-      setAvatarUrl(userToEdit.avatarUrl || AVATAR_PRESETS[0]);
+      setAvatarUrl(userToEdit.avatarUrl || '/avatar.svg');
       setTwoFactorEnabled(userToEdit.twoFactorEnabled ?? false);
       setIsActive(userToEdit.isActive !== undefined ? userToEdit.isActive : true);
     } else {
@@ -96,11 +86,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole('JOURNALIST');
       setJobTitle('');
       setDepartment(DEPARTMENTS[0]);
-      setStaffId(`EMP-${Math.floor(Math.random() * 900 + 100)}`);
+      setStaffId('');
       setSecurityClearance('CONFIDENTIAL');
       setShift('MORNING');
       setBio('');
-      setAvatarUrl(AVATAR_PRESETS[Math.floor(Math.random() * AVATAR_PRESETS.length)]);
+      setAvatarUrl('/avatar.svg');
       setTwoFactorEnabled(false);
       setIsActive(true);
     }
@@ -144,7 +134,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       shift,
       bio: bio.trim(),
       avatarUrl,
-      twoFactorEnabled,
       isActive,
     }, userToEdit ? undefined : initialPassword);
     onClose();
@@ -170,20 +159,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-600 shadow-md shrink-0"
             />
             <div className="flex-1">
-              <div className="flex flex-wrap gap-2">
-                {AVATAR_PRESETS.map((url, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setAvatarUrl(url)}
-                    className={`w-9 h-9 rounded-xl overflow-hidden border-2 transition-transform hover:scale-105 ${
-                      avatarUrl === url ? 'border-blue-600 ring-2 ring-blue-400' : 'border-slate-300 opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={url} alt={`preset-${idx}`} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
               <div className="mt-2">
                 <input
                   type="text"
@@ -434,16 +409,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
         {/* Security & Active Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-slate-100/70 rounded-xl">
-          <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-slate-700">
-            <input
-              type="checkbox"
-              checked={twoFactorEnabled}
-              onChange={(e) => setTwoFactorEnabled(e.target.checked)}
-              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-            />
+          {/* 2FA is enrolled by each user from their own account menu; admins can only reset it. */}
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
             <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
-            <span>تفعيل المصادقة الثنائية (2FA Enforcement)</span>
-          </label>
+            <span>التحقق بخطوتين:</span>
+            <span className={twoFactorEnabled ? 'text-emerald-700' : 'text-slate-500'}>
+              {twoFactorEnabled ? 'مفعّل' : 'غير مفعّل (يفعّله المستخدم من قائمة حسابه)'}
+            </span>
+          </div>
 
           <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-slate-700">
             <input

@@ -32,19 +32,7 @@ interface ProgramsViewProps {
   onDeleteProgram?: (programId: string) => void;
 }
 
-const COVER_PRESETS = [
-  { label: 'استوديو الأخبار', url: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=800&auto=format&fit=crop&q=80' },
-  { label: 'حوار واستقصاء', url: 'https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?w=800&auto=format&fit=crop&q=80' },
-  { label: 'اقتصاد وأعمال', url: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=800&auto=format&fit=crop&q=80' },
-  { label: 'رياضة وتحليل', url: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&auto=format&fit=crop&q=80' },
-];
 
-const STUDIO_PRESETS = [
-  'استوديو الأخبار الرئيسي (A1)',
-  'استوديو البرامج الحوارية (B2)',
-  'استوديو النشرات الموجزة (C3)',
-  'الاستوديو الافتراضي (VR)',
-];
 
 const DURATION_PRESETS = [30, 45, 50, 60, 90];
 
@@ -91,7 +79,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setDurationMinutes(50);
     setChannelName('القناة الإخبارية الأولى');
     setStudioName('استوديو الأخبار الرئيسي (A1)');
-    setCoverImageUrl('https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80');
+    setCoverImageUrl('');
     setIsModalOpen(true);
   };
 
@@ -140,7 +128,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       durationMinutes: Number(durationMinutes) || 50,
       channelName,
       studioName,
-      coverImageUrl: coverImageUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
+      coverImageUrl: coverImageUrl || '',
     });
 
     setIsModalOpen(false);
@@ -541,18 +529,6 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 onChange={(e) => setStudioName(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
-              <div className="mt-1 flex flex-wrap gap-1">
-                {STUDIO_PRESETS.slice(0, 2).map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setStudioName(st)}
-                    className="text-[9px] truncate max-w-[130px] bg-slate-100 hover:bg-blue-50 text-slate-600 px-1 py-0.5 rounded"
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -581,24 +557,6 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono transition-all"
               dir="ltr"
             />
-            {/* Cover Presets */}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-[10px] text-slate-500 font-semibold">نماذج شارات جاهزة:</span>
-              {COVER_PRESETS.map((cp) => (
-                <button
-                  key={cp.label}
-                  type="button"
-                  onClick={() => setCoverImageUrl(cp.url)}
-                  className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all ${
-                    coverImageUrl === cp.url
-                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {cp.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">

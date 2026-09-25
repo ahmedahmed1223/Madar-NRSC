@@ -10,6 +10,10 @@ import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateEpisodeMosXml } from './mos';
 import { COPILOT_MODES, CopilotMode, isAiConfigured, runCopilot } from './ai';
+import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
+import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
+import path from 'path';
+import fs from 'fs';
 import {
   CSRF_HEADER,
   LOCKOUT_MS,
@@ -72,7 +76,7 @@ function securityHeaders(config: AppConfig) {
 
 export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const app = express();
-  const sync = new SyncService(db);
+  const sync = new SyncService(db, config.dataDir);
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -197,6 +201,18 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       }
       if (!user || user.isActive === false || user.deletedAt) throw new HttpError(403, 'الحساب موقوف، يرجى مراجعة مدير النظام', 'INACTIVE');
 
+      if (cred.totpEnabled && cred.totpSecret) {
+        const code = typeof req.body?.totp === 'string' ? req.body.totp : '';
+        if (!code) throw new HttpError(401, 'أدخل رمز التحقق من تطبيق المصادقة', 'TOTP_REQUIRED');
+        const counter = verifyTotp(cred.totpSecret, code, cred.totpLastCounter);
+        if (counter === null) {
+          db.recordFailedLogin(cred.userId, MAX_FAILED_LOGINS, LOCKOUT_MS);
+          audit(user, 'LOGIN_FAILED', 'USER', cred.userId, 'SECURITY', `رمز تحقق ثنائي خاطئ للحساب ${email}`, req.ip);
+          throw new HttpError(401, 'رمز التحقق غير صحيح أو مستخدم مسبقاً', 'TOTP_INVALID');
+        }
+        db.setTotpLastCounter(cred.userId, counter);
+      }
+
       db.resetFailedLogins(cred.userId);
       const token = newSessionToken();
       const session = db.createSession(sessionIdFromToken(token), user.id, config.sessionTtlMs, req.ip, req.get('user-agent'));
@@ -262,6 +278,123 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       res.json({ success: true });
     })
   );
+
+  // --- Two-factor authentication (TOTP) --------------------------------------
+
+  /** Keeps the user record's twoFactorEnabled flag in step with the credentials table. */
+  const setTwoFactorFlag = (userId: string, enabled: boolean, actorId: string) => {
+    const row = db.getRow('users', userId);
+    if (row) {
+      db.writeRow('users', userId, { ...row.d, twoFactorEnabled: enabled }, row.p, actorId);
+      changeBus.emit('rev', db.currentRev());
+    }
+  };
+
+  const requireCurrentPassword = async (userId: string, password: unknown) => {
+    const cred = db.getCredentials(userId);
+    if (!cred || typeof password !== 'string' || !(await verifyPassword(password, cred.passwordHash))) {
+      throw new HttpError(400, 'كلمة المرور الحالية غير صحيحة');
+    }
+    return cred;
+  };
+
+  app.post(
+    '/api/v1/auth/2fa/setup',
+    requireAuth,
+    wrap(async (req, res) => {
+      const user = req.auth!.user;
+      const cred = await requireCurrentPassword(user.id, req.body?.password);
+      if (cred.totpEnabled) throw new HttpError(409, 'التحقق بخطوتين مفعّل مسبقاً');
+      const secret = generateTotpSecret();
+      db.setTotp(user.id, secret, false);
+      const issuer = (db.getRow('settings', 'singleton')?.d as any)?.organizationNameEn || 'Madar NRCS';
+      res.json({ success: true, secret, otpauthUrl: otpauthUrl(secret, cred.email, issuer) });
+    })
+  );
+
+  app.post('/api/v1/auth/2fa/enable', requireAuth, (req, res) => {
+    const user = req.auth!.user;
+    const cred = db.getCredentials(user.id);
+    if (!cred?.totpSecret) throw new HttpError(400, 'ابدأ إعداد التحقق بخطوتين أولاً');
+    if (cred.totpEnabled) throw new HttpError(409, 'التحقق بخطوتين مفعّل مسبقاً');
+    const counter = verifyTotp(cred.totpSecret, String(req.body?.code || ''));
+    if (counter === null) throw new HttpError(400, 'رمز التحقق غير صحيح، تأكد من ضبط وقت الجهاز');
+    db.setTotp(user.id, cred.totpSecret, true);
+    db.setTotpLastCounter(user.id, counter);
+    db.deleteUserSessions(user.id, req.auth!.sessionId);
+    setTwoFactorFlag(user.id, true, user.id);
+    audit(user, '2FA_ENABLED', 'USER', user.id, 'SECURITY', `تفعيل التحقق بخطوتين للحساب ${user.fullName}`, req.ip);
+    res.json({ success: true });
+  });
+
+  app.post(
+    '/api/v1/auth/2fa/disable',
+    requireAuth,
+    wrap(async (req, res) => {
+      const user = req.auth!.user;
+      const cred = await requireCurrentPassword(user.id, req.body?.password);
+      if (!cred.totpEnabled || !cred.totpSecret) throw new HttpError(400, 'التحقق بخطوتين غير مفعّل');
+      if (verifyTotp(cred.totpSecret, String(req.body?.code || ''), cred.totpLastCounter) === null) {
+        throw new HttpError(400, 'رمز التحقق غير صحيح');
+      }
+      db.setTotp(user.id, null, false);
+      setTwoFactorFlag(user.id, false, user.id);
+      audit(user, '2FA_DISABLED', 'USER', user.id, 'SECURITY', `إلغاء التحقق بخطوتين للحساب ${user.fullName}`, req.ip);
+      res.json({ success: true });
+    })
+  );
+
+  /** Admin recovery when a user loses their authenticator device. */
+  app.post('/api/v1/users/:id/2fa/reset', requirePermission('users.suspend_delete'), (req, res) => {
+    const target = db.getRow('users', req.params.id)?.d as User | undefined;
+    if (!target) throw new HttpError(404, 'المستخدم غير موجود');
+    if (target.role === 'SUPER_ADMIN' && req.auth!.user.role !== 'SUPER_ADMIN') {
+      throw new HttpError(403, 'فقط مدير النظام العام يمكنه إعادة ضبط حساب مدير عام');
+    }
+    db.setTotp(target.id, null, false);
+    db.deleteUserSessions(target.id);
+    setTwoFactorFlag(target.id, false, req.auth!.user.id);
+    audit(req.auth!.user, '2FA_RESET', 'USER', target.id, 'SECURITY', `إلغاء التحقق بخطوتين للمستخدم ${target.fullName} من قبل الإدارة`, req.ip);
+    res.json({ success: true });
+  });
+
+  // --- Media uploads ---------------------------------------------------------
+
+  app.post(
+    '/api/v1/media/upload',
+    requirePermission('media.upload'),
+    wrap(async (req, res) => {
+      try {
+        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id);
+        res.status(201).json({
+          success: true,
+          data: {
+            id: record.id,
+            url: `${MEDIA_FILE_URL_PREFIX}${record.id}`,
+            mimeType: record.mimeType,
+            sizeBytes: record.sizeBytes,
+            originalName: record.originalName,
+          },
+        });
+      } catch (err) {
+        if (err instanceof UploadError) throw new HttpError(err.status, err.message);
+        throw err;
+      }
+    })
+  );
+
+  app.get('/api/v1/media/files/:id', requirePermission('media.view'), (req, res) => {
+    const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
+    if (!record) throw new HttpError(404, 'الملف غير موجود');
+    const filePath = path.join(uploadsDir(config.dataDir), record.storedName);
+    if (!fs.existsSync(filePath)) throw new HttpError(404, 'الملف غير موجود');
+    // Served as an inert document: never executed, never sniffed, cached privately.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
+    res.type(record.mimeType);
+    res.sendFile(filePath);
+  });
 
   // --- Data synchronisation -------------------------------------------------
 

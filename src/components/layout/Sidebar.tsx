@@ -1,5 +1,7 @@
 import { RbacService } from '../../services/rbacService';
-import React from 'react';
+import { dataStore } from '../../services/dataStore';
+import { apiService } from '../../services/api';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Newspaper, FolderGit2,
@@ -105,6 +107,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const newsBadge = badgeCounts?.news ?? pendingReviewCount;
   const tasksBadge = badgeCounts?.tasks ?? pendingTasksCount;
 
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(
+    () =>
+      dataStore.subscribe((evt) => {
+        if (evt.type === 'sync-status') setIsOnline(evt.online);
+      }),
+    []
+  );
+  const organizationName = apiService.getSettings()?.organizationName || '';
+
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
   const NAV_PERMISSIONS: Record<string, string> = {
     audit: 'audit.view',
@@ -152,8 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'program-detail',
       label: 'شاشة البرنامج والتقييم',
       icon: Star,
-      badge: 'تقييم',
-      badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold',
+      badge: null,
     },
     {
       id: 'episodes',
@@ -202,22 +213,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'users',
       label: 'إدارة المستخدمين والصلاحيات',
       icon: UserCog,
-      badge: 'RBAC',
-      badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300 font-bold',
+      badge: null,
     },
     {
       id: 'database',
       label: 'قاعدة بيانات SQLite',
       icon: Database,
-      badge: 'SQL نشط',
-      badgeColor: 'bg-indigo-900/60 text-indigo-300 font-mono text-[10px] border border-indigo-500/30',
+      badge: null,
     },
     {
       id: 'tests',
       label: 'فحص واختبار النظام',
       icon: FlaskConical,
-      badge: 'مباشر',
-      badgeColor: 'bg-emerald-100 text-emerald-800 font-mono',
+      badge: null,
     },
     {
       id: 'settings',
@@ -345,19 +353,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Footer Station Info */}
+      {/* Footer: organisation, build version and live connection state */}
       {!isCollapsed && (
         <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span>إصدار المنظومة: v3.0.0</span>
-            <span className="text-emerald-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              متصل
+            <span>الإصدار: v{__APP_VERSION__}</span>
+            <span className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              {isOnline ? 'متصل' : 'غير متصل'}
             </span>
           </div>
-          <div className="truncate text-slate-300 font-medium">
-            استوديو A1 الرئيسي - مركز البث
-          </div>
+          <div className="truncate text-slate-300 font-medium">{organizationName}</div>
         </div>
       )}
     </aside>

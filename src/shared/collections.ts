@@ -22,6 +22,10 @@ export const COLLECTIONS = {
   activityLogs: { storageKey: 'nrcs_activity_v1', kind: 'list' },
   auditLogs: { storageKey: 'nrcs_audit_v1', kind: 'list' },
   settings: { storageKey: 'nrcs_settings_v1', kind: 'singleton' },
+  /** Shared on-air state (e.g. the live lock) that every workstation must see. */
+  broadcastState: { storageKey: 'nrcs_broadcast_state_v1', kind: 'singleton' },
+  /** Internal newsroom chat (intercom channels). */
+  messages: { storageKey: 'nrcs_messages_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;
@@ -32,7 +36,25 @@ export const COLLECTION_NAMES = Object.keys(COLLECTIONS) as CollectionName[];
 export const SINGLETON_ID = 'singleton';
 
 /** Append-only collections: clients may add rows but never edit or remove them. */
-export const APPEND_ONLY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['auditLogs', 'activityLogs']);
+export const APPEND_ONLY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['auditLogs', 'activityLogs', 'messages']);
+
+export interface BroadcastState {
+  liveLock: boolean;
+  lockedById?: string;
+  lockedByName?: string;
+  lockedAt?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  channel: 'STUDIO_PCR' | 'NEWSROOM' | 'FIELD';
+  text: string;
+  userId?: string;
+  userName?: string;
+  userRole?: string;
+  userAvatar?: string;
+  timestamp?: string;
+}
 
 /** Maximum rows of an append-only log sent to a browser on bootstrap. */
 export const LOG_BOOTSTRAP_LIMIT = 500;

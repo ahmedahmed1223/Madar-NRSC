@@ -201,7 +201,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
       <div className="relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white">
         <div className="absolute inset-0 z-0">
           <img
-            src={program.coverImageUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1400&q=80'}
+            src={program.coverImageUrl || '/cover.svg'}
             alt={program.name}
             className="w-full h-full object-cover opacity-35 filter blur-xs scale-105"
           />
@@ -214,10 +214,12 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <span className="px-3 py-1 bg-blue-600/80 backdrop-blur-md text-white font-bold text-xs rounded-lg border border-blue-400/30">
                 {program.typeName || 'برنامج تلفزيوني'}
               </span>
-              <span className="px-3 py-1 bg-emerald-500/20 backdrop-blur-md text-emerald-300 font-semibold text-xs rounded-lg border border-emerald-400/30 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                نشط في خريطة البث
-              </span>
+              {program.status === 'ACTIVE' && (
+                <span className="px-3 py-1 bg-emerald-500/20 backdrop-blur-md text-emerald-300 font-semibold text-xs rounded-lg border border-emerald-400/30 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  نشط في خريطة البث
+                </span>
+              )}
               <span className="px-3 py-1 bg-slate-800/80 backdrop-blur-md text-slate-300 text-xs rounded-lg font-mono">
                 {program.channelName}
               </span>

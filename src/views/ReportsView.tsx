@@ -35,6 +35,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   // Filter news based on selected category
+  // Share of episodes whose rundown adds up to within a minute of the planned duration.
+  const rundownAccuracy = useMemo(() => {
+    const withRundown = episodes.filter((e) => Array.isArray(e.rundown) && e.rundown.length > 0 && e.durationMinutes > 0);
+    const onTime = withRundown.filter((e) => {
+      const total = e.rundown.reduce((sum, seg) => sum + (Number(seg.durationSeconds) || 0), 0);
+      return Math.abs(total - e.durationMinutes * 60) <= 60;
+    }).length;
+    return { onTime, total: withRundown.length };
+  }, [episodes]);
+
   const filteredNews = useMemo(() => {
     return newsList.filter((item) => {
       if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
@@ -221,9 +231,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون</span>
             <Clock className="w-5 h-5 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">99.4%</div>
+          <div className="text-2xl font-black text-slate-800 font-mono">
+            {rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
+          </div>
           <p className="text-[11px] text-slate-500">
-            مطابقة التوقيت الزمني لفقرات البث والاستوديوهات
+            {rundownAccuracy.total > 0
+              ? `${rundownAccuracy.onTime} من ${rundownAccuracy.total} حلقة مجموع فقراتها ضمن ±60 ثانية من المدة المخططة`
+              : 'لا توجد حلقات بفقرات رانداون بعد'}
           </p>
         </div>
 

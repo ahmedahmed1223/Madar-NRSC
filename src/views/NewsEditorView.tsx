@@ -1,3 +1,4 @@
+import { apiService } from '../services/api';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Save,
@@ -127,14 +128,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     '[إدراج شارة جرافيكس CG عند الفقرة 2]',
   ];
 
-  const IMAGE_PRESETS = [
-    { label: 'استوديو الأخبار', url: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=800&auto=format&fit=crop&q=80' },
-    { label: 'مؤتمر صحفي', url: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=80' },
-    { label: 'قمة اقتصادية', url: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=800&auto=format&fit=crop&q=80' },
-    { label: 'خريطة الأقمار', url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&auto=format&fit=crop&q=80' },
-  ];
+  // Quick picks come from the station's own media library (latest images).
+  const IMAGE_PRESETS = apiService
+    .getMedia()
+    .filter((m) => m.mediaType === 'IMAGE' && (m.url || m.fileUrl))
+    .slice(0, 6)
+    .map((m) => ({ label: (m.title || m.originalName || m.fileName || 'صورة').slice(0, 24), url: (m.url || m.fileUrl)! }));
 
-  const VIDEO_PRESETS = ['MCR-PLAYOUT-01', 'SNG-LIVE-FEED-02', 'REUTERS-LIVE-01', 'STUDIO-VTR-A'];
 
   const handleGenerateShortTitle = () => {
     if (!title.trim()) return;
@@ -295,11 +295,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       setCategoryId(categories[0]?.id || '');
       setSourceId(sources[0]?.id || '');
       setPriority('NORMAL');
-      setLocationName('المقر الرئيسي');
+      setLocationName('');
       setEventDate(new Date().toISOString().slice(0, 16));
-      setMainImageUrl('https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80');
+      setMainImageUrl('');
       setVideoUrl('');
-      setKeywords(['أخبار', 'تغطية']);
+      setKeywords([]);
       setIsBreaking(false);
       setInternalNotes('');
     }
@@ -1069,8 +1069,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 dir="ltr"
               />
 
-              {/* Image Quick Presets */}
+              {/* Recent images from the media library */}
+              {IMAGE_PRESETS.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
+                <span className="text-[10px] text-slate-400 font-bold">من مكتبة الوسائط:</span>
                 {IMAGE_PRESETS.map((img) => (
                   <button
                     key={img.label}
@@ -1082,6 +1084,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   </button>
                 ))}
               </div>
+              )}
 
               {mainImageUrl && (
                 <div className="relative mt-2 rounded-xl overflow-hidden border border-slate-200 group">
@@ -1122,23 +1125,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 spellCheck="false"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="https://...mp4 أو سيرفر البث"
+                placeholder="https://...mp4"
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 dir="ltr"
               />
 
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {VIDEO_PRESETS.map((vPreset) => (
-                  <button
-                    key={vPreset}
-                    type="button"
-                    onClick={() => setVideoUrl(vPreset)}
-                    className="text-[10px] bg-slate-100 hover:bg-purple-50 text-slate-600 hover:text-purple-700 px-1.5 py-0.5 rounded font-mono"
-                  >
-                    {vPreset}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 

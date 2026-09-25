@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 
 interface LoginViewProps {
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string, totp?: string) => Promise<void>;
   notice?: string | null;
 }
 
@@ -11,16 +11,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await onLogin(email.trim(), password);
+      await onLogin(email.trim(), password, needsCode ? code.trim() : undefined);
     } catch (err: any) {
-      setError(err?.message || 'تعذر تسجيل الدخول');
-      setPassword('');
+      if (err?.code === 'TOTP_REQUIRED') {
+        setNeedsCode(true);
+        setError(null);
+      } else {
+        setError(err?.message || 'تعذر تسجيل الدخول');
+        if (needsCode) setCode('');
+        else setPassword('');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -81,6 +89,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               />
             </div>
           </div>
+
+          {needsCode && (
+            <div>
+              <label htmlFor="login-totp" className="block text-xs font-bold text-slate-700 mb-1.5">
+                رمز التحقق من تطبيق المصادقة
+              </label>
+              <input
+                id="login-totp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+                autoFocus
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                className="w-full text-lg tracking-[0.5em] text-center px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
+                dir="ltr"
+              />
+            </div>
+          )}
 
           {error && (
             <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">

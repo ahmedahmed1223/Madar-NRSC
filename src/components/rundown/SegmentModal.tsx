@@ -61,7 +61,6 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
     { label: '10:00', seconds: 600, isAdd: false },
   ];
 
-  const VIDEO_PRESETS = ['MCR-VTR-01', 'MCR-VTR-02', 'SNG-LIVE-FEED', 'GRAPHICS-PKG-01'];
 
   useEffect(() => {
     if (segment) {
@@ -333,19 +332,6 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               autoCapitalize="none"
               spellCheck="false"
             />
-            {/* Quick Server Presets */}
-            <div className="mt-1 flex flex-wrap gap-1">
-              {VIDEO_PRESETS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setVideoAssetUrl(v)}
-                  className="text-[9px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded"
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 

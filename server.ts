@@ -6,6 +6,7 @@ import { logger, setLogLevel } from './src/server/logger';
 import { NewsroomDatabase } from './src/server/db';
 import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
+import { removeUpload } from './src/server/uploads';
 
 async function main() {
   const config = loadConfig();
@@ -49,6 +50,8 @@ async function main() {
       try {
         db.purgeExpiredSessions();
         db.purgeTombstones(30 * 24 * 60 * 60 * 1000);
+        // Files uploaded but never attached to a media record (abandoned forms).
+        db.findOrphanUploads(24 * 60 * 60 * 1000).forEach((u) => removeUpload(db, config.dataDir, u.id));
       } catch (err) {
         logger.error('housekeeping failed', { error: String(err) });
       }

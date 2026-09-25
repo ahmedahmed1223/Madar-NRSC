@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
 import {
   UploadCloud,
   Image as ImageIcon,
@@ -28,46 +29,6 @@ interface MediaLibraryViewProps {
   onUploadMedia: (asset: Partial<MediaAsset>) => void;
   onDeleteMedia: (id: string) => void;
 }
-
-const SAMPLE_MEDIA_PRESETS = [
-  {
-    title: 'لقطات البث الحي من استوديو الأخبار الرئيسي',
-    type: 'IMAGE' as MediaType,
-    url: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
-    tags: 'استوديو، غرفة_الأخبار، بث_مباشر',
-    label: 'استوديو رئيسي',
-  },
-  {
-    title: 'تغطية وقائع المؤتمر الصحفي الرئاسي',
-    type: 'IMAGE' as MediaType,
-    url: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80',
-    tags: 'مؤتمر_صحفي، تصريحات، عاجل',
-    label: 'مؤتمر صحفي',
-  },
-  {
-    title: 'تقرير رسوم بيانية وتداولات أسواق المال',
-    type: 'IMAGE' as MediaType,
-    url: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=1200&q=80',
-    tags: 'اقتصاد، بورصة، أسواق',
-    label: 'شاشات مالية',
-  },
-  {
-    title: 'مقطع فيديو: تقرير وثائقي عن الابتكار التقني',
-    type: 'VIDEO' as MediaType,
-    url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80',
-    tags: 'تكنولوجيا، ذكاء_اصطناعي، تقرير',
-    label: 'فيديو تقني',
-    duration: 180,
-  },
-  {
-    title: 'تسجيل صوتي: مداخلة مراسلنا الميداني',
-    type: 'AUDIO' as MediaType,
-    url: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=1200&q=80',
-    tags: 'صوتيات، مراسل، تسجيل',
-    label: 'مكالمة مراسل',
-    duration: 120,
-  },
-];
 
 const TAG_SUGGESTIONS = [
   'أخبار_عاجلة',
@@ -107,23 +68,39 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [durationSeconds, setDurationSeconds] = useState(120);
   const [tagsInput, setTagsInput] = useState('');
   const [description, setDescription] = useState('');
+  const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleOpenUpload = () => {
     setTitle('');
     setMediaType('IMAGE');
-    setFileUrl('https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80');
+    setFileUrl('');
     setDurationSeconds(120);
-    setTagsInput('أخبار، تغطية');
+    setTagsInput('');
     setDescription('');
+    setUploaded(null);
+    setUploadProgress(null);
+    setUploadError(null);
     setIsUploadModalOpen(true);
   };
 
-  const handleApplyPreset = (preset: typeof SAMPLE_MEDIA_PRESETS[0]) => {
-    setTitle(preset.title);
-    setMediaType(preset.type);
-    setFileUrl(preset.url);
-    setTagsInput(preset.tags);
-    if (preset.duration) setDurationSeconds(preset.duration);
+  const handleFileSelected = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadError(null);
+    setUploaded(null);
+    setUploadProgress(0);
+    try {
+      const result = await uploadMediaFile(file, setUploadProgress).promise;
+      setUploaded(result);
+      setFileUrl(result.url);
+      setMediaType(mediaTypeForMime(result.mimeType));
+      if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''));
+    } catch (err: any) {
+      setUploadError(err?.message || 'فشل رفع الملف');
+    } finally {
+      setUploadProgress(null);
+    }
   };
 
   const handleAddTag = (tag: string) => {
@@ -145,15 +122,21 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       .map((t) => t.trim())
       .filter(Boolean);
 
+    if (!fileUrl.trim()) {
+      setUploadError('اختر ملفاً للرفع أو أدخل رابطاً خارجياً');
+      return;
+    }
+
     onUploadMedia({
       title: title.trim(),
       mediaType,
       fileUrl: fileUrl.trim(),
       url: fileUrl.trim(),
-      fileName: `${title.trim().replace(/\s+/g, '_')}.${
-        mediaType === 'VIDEO' ? 'mp4' : mediaType === 'AUDIO' ? 'mp3' : mediaType === 'DOCUMENT' ? 'pdf' : 'jpg'
-      }`,
-      fileSize: 4500000,
+      fileName: uploaded?.originalName || fileUrl.trim().split('/').pop()?.split('?')[0] || title.trim(),
+      originalName: uploaded?.originalName,
+      mimeType: uploaded?.mimeType,
+      fileSize: uploaded?.sizeBytes,
+      fileSizeBytes: uploaded?.sizeBytes,
       durationSeconds: mediaType === 'VIDEO' || mediaType === 'AUDIO' ? Number(durationSeconds) : undefined,
       uploadedById: currentUser.id,
       uploadedByName: currentUser.fullName,
@@ -307,7 +290,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               ) : asset.mediaType === 'VIDEO' ? (
                 <div className="w-full h-full relative flex items-center justify-center bg-slate-950">
                   <img
-                    src={asset.fileUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=400&q=80'}
+                    src={asset.fileUrl || asset.url || '/icon.svg'}
                     alt=""
                     className="w-full h-full object-cover opacity-60"
                   />
@@ -415,24 +398,31 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         maxWidth="lg"
       >
         <form onSubmit={handleSaveUpload} className="space-y-4">
-          {/* Quick Presets Bar */}
-          <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-1.5">
-            <span className="text-[11px] font-bold text-blue-800 flex items-center gap-1">
+          {/* File upload */}
+          <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
+            <label htmlFor="media-file-input" className="text-[11px] font-bold text-blue-800 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              نماذج سريعة جاهزة للاستخدام:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {SAMPLE_MEDIA_PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => handleApplyPreset(p)}
-                  className="text-[10px] bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-2 py-1 rounded-lg transition-colors font-medium shadow-2xs"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+              رفع ملف من الجهاز (صور، فيديو، صوت، PDF)
+            </label>
+            <input
+              id="media-file-input"
+              type="file"
+              accept={ACCEPTED_UPLOAD_TYPES.join(',')}
+              disabled={uploadProgress !== null}
+              onChange={(e) => handleFileSelected(e.target.files?.[0])}
+              className="block w-full text-xs text-slate-700 file:ml-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:text-xs file:font-bold"
+            />
+            {uploadProgress !== null && (
+              <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={uploadProgress}>
+                <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            )}
+            {uploaded && (
+              <p className="text-[11px] text-emerald-700 font-semibold">
+                تم رفع الملف: {uploaded.originalName} ({(uploaded.sizeBytes / (1024 * 1024)).toFixed(2)} MB)
+              </p>
+            )}
+            {uploadError && <p className="text-[11px] text-red-600 font-bold">{uploadError}</p>}
           </div>
 
           <div>
@@ -506,7 +496,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="media-url-input" className="block text-xs font-bold text-slate-700">رابط الملف المباشر (URL أو مسار التخزين) *</label>
+              <label htmlFor="media-url-input" className="block text-xs font-bold text-slate-700">أو رابط ملف خارجي (URL)</label>
               {fileUrl && (
                 <button
                   type="button"
@@ -519,12 +509,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             </div>
             <input
               id="media-url-input"
-              type="url"
+              type="text"
               inputMode="url"
               autoCapitalize="none"
               spellCheck="false"
-              required
               value={fileUrl}
+              readOnly={!!uploaded}
               onChange={(e) => setFileUrl(e.target.value)}
               placeholder="https://..."
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono transition-all"

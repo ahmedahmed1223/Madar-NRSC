@@ -28,7 +28,6 @@ import {
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
 import { TeleprompterModal } from './TeleprompterModal';
-import { LivePcrMasterControlModal } from './LivePcrMasterControlModal';
 import { formatSecondsToTime, apiService } from '../../services/api';
 
 interface RundownTableProps {
@@ -57,7 +56,6 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   const [isSyncingDb, setIsSyncingDb] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [isPrompterOpen, setIsPrompterOpen] = useState(false);
-  const [isPcrOpen, setIsPcrOpen] = useState(false);
   const [draggedSegmentIdx, setDraggedSegmentIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL');
@@ -255,19 +253,10 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               title="حفظ ومزامنة فورية مع قاعدة بيانات SQLite"
             >
               <Database className={`w-4 h-4 ${isSyncingDb ? 'animate-spin text-blue-600' : ''}`} />
-              {isSyncingDb ? 'جارِ المزامنة...' : 'حفظ في SQLite'}
+              {isSyncingDb ? 'جارٍ الحفظ...' : 'حفظ الآن'}
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setIsPcrOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-xs border border-red-500"
-            title="فتح لوحة تحكم مخرج البث المباشر (PCR Master Control Desk)"
-          >
-            <Radio className="w-4 h-4 text-white animate-pulse" />
-            <span>لوحة مخرج البث (PCR Live)</span>
-          </button>
 
           <button
             type="button"
@@ -605,18 +594,6 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         episodeTitle="شاشة الملقن للفقرات (Teleprompter)"
       />
 
-      {/* Live PCR Master Control Room Modal */}
-      <LivePcrMasterControlModal
-        isOpen={isPcrOpen}
-        onClose={() => setIsPcrOpen(false)}
-        episode={{
-          id: episodeId || 'ep-live',
-          title: 'النشرة الإخبارية الرئيسية',
-          plannedDurationMinutes,
-        } as any}
-        segments={segments}
-        onUpdateSegments={onUpdateRundown}
-      />
     </div>
   );
 };

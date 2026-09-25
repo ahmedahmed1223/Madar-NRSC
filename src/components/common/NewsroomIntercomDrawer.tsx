@@ -12,95 +12,79 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { User as UserType } from '../../types';
+import { apiService } from '../../services/api';
+import { dataStore } from '../../services/dataStore';
+import type { ChatMessage } from '../../shared/collections';
 
-interface IntercomMessage {
-  id: string;
-  senderName: string;
-  senderRole: string;
-  channel: 'STUDIO_PCR' | 'NEWSROOM' | 'FIELD';
-  text: string;
-  isUrgent: boolean;
-  time: string;
-}
-
-const INITIAL_MESSAGES: IntercomMessage[] = [
-  {
-    id: 'msg-1',
-    senderName: 'مخرج البث (PCR Director)',
-    senderRole: 'مخرج النشرة',
-    channel: 'STUDIO_PCR',
-    text: 'تنبيه للأوتوكيو: تم تمديد الفقرة الثانية 30 ثانية لتغطية المؤتمر الصحفي.',
-    isUrgent: true,
-    time: '14:30',
-  },
-  {
-    id: 'msg-2',
-    senderName: 'رئيس التحرير المناوب',
-    senderRole: 'رئيس التحرير',
-    channel: 'STUDIO_PCR',
-    text: 'الضيف د. خالد وصل لغرفة الميك أب وسيكون جاهزاً للفقرة الحوارية.',
-    isUrgent: false,
-    time: '14:32',
-  },
-  {
-    id: 'msg-3',
-    senderName: 'معد الأخبار السياسية',
-    senderRole: 'صحفي ومعد',
-    channel: 'NEWSROOM',
-    text: 'تم نشر خبر القمة الدولية على الموقع وتحديث الرانداون بنسخة VT المعتمدة.',
-    isUrgent: false,
-    time: '14:35',
-  },
-  {
-    id: 'msg-4',
-    senderName: 'المراسل في لندن',
-    senderRole: 'مراسل ميداني',
-    channel: 'FIELD',
-    text: 'رابط البث المباشر عبر SNG جاهز والصوت والصورة مستقران تماماً.',
-    isUrgent: false,
-    time: '14:36',
-  },
-];
+type Channel = 'STUDIO_PCR' | 'NEWSROOM' | 'FIELD';
 
 interface NewsroomIntercomDrawerProps {
   currentUser?: UserType | null;
 }
 
+const lastSeenKey = (userId: string) => `nrcs_intercom_seen_${userId}`;
+
+function readLastSeen(userId: string): string {
+  try {
+    return localStorage.getItem(lastSeenKey(userId)) || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Newsroom chat shared by every signed-in user (stored on the server, delivered live).
+ * Messages are append-only; the server stamps author and time.
+ */
 export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeChannel, setActiveChannel] = useState<'STUDIO_PCR' | 'NEWSROOM' | 'FIELD'>('STUDIO_PCR');
-  const [messages, setMessages] = useState<IntercomMessage[]>(INITIAL_MESSAGES);
+  const [activeChannel, setActiveChannel] = useState<Channel>('NEWSROOM');
+  const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => apiService.getMessages());
   const [inputText, setInputText] = useState('');
   const [isUrgentCue, setIsUrgentCue] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(1);
+  const [lastSeen, setLastSeen] = useState(() => (currentUser ? readLastSeen(currentUser.id) : ''));
+  const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useEffect(
+    () =>
+      dataStore.subscribe((evt) => {
+        if (evt.type === 'data-changed' && evt.collections.includes('messages')) setMessages(apiService.getMessages());
+      }),
+    []
+  );
+
+  const newestTimestamp = messages.reduce((max, m) => ((m.timestamp || '') > max ? m.timestamp || '' : max), '');
+
   useEffect(() => {
-    if (isOpen) {
-      setUnreadCount(0);
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isOpen || !currentUser) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (newestTimestamp && newestTimestamp !== lastSeen) {
+      setLastSeen(newestTimestamp);
+      try {
+        localStorage.setItem(lastSeenKey(currentUser.id), newestTimestamp);
+      } catch {
+        // storage unavailable: unread badge just resets on reload
+      }
     }
-  }, [isOpen, activeChannel, messages]);
+  }, [isOpen, activeChannel, messages.length, newestTimestamp, currentUser, lastSeen]);
+
+  const unreadCount = messages.filter((m) => m.userId !== currentUser?.id && (m.timestamp || '') > lastSeen).length;
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-
-    const newMsg: IntercomMessage = {
-      id: `msg-${Date.now()}`,
-      senderName: currentUser?.fullName || 'منتج النشرة',
-      senderRole: currentUser?.role || 'فريق التحرير',
-      channel: activeChannel,
-      text: inputText.trim(),
-      isUrgent: isUrgentCue,
-      time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-    setInputText('');
-    setIsUrgentCue(false);
+    try {
+      apiService.sendMessage(activeChannel, inputText.trim(), isUrgentCue);
+      setMessages(apiService.getMessages());
+      setInputText('');
+      setIsUrgentCue(false);
+      setSendError(null);
+    } catch (err: any) {
+      setSendError(err?.message || 'تعذر إرسال الرسالة');
+    }
   };
 
   const channelFilteredMessages = messages.filter((m) => m.channel === activeChannel);
@@ -115,12 +99,14 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
           className="flex items-center gap-2 px-4 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-xl border border-slate-700 font-bold text-xs transition-all hover:scale-105"
         >
           <div className="relative">
-            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <Radio className="w-4 h-4 text-emerald-400" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-red-600 rounded-full border-2 border-slate-900" />
+              <span className="absolute -top-2 -right-2 min-w-4 h-4 px-1 bg-red-600 rounded-full border-2 border-slate-900 text-[9px] leading-3 text-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
             )}
           </div>
-          <span>اتصال الاستوديو الداخلي (Intercom)</span>
+          <span>المحادثة الداخلية</span>
         </button>
       </div>
 
@@ -134,8 +120,8 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <Radio className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-white">اتصال غرفة الأخبار الداخلي (Intercom Desk)</h3>
-                <span className="text-[10px] text-slate-400">تواصل فوري بين فريق التحرير وغرفة التحكم (PCR)</span>
+                <h3 className="text-xs font-black text-white">المحادثة الداخلية لغرفة الأخبار</h3>
+                <span className="text-[10px] text-slate-400">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
 
@@ -192,6 +178,9 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
           {/* Messages Stream */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {channelFilteredMessages.length === 0 && (
+              <p className="text-center text-xs text-slate-500 py-10">لا توجد رسائل في هذه القناة بعد.</p>
+            )}
             {channelFilteredMessages.map((msg) => (
               <div
                 key={msg.id}
@@ -205,13 +194,14 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
                       <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[9px] animate-pulse">
-                        عاجل للمذيع CUE
+                        عاجل
                       </span>
                     )}
-                    <span className="font-bold text-white">{msg.senderName}</span>
-                    <span className="text-slate-500">({msg.senderRole})</span>
+                    <span className="font-bold text-white">{msg.userName}</span>
                   </div>
-                  <span className="font-mono text-slate-500">{msg.time}</span>
+                  <span className="font-mono text-slate-500">
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '...'}
+                  </span>
                 </div>
 
                 <p className="text-xs leading-relaxed">{msg.text}</p>
@@ -222,6 +212,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
           {/* Message Input & Urgent On-Air Trigger */}
           <form onSubmit={handleSendMessage} className="p-3 bg-slate-900 border-t border-slate-800 space-y-2">
+            {sendError && <p className="text-[11px] text-red-400 font-bold px-1">{sendError}</p>}
             <div className="flex items-center justify-between text-[11px] px-1">
               <label className="flex items-center gap-1.5 text-red-400 cursor-pointer select-none font-bold">
                 <input
@@ -230,7 +221,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                   onChange={(e) => setIsUrgentCue(e.target.checked)}
                   className="rounded border-slate-700 bg-slate-950 text-red-600 focus:ring-red-500"
                 />
-                <span>تنبيه عاجل على الهواء (Direct On-Air Cue)</span>
+                <span>تمييز الرسالة كعاجلة</span>
               </label>
             </div>
 
@@ -239,6 +230,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
+                maxLength={2000}
                 placeholder={`أرسل رسالة في قنوات ${
                   activeChannel === 'STUDIO_PCR' ? 'استوديو البث' : activeChannel === 'NEWSROOM' ? 'التحرير' : 'المراسلين'
                 }...`}

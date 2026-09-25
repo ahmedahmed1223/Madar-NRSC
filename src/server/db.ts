@@ -18,6 +18,19 @@ export interface CredentialRecord {
   mustChangePassword: boolean;
   failedAttempts: number;
   lockedUntil: string | null;
+  totpSecret: string | null;
+  totpEnabled: boolean;
+  totpLastCounter: number;
+}
+
+export interface UploadRecord {
+  id: string;
+  storedName: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  createdAt: string;
 }
 
 export interface SessionRecord {
@@ -93,6 +106,24 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
       CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
+    `,
+  },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE user_credentials ADD COLUMN totp_secret TEXT;
+      ALTER TABLE user_credentials ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE user_credentials ADD COLUMN totp_last_counter INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS uploads (
+        id TEXT PRIMARY KEY,
+        stored_name TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        uploaded_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `,
   },
 ];
@@ -318,7 +349,66 @@ export class NewsroomDatabase {
       mustChangePassword: !!r.must_change_password,
       failedAttempts: r.failed_attempts,
       lockedUntil: r.locked_until,
+      totpSecret: r.totp_secret ?? null,
+      totpEnabled: !!r.totp_enabled,
+      totpLastCounter: r.totp_last_counter ?? 0,
     };
+  }
+
+  /** Stores a pending (not yet enabled) or active TOTP secret; null clears 2FA. */
+  setTotp(userId: string, secret: string | null, enabled: boolean) {
+    this.db
+      .prepare('UPDATE user_credentials SET totp_secret = ?, totp_enabled = ?, totp_last_counter = 0 WHERE user_id = ?')
+      .run(secret, enabled ? 1 : 0, userId);
+  }
+
+  /** Records the last accepted time-step so a code cannot be replayed. */
+  setTotpLastCounter(userId: string, counter: number) {
+    this.db.prepare('UPDATE user_credentials SET totp_last_counter = ? WHERE user_id = ?').run(counter, userId);
+  }
+
+  // --- Uploads -------------------------------------------------------------
+
+  insertUpload(u: UploadRecord) {
+    this.db
+      .prepare(
+        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt);
+  }
+
+  getUpload(id: string): UploadRecord | null {
+    const r = this.db.prepare('SELECT * FROM uploads WHERE id = ?').get(id) as any;
+    if (!r) return null;
+    return {
+      id: r.id,
+      storedName: r.stored_name,
+      originalName: r.original_name,
+      mimeType: r.mime_type,
+      sizeBytes: r.size_bytes,
+      uploadedBy: r.uploaded_by,
+      createdAt: r.created_at,
+    };
+  }
+
+  deleteUpload(id: string) {
+    this.db.prepare('DELETE FROM uploads WHERE id = ?').run(id);
+  }
+
+  /** Uploads older than `olderThanMs` that no live media record points to. */
+  findOrphanUploads(olderThanMs: number): UploadRecord[] {
+    const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+    const rows = this.db
+      .prepare(
+        `SELECT u.id FROM uploads u
+         WHERE u.created_at < ?
+           AND NOT EXISTS (
+             SELECT 1 FROM entities e
+             WHERE e.collection = 'media' AND e.deleted = 0 AND instr(e.data, '/api/v1/media/files/' || u.id) > 0
+           )`
+      )
+      .all(cutoff) as { id: string }[];
+    return rows.map((r) => this.getUpload(r.id)!).filter(Boolean);
   }
 
   getCredentialsByEmail(email: string): CredentialRecord | null {
@@ -467,7 +557,7 @@ export class NewsroomDatabase {
     const started = Date.now();
     const trimmed = sql.trim().replace(/;\s*$/, '');
     if (!trimmed) throw new Error('الاستعلام فارغ');
-    if (/\b(user_credentials|sessions)\b/i.test(trimmed)) {
+    if (/\b(user_credentials|sessions|totp_secret)\b/i.test(trimmed)) {
       throw new Error('لا يُسمح بالاستعلام عن جداول بيانات الدخول والجلسات');
     }
     const ro = new Database(this.filePath, { readonly: true, fileMustExist: true });

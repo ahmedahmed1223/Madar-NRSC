@@ -41,7 +41,6 @@ const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m
 const StoriesView = lazy(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
-import { LiveWireFeedModal } from './components/news/LiveWireFeedModal';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
@@ -56,9 +55,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(3);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isLiveLockActive, setIsLiveLockActive] = useState(false);
+  // Shared across all workstations and enforced by the server.
+  const [isLiveLockActive, setIsLiveLockActive] = useState(() => apiService.getBroadcastState().liveLock);
 
   // Toasts state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -69,23 +68,23 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleToggleLiveLock = () => {
-    setIsLiveLockActive((prev) => {
-      const next = !prev;
-      if (next) {
-        addToast({
-          type: 'warning',
-          title: 'تم تفعيل قفل البث المباشر (On-Air Lock)',
-          message: 'تم تأمين الرانداون والفقرات الحية ضد التعديل أو الحذف العرضي أثناء الهواء.',
-        });
-      } else {
-        addToast({
-          type: 'info',
-          title: 'تم تعطيل قفل البث المباشر',
-          message: 'المنظومة الآن في وضع التحرير والإعداد الحر.',
-        });
-      }
-      return next;
-    });
+    // Reads the current shared state (this also runs from a keyboard listener registered once).
+    const next = !apiService.getBroadcastState().liveLock;
+    try {
+      apiService.setLiveLock(next);
+      setIsLiveLockActive(next);
+      addToast(
+        next
+          ? {
+              type: 'warning',
+              title: 'تم تفعيل قفل البث المباشر',
+              message: 'لا يمكن لأي مستخدم حذف البرامج أو الحلقات حتى يُرفع القفل.',
+            }
+          : { type: 'info', title: 'تم رفع قفل البث المباشر', message: 'عاد الحذف متاحاً حسب الصلاحيات.' }
+      );
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'قفل البث المباشر', message: err.message });
+    }
   };
 
   const removeToast = (id: string) => {
@@ -111,64 +110,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
-  const [isLiveWireModalOpen, setIsLiveWireModalOpen] = useState(false);
-
-  const handleConvertWireToNews = (wireItem: any) => {
-    // Convert wire item into a draft NewsItem
-    const sourceName = wireItem.sourceAgency || wireItem.source || 'وكالة أنباء';
-    const topic = wireItem.category || wireItem.topic || 'أخبار عاجلة';
-    const newDraft: NewsItem = {
-      id: `news-${Date.now()}`,
-      title: wireItem.title,
-      shortTitle: wireItem.title.slice(0, 40),
-      slug: `wire-${Date.now()}`,
-      summary: wireItem.body.slice(0, 160) + '...',
-      content: `<p><strong>${sourceName} — </strong>${wireItem.body}</p>`,
-      mainImageUrl: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=80',
-      status: 'DRAFT',
-      priority: wireItem.urgency === 'FLASH' ? 'URGENT' : 'NORMAL',
-      categoryId: categories[0]?.id || 'cat-1',
-      categoryName: categories[0]?.nameAr || 'أخبار عاجلة',
-      sourceId: sources[0]?.id || 'src-1',
-      sourceName: sourceName,
-      authorId: currentUser.id,
-      authorName: currentUser.fullName,
-      editorId: undefined,
-      locationName: 'غرفة الأخبار المركزية',
-      eventDate: new Date().toISOString(),
-      isBreaking: wireItem.urgency === 'FLASH' || wireItem.urgency === 'BULLETIN',
-      keywords: [sourceName, topic, 'برقية إخبارية'],
-      workflowLogs: [
-        {
-          id: `log-${Date.now()}`,
-          newsId: `news-${Date.now()}`,
-          fromStatus: 'DRAFT',
-          toStatus: 'DRAFT',
-          changedBy: {
-            id: currentUser.id,
-            name: currentUser.fullName,
-            role: currentUser.role,
-          },
-          comment: `تم استيراد الخبر من برقيات ${wireItem.source}`,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      viewsCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setSelectedNewsItem(newDraft);
-    setActiveNav('news-editor');
-    addToast({
-      title: 'تم استيراد البرقية بنجاح',
-      message: `تم تحويل برقية ${wireItem.source} إلى مسودة خبرية جاهزة للتحرير والبث.`,
-      type: 'success',
-    });
-  };
-
   // Load all initial data from apiService
   const refreshData = () => {
     setCurrentUser(apiService.getCurrentUser());
+    setIsLiveLockActive(apiService.getBroadcastState().liveLock);
     setProgramTypes(apiService.getProgramTypes());
     setStories(apiService.getStories());
     setNewsList(apiService.getNews());
@@ -201,7 +146,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     });
   }, []);
 
-  // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+W, Ctrl+Alt+N)
+  // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+N)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Command Palette (Ctrl+K or Cmd+K)
@@ -228,13 +173,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         return;
       }
 
-      // Live Wire Modal (Ctrl+Alt+W)
-      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'w' || e.key === 'W')) {
-        e.preventDefault();
-        setIsLiveWireModalOpen((prev) => !prev);
-        return;
-      }
-
       // Quick New News (Ctrl+Alt+N)
       if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
@@ -248,8 +186,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // Breaking news ticker items
   const breakingNewsItems = newsList
-    .filter((n) => n.isBreaking)
-    .map((n) => ({ id: n.id, title: n.title, time: n.publishDate ? n.publishDate.slice(11, 16) : 'الآن' }));
+    .filter((n) => n.isBreaking && !n.deletedAt)
+    .map((n) => ({
+      id: n.id,
+      newsId: n.id,
+      title: n.title,
+      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
+    }));
 
   // --- NEWS ACTIONS ---
   const handleSaveNews = (newsData: Partial<NewsItem>) => {
@@ -469,8 +412,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- MEDIA ACTIONS ---
   const handleUploadMedia = (mediaData: Partial<MediaAsset>) => {
-    apiService.saveMediaAsset(mediaData, currentUser);
-    refreshData();
+    try {
+      apiService.saveMediaAsset(mediaData, currentUser);
+      refreshData();
+      addToast({ type: 'success', title: 'تمت إضافة المادة', message: 'حُفظت المادة في مكتبة الوسائط' });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'تعذر حفظ المادة', message: err.message || 'حدث خطأ' });
+    }
   };
 
   const handleDeleteMedia = (id: string) => {
@@ -542,19 +490,17 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       <NetworkStatusBanner />
 
       {/* Breaking News Ticker (Topmost) */}
-      <BreakingNewsTicker
-        items={
-          breakingNewsItems.length > 0
-            ? breakingNewsItems
-            : [{ id: 'live-default', title: 'البث الإخباري الحي مستمر على مدار 24 ساعة - تغطية شاملة لكافة الأحداث المحلية والإقليمية والدولية', time: 'مباشر' }]
-        }
-      />
+      {/* Shown only when there is real breaking news */}
+      {breakingNewsItems.length > 0 && (
+        <BreakingNewsTicker items={breakingNewsItems} onOpenNews={(newsId) => newsId && handleEditNewsClick(newsId)} />
+      )}
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Main Application Sidebar */}
         <Sidebar
           activeNav={activeNav}
           currentUser={currentUser}
+          breakingCount={newsList.filter((n) => n.isBreaking && !n.deletedAt).length}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           onSelectNav={(navId) => {
@@ -580,14 +526,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             onChangePassword={onChangePassword}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)}
-            onOpenLiveWire={() => setIsLiveWireModalOpen(true)}
             isLiveLockActive={isLiveLockActive}
             onToggleLiveLock={handleToggleLiveLock}
             onNavigate={(nav) => {
               setActiveNav(nav);
               setIsMobileSidebarOpen(false);
             }}
-            unreadNotificationsCount={unreadNotificationsCount}
             onToggleMobileMenu={() => setIsMobileSidebarOpen((prev) => !prev)}
             onCreateNews={handleCreateNewNewsClick}
             onCreateProgram={() => {
@@ -816,12 +760,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
-      {/* Live Wire Feeds Modal */}
-      <LiveWireFeedModal
-        isOpen={isLiveWireModalOpen}
-        onClose={() => setIsLiveWireModalOpen(false)}
-        onConvertWireToNews={handleConvertWireToNews}
-      />
 
       {/* Keyboard Shortcuts Reference Modal */}
       <KeyboardShortcutsModal

@@ -62,6 +62,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   db.transaction(() => {
     BASE_COLLECTIONS.forEach(([c, items]) => seedList(db, c, items));
     if (!db.getRow('settings', SINGLETON_ID)) db.writeRow('settings', SINGLETON_ID, INITIAL_SETTINGS, 0, null);
+    if (!db.getRow('broadcastState', SINGLETON_ID)) db.writeRow('broadcastState', SINGLETON_ID, { liveLock: false }, 0, null);
   });
 
   if (config.seedDemoData && db.getMeta('demo_seeded') !== '1') {
@@ -80,6 +81,17 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   }
 
   await ensureAdministrator(db, config);
+  reconcileTwoFactorFlags(db);
+}
+
+/** The user record's twoFactorEnabled flag must mirror real TOTP enrolment (never trust seeded/legacy values). */
+function reconcileTwoFactorFlags(db: NewsroomDatabase) {
+  db.transaction(() => {
+    for (const row of db.listCollection('users')) {
+      const actual = !!db.getCredentials(row.id)?.totpEnabled;
+      if (!!row.d?.twoFactorEnabled !== actual) db.writeRow('users', row.id, { ...row.d, twoFactorEnabled: actual }, row.p, null);
+    }
+  });
 }
 
 /** Guarantees at least one account can sign in on a fresh installation. */

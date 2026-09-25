@@ -76,7 +76,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
     >
       <div className="space-y-5 text-right">
         <p className="text-xs text-slate-500 leading-relaxed">
-          توليد وسوم موحدة لأنظمة الجرافيكس التلفزيوني (VizRT / Chyron / Ross Video / CasparCG) لربط المادة الصحفية مع مخرج الاستوديو وفني الجرافيكس.
+          توليد نصوص الشارات (Lower Thirds) بصيغة موحدة يدرجها فني الجرافيكس في نظام الشارات لديكم. لا يرتبط النظام آلياً بأجهزة الجرافيكس.
         </p>
 
         {/* Tab Selection */}

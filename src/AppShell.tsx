@@ -52,8 +52,8 @@ export default function AppShell() {
     return () => setUnauthorizedHandler(null);
   }, [enter]);
 
-  const handleLogin = async (email: string, password: string) => {
-    const session = await authClient.login(email, password);
+  const handleLogin = async (email: string, password: string, totp?: string) => {
+    const session = await authClient.login(email, password, totp);
     setNotice(null);
     await enter(session);
   };

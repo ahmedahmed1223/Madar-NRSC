@@ -51,6 +51,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     RATE_LIMIT_PER_MINUTE: int(600, 10),
     LOGIN_RATE_LIMIT_PER_15MIN: int(20, 3),
 
+    MEDIA_MAX_UPLOAD_MB: int(500, 1),
+
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   });
@@ -96,6 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     backupRetention: c.BACKUP_RETENTION,
     rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
+    mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,
     gemini: { apiKey: geminiKey, model: c.GEMINI_MODEL },
   };
 }

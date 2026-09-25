@@ -119,7 +119,10 @@ const tasksPolicy: Policy = ({ auth, kind, before, after }) => {
 };
 
 const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
-  if (kind === 'delete' || isSoftDelete(before, after)) return auth.can('media.delete') ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
+  if (kind === 'delete' || isSoftDelete(before, after)) {
+    const isOwner = [before?.ownerId, before?.uploadedById].includes(auth.user.id);
+    return auth.can('media.delete') || (isOwner && auth.can('media.upload')) ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
+  }
   return auth.can('media.upload') ? null : 'صلاحياتك لا تسمح برفع الوسائط';
 };
 
@@ -152,6 +155,13 @@ export const POLICIES: Record<CollectionName, Policy> = {
   programTypes: require('system.settings'),
   settings: require('system.settings'),
   notifications: notificationsPolicy,
+  broadcastState: require('rundown.lock_override'),
+  messages: ({ kind, after }) => {
+    if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
+    if (!['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel)) return 'قناة غير معروفة';
+    if (typeof after?.text !== 'string' || !after.text.trim() || after.text.length > 2000) return 'نص الرسالة غير صالح';
+    return null;
+  },
   activityLogs: logPolicy,
   auditLogs: logPolicy,
 };

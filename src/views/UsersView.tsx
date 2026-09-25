@@ -20,6 +20,7 @@ import {
   UserX,
   ShieldCheck,
   ShieldAlert,
+  ShieldOff,
   Plus,
   Search,
   Filter,
@@ -130,6 +131,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       } catch (e: any) {
         alert(e.message || 'فشل في حذف المستخدم');
       }
+    }
+  };
+
+  const handleResetTwoFactor = async (user: User) => {
+    if (!window.confirm(`إلغاء التحقق بخطوتين للمستخدم ${user.fullName}؟ استخدم ذلك فقط إذا فقد جهاز المصادقة.`)) return;
+    try {
+      await authClient.resetUserTwoFactor(user.id);
+      showToast(`تم إلغاء التحقق بخطوتين للمستخدم ${user.fullName}`);
+    } catch (e: any) {
+      alert(e.message || 'تعذر إلغاء التحقق بخطوتين');
     }
   };
 
@@ -628,6 +639,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                       </button>
 
                       <div className="flex items-center gap-1">
+                        {user.twoFactorEnabled && !isCurrentActive && (
+                          <button
+                            type="button"
+                            onClick={() => handleResetTwoFactor(user)}
+                            className="p-1.5 bg-white hover:bg-indigo-100 text-indigo-600 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                            title="إلغاء التحقق بخطوتين (فقدان جهاز المصادقة)"
+                          >
+                            <ShieldOff className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {

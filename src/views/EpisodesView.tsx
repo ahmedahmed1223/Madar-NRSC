@@ -58,12 +58,6 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [studioName, setStudioName] = useState('استوديو الأخبار A1');
   const [description, setDescription] = useState('');
 
-  const STUDIO_PRESETS = [
-    'استوديو الأخبار A1',
-    'استوديو البرامج B2',
-    'استوديو الحوارات C',
-    'الاستوديو الافتراضي VR',
-  ];
 
   const DURATION_PRESETS = [30, 45, 50, 60, 90];
 
@@ -524,18 +518,6 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 onChange={(e) => setStudioName(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
-              <div className="mt-1 flex flex-wrap gap-1">
-                {STUDIO_PRESETS.map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setStudioName(st)}
-                    className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 

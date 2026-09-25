@@ -31,13 +31,12 @@ import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch } from './http';
 import { newId } from '../shared/ids';
-import { COLLECTIONS } from '../shared/collections';
+import { COLLECTIONS, BroadcastState, ChatMessage } from '../shared/collections';
 import { RbacService } from './rbacService';
 export { formatSecondsToTime, parseTimeToSeconds, recalculateRundown } from '../shared/rundown';
 import { recalculateRundown } from '../shared/rundown';
 
 import { selfHealingService } from './selfHealingService';
-import { networkResilienceManager } from './networkManager';
 
 // Storage keys of the server-synchronised collections (see src/shared/collections.ts).
 const STORAGE_KEYS = {
@@ -167,10 +166,10 @@ export class ApiService {
       phone: user.phone || '',
       role: user.role || 'JOURNALIST',
       customRoleId: user.customRoleId,
-      avatarUrl: user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      avatarUrl: user.avatarUrl || '/avatar.svg',
       jobTitle: user.jobTitle || 'صحفي',
       department: user.department || 'غرفة الأخبار',
-      staffId: user.staffId || `EMP-0${Math.floor(Math.random() * 90 + 10)}`,
+      staffId: user.staffId || '',
       securityClearance: user.securityClearance || 'CONFIDENTIAL',
       shift: user.shift || 'MORNING',
       bio: user.bio || '',
@@ -279,7 +278,7 @@ export class ApiService {
       slug: (newsData.title || 'news-item').toLowerCase().replace(/\s+/g, '-'),
       content: newsData.content || '',
       summary: newsData.summary || '',
-      mainImageUrl: newsData.mainImageUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
+      mainImageUrl: newsData.mainImageUrl || '',
       videoUrl: newsData.videoUrl,
       sourceId: newsData.sourceId || 'src-1',
       sourceName: newsData.sourceName || 'المراسل الميداني',
@@ -506,7 +505,7 @@ export class ApiService {
       name: program.name || 'برنامج جديد',
       shortName: program.shortName || program.name || '',
       description: program.description || '',
-      coverImageUrl: program.coverImageUrl || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
+      coverImageUrl: program.coverImageUrl || '',
       typeId: program.typeId || 'pt-1',
       typeName: program.typeName || 'نشرة إخبارية',
       presenterId: program.presenterId || currentUser.id,
@@ -852,7 +851,7 @@ export class ApiService {
     const newGuest: Guest = {
       id: newId('gst'),
       fullName: guest.fullName || 'ضيف جديد',
-      avatarUrl: guest.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
+      avatarUrl: guest.avatarUrl || '/avatar.svg',
       organization: guest.organization || 'مستقل',
       jobTitle: guest.jobTitle || 'خبير ومحلل',
       specialty: guest.specialty || 'شؤون عامة',
@@ -964,17 +963,24 @@ export class ApiService {
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
+    const url = file.url || file.fileUrl;
+    if (!url) throw new Error('يجب رفع ملف أو إدخال رابط للمادة');
     const newMedia: MediaFile = {
+      ...file,
       id: newId('med'),
-      fileName: file.fileName || `file_${Date.now()}.jpg`,
-      originalName: file.originalName || file.fileName || 'ملف مرفوع',
-      mimeType: file.mimeType || 'image/jpeg',
-      fileSizeBytes: file.fileSizeBytes || 1024 * 1024,
-      url: file.url || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
+      title: file.title || file.originalName || file.fileName,
+      fileName: file.fileName || file.originalName || 'ملف',
+      originalName: file.originalName || file.fileName,
+      mimeType: file.mimeType,
+      fileSizeBytes: file.fileSizeBytes ?? file.fileSize,
+      url,
+      fileUrl: url,
       mediaType: file.mediaType || 'IMAGE',
       ownerId: currentUser.id,
       ownerName: currentUser.fullName,
-      tags: file.tags || ['أخبار', 'وسائط'],
+      uploadedById: currentUser.id,
+      uploadedByName: currentUser.fullName,
+      tags: file.tags && file.tags.length ? file.tags : [],
       description: file.description || '',
       createdAt: now,
     };
@@ -1183,6 +1189,39 @@ export class ApiService {
     setStored(STORAGE_KEYS.SETTINGS, updated);
     this.logAudit('SETTINGS_UPDATE', 'SETTINGS', 'global', 'INFO', 'تم تحديث الإعدادات العامة للمؤسسة.');
     return updated;
+  }
+
+  // --- SHARED BROADCAST STATE ---
+  static getBroadcastState(): BroadcastState {
+    return getStored<BroadcastState>(COLLECTIONS.broadcastState.storageKey, { liveLock: false });
+  }
+
+  /** On-air lock shared by all workstations; the server blocks deleting programs/episodes while set. */
+  static setLiveLock(locked: boolean): BroadcastState {
+    const user = this.getCurrentUser();
+    if (!RbacService.hasPermission(user, 'rundown.lock_override')) {
+      throw new Error('صلاحياتك لا تسمح بتغيير قفل البث المباشر');
+    }
+    const next: BroadcastState = locked
+      ? { liveLock: true, lockedById: user.id, lockedByName: user.fullName, lockedAt: new Date().toISOString() }
+      : { liveLock: false };
+    setStored(COLLECTIONS.broadcastState.storageKey, next);
+    this.logAudit('SETTINGS_UPDATE', 'BROADCAST', 'live-lock', 'WARNING', locked ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر');
+    return next;
+  }
+
+  // --- INTERNAL CHAT ---
+  /** Messages oldest-first (the server stores newest first). */
+  static getMessages(): (ChatMessage & { isUrgent?: boolean })[] {
+    return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
+  }
+
+  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false): void {
+    const all = getStored<any[]>(COLLECTIONS.messages.storageKey, []);
+    all.unshift({ id: newId('msg'), channel, text: text.slice(0, 2000), isUrgent });
+    // keep the local window bounded; the server keeps the full history
+    if (all.length > 500) all.length = 500;
+    setStored(COLLECTIONS.messages.storageKey, all);
   }
 
   // --- NOTIFICATIONS ---

@@ -1,3 +1,4 @@
+import { apiService } from '../services/api';
 import React, { useState } from 'react';
 import {
   Plus,
@@ -44,7 +45,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<NewsPriority>('NORMAL');
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 16));
-  const [assignedToName, setAssignedToName] = useState(currentUser.fullName);
+  const [assigneeId, setAssigneeId] = useState(currentUser.id);
+  // Tasks are assigned to real accounts so the assignee is notified and can update the task.
+  const assignableUsers = apiService.getUsers().filter((u) => u.isActive !== false && !u.deletedAt);
   const [status, setStatus] = useState<TaskStatus>('TODO');
 
   const TASK_TEMPLATES = [
@@ -55,14 +58,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
     'تدقيق لغوي وصحفي لملف التغطية',
   ];
 
-  const ASSIGNEE_PRESETS = [
-    currentUser.fullName,
-    'مراسل الميدان (الرياض)',
-    'مراسل القاهرة',
-    'منتج النشرة الرئيسية',
-    'محرر الديسك المركزي',
-    'فريق الغرافيكس',
-  ];
 
   const handleSetDeadlinePreset = (hoursToAdd: number) => {
     const target = new Date(Date.now() + hoursToAdd * 3600 * 1000);
@@ -75,7 +70,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setDescription('');
     setPriority('NORMAL');
     setDueDate(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
-    setAssignedToName(currentUser.fullName);
+    setAssigneeId(currentUser.id);
     setStatus('TODO');
     setIsModalOpen(true);
   };
@@ -86,13 +81,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setDescription(t.description || '');
     setPriority(t.priority);
     setDueDate(t.dueDate ? t.dueDate.slice(0, 16) : new Date().toISOString().slice(0, 16));
-    setAssignedToName(t.assignedToName || t.assigneeName || '');
+    setAssigneeId(t.assigneeId || t.assignedToId || currentUser.id);
     setStatus(t.status);
     setIsModalOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const assignee = assignableUsers.find((u) => u.id === assigneeId) || currentUser;
+    const assignedToName = assignee.fullName;
     onSaveTask({
       id: editingTask?.id,
       title,
@@ -102,10 +99,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
       assignedToName,
       assigneeName: assignedToName,
       status,
-      assignedToId: currentUser.id,
-      assigneeId: currentUser.id,
-      createdById: currentUser.id,
-      createdByName: currentUser.fullName,
+      assignedToId: assignee.id,
+      assigneeId: assignee.id,
+      assigneeAvatar: assignee.avatarUrl,
+      ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
     });
     setIsModalOpen(false);
   };
@@ -445,31 +442,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
           <div>
             <label htmlFor="task-assignee-input" className="block text-xs font-bold text-slate-700 mb-1">المكلف بالمهمة الصحفية</label>
-            <input
+            <select
               id="task-assignee-input"
-              type="text"
-              value={assignedToName}
-              onChange={(e) => setAssignedToName(e.target.value)}
-              placeholder="اسم الصحفي أو المراسل أو المحرر"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-            />
-            {/* Quick Assignee Chips */}
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {ASSIGNEE_PRESETS.map((person) => (
-                <button
-                  key={person}
-                  type="button"
-                  onClick={() => setAssignedToName(person)}
-                  className={`text-[10px] px-2 py-0.5 rounded-md transition-all ${
-                    assignedToName === person
-                      ? 'bg-blue-600 text-white font-bold'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                  }`}
-                >
-                  {person}
-                </button>
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.fullName} — {u.jobTitle}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

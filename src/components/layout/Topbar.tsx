@@ -24,11 +24,11 @@ import {
 } from 'lucide-react';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
+import { TwoFactorModal } from '../auth/TwoFactorModal';
 import { NotificationDropdown } from './NotificationDropdown';
 import { PWAInstallButton } from '../common/PWAInstallButton';
-import { ProductionEnvironmentModal } from '../common/ProductionEnvironmentModal';
-import { SelfHealingModal } from '../common/SelfHealingModal';
-import { useSystemHealth } from '../../hooks/useSystemHealth';
+import { dataStore } from '../../services/dataStore';
+import { RbacService } from '../../services/rbacService';
 
 interface TopbarProps {
   currentUser: User;
@@ -42,7 +42,6 @@ interface TopbarProps {
   onCreateEpisode?: () => void;
   onCreateTask?: () => void;
   onNavigate?: (view: string) => void;
-  onOpenLiveWire?: () => void;
   unreadNotificationsCount?: number;
   onToggleMobileMenu?: () => void;
   isLiveLockActive?: boolean;
@@ -61,7 +60,6 @@ export const Topbar: React.FC<TopbarProps> = ({
   onCreateEpisode = () => {},
   onCreateTask = () => {},
   onNavigate,
-  onOpenLiveWire,
   unreadNotificationsCount,
   onToggleMobileMenu,
   isLiveLockActive = false,
@@ -71,9 +69,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isProductionModalOpen, setIsProductionModalOpen] = useState(false);
-  const [isSelfHealingOpen, setIsSelfHealingOpen] = useState(false);
-  const { report } = useSystemHealth();
+  const [syncStatus, setSyncStatus] = useState({ pending: dataStore.pendingCount(), online: true });
+  const [isTwoFactorOpen, setIsTwoFactorOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
@@ -93,6 +90,17 @@ export const Topbar: React.FC<TopbarProps> = ({
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(
+    () =>
+      dataStore.subscribe((evt) => {
+        if (evt.type === 'sync-status') setSyncStatus({ pending: evt.pending, online: evt.online });
+        if (evt.type === 'data-changed' && evt.collections.includes('notifications')) setNotifications(ApiService.getMyNotifications());
+      }),
+    []
+  );
+
+  const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
 
   useEffect(() => {
     setNotifications(ApiService.getMyNotifications());
@@ -133,12 +141,22 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         )}
 
-        {/* Live On Air Badge & Saudi Time */}
+        {/* Station clock + shared on-air lock (enforced by the server for every user) */}
         <div className="flex items-center gap-2 sm:gap-2.5 bg-slate-900 text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs shadow-xs font-mono">
-          <div className="flex items-center gap-1.5 text-red-400">
-            <Radio className="w-3.5 h-3.5 animate-pulse" />
-            <span className="font-bold text-[10px] tracking-wider">ON AIR</span>
-          </div>
+          <button
+            type="button"
+            onClick={onToggleLiveLock}
+            disabled={!canToggleLock}
+            title={
+              isLiveLockActive
+                ? 'قفل البث المباشر مفعّل لكل المستخدمين (Ctrl+Alt+L لرفعه)'
+                : 'تفعيل قفل البث المباشر: يمنع حذف البرامج والحلقات أثناء الهواء (Ctrl+Alt+L)'
+            }
+            className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-400' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
+            <span className="font-bold text-[10px] tracking-wider">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
+          </button>
           <span className="text-slate-500">|</span>
           <div className="flex items-center gap-1 font-bold text-slate-200">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -147,62 +165,21 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         </div>
 
-        {/* Official Production Readiness Badge */}
-        <button
-          id="official-production-status-btn"
-          type="button"
-          onClick={() => setIsProductionModalOpen(true)}
-          title="بيئة العمل والإنتاج الرسمي (فحص الأنظمة التشغيلية، النسخ الاحتياطي، قفل البث)"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 rounded-xl text-xs font-semibold border border-emerald-500/30 transition-all cursor-pointer shadow-2xs"
+        {/* Real synchronisation status with the server */}
+        <div
+          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border ${
+            !syncStatus.online
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : syncStatus.pending > 0
+              ? 'bg-amber-50 text-amber-700 border-amber-200'
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          }`}
+          title="حالة المزامنة مع الخادم"
+          role="status"
         >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="font-bold text-[11px] hidden sm:inline">بيئة الإنتاج</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          {isLiveLockActive && <Lock className="w-3 h-3 text-amber-300" />}
-        </button>
-
-        {/* 24/7 Self-Healing & System Health Badge */}
-        <button
-          id="system-self-healing-btn"
-          type="button"
-          onClick={() => setIsSelfHealingOpen(true)}
-          title="مركز الاستقرار والتعافي الذاتي 24/7 (انقر للفحص والإصلاح الشامل)"
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-teal-950/90 hover:bg-teal-900 text-teal-300 rounded-xl text-xs font-semibold border border-teal-500/30 transition-all cursor-pointer shadow-2xs"
-        >
-          <Activity className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
-          <span className="font-bold text-[11px]">التعافي الذاتي 24/7</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 bg-teal-500/20 text-teal-200 rounded-md">
-            {report.healthScore}%
-          </span>
-        </button>
-
-        {/* SQLite 3 Status Badge */}
-        <button
-          type="button"
-          onClick={() => onNavigate?.('database')}
-          title="قاعدة بيانات SQLite 3 (انقر للإدارة والاستعلامات)"
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-indigo-300 rounded-xl text-xs font-mono border border-indigo-500/30 transition-all cursor-pointer"
-        >
-          <Database className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="font-bold text-[11px]">SQLite 3</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        </button>
-
-        {/* Live Wire Feeds Button */}
-        {onOpenLiveWire && (
-          <button
-            type="button"
-            onClick={onOpenLiveWire}
-            title="شريط برقيات وكالات الأنباء العالمية المباشرة (رويترز، واس، أ ف ب، بلومبرغ)"
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-900/90 hover:bg-blue-800 text-blue-200 rounded-xl text-xs font-semibold border border-blue-500/30 transition-all cursor-pointer shadow-2xs"
-          >
-            <Globe className="w-3.5 h-3.5 text-blue-400 animate-spin-slow" />
-            <span className="font-bold text-[11px]">برقيات الوكالات</span>
-            <span className="px-1.5 py-0.2 bg-red-600 text-white font-mono text-[9px] font-bold rounded-full">
-              LIVE
-            </span>
-          </button>
-        )}
+          <span className={`w-2 h-2 rounded-full ${!syncStatus.online ? 'bg-red-500' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          {!syncStatus.online ? 'غير متصل' : syncStatus.pending > 0 ? `جارٍ الحفظ (${syncStatus.pending})` : 'متصل ومحفوظ'}
+        </div>
 
         {/* Mobile Search Button */}
         <button
@@ -386,6 +363,17 @@ export const Topbar: React.FC<TopbarProps> = ({
                     type="button"
                     onClick={() => {
                       setIsUserMenuOpen(false);
+                      setIsTwoFactorOpen(true);
+                    }}
+                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-slate-500" />
+                    <span>التحقق بخطوتين {currentUser.twoFactorEnabled ? '(مفعّل)' : ''}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
                       onLogout();
                     }}
                     className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-red-600 hover:bg-red-50"
@@ -400,20 +388,13 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       </div>
 
-      {/* Official Production Environment & Broadcast Readiness Modal */}
-      <ProductionEnvironmentModal
-        isOpen={isProductionModalOpen}
-        onClose={() => setIsProductionModalOpen(false)}
-        isLiveLockActive={isLiveLockActive}
-        onToggleLiveLock={onToggleLiveLock}
-        onNavigate={onNavigate}
+      <TwoFactorModal
+        isOpen={isTwoFactorOpen}
+        onClose={() => setIsTwoFactorOpen(false)}
+        isEnabled={!!currentUser.twoFactorEnabled}
+        onChanged={() => undefined}
       />
 
-      {/* 24/7 Self-Healing & System Health Operations Hub Modal */}
-      <SelfHealingModal
-        isOpen={isSelfHealingOpen}
-        onClose={() => setIsSelfHealingOpen(false)}
-      />
     </header>
   );
 };

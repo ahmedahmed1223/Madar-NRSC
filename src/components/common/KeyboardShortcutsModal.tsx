@@ -38,12 +38,10 @@ const SHORTCUTS: ShortcutItem[] = [
 
   // Editorial & News
   { keys: ['Ctrl', 'Alt', 'N'], description: 'إنشاء خبر أو تقرير صحفي جديد فوراً', category: 'EDITORIAL' },
-  { keys: ['Ctrl', 'Alt', 'W'], description: 'فتح شريط برقيات وكالات الأنباء العالمية الحية (Live Wires)', category: 'EDITORIAL' },
   { keys: ['Ctrl', 'S'], description: 'حفظ مسودة الخبر أو جدول الرانداون الحالي', category: 'EDITORIAL' },
 
   // Broadcast & Studio
-  { keys: ['Ctrl', 'Alt', 'L'], description: 'تبديل قفل البث المباشر (On-Air Lock) لمنع التعديل العرضي', category: 'BROADCAST' },
-  { keys: ['Ctrl', 'Alt', 'T'], description: 'تشغيل نمط ملقن القراءة الإخباري (Teleprompter Fullscreen)', category: 'BROADCAST' },
+  { keys: ['Ctrl', 'Alt', 'L'], description: 'تبديل قفل البث المباشر المشترك (يمنع حذف البرامج والحلقات لكل المستخدمين)', category: 'BROADCAST' },
   { keys: ['Space'], description: 'إيقاف / استئناف التمرير التلقائي في الملقن', category: 'BROADCAST' },
 ];
 

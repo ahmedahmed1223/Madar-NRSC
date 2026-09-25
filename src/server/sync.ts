@@ -15,6 +15,7 @@ import {
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
+import { removeUpload, uploadIdFromMedia } from './uploads';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -23,6 +24,13 @@ export const MAX_CHANGES_PER_POLL = 5000;
 /** Broadcasts the latest revision to connected browsers (SSE). */
 export const changeBus = new EventEmitter();
 changeBus.setMaxListeners(0);
+
+/** Thrown inside a write transaction to reject one op (the transaction rolls back). */
+class SyncReject extends Error {
+  constructor(public code: 'FORBIDDEN' | 'INVALID', message: string) {
+    super(message);
+  }
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -41,6 +49,14 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
       timestamp: now,
     };
   }
+  if (collection === 'messages') {
+    return { ...data, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, userAvatar: auth.user.avatarUrl, timestamp: now };
+  }
+  if (collection === 'broadcastState') {
+    return data.liveLock
+      ? { ...data, lockedById: auth.user.id, lockedByName: auth.user.fullName, lockedAt: now }
+      : { liveLock: false };
+  }
   if (collection === 'activityLogs') {
     return {
       ...data,
@@ -55,7 +71,7 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
 }
 
 export class SyncService {
-  constructor(private db: NewsroomDatabase) {}
+  constructor(private db: NewsroomDatabase, private dataDir: string) {}
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
     return row.deleted ? true : canRead(auth, row.c, row.d);
@@ -115,6 +131,13 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         const before = current?.d ?? null;
 
+        const liveLocked = !!this.db.getRow('broadcastState', SINGLETON_ID)?.d?.liveLock;
+        const lockBlocks = (after: any) =>
+          liveLocked && (collection === 'episodes' || collection === 'programs') && (op.op === 'delete' || (after?.deletedAt && !current?.d?.deletedAt));
+        if (lockBlocks(op.d)) {
+          return { ok: false, code: 'FORBIDDEN', message: 'قفل البث المباشر مفعّل: لا يمكن حذف البرامج أو الحلقات حتى يُرفع القفل', current } as SyncOpResult;
+        }
+
         if (op.op === 'delete') {
           if (!current) return { ok: true, row: { c: collection, id, v: 0, p: 0, deleted: true } } as SyncOpResult;
           const denied = POLICIES[collection]({ auth, collection, kind: 'delete', before, after: null });
@@ -123,6 +146,8 @@ export class SyncService {
             this.db.deleteCredentials(id);
             this.db.deleteUserSessions(id);
           }
+          const uploadId = collection === 'media' ? uploadIdFromMedia(before) : null;
+          if (uploadId) removeUpload(this.db, this.dataDir, uploadId);
           const row = this.db.deleteRow(collection, id, auth.user.id)!;
           return { ok: true, row } as SyncOpResult;
         }
@@ -148,11 +173,20 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'media') {
+          // Ownership decides who may delete a file, so it is set by the server and never changes.
+          const owner = kind === 'create'
+            ? { id: auth.user.id, name: auth.user.fullName }
+            : { id: before?.ownerId ?? before?.uploadedById, name: before?.ownerName ?? before?.uploadedByName };
+          after = { ...after, ownerId: owner.id, ownerName: owner.name, uploadedById: owner.id, uploadedByName: owner.name };
+        }
 
         const denied = POLICIES[collection]({ auth, collection, kind, before, after });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
         if (collection === 'users') {
+          // 2FA status is owned by the server (enrolment endpoints), never by the client.
+          after.twoFactorEnabled = !!this.db.getCredentials(id)?.totpEnabled;
           const invalid = this.validateUser(id, after);
           if (invalid) return { ok: false, code: 'INVALID', message: invalid, current } as SyncOpResult;
         }
@@ -169,6 +203,16 @@ export class SyncService {
 
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
 
+        if (collection === 'media') {
+          // Only the uploader's own files may be attached, and each upload to a single record.
+          const uploadId = uploadIdFromMedia(after);
+          if (uploadId && uploadId !== uploadIdFromMedia(before)) {
+            const upload = this.db.getUpload(uploadId);
+            if (!upload) throw new SyncReject('INVALID', 'الملف المرفوع غير موجود');
+            if (upload.uploadedBy !== auth.user.id && !auth.can('media.delete')) throw new SyncReject('FORBIDDEN', 'لا يمكنك إرفاق ملف رفعه مستخدم آخر');
+          }
+        }
+
         if (collection === 'users') {
           if (before && before.email !== after.email) this.db.updateCredentialEmail(id, String(after.email).toLowerCase());
           if (after.isActive === false || after.deletedAt) this.db.deleteUserSessions(id);
@@ -176,6 +220,7 @@ export class SyncService {
         return { ok: true, row } as SyncOpResult;
       });
     } catch (err: any) {
+      if (err instanceof SyncReject) return { ok: false, code: err.code, message: err.message, current: this.db.getRow(collection, id) };
       if (String(err?.message).includes('UNIQUE constraint failed: user_credentials.email')) {
         return { ok: false, code: 'INVALID', message: 'البريد الإلكتروني مستخدم لحساب آخر' };
       }

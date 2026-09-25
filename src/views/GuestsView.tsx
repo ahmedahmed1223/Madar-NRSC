@@ -67,12 +67,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     'هيئة الفضاء والتقنية',
   ];
 
-  const AVATAR_PRESETS = [
-    { label: 'صورة 1', url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80' },
-    { label: 'صورة 2', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80' },
-    { label: 'صورة 3', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' },
-    { label: 'صورة 4', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80' },
-  ];
 
   const specialties = Array.from(new Set(guests.map((g) => g.specialty)));
 
@@ -86,7 +80,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     setEmail('');
     setNotes('');
     setRating(5);
-    setAvatarUrl('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80');
+    setAvatarUrl('');
     setIsModalOpen(true);
   };
 
@@ -116,7 +110,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       email,
       notes,
       rating: Number(rating) || 5,
-      avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
+      avatarUrl: avatarUrl || '/avatar.svg',
     });
     setIsModalOpen(false);
   };
@@ -464,20 +458,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
             />
-            {/* Quick Avatar Presets */}
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 font-bold">نماذج سريعة:</span>
-              {AVATAR_PRESETS.map((av) => (
-                <button
-                  key={av.label}
-                  type="button"
-                  onClick={() => setAvatarUrl(av.url)}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md"
-                >
-                  {av.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div>
