@@ -31,10 +31,27 @@ import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch } from './http';
 import { newId } from '../shared/ids';
-import { COLLECTIONS, BroadcastState, ChatMessage } from '../shared/collections';
+import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
+
+export interface NewsRevision {
+  version: number;
+  data: NewsItem;
+  changedBy: string | null;
+  changedByName: string | null;
+  changedAt: string;
+}
 import { RbacService } from './rbacService';
 export { formatSecondsToTime, parseTimeToSeconds, recalculateRundown } from '../shared/rundown';
 import { recalculateRundown } from '../shared/rundown';
+import {
+  DEFAULT_BREAKING_HOURS,
+  NEWS_INITIAL_STATUSES,
+  NEWS_STATUS_LABELS,
+  canEditNewsContent,
+  isBreakingLive,
+  makeNewsSlug,
+  transitionDenial,
+} from '../shared/newsWorkflow';
 
 import { selfHealingService } from './selfHealingService';
 
@@ -231,38 +248,41 @@ export class ApiService {
     return this.getNews().find((n) => n.id === id);
   }
 
-  static saveNews(newsData: Partial<NewsItem>, user?: User): NewsItem {
+  /**
+   * Creates or edits a story's content. Status is never changed here (use updateNewsStatus),
+   * so saving text can't silently move a story backwards in the workflow.
+   * `expectedUpdatedAt` is the version the editor loaded; a newer copy means a colleague saved meanwhile.
+   */
+  static saveNews(newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, user?: User): NewsItem {
     const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const currentUser = user || this.getCurrentUser();
+    const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
     const now = new Date().toISOString();
+    const { expectedUpdatedAt, ...data } = newsData;
 
-    // --- RBAC Validation ---
-    const requestedStatus = newsData.status;
-    if (requestedStatus) {
-      if (requestedStatus === 'APPROVED' && !RbacService.hasPermission(currentUser, 'news.approve')) {
-         this.logAudit('SECURITY_VIOLATION', 'NEWS', newsData.id || 'new', 'CRITICAL', `محاولة غير مصرح بها لحفظ الخبر كمعتمد من قبل: ${currentUser.fullName} (${currentUser.role})`);
-         throw new Error('عذراً، صلاحياتك لا تسمح بحفظ الخبر كمعتمد.');
-      }
-      if (requestedStatus === 'PUBLISHED' && !RbacService.hasPermission(currentUser, 'news.publish')) {
-         this.logAudit('SECURITY_VIOLATION', 'NEWS', newsData.id || 'new', 'CRITICAL', `محاولة غير مصرح بها لنشر الخبر مباشرة من قبل: ${currentUser.fullName} (${currentUser.role})`);
-         throw new Error('عذراً، صلاحياتك لا تسمح بنشر الخبر.');
-      }
-    }
-    const existing = newsData.id ? all.find((n) => n.id === newsData.id) : undefined;
-    if (newsData.isBreaking && !existing?.isBreaking && !RbacService.hasPermission(currentUser, 'news.breaking_push')) {
-      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة.');
-    }
-    // -----------------------
-
-    if (newsData.id) {
-      const idx = all.findIndex((n) => n.id === newsData.id);
+    if (data.id) {
+      const idx = all.findIndex((n) => n.id === data.id);
       if (idx !== -1) {
         const old = all[idx];
-        const updated: NewsItem = {
-          ...old,
-          ...newsData,
-          updatedAt: now,
-        };
+        if (expectedUpdatedAt && old.updatedAt && old.updatedAt !== expectedUpdatedAt) {
+          throw new Error('عدّل زميل هذا الخبر بعد أن فتحته. حمّل أحدث نسخة من سجل النسخ أو أعد فتح الخبر قبل الحفظ.');
+        }
+        if (!canEditNewsContent(can, currentUser.id, old)) {
+          throw new Error(
+            old.status === 'PUBLISHED' || old.status === 'APPROVED'
+              ? 'لا يمكنك تعديل خبر معتمد أو منشور دون صلاحية الاعتماد أو النشر.'
+              : 'صلاحياتك لا تسمح بتعديل هذا الخبر.'
+          );
+        }
+        if (data.isBreaking !== undefined && !!data.isBreaking !== !!old.isBreaking && !can('news.breaking_push')) {
+          throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها.');
+        }
+        const { status: _ignoredStatus, workflowLogs: _ignoredLogs, authorId: _a, authorName: _n, ...editable } = data;
+        const updated: NewsItem = { ...old, ...editable, updatedAt: now };
+        if (data.title && data.title !== old.title) updated.slug = makeNewsSlug(data.title, old.id);
+        if (updated.isBreaking && !old.isBreaking && !updated.breakingUntil) {
+          updated.breakingUntil = new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString();
+        }
         all[idx] = updated;
         setStored(STORAGE_KEYS.NEWS, all);
         this.logActivity('تعديل خبر', 'NEWS', updated.id, updated.title, `قام ${currentUser.fullName} بتحديث محتوى الخبر.`);
@@ -270,36 +290,46 @@ export class ApiService {
       }
     }
 
-    const newsId = newId('nws');
+    if (!can('news.create')) throw new Error('صلاحياتك لا تسمح بإنشاء الأخبار.');
+    const initialStatus: NewsStatus = NEWS_INITIAL_STATUSES.includes(data.status as NewsStatus) ? (data.status as NewsStatus) : 'DRAFT';
+    if (data.isBreaking && !can('news.breaking_push')) {
+      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة.');
+    }
+
+    const newsId = data.id && !all.some((n) => n.id === data.id) ? data.id : newId('nws');
+    const title = data.title || 'خبر جديد بدون عنوان';
     const newItem: NewsItem = {
       id: newsId,
-      title: newsData.title || 'عنوان الخبر بدون اسم',
-      shortTitle: newsData.shortTitle || newsData.title || '',
-      slug: (newsData.title || 'news-item').toLowerCase().replace(/\s+/g, '-'),
-      content: newsData.content || '',
-      summary: newsData.summary || '',
-      mainImageUrl: newsData.mainImageUrl || '',
-      videoUrl: newsData.videoUrl,
-      sourceId: newsData.sourceId || 'src-1',
-      sourceName: newsData.sourceName || 'المراسل الميداني',
-      categoryId: newsData.categoryId || 'cat-1',
-      categoryName: newsData.categoryName || 'سياسة',
+      title,
+      shortTitle: data.shortTitle || title,
+      slug: makeNewsSlug(title, newsId),
+      content: data.content || '',
+      summary: data.summary || '',
+      mainImageUrl: data.mainImageUrl || '',
+      videoUrl: data.videoUrl,
+      storyId: data.storyId,
+      sourceId: data.sourceId || '',
+      sourceName: data.sourceName || '',
+      categoryId: data.categoryId || '',
+      categoryName: data.categoryName || '',
       authorId: currentUser.id,
       authorName: currentUser.fullName,
-      priority: newsData.priority || 'NORMAL',
-      status: newsData.status || 'DRAFT',
-      keywords: newsData.keywords || [],
-      locationName: newsData.locationName || 'المقر الرئيسي',
-      eventDate: newsData.eventDate || now,
-      isBreaking: !!newsData.isBreaking,
-      breakingUntil: newsData.breakingUntil,
-      internalNotes: newsData.internalNotes || '',
+      priority: data.priority || 'NORMAL',
+      status: initialStatus,
+      keywords: data.keywords || [],
+      locationName: data.locationName || '',
+      eventDate: data.eventDate || now,
+      isBreaking: !!data.isBreaking,
+      breakingUntil: data.isBreaking
+        ? data.breakingUntil || new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString()
+        : undefined,
+      internalNotes: data.internalNotes || '',
       workflowLogs: [
         {
           id: newId('log'),
           newsId,
-          fromStatus: 'DRAFT',
-          toStatus: newsData.status || 'DRAFT',
+          fromStatus: initialStatus,
+          toStatus: initialStatus,
           changedBy: { id: currentUser.id, name: currentUser.fullName, role: currentUser.role },
           comment: 'إنشاء الخبر لأول مرة',
           timestamp: now,
@@ -313,18 +343,10 @@ export class ApiService {
     all.unshift(newItem);
     setStored(STORAGE_KEYS.NEWS, all);
     this.logActivity('إنشاء خبر', 'NEWS', newItem.id, newItem.title, `قام ${currentUser.fullName} بإنشاء خبر جديد.`);
-
-    if (newItem.isBreaking) {
-      this.addBreakingNews({
-        title: newItem.title,
-        newsId: newItem.id,
-        priority: newItem.priority === 'URGENT' ? 'CRITICAL' : 'HIGH',
-      });
-    }
-
     return newItem;
   }
 
+  /** Moves a story through the editorial workflow (validated against the shared rules). */
   static updateNewsStatus(newsId: string, toStatus: NewsStatus, userOrComment?: User | string, optionalComment?: string): NewsItem {
     const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const idx = all.findIndex((n) => n.id === newsId);
@@ -332,42 +354,51 @@ export class ApiService {
 
     const currentUser = typeof userOrComment === 'object' && userOrComment !== null ? userOrComment : this.getCurrentUser();
     const comment = typeof userOrComment === 'string' ? userOrComment : optionalComment;
-
-    // --- RBAC Validation ---
-    if (toStatus === 'APPROVED' && !RbacService.hasPermission(currentUser, 'news.approve')) {
-      this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'CRITICAL', `محاولة غير مصرح بها لاعتماد الخبر من قبل: ${currentUser.fullName} (${currentUser.role})`);
-      throw new Error('عذراً، صلاحياتك لا تسمح باعتماد الأخبار. يتطلب ذلك صلاحية EDITOR.');
-    }
-
-    if (toStatus === 'PUBLISHED' && !RbacService.hasPermission(currentUser, 'news.publish')) {
-      this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'CRITICAL', `محاولة غير مصرح بها لنشر الخبر من قبل: ${currentUser.fullName} (${currentUser.role})`);
-      throw new Error('عذراً، صلاحياتك لا تسمح بنشر الأخبار. يتطلب ذلك صلاحية PUBLISHER أو EDITOR.');
-    }
-    // -----------------------
-
     const item = all[idx];
     const fromStatus = item.status;
+    if (fromStatus === toStatus) return item;
+
+    const denial = transitionDenial((perm) => RbacService.hasPermission(currentUser, perm), currentUser.id, item, toStatus);
+    if (denial) {
+      if (/صلاحيات/.test(denial)) {
+        this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'WARNING', `محاولة غير مصرح بها لنقل الخبر إلى ${toStatus}: ${currentUser.fullName}`);
+      }
+      throw new Error(denial);
+    }
+
     const now = new Date().toISOString();
-
-    const logEntry = {
-      id: newId('log'),
-      newsId: item.id,
-      fromStatus,
-      toStatus,
-      changedBy: { id: currentUser.id, name: currentUser.fullName, role: currentUser.role },
-      comment: comment || `تغيير الحالة إلى ${toStatus}`,
-      timestamp: now,
-    };
-
+    const by = { id: currentUser.id, name: currentUser.fullName, role: currentUser.role };
     const updated: NewsItem = {
       ...item,
       status: toStatus,
-      workflowLogs: [...item.workflowLogs, logEntry],
-      publishDate: toStatus === 'PUBLISHED' && !item.publishDate ? now : item.publishDate,
+      workflowLogs: [
+        ...(item.workflowLogs || []),
+        {
+          id: newId('log'),
+          newsId: item.id,
+          fromStatus,
+          toStatus,
+          changedBy: by,
+          comment: comment || `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`,
+          timestamp: now,
+        },
+      ],
       editorId: ['APPROVED', 'PUBLISHED'].includes(toStatus) ? currentUser.id : item.editorId,
       editorName: ['APPROVED', 'PUBLISHED'].includes(toStatus) ? currentUser.fullName : item.editorName,
       updatedAt: now,
     };
+    if (toStatus === 'APPROVED') Object.assign(updated, { approvedById: by.id, approvedByName: by.name, approvedAt: now });
+    if (toStatus === 'PUBLISHED') {
+      Object.assign(updated, { publishedById: by.id, publishedByName: by.name });
+      if (!item.publishDate) updated.publishDate = now;
+      // A story flagged breaking goes on air for the standard window from the moment it is published.
+      if (updated.isBreaking) updated.breakingUntil = new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString();
+    }
+    // Content that leaves the air also leaves the breaking ticker.
+    if (['ARCHIVED', 'UNPUBLISHED', 'REJECTED'].includes(toStatus)) {
+      updated.isBreaking = false;
+      updated.breakingUntil = undefined;
+    }
 
     all[idx] = updated;
     setStored(STORAGE_KEYS.NEWS, all);
@@ -377,102 +408,53 @@ export class ApiService {
       'NEWS',
       item.id,
       item.title,
-      `قام ${currentUser.fullName} بنقل الخبر من [${fromStatus}] إلى [${toStatus}]`
+      `قام ${currentUser.fullName} بنقل الخبر من [${NEWS_STATUS_LABELS[fromStatus] || fromStatus}] إلى [${NEWS_STATUS_LABELS[toStatus]}]`
     );
-
-    if (toStatus === 'PUBLISHED') {
-      this.logAudit('PUBLISH', 'NEWS', item.id, 'INFO', `نشر الخبر رسمياً: ${item.title}`);
-    } else if ((fromStatus as string) === 'PUBLISHED' && (toStatus as string) !== 'PUBLISHED') {
-      this.logAudit('UNPUBLISH', 'NEWS', item.id, 'WARNING', `إلغاء نشر الخبر: ${item.title}`);
-    }
+    if (toStatus === 'PUBLISHED') this.logAudit('PUBLISH', 'NEWS', item.id, 'INFO', `نشر الخبر رسمياً: ${item.title}`);
+    else if (fromStatus === 'PUBLISHED') this.logAudit('UNPUBLISH', 'NEWS', item.id, 'WARNING', `إلغاء نشر الخبر: ${item.title}`);
 
     return updated;
   }
 
   static deleteNews(newsId: string, user?: User): void {
+    const currentUser = user || this.getCurrentUser();
+    if (!RbacService.hasPermission(currentUser, 'news.delete')) throw new Error('صلاحياتك لا تسمح بحذف الأخبار.');
     const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     const idx = all.findIndex((n) => n.id === newsId);
     if (idx !== -1) {
-      all[idx].deletedAt = new Date().toISOString();
+      all[idx] = { ...all[idx], deletedAt: new Date().toISOString(), isBreaking: false };
       setStored(STORAGE_KEYS.NEWS, all);
-      const currentUser = user || this.getCurrentUser();
-      this.logAudit('DELETE', 'NEWS', newsId, 'WARNING', `حذف (Soft Delete) للخبر بواسطة ${currentUser.fullName}`);
+      this.logAudit('DELETE', 'NEWS', newsId, 'WARNING', `نقل الخبر إلى سلة المحذوفات بواسطة ${currentUser.fullName}`);
     }
-  }
-
-  static bulkActionNews(newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE'): void {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const currentUser = this.getCurrentUser();
-    const now = new Date().toISOString();
-
-    all.forEach((item) => {
-      if (newsIds.includes(item.id)) {
-        if (action === 'DELETE') {
-          item.deletedAt = now;
-        } else if (action === 'PUBLISH') {
-          item.status = 'PUBLISHED';
-          item.publishDate = now;
-        } else if (action === 'APPROVE') {
-          item.status = 'APPROVED';
-        } else if (action === 'ARCHIVE') {
-          item.status = 'ARCHIVED';
-        }
-        item.updatedAt = now;
-      }
-    });
-
-    setStored(STORAGE_KEYS.NEWS, all);
-    this.logActivity(
-      'عملية مجمعة على الأخبار',
-      'NEWS',
-      'bulk',
-      `${newsIds.length} أخبار`,
-      `قام ${currentUser.fullName} بتطبيق الإجراء (${action}) على ${newsIds.length} من الأخبار.`
-    );
   }
 
   // --- BREAKING NEWS ---
-  static getBreakingNews(): BreakingNews[] {
-    return getStored<BreakingNews[]>(STORAGE_KEYS.BREAKING, []);
+  // The story's own isBreaking/breakingUntil fields are the single source of truth.
+
+  /** Breaking items currently on air: published, flagged and not expired. */
+  static getActiveBreakingNews(): NewsItem[] {
+    return this.getNews().filter((n) => isBreakingLive(n));
   }
 
-  static getActiveBreakingNews(): BreakingNews[] {
-    return this.getBreakingNews().filter((b) => b.isActive);
-  }
-
-  static addBreakingNews(item: Partial<BreakingNews>): BreakingNews {
-    const all = this.getBreakingNews();
-    const currentUser = this.getCurrentUser();
-    const now = new Date();
-    const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours
-
-    const newBrk: BreakingNews = {
-      id: newId('brk'),
-      title: item.title || 'خبر عاجل بدون نص',
-      newsId: item.newsId,
-      priority: item.priority || 'HIGH',
-      isActive: true,
-      startedAt: now.toISOString(),
-      expiresAt: item.expiresAt || expires.toISOString(),
-      createdBy: currentUser.fullName,
-    };
-
-    all.unshift(newBrk);
-    setStored(STORAGE_KEYS.BREAKING, all);
-    this.logActivity('إضافة خبر عاجل', 'BREAKING_NEWS', newBrk.id, newBrk.title, `تم إطلاق خبر عاجل جديد على شريط البث.`);
-    return newBrk;
-  }
-
-  static toggleBreakingNews(id: string): BreakingNews | undefined {
-    const all = this.getBreakingNews();
-    const item = all.find((b) => b.id === id);
-    if (item) {
-      item.isActive = !item.isActive;
-      setStored(STORAGE_KEYS.BREAKING, all);
-      this.logActivity('تبديل حالة خبر عاجل', 'BREAKING_NEWS', id, item.title, `تم ${item.isActive ? 'تفعيل' : 'إيقاف'} الخبر العاجل.`);
-      return item;
+  /** Turns the breaking flag on (for `hours`) or off for a story. */
+  static setBreaking(newsId: string, on: boolean, hours = DEFAULT_BREAKING_HOURS): NewsItem {
+    const user = this.getCurrentUser();
+    if (!RbacService.hasPermission(user, 'news.breaking_push')) {
+      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها.');
     }
-    return undefined;
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
+    const idx = all.findIndex((n) => n.id === newsId);
+    if (idx === -1) throw new Error('الخبر غير موجود');
+    if (on && all[idx].status !== 'PUBLISHED') throw new Error('يجب نشر الخبر قبل إطلاقه على شريط العاجل.');
+    all[idx] = {
+      ...all[idx],
+      isBreaking: on,
+      breakingUntil: on ? new Date(Date.now() + hours * 3600_000).toISOString() : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    setStored(STORAGE_KEYS.NEWS, all);
+    this.logActivity(on ? 'إطلاق خبر عاجل' : 'إيقاف خبر عاجل', 'NEWS', newsId, all[idx].title, on ? `عاجل لمدة ${hours} ساعات` : 'أُوقف من الشريط');
+    return all[idx];
   }
 
   // --- PROGRAMS & EPISODES ---
@@ -1014,7 +996,7 @@ export class ApiService {
 
   // --- STORIES ---
   static getStories(): Story[] {
-    return getStored<Story[]>(STORAGE_KEYS.STORIES, []);
+    return getStored<Story[]>(STORAGE_KEYS.STORIES, []).filter((s) => !s.deletedAt);
   }
 
   static getStory(id: string): Story | undefined {
@@ -1022,7 +1004,10 @@ export class ApiService {
   }
 
   static saveStory(data: Partial<Story>, currentUser: User): Story {
-    const stories = this.getStories();
+    if (!RbacService.hasPermission(currentUser, 'news.create') && !RbacService.hasPermission(currentUser, 'news.edit_any')) {
+      throw new Error('صلاحياتك لا تسمح بإدارة القصص الإخبارية');
+    }
+    const stories = getStored<Story[]>(STORAGE_KEYS.STORIES, []);
     let savedStory: Story;
     
     if (data.id) {
@@ -1051,15 +1036,13 @@ export class ApiService {
   }
 
   static deleteStory(id: string, currentUser: User): void {
-     const stories = this.getStories();
-     const idx = stories.findIndex(s => s.id === id);
-     if (idx !== -1) {
-         const story = stories[idx];
-         // Soft delete
-         story.status = 'ARCHIVED';
-         setStored(STORAGE_KEYS.STORIES, stories);
-         this.logActivity('DELETE', 'STORY', id, story.title, 'أرشفة قصة إخبارية');
-     }
+    if (!RbacService.hasPermission(currentUser, 'news.delete')) throw new Error('صلاحياتك لا تسمح بحذف القصص الإخبارية');
+    const stories = getStored<Story[]>(STORAGE_KEYS.STORIES, []);
+    const idx = stories.findIndex((s) => s.id === id);
+    if (idx === -1) return;
+    stories[idx] = { ...stories[idx], deletedAt: new Date().toISOString() } as Story;
+    setStored(STORAGE_KEYS.STORIES, stories);
+    this.logActivity('DELETE', 'STORY', id, stories[idx].title, 'حذف قصة إخبارية');
   }
 
   static saveCategory(cat: Partial<Category>): Category {
@@ -1189,6 +1172,64 @@ export class ApiService {
     setStored(STORAGE_KEYS.SETTINGS, updated);
     this.logAudit('SETTINGS_UPDATE', 'SETTINGS', 'global', 'INFO', 'تم تحديث الإعدادات العامة للمؤسسة.');
     return updated;
+  }
+
+  // --- STORY EDIT LOCKS ---
+  static getEditLocks(): EditLock[] {
+    return getStored<EditLock[]>(COLLECTIONS.editLocks.storageKey, []);
+  }
+
+  /** Active lock on a story held by someone else (null when free or held by me). */
+  static getForeignLock(entityId: string): EditLock | null {
+    const me = authClient.getSession()?.user.id;
+    const lock = this.getEditLocks().find((l) => l.id === lockIdFor('news', entityId));
+    return lock && isLockActive(lock) && lock.userId !== me ? lock : null;
+  }
+
+  /**
+   * Acquires (or renews / takes over) the edit lock on a story and waits for the server's verdict.
+   * Returns the lock as stored on the server.
+   */
+  static async acquireNewsLock(entityId: string): Promise<EditLock | null> {
+    const id = lockIdFor('news', entityId);
+    const locks = this.getEditLocks().filter((l) => l.id !== id);
+    // `heartbeat` makes every renewal a real change; the server recomputes the expiry.
+    locks.unshift({ id, collection: 'news', entityId, heartbeat: Date.now() } as EditLock);
+    setStored(COLLECTIONS.editLocks.storageKey, locks);
+    await dataStore.settle();
+    return this.getEditLocks().find((l) => l.id === id) || null;
+  }
+
+  static releaseNewsLock(entityId: string): void {
+    const id = lockIdFor('news', entityId);
+    const me = authClient.getSession()?.user.id;
+    const locks = this.getEditLocks();
+    const mine = locks.find((l) => l.id === id && l.userId === me);
+    if (!mine) return;
+    setStored(COLLECTIONS.editLocks.storageKey, locks.filter((l) => l.id !== id));
+  }
+
+  // --- REVISION HISTORY & TRASH ---
+  static async getNewsHistory(newsId: string): Promise<NewsRevision[]> {
+    const res = await apiFetch<{ data: NewsRevision[] }>(`/api/v1/history/news/${encodeURIComponent(newsId)}`);
+    return res.data;
+  }
+
+  static getDeletedNews(): NewsItem[] {
+    return getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []).filter((n) => !!n.deletedAt);
+  }
+
+  static restoreNews(newsId: string): NewsItem {
+    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
+    const idx = all.findIndex((n) => n.id === newsId);
+    if (idx === -1) throw new Error('الخبر غير موجود');
+    if (!RbacService.hasPermission(this.getCurrentUser(), 'news.delete')) {
+      throw new Error('صلاحياتك لا تسمح باستعادة الأخبار المحذوفة');
+    }
+    all[idx] = { ...all[idx], deletedAt: null, updatedAt: new Date().toISOString() };
+    setStored(STORAGE_KEYS.NEWS, all);
+    this.logAudit('RESTORE', 'NEWS', newsId, 'INFO', `استعادة خبر محذوف: ${all[idx].title}`);
+    return all[idx];
   }
 
   // --- SHARED BROADCAST STATE ---
@@ -1331,32 +1372,17 @@ export class ApiService {
       return { news: [], programs: [], episodes: [], guests: [], tasks: [] };
     }
     const q = query.toLowerCase().trim();
+    const has = (...values: unknown[]) =>
+      values.some((v) =>
+        Array.isArray(v) ? v.some((x) => String(x ?? '').toLowerCase().includes(q)) : String(v ?? '').toLowerCase().includes(q)
+      );
+    const text = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
 
-    const news = this.getNews().filter(
-      (n) =>
-        n.title.toLowerCase().includes(q) ||
-        n.summary.toLowerCase().includes(q) ||
-        n.keywords.some((k) => k.toLowerCase().includes(q))
-    );
-
-    const programs = this.getPrograms().filter(
-      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
-    );
-
-    const episodes = this.getEpisodes().filter(
-      (e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)
-    );
-
-    const guests = this.getGuests().filter(
-      (g) =>
-        g.fullName.toLowerCase().includes(q) ||
-        g.organization.toLowerCase().includes(q) ||
-        g.specialty.toLowerCase().includes(q)
-    );
-
-    const tasks = this.getTasks().filter(
-      (t) => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
-    );
+    const news = this.getNews().filter((n) => has(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, text(n.content)));
+    const programs = this.getPrograms().filter((p) => has(p.name, p.description));
+    const episodes = this.getEpisodes().filter((e) => has(e.title, e.description));
+    const guests = this.getGuests().filter((g) => has(g.fullName, g.organization, g.specialty));
+    const tasks = this.getTasks().filter((t) => has(t.title, t.description));
 
     return { news, programs, episodes, guests, tasks };
   }

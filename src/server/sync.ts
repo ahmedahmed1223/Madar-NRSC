@@ -4,6 +4,11 @@ import {
   COLLECTIONS,
   COLLECTION_NAMES,
   CollectionName,
+  EDIT_LOCK_TTL_MS,
+  HISTORY_COLLECTIONS,
+  LOCKABLE_COLLECTIONS,
+  isLockActive,
+  lockIdFor,
   ENTITY_ID_PATTERN,
   EntityRow,
   LOG_BOOTSTRAP_LIMIT,
@@ -51,6 +56,17 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
   }
   if (collection === 'messages') {
     return { ...data, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, userAvatar: auth.user.avatarUrl, timestamp: now };
+  }
+  if (collection === 'editLocks') {
+    return {
+      id: data.id,
+      collection: data.collection,
+      entityId: data.entityId,
+      userId: auth.user.id,
+      userName: auth.user.fullName,
+      acquiredAt: now,
+      expiresAt: new Date(Date.now() + EDIT_LOCK_TTL_MS).toISOString(),
+    };
   }
   if (collection === 'broadcastState') {
     return data.liveLock
@@ -131,6 +147,19 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         const before = current?.d ?? null;
 
+        // Story locks: nobody else may change or delete a story while its editor holds the lock.
+        if (LOCKABLE_COLLECTIONS.has(collection) && current) {
+          const lock = this.db.getRow('editLocks', lockIdFor(collection, id))?.d;
+          if (isLockActive(lock) && lock.userId !== auth.user.id) {
+            return {
+              ok: false,
+              code: 'CONFLICT',
+              message: `الخبر قيد التحرير الآن لدى ${lock.userName}، لا يمكن حفظ تغييرات عليه حتى ينتهي`,
+              current,
+            } as SyncOpResult;
+          }
+        }
+
         const liveLocked = !!this.db.getRow('broadcastState', SINGLETON_ID)?.d?.liveLock;
         const lockBlocks = (after: any) =>
           liveLocked && (collection === 'episodes' || collection === 'programs') && (op.op === 'delete' || (after?.deletedAt && !current?.d?.deletedAt));
@@ -201,6 +230,9 @@ export class SyncService {
           position = this.db.positionBounds(collection).min - 1;
         }
 
+        if (current && HISTORY_COLLECTIONS.has(collection)) {
+          this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
+        }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
 
         if (collection === 'media') {

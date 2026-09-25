@@ -1,5 +1,5 @@
 import { apiService } from '../services/api';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Save,
   Send,
@@ -30,12 +30,17 @@ import {
   Hash,
   Zap,
   Check,
+  Lock,
 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { RichTextEditor } from '../components/editor/RichTextEditor';
 import { Badge } from '../components/common/Badge';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
-import { hasPermission } from '../services/api';
+import { RbacService } from '../services/rbacService';
+import { useNewsEditLock } from '../hooks/useNewsEditLock';
+import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
+import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
+import type { Story } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
 
@@ -44,7 +49,11 @@ interface NewsEditorViewProps {
   currentUser: User;
   categories: Category[];
   sources: NewsSource[];
-  onSave: (newsData: Partial<NewsItem>) => void;
+  stories?: Story[];
+  /** Pre-links a new story to a coverage (from the stories desk). */
+  defaultStoryId?: string;
+  /** Returns the saved story, or null if the save was refused. */
+  onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => NewsItem | null;
   onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string) => void;
   onCancel: () => void;
 }
@@ -54,10 +63,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   currentUser,
   categories,
   sources,
+  stories = [],
+  defaultStoryId,
   onSave,
   onUpdateStatus,
   onCancel,
 }) => {
+  const [storyId, setStoryId] = useState<string>(defaultStoryId || '');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // Version of the story this editor is based on; a different server copy means someone else saved.
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>(newsItem?.updatedAt);
+  const loadedSnapshotRef = useRef<string>('');
+
+  const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
+  const lock = useNewsEditLock(newsItem?.id);
+  const lockedByOther = lock.status === 'locked';
   const [title, setTitle] = useState('');
   const [shortTitle, setShortTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -129,11 +149,15 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   ];
 
   // Quick picks come from the station's own media library (latest images).
-  const IMAGE_PRESETS = apiService
-    .getMedia()
-    .filter((m) => m.mediaType === 'IMAGE' && (m.url || m.fileUrl))
-    .slice(0, 6)
-    .map((m) => ({ label: (m.title || m.originalName || m.fileName || 'صورة').slice(0, 24), url: (m.url || m.fileUrl)! }));
+  const IMAGE_PRESETS = useMemo(
+    () =>
+      apiService
+        .getMedia()
+        .filter((m) => m.mediaType === 'IMAGE' && (m.url || m.fileUrl))
+        .slice(0, 6)
+        .map((m) => ({ label: (m.title || m.originalName || m.fileName || 'صورة').slice(0, 24), url: (m.url || m.fileUrl)! })),
+    []
+  );
 
 
   const handleGenerateShortTitle = () => {
@@ -181,69 +205,92 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     return { words, chars, readingSeconds, timeFormatted };
   }, [title, summary, content]);
 
-  // Check for local storage emergency draft on mount
-  useEffect(() => {
+  const formFields = () => ({
+    title,
+    shortTitle,
+    summary,
+    content,
+    categoryId,
+    sourceId,
+    priority,
+    locationName,
+    eventDate,
+    mainImageUrl,
+    videoUrl,
+    keywords,
+    isBreaking,
+    internalNotes,
+    storyId,
+  });
+  const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
+
+  const clearDraft = () => {
     try {
-      const savedDraft = localStorage.getItem(draftKey);
-      if (savedDraft) {
-        const parsed = JSON.parse(savedDraft);
-        if (parsed.content && parsed.content !== content && parsed.title !== title) {
-          setHasEmergencyDraft(true);
-        }
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
+    setHasEmergencyDraft(false);
+  };
+
+  // Offer a local draft only if it was based on the server version now loaded and holds different text.
+  const checkForDraft = (serverUpdatedAt: string | undefined) => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      const sameBase = !newsItem?.id || draft.baseUpdatedAt === serverUpdatedAt;
+      const { savedAt: _s, baseUpdatedAt: _b, ...fields } = draft;
+      if (sameBase && JSON.stringify({ ...JSON.parse(loadedSnapshotRef.current || '{}'), ...fields }) !== loadedSnapshotRef.current) {
+        setHasEmergencyDraft(true);
+      } else if (!sameBase) {
+        localStorage.removeItem(draftKey); // based on an older version: would overwrite newer work
       }
     } catch {
       // ignore
     }
-  }, [draftKey]);
+  };
 
-  // Auto-save effect to local emergency storage
+  // Local crash-recovery copy, written only while there are unsaved changes.
   useEffect(() => {
-    if (!title && !content) return;
-    
+    if (!isDirty || lockedByOther) {
+      setIsAutoSaving(false);
+      return;
+    }
     setIsAutoSaving(true);
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem(
-          draftKey,
-          JSON.stringify({
-            title,
-            shortTitle,
-            summary,
-            content,
-            categoryId,
-            sourceId,
-            priority,
-            locationName,
-            isBreaking,
-            internalNotes,
-            savedAt: new Date().toISOString(),
-          })
-        );
+        localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
       } catch {
-        // ignore
+        // storage full or disabled
       }
       setIsAutoSaving(false);
       setLastSaved(new Date());
     }, 1200);
-
     return () => clearTimeout(timer);
-  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, isBreaking, internalNotes, draftKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videoUrl, keywords, isBreaking, internalNotes, storyId, draftKey, lockedByOther]);
 
   const handleRestoreEmergencyDraft = () => {
     try {
       const savedDraft = localStorage.getItem(draftKey);
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
-        if (parsed.title) setTitle(parsed.title);
-        if (parsed.shortTitle) setShortTitle(parsed.shortTitle);
-        if (parsed.summary) setSummary(parsed.summary);
-        if (parsed.content) setContent(parsed.content);
+        if (parsed.title !== undefined) setTitle(parsed.title);
+        if (parsed.shortTitle !== undefined) setShortTitle(parsed.shortTitle);
+        if (parsed.summary !== undefined) setSummary(parsed.summary);
+        if (parsed.content !== undefined) setContent(parsed.content);
         if (parsed.categoryId) setCategoryId(parsed.categoryId);
         if (parsed.sourceId) setSourceId(parsed.sourceId);
         if (parsed.priority) setPriority(parsed.priority);
-        if (parsed.locationName) setLocationName(parsed.locationName);
+        if (parsed.locationName !== undefined) setLocationName(parsed.locationName);
+        if (parsed.eventDate) setEventDate(parsed.eventDate);
+        if (parsed.mainImageUrl !== undefined) setMainImageUrl(parsed.mainImageUrl);
+        if (parsed.videoUrl !== undefined) setVideoUrl(parsed.videoUrl);
+        if (Array.isArray(parsed.keywords)) setKeywords(parsed.keywords);
         if (parsed.isBreaking !== undefined) setIsBreaking(parsed.isBreaking);
-        if (parsed.internalNotes) setInternalNotes(parsed.internalNotes);
+        if (parsed.internalNotes !== undefined) setInternalNotes(parsed.internalNotes);
+        if (parsed.storyId !== undefined) setStoryId(parsed.storyId);
         setHasEmergencyDraft(false);
       }
     } catch {
@@ -271,42 +318,86 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setContent((prev) => `${prev}<p><strong>${tag}</strong></p>`);
   };
 
+  /** Loads a server copy into the form and marks it as the clean baseline. */
+  const loadFromItem = (item: NewsItem) => {
+    const fields = {
+      title: item.title || '',
+      shortTitle: item.shortTitle || '',
+      summary: item.summary || '',
+      content: item.content || '',
+      categoryId: item.categoryId || '',
+      sourceId: item.sourceId || '',
+      priority: item.priority || 'NORMAL',
+      locationName: item.locationName || '',
+      eventDate: item.eventDate ? item.eventDate.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      mainImageUrl: item.mainImageUrl || '',
+      videoUrl: item.videoUrl || '',
+      keywords: item.keywords || [],
+      isBreaking: !!item.isBreaking,
+      internalNotes: item.internalNotes || '',
+      storyId: item.storyId || '',
+    };
+    setTitle(fields.title);
+    setShortTitle(fields.shortTitle);
+    setSummary(fields.summary);
+    setContent(fields.content);
+    setCategoryId(fields.categoryId);
+    setSourceId(fields.sourceId);
+    setPriority(fields.priority);
+    setLocationName(fields.locationName);
+    setEventDate(fields.eventDate);
+    setMainImageUrl(fields.mainImageUrl);
+    setVideoUrl(fields.videoUrl);
+    setKeywords(fields.keywords);
+    setIsBreaking(fields.isBreaking);
+    setInternalNotes(fields.internalNotes);
+    setStoryId(fields.storyId);
+    loadedSnapshotRef.current = JSON.stringify(fields);
+    setBaseUpdatedAt(item.updatedAt);
+  };
+
+  // Load once per story (the editor is re-mounted per story); later refreshes never wipe typing.
   useEffect(() => {
     if (newsItem) {
-      setTitle(newsItem.title);
-      setShortTitle(newsItem.shortTitle);
-      setSummary(newsItem.summary);
-      setContent(newsItem.content);
-      setCategoryId(newsItem.categoryId);
-      setSourceId(newsItem.sourceId);
-      setPriority(newsItem.priority);
-      setLocationName(newsItem.locationName);
-      setEventDate(newsItem.eventDate ? newsItem.eventDate.slice(0, 16) : new Date().toISOString().slice(0, 16));
-      setMainImageUrl(newsItem.mainImageUrl || '');
-      setVideoUrl(newsItem.videoUrl || '');
-      setKeywords(newsItem.keywords || []);
-      setIsBreaking(!!newsItem.isBreaking);
-      setInternalNotes(newsItem.internalNotes || '');
+      loadFromItem(newsItem);
     } else {
-      setTitle('');
-      setShortTitle('');
-      setSummary('');
-      setContent('');
-      setCategoryId(categories[0]?.id || '');
-      setSourceId(sources[0]?.id || '');
-      setPriority('NORMAL');
-      setLocationName('');
-      setEventDate(new Date().toISOString().slice(0, 16));
-      setMainImageUrl('');
-      setVideoUrl('');
-      setKeywords([]);
-      setIsBreaking(false);
-      setInternalNotes('');
+      const fields = {
+        title: '',
+        shortTitle: '',
+        summary: '',
+        content: '',
+        categoryId: categories[0]?.id || '',
+        sourceId: sources[0]?.id || '',
+        priority: 'NORMAL' as NewsPriority,
+        locationName: '',
+        eventDate: new Date().toISOString().slice(0, 16),
+        mainImageUrl: '',
+        videoUrl: '',
+        keywords: [] as string[],
+        isBreaking: false,
+        internalNotes: '',
+        storyId: defaultStoryId || '',
+      };
+      setCategoryId(fields.categoryId);
+      setSourceId(fields.sourceId);
+      setStoryId(fields.storyId);
+      loadedSnapshotRef.current = JSON.stringify(fields);
     }
-  }, [newsItem, categories, sources]);
+    checkForDraft(newsItem?.updatedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsItem?.id]);
 
-  const canApprove = hasPermission(currentUser.role, 'APPROVE_NEWS');
-  const canPublish = hasPermission(currentUser.role, 'PUBLISH_NEWS');
+  const newerVersionAvailable = !!newsItem?.updatedAt && !!baseUpdatedAt && newsItem.updatedAt !== baseUpdatedAt;
+
+  // With nothing typed, follow the server copy (e.g. while read-only, or after a colleague releases the story).
+  useEffect(() => {
+    if (newsItem && newerVersionAvailable && !isDirty) loadFromItem(newsItem);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsItem?.updatedAt, lock.status]);
+  const canEditContent = canEditNewsContent(can, currentUser.id, newsItem) && !lockedByOther;
+  const transitions = newsItem?.id ? availableTransitions(can, currentUser.id, newsItem) : [];
+  const canCreateForReview = !newsItem?.id && transitionDenial(can, currentUser.id, null, 'UNDER_REVIEW') === null;
+
 
   const handleAddTag = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && tagInput.trim()) {
@@ -322,20 +413,19 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setKeywords(keywords.filter((t) => t !== tagToRemove));
   };
 
-  const handleSaveDraft = () => {
+  const buildPayload = () => {
     const selectedCat = categories.find((c) => c.id === categoryId);
-    const selectedSrc = sources.find((s) => s.id === sourceId);
-
-    onSave({
+    const selectedSrc = sources.find((src) => src.id === sourceId);
+    return {
       id: newsItem?.id,
       title: title || 'خبر جديد بدون عنوان',
       shortTitle: shortTitle || title,
       summary,
       content,
       categoryId,
-      categoryName: selectedCat?.nameAr || 'عام',
+      categoryName: selectedCat?.nameAr || '',
       sourceId,
-      sourceName: selectedSrc?.name || 'مصدر محلي',
+      sourceName: selectedSrc?.name || '',
       priority,
       locationName,
       eventDate,
@@ -344,45 +434,60 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       keywords,
       isBreaking,
       internalNotes,
-      status: newsItem?.status || 'DRAFT',
-    });
+      storyId: storyId || undefined,
+      expectedUpdatedAt: newsItem?.id ? baseUpdatedAt : undefined,
+    };
+  };
+
+  /** Saves the text (never the status). Returns the stored story or null. */
+  const saveContent = (stay: boolean, extra: Partial<NewsItem> = {}): NewsItem | null => {
+    const saved = onSave({ ...buildPayload(), ...extra }, { stay });
+    if (saved) {
+      clearDraft();
+      loadedSnapshotRef.current = JSON.stringify(formFields());
+      setBaseUpdatedAt(saved.updatedAt);
+    }
+    return saved;
+  };
+
+  const handleSaveDraft = () => {
+    saveContent(false);
   };
 
   const handleTriggerStatusChange = (status: NewsStatus) => {
     if (!newsItem?.id) {
-      const selectedCat = categories.find((c) => c.id === categoryId);
-      const selectedSrc = sources.find((s) => s.id === sourceId);
-      onSave({
-        title: title || 'خبر جديد بدون عنوان',
-        shortTitle: shortTitle || title,
-        summary,
-        content,
-        categoryId,
-        categoryName: selectedCat?.nameAr || 'عام',
-        sourceId,
-        sourceName: selectedSrc?.name || 'مصدر محلي',
-        priority,
-        locationName,
-        eventDate,
-        mainImageUrl,
-        videoUrl: videoUrl || undefined,
-        keywords,
-        isBreaking,
-        internalNotes,
-        status: status,
-      });
+      saveContent(false, { status });
       return;
     }
     setPendingStatus(status);
     setShowCommentModal(true);
   };
 
+  const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
+
   const handleConfirmStatus = () => {
-    if (newsItem?.id && pendingStatus) {
-      onUpdateStatus(newsItem.id, pendingStatus, statusComment);
-      setShowCommentModal(false);
-      setStatusComment('');
+    if (!newsItem?.id || !pendingStatus) return;
+    if (needsComment && !statusComment.trim()) return;
+    // Unsaved text is saved first so a transition never silently drops edits.
+    if (isDirty && canEditContent) {
+      const saved = saveContent(true);
+      if (!saved) return;
     }
+    onUpdateStatus(newsItem.id, pendingStatus, statusComment);
+    const fresh = apiService.getNewsById(newsItem.id);
+    if (fresh) setBaseUpdatedAt(fresh.updatedAt);
+    setShowCommentModal(false);
+    setStatusComment('');
+  };
+
+  const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
+    UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق', className: 'bg-amber-600 hover:bg-amber-700' },
+    APPROVED: { label: 'اعتماد الخبر للنشر', className: 'bg-purple-600 hover:bg-purple-700' },
+    NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات', className: 'bg-orange-600 hover:bg-orange-700' },
+    REJECTED: { label: 'رفض الخبر', className: 'bg-red-700 hover:bg-red-800' },
+    PUBLISHED: { label: 'نشر فوري على المنصات', className: 'bg-emerald-600 hover:bg-emerald-700' },
+    UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
+    ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
   };
 
   return (
@@ -396,7 +501,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         statusBadge={
           newsItem
             ? {
-                label: `الحالة: ${newsItem.status}`,
+                label: `الحالة: ${NEWS_STATUS_LABELS[newsItem.status] || newsItem.status}`,
                 variant: newsItem.status === 'PUBLISHED' ? 'success' : newsItem.status === 'APPROVED' ? 'primary' : 'warning',
               }
             : undefined
@@ -437,6 +542,50 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       )}
 
+      {/* Edit lock: someone else is editing this story */}
+      {lockedByOther && lock.holder && (
+        <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
+          <div className="flex items-center gap-2.5">
+            <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <strong className="text-xs font-bold block">هذا الخبر قيد التحرير الآن لدى {lock.holder.userName}</strong>
+              <span className="text-[11px] text-amber-700">يمكنك القراءة فقط حتى ينتهي من التحرير. ستُتاح الكتابة تلقائياً عند إغلاقه للخبر.</span>
+            </div>
+          </div>
+          {can('news.edit_any') && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الخبر؟`)) void lock.takeOver();
+              }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
+            >
+              تولي التحرير
+            </button>
+          )}
+        </div>
+      )}
+
+      {!lockedByOther && newsItem?.id && !canEditNewsContent(can, currentUser.id, newsItem) && (
+        <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 font-semibold flex items-center gap-2">
+          <Lock className="w-4 h-4 text-slate-500" />
+          للقراءة فقط: {newsItem.status === 'PUBLISHED' || newsItem.status === 'APPROVED' ? 'تعديل خبر معتمد أو منشور يتطلب صلاحية الاعتماد أو النشر.' : 'لا تملك صلاحية تعديل هذا الخبر.'}
+        </div>
+      )}
+
+      {newerVersionAvailable && !lockedByOther && (
+        <div className="bg-blue-50 border border-blue-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900">
+          <span className="font-semibold">حُفظت نسخة أحدث من هذا الخبر على الخادم بعد فتحك له.</span>
+          <button
+            type="button"
+            onClick={() => newsItem && loadFromItem(newsItem)}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold"
+          >
+            تحميل أحدث نسخة (تُفقد تعديلاتك غير المحفوظة)
+          </button>
+        </div>
+      )}
+
       {/* Top Header & Actions Bar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -454,7 +603,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
               <Badge variant="default" size="sm">
-                الحالة: {newsItem?.status || 'مسودة جديدة'}
+                الحالة: {newsItem?.status ? NEWS_STATUS_LABELS[newsItem.status] : 'مسودة جديدة'}
               </Badge>
               {isBreaking && (
                 <Badge variant="danger" size="sm" dot>
@@ -465,12 +614,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 {isAutoSaving ? (
                   <>
                     <span className="w-3 h-3 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
-                    جارِ الحفظ...
+                    نسخة احتياطية محلية...
                   </>
-                ) : lastSaved ? (
+                ) : lastSaved && isDirty ? (
                   <>
-                    <CheckCircle className="w-3 h-3 text-emerald-500" />
-                    تم الحفظ {lastSaved.toLocaleTimeString('ar-SA')}
+                    <CheckCircle className="w-3 h-3 text-amber-500" />
+                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-SA')})
                   </>
                 ) : null}
               </div>
@@ -478,60 +627,58 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons (only what the server will accept) */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSaveDraft}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            حفظ التغييرات
-          </button>
+          {newsItem?.id && (
+            <button
+              type="button"
+              onClick={() => setIsHistoryOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
+            >
+              <History className="w-4 h-4" />
+              سجل النسخ
+            </button>
+          )}
 
-          {/* Workflow Transitions */}
-          {(!newsItem || newsItem.status === 'DRAFT') && (
+          {canEditContent && (
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={lock.status === 'acquiring'}
+              className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
+            </button>
+          )}
+
+          {canCreateForReview && (
             <button
               type="button"
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
               className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <Send className="w-4 h-4" />
-              إرسال للمراجعة والتدقيق
+              حفظ وإرسال للمراجعة
             </button>
           )}
 
-          {newsItem?.status === 'UNDER_REVIEW' && canApprove && (
-            <button
-              type="button"
-              onClick={() => handleTriggerStatusChange('APPROVED')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              <CheckCircle className="w-4 h-4" />
-              اعتماد الخبر للنشر
-            </button>
-          )}
-
-          {newsItem?.status === 'APPROVED' && canPublish && (
-            <button
-              type="button"
-              onClick={() => handleTriggerStatusChange('PUBLISHED')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              <Radio className="w-4 h-4" />
-              نشر فوري على المنصات
-            </button>
-          )}
-
-          {newsItem?.status === 'PUBLISHED' && canPublish && (
-            <button
-              type="button"
-              onClick={() => handleTriggerStatusChange('ARCHIVED')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              أرشفة الخبر
-            </button>
-          )}
+          {!lockedByOther &&
+            transitions
+              .filter((t) => TRANSITION_BUTTONS[t])
+              .map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => handleTriggerStatusChange(t)}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
+                >
+                  {t === 'UNDER_REVIEW' && <Send className="w-4 h-4" />}
+                  {t === 'APPROVED' && <CheckCircle className="w-4 h-4" />}
+                  {t === 'PUBLISHED' && <Radio className="w-4 h-4" />}
+                  {TRANSITION_BUTTONS[t]!.label}
+                </button>
+              ))}
         </div>
       </div>
 
@@ -840,13 +987,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               البيانات الوصفية والتصنيف
             </h3>
 
-            {/* Breaking News Toggle */}
+            {/* Breaking News Toggle (goes on air once the story is published) */}
+            {can('news.breaking_push') && (
             <div className="p-3 bg-red-50/70 border border-red-200 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flame className="w-5 h-5 text-red-600 animate-pulse" />
                 <div>
                   <span className="text-xs font-bold text-red-900 block">خبر عاجل للبث</span>
-                  <span className="text-[10px] text-red-700 block">يظهر فوراً على الشريط الإخباري</span>
+                  <span className="text-[10px] text-red-700 block">يظهر على شريط العاجل عند نشره ولمدة 4 ساعات</span>
                 </div>
               </div>
               <input
@@ -855,6 +1003,27 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 onChange={(e) => setIsBreaking(e.target.checked)}
                 className="w-5 h-5 text-red-600 rounded-md focus:ring-red-500 cursor-pointer"
               />
+            </div>
+            )}
+
+            {/* Link to a running coverage (story) */}
+            <div>
+              <label htmlFor="news-story-select" className="block text-xs font-bold text-slate-700 mb-1">القصة / التغطية المرتبطة</label>
+              <select
+                id="news-story-select"
+                value={storyId}
+                onChange={(e) => setStoryId(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
+              >
+                <option value="">— بدون قصة —</option>
+                {stories
+                  .filter((st) => st.status !== 'ARCHIVED' || st.id === storyId)
+                  .map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.title}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             {/* Category */}
@@ -1225,10 +1394,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-w-md w-full space-y-4 text-right">
             <h3 className="text-base font-bold text-slate-800">
-              تأكيد نقل الحالة التحريرية إلى: [{pendingStatus}]
+              تأكيد نقل الحالة التحريرية إلى: «{pendingStatus ? NEWS_STATUS_LABELS[pendingStatus] : ''}»
             </h3>
             <p className="text-xs text-slate-500">
-              أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل التدقيق الأمني والتحريري:
+              {needsComment
+                ? 'اكتب ملاحظاتك للكاتب (إلزامية) لتُسجل في سجل سير العمل:'
+                : 'أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل سير العمل (اختياري):'}
+              {isDirty && canEditContent && <span className="block mt-1 text-amber-700 font-semibold">سيتم حفظ تعديلاتك غير المحفوظة أولاً.</span>}
             </p>
             <textarea
               id="status-transition-comment"
@@ -1249,13 +1421,37 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmStatus}
-                className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs"
+                disabled={needsComment && !statusComment.trim()}
+                className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
               >
                 تأكيد ونقل الحالة
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {newsItem?.id && (
+        <NewsHistoryModal
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          newsId={newsItem.id}
+          canRestore={canEditContent}
+          onRestore={(data) => {
+            // Loaded as unsaved changes on top of the current version.
+            setTitle(data.title || '');
+            setShortTitle(data.shortTitle || '');
+            setSummary(data.summary || '');
+            setContent(data.content || '');
+            setKeywords(data.keywords || []);
+            if (data.categoryId) setCategoryId(data.categoryId);
+            if (data.sourceId) setSourceId(data.sourceId);
+            setLocationName(data.locationName || '');
+            setMainImageUrl(data.mainImageUrl || '');
+            setVideoUrl(data.videoUrl || '');
+            setInternalNotes(data.internalNotes || '');
+          }}
+        />
       )}
 
       {/* Lower Thirds / CG Graphics Generator Modal */}

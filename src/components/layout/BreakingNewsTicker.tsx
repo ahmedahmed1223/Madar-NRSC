@@ -41,7 +41,8 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
     return null;
   }
 
-  const activeItem = rawList[currentIndex] || rawList[0];
+  const safeIndex = currentIndex % rawList.length;
+  const activeItem = rawList[safeIndex];
 
   const handleNext = () => {
     setCurrentIndex((prev) => (prev + 1) % rawList.length);
@@ -60,7 +61,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
           <span className="font-extrabold tracking-wider text-[11px] uppercase">عاجل</span>
           {rawList.length > 1 && (
             <span className="bg-white/20 text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
-              {currentIndex + 1}/{rawList.length}
+              {safeIndex + 1}/{rawList.length}
             </span>
           )}
         </div>

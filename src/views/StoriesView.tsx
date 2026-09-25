@@ -1,3 +1,4 @@
+import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
   Search,
@@ -56,6 +57,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
   onSelectNews,
   onCreateNewsForStory,
 }) => {
+  const canCreateNews = RbacService.hasPermission(currentUser, 'news.create');
+  const canManageStories = canCreateNews || RbacService.hasPermission(currentUser, 'news.edit_any');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'RESOLVED' | 'ARCHIVED'>('ACTIVE');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -81,7 +84,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
     setCategoryId(categories[0]?.id || '');
     setPriority('HIGH');
     setStatus('ACTIVE');
-    setLocationName('غرفة الأخبار المركزية');
+    setLocationName('');
     setKeywordsInput('');
     setIsModalOpen(true);
   };
@@ -155,6 +158,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </p>
           </div>
         </div>
+        {canManageStories && (
         <button
           type="button"
           onClick={handleOpenAddModal}
@@ -163,6 +167,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           <Plus className="w-4 h-4" />
           إنشاء تغطية / قصة جديدة
         </button>
+        )}
       </div>
 
       {/* Tabs & Search Filter */}
@@ -273,6 +278,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {canManageStories && (
                   <button
                     type="button"
                     onClick={() => handleOpenEditModal(story)}
@@ -281,6 +287,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
+                  )}
 
                   <button
                     type="button"
@@ -544,7 +551,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 <FileText className="w-4 h-4 text-indigo-600" />
                 المواد الإخبارية المرتبطة بهذه القصة ({newsList.filter((n) => n.storyId === detailStory.id).length})
               </h4>
-              {onCreateNewsForStory && (
+              {onCreateNewsForStory && canCreateNews && (
                 <button
                   type="button"
                   onClick={() => {

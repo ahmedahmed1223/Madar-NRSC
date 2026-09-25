@@ -126,6 +126,21 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 3,
+    sql: `
+      CREATE TABLE IF NOT EXISTS entity_history (
+        collection TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        changed_by TEXT,
+        changed_by_name TEXT,
+        changed_at TEXT NOT NULL,
+        PRIMARY KEY (collection, entity_id, version)
+      );
+    `,
+  },
 ];
 
 function formatSize(bytes: number): string {
@@ -337,6 +352,35 @@ export class NewsroomDatabase {
       )
       .get(email) as { id: string } | undefined;
     return row?.id ?? null;
+  }
+
+  // --- Revision history ------------------------------------------------------
+
+  /** Keeps the state a row had *before* an update, pruned to the newest `keep` revisions. */
+  recordHistory(collection: CollectionName, id: string, version: number, data: unknown, userId: string | null, userName: string | null, keep = 100) {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO entity_history (collection, entity_id, version, data, changed_by, changed_by_name, changed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(collection, id, version, JSON.stringify(data), userId, userName, new Date().toISOString());
+    this.db
+      .prepare(
+        `DELETE FROM entity_history WHERE collection = ? AND entity_id = ? AND version NOT IN (
+           SELECT version FROM entity_history WHERE collection = ? AND entity_id = ? ORDER BY version DESC LIMIT ?)`
+      )
+      .run(collection, id, collection, id, keep);
+  }
+
+  listHistory(collection: CollectionName, id: string) {
+    return (
+      this.db
+        .prepare(
+          `SELECT version, data, changed_by AS changedBy, changed_by_name AS changedByName, changed_at AS changedAt
+           FROM entity_history WHERE collection = ? AND entity_id = ? ORDER BY version DESC`
+        )
+        .all(collection, id) as { version: number; data: string; changedBy: string | null; changedByName: string | null; changedAt: string }[]
+    ).map((r) => ({ ...r, data: JSON.parse(r.data) }));
   }
 
   // --- Credentials ---------------------------------------------------------

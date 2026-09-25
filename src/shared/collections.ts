@@ -26,6 +26,8 @@ export const COLLECTIONS = {
   broadcastState: { storageKey: 'nrcs_broadcast_state_v1', kind: 'singleton' },
   /** Internal newsroom chat (intercom channels). */
   messages: { storageKey: 'nrcs_messages_v1', kind: 'list' },
+  /** Soft edit locks ("X is editing this story"); id = `${collection}:${entityId}`. */
+  editLocks: { storageKey: 'nrcs_edit_locks_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;
@@ -43,6 +45,33 @@ export interface BroadcastState {
   lockedById?: string;
   lockedByName?: string;
   lockedAt?: string;
+}
+
+/** Collections whose previous versions are kept for review and restore. */
+export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories']);
+
+/** Collections protected by edit locks. */
+export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news']);
+
+/** A lock expires unless the editor renews it (the client heartbeats well within this window). */
+export const EDIT_LOCK_TTL_MS = 2 * 60 * 1000;
+
+export interface EditLock {
+  id: string;
+  collection: CollectionName;
+  entityId: string;
+  userId?: string;
+  userName?: string;
+  acquiredAt?: string;
+  expiresAt?: string;
+}
+
+export function lockIdFor(collection: CollectionName, entityId: string) {
+  return `${collection}:${entityId}`;
+}
+
+export function isLockActive(lock: EditLock | null | undefined, now = Date.now()): boolean {
+  return !!lock && !!lock.expiresAt && new Date(lock.expiresAt).getTime() > now;
 }
 
 export interface ChatMessage {

@@ -14,6 +14,7 @@ import {
   RundownSegment,
 } from './types';
 import { apiService } from './services/api';
+import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -107,6 +108,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // Selection state
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
+  const [newNewsStoryId, setNewNewsStoryId] = useState<string | null>(null);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
@@ -185,8 +187,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   }, []);
 
   // Breaking news ticker items
+  // Only published, non-expired breaking stories go on air.
   const breakingNewsItems = newsList
-    .filter((n) => n.isBreaking && !n.deletedAt)
+    .filter((n) => isBreakingLive(n))
     .map((n) => ({
       id: n.id,
       newsId: n.id,
@@ -195,23 +198,26 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }));
 
   // --- NEWS ACTIONS ---
-  const handleSaveNews = (newsData: Partial<NewsItem>) => {
+  /** Returns the saved story, or null when the save was refused. `stay` keeps the editor open. */
+  const handleSaveNews = (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): NewsItem | null => {
     try {
       const saved = apiService.saveNews(newsData, currentUser);
       refreshData();
       setSelectedNewsItem(saved);
-      setActiveNav('news');
+      if (!opts.stay) setActiveNav('news');
       addToast({
         type: 'success',
         title: 'تم الحفظ بنجاح',
         message: `تم حفظ الخبر: "${saved.title?.slice(0, 40)}..."`,
       });
+      return saved;
     } catch (err: any) {
       addToast({
         type: 'error',
         title: 'خطأ في الحفظ',
         message: err.message || 'حدث خطأ أثناء حفظ الخبر',
       });
+      return null;
     }
   };
 
@@ -222,7 +228,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       addToast({
         type: 'success',
         title: 'تحديث الحالة',
-        message: `تم تحديث حالة الخبر إلى: ${toStatus}`,
+        message: `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`,
       });
     } catch (err: any) {
       addToast({
@@ -254,49 +260,71 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
+  /** Applies the action only where the workflow and permissions allow it, and reports what was skipped. */
   const handleBulkAction = (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
-    try {
-      newsIds.forEach(id => {
-        if (action === 'DELETE') {
-          apiService.deleteNews(id, currentUser);
-        } else if (action === 'ARCHIVE') {
-          apiService.updateNewsStatus(id, 'ARCHIVED', currentUser, 'أرشفة جماعية');
-        } else if (action === 'APPROVE') {
-          apiService.updateNewsStatus(id, 'APPROVED', currentUser, 'اعتماد جماعي');
-        } else if (action === 'PUBLISH') {
-          apiService.updateNewsStatus(id, 'PUBLISHED', currentUser, 'نشر جماعي');
-        }
-      });
-      refreshData();
+    const target: Record<string, NewsStatus> = { PUBLISH: 'PUBLISHED', APPROVE: 'APPROVED', ARCHIVE: 'ARCHIVED' };
+    const comment: Record<string, string> = { PUBLISH: 'نشر جماعي', APPROVE: 'اعتماد جماعي', ARCHIVE: 'أرشفة جماعية' };
+    let done = 0;
+    const skipped: string[] = [];
+    newsIds.forEach((id) => {
+      try {
+        if (action === 'DELETE') apiService.deleteNews(id, currentUser);
+        else apiService.updateNewsStatus(id, target[action], currentUser, comment[action]);
+        done++;
+      } catch (err: any) {
+        const title = newsList.find((n) => n.id === id)?.title || id;
+        skipped.push(`«${title.slice(0, 30)}»: ${err.message}`);
+      }
+    });
+    refreshData();
+    if (done > 0) {
+      addToast({ type: 'success', title: 'إجراء جماعي', message: `تم تنفيذ الإجراء على ${done} من ${newsIds.length} خبراً` });
+    }
+    if (skipped.length > 0) {
       addToast({
-        type: 'success',
-        title: 'إجراء جماعي مكتمل',
-        message: `تم تنفيذ عملية (${action}) على ${newsIds.length} من الأخبار المحددة`,
-      });
-    } catch (err: any) {
-      addToast({
-        type: 'error',
-        title: 'خطأ في الإجراء الجماعي',
-        message: err.message || 'حدث خطأ أثناء تنفيذ الإجراء الجماعي',
+        type: 'warning',
+        title: `تم تخطي ${skipped.length} خبراً`,
+        message: skipped.slice(0, 3).join(' — ') + (skipped.length > 3 ? ' …' : ''),
       });
     }
   };
 
   const handleCreateNewNewsClick = () => {
+    setNewNewsStoryId(null);
     setSelectedNewsItem(null);
     setActiveNav('news-editor');
   };
 
   const handleEditNewsClick = (itemOrId: NewsItem | string) => {
-    if (typeof itemOrId === 'string') {
-      const found = newsList.find((n) => n.id === itemOrId);
-      if (found) {
-        setSelectedNewsItem(found);
-      }
-    } else {
-      setSelectedNewsItem(itemOrId);
+    const found = typeof itemOrId === 'string' ? newsList.find((n) => n.id === itemOrId) : itemOrId;
+    if (!found) {
+      addToast({ type: 'warning', title: 'الخبر غير متاح', message: 'ربما حُذف الخبر أو لا تملك صلاحية الوصول إليه' });
+      return;
     }
+    setNewNewsStoryId(null);
+    setSelectedNewsItem(found);
     setActiveNav('news-editor');
+  };
+
+  const handleCreateNewsForStory = (storyId: string) => {
+    setSelectedNewsItem(null);
+    setNewNewsStoryId(storyId);
+    setActiveNav('news-editor');
+  };
+
+  const handleToggleBreaking = (item: NewsItem) => {
+    try {
+      const on = !isBreakingLive(item);
+      apiService.setBreaking(item.id, on);
+      refreshData();
+      addToast(
+        on
+          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة 4 ساعات` }
+          : { type: 'info', title: 'أُوقف الخبر العاجل', message: 'أُزيل الخبر من شريط العاجل' }
+      );
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'شريط العاجل', message: err.message });
+    }
   };
 
   // --- PROGRAMS & EPISODES ACTIONS ---
@@ -480,6 +508,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     setActiveNav('program-detail');
   };
 
+  // The editor always receives the latest server copy of the selected story.
+  const editorNewsItem = selectedNewsItem?.id ? newsList.find((n) => n.id === selectedNewsItem.id) || selectedNewsItem : selectedNewsItem;
+
   // Resolve current active episode and active program
   const activeEpisode = episodes.find((e) => e.id === selectedEpisodeId) || episodes[0];
   const activeProgram = programs.find((p) => p.id === selectedProgramId) || programs[0];
@@ -558,14 +589,28 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 guests={guests}
                 categories={categories}
                 currentUser={currentUser}
+                breakingNews={newsList
+                  .filter((n) => isBreakingLive(n))
+                  .map((n) => ({
+                    id: n.id,
+                    newsId: n.id,
+                    title: n.title,
+                    priority: 'CRITICAL' as const,
+                    isActive: true,
+                    startedAt: n.publishDate || n.updatedAt,
+                    expiresAt: n.breakingUntil || '',
+                    createdBy: n.editorName || n.authorName,
+                  }))}
+                onSelectNews={(id) => handleEditNewsClick(id)}
                 onCreateNews={handleCreateNewNewsClick}
                 onCreateEpisode={() => {
                   setFilterProgramId(null);
                   setActiveNav('episodes');
                 }}
                 onNavigate={(view: any) => {
+                  const map: Record<string, string> = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking' };
                   if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
-                  setActiveNav(String(view).toLowerCase().replace(/_/g, '-'));
+                  setActiveNav(map[view] || String(view).toLowerCase().replace(/_/g, '-'));
                 }}
                 onSelectEpisode={handleSelectEpisode}
               />
@@ -580,12 +625,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveStory={handleSaveStory}
                 onDeleteStory={handleDeleteStory}
                 onSelectNews={(id) => handleEditNewsClick(id)}
-                onCreateNewsForStory={(_storyId) => {
-                  handleCreateNewNewsClick();
-                }}
+                onCreateNewsForStory={handleCreateNewsForStory}
               />
             )}
-            {activeNav === 'news' && (
+            {(activeNav === 'news' || activeNav === 'breaking') && (
               <NewsListView
                 newsList={newsList}
                 categories={categories}
@@ -596,15 +639,18 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onDeleteNews={handleDeleteNews}
                 onUpdateStatus={handleUpdateNewsStatus}
                 onBulkAction={handleBulkAction}
-                onToggleBreaking={(newsItem) => {
-                  handleSaveNews({ ...newsItem, isBreaking: !newsItem.isBreaking });
-                }}
+                onToggleBreaking={handleToggleBreaking}
+                initialTab={activeNav === 'breaking' ? 'BREAKING' : 'ALL'}
+                key={activeNav}
               />
             )}
 
             {activeNav === 'news-editor' && (
               <NewsEditorView
-                newsItem={selectedNewsItem}
+                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}`}
+                newsItem={editorNewsItem}
+                defaultStoryId={newNewsStoryId || undefined}
+                stories={stories}
                 currentUser={currentUser}
                 categories={categories}
                 sources={sources}

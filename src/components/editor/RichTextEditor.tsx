@@ -102,7 +102,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   // Word count & Char count calculation
-  const cleanText = value.replace(/<[^>]*>/g, '').trim();
+  // Tags become spaces so adjacent paragraphs are not counted as one word.
+  const cleanText = value.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
   const wordCount = cleanText ? cleanText.split(/\s+/).length : 0;
   const charCount = cleanText.length;
   // Standard Arabic broadcast reading speed is ~130 words per minute

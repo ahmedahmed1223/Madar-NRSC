@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Search,
@@ -19,12 +19,19 @@ import {
   AlertCircle,
   ExternalLink,
   X,
+  Lock,
+  RotateCcw,
+  Undo2,
 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
-import { hasPermission } from '../services/api';
+import { apiService } from '../services/api';
+import { RbacService } from '../services/rbacService';
+import { dataStore } from '../services/dataStore';
+import { transitionDenial, isBreakingLive } from '../shared/newsWorkflow';
+import { isLockActive, EditLock } from '../shared/collections';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 interface NewsListViewProps {
@@ -38,7 +45,13 @@ interface NewsListViewProps {
   onDeleteNews: (newsId: string) => void;
   onToggleBreaking: (newsItem: NewsItem) => void;
   onBulkAction: (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => void;
+  /** Opens the list on a specific tab (e.g. the breaking-news desk). */
+  initialTab?: ListTab;
 }
+
+type ListTab = 'ALL' | NewsStatus | 'BREAKING' | 'TRASH';
+
+const PAGE_SIZE = 50;
 
 export const NewsListView: React.FC<NewsListViewProps> = ({
   newsList = [],
@@ -50,8 +63,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   onDeleteNews,
   onToggleBreaking,
   onBulkAction,
+  initialTab = 'ALL',
 }) => {
-  const [activeTab, setActiveTab] = useState<'ALL' | NewsStatus>('ALL');
+  const [activeTab, setActiveTab] = useState<ListTab>(initialTab);
+  const [page, setPage] = useState(0);
+  const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
+  const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
@@ -64,25 +81,66 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [targetStatus, setTargetStatus] = useState<NewsStatus>('APPROVED');
   const [statusComment, setStatusComment] = useState('');
 
-  const canPublish = hasPermission(currentUser.role, 'PUBLISH_NEWS');
-  const canApprove = hasPermission(currentUser.role, 'APPROVE_NEWS');
-  const canDelete = hasPermission(currentUser.role, 'DELETE_NEWS');
-  const canManageBreaking = hasPermission(currentUser.role, 'MANAGE_BREAKING');
+  // Same permission model the server enforces (custom roles and per-user overrides included).
+  const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
+  const allowed = (item: NewsItem, to: NewsStatus) => transitionDenial(can, currentUser.id, item, to) === null;
+  const canPublish = can('news.publish');
+  const canApprove = can('news.approve');
+  const canDelete = can('news.delete');
+  const canManageBreaking = can('news.breaking_push');
+
+  useEffect(
+    () =>
+      dataStore.subscribe((evt) => {
+        if (evt.type !== 'data-changed') return;
+        if (evt.collections.includes('editLocks')) setLocks(apiService.getEditLocks());
+        if (evt.collections.includes('news')) setDeletedNews(apiService.getDeletedNews());
+      }),
+    []
+  );
+
+  const lockByNewsId = useMemo(() => {
+    const map = new Map<string, EditLock>();
+    locks.forEach((l) => {
+      if (l.collection === 'news' && isLockActive(l) && l.userId !== currentUser.id) map.set(l.entityId, l);
+    });
+    return map;
+  }, [locks, currentUser.id]);
 
   // Filter logic
-  const filteredNews = (newsList || []).filter((item) => {
-    if (activeTab !== 'ALL' && item.status !== activeTab) return false;
+  const sourceList = activeTab === 'TRASH' ? deletedNews : newsList || [];
+  const filteredNews = sourceList.filter((item) => {
+    if (activeTab === 'BREAKING') {
+      if (!isBreakingLive(item)) return false;
+    } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
     if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchTitle = item.title.toLowerCase().includes(q);
-      const matchSummary = item.summary.toLowerCase().includes(q);
-      const matchAuthor = item.authorName.toLowerCase().includes(q);
-      if (!matchTitle && !matchSummary && !matchAuthor) return false;
+      const fields = [item.title, item.summary, item.authorName, ...(item.keywords || [])];
+      if (!fields.some((f) => String(f ?? '').toLowerCase().includes(q))) return false;
     }
     return true;
   });
+
+  const pageCount = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pagedNews = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  // Selection never includes rows hidden by a filter or tab change.
+  useEffect(() => {
+    setSelectedIds([]);
+    setPage(0);
+  }, [activeTab, searchQuery, selectedCategory, selectedPriority]);
+
+  const handleRestore = (id: string) => {
+    try {
+      apiService.restoreNews(id);
+      setDeletedNews(apiService.getDeletedNews());
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const categoryOptions = Array.from(
     new Set([
@@ -92,10 +150,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   ).filter(Boolean);
 
   const handleSelectAll = () => {
-    if (selectedIds.length === filteredNews.length) {
+    if (selectedIds.length === pagedNews.length && pagedNews.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredNews.map((n) => n.id));
+      setSelectedIds(pagedNews.map((n) => n.id));
     }
   };
 
@@ -233,6 +291,35 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         >
           أرشيف ({(newsList || []).filter((n) => n.status === 'ARCHIVED').length})
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('NEEDS_REVISION')}
+          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
+            activeTab === 'NEEDS_REVISION' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          مُعاد للتعديل ({(newsList || []).filter((n) => n.status === 'NEEDS_REVISION').length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('BREAKING')}
+          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
+            activeTab === 'BREAKING' ? 'bg-red-600 text-white shadow-xs' : 'text-red-600 hover:bg-red-50'
+          }`}
+        >
+          عاجل على الهواء ({(newsList || []).filter((n) => isBreakingLive(n)).length})
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('TRASH')}
+            className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
+              activeTab === 'TRASH' ? 'bg-slate-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            سلة المحذوفات ({deletedNews.length})
+          </button>
+        )}
       </div>
 
       {/* Filter Toolbar */}
@@ -318,7 +405,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       </div>
 
       {/* Bulk Action Bar (when selected) */}
-      {selectedIds.length > 0 && (
+      {selectedIds.length > 0 && activeTab !== 'TRASH' && (
         <div className="bg-slate-900 text-white px-4 py-3 rounded-xl flex items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex items-center gap-2">
             <span className="font-bold">تم تحديد {selectedIds.length} عنصر</span>
@@ -411,7 +498,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredNews.map((item) => {
+                pagedNews.map((item) => {
+                  const lock = lockByNewsId.get(item.id);
                   const sInfo = statusBadgeInfo[item.status] || { label: item.status, variant: 'default' };
                   const pInfo = priorityBadgeInfo[item.priority] || { label: item.priority, variant: 'default' };
                   const isSelected = selectedIds.includes(item.id);
@@ -456,6 +544,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <span className="text-[11px] text-slate-400 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
+                            {lock && (
+                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                <Lock className="w-3 h-3" />
+                                يحرره الآن: {lock.userName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -526,18 +620,29 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
 
+                          {activeTab === 'TRASH' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRestore(item.id)}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                              title="استعادة الخبر من سلة المحذوفات"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <>
                           {/* Edit */}
                           <button
                             type="button"
                             onClick={() => onEditNews(item.id)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
-                            title="تحرير الخبر"
+                            title={lock ? `يحرره الآن ${lock.userName} (فتح للقراءة)` : 'تحرير الخبر'}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
 
-                          {/* Quick Workflow Action button */}
-                          {item.status === 'DRAFT' && (
+                          {/* Workflow actions offered only when the server will accept them */}
+                          {['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION'].includes(item.status) && allowed(item, 'UNDER_REVIEW') && (
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'UNDER_REVIEW')}
@@ -548,7 +653,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             </button>
                           )}
 
-                          {item.status === 'UNDER_REVIEW' && canApprove && (
+                          {allowed(item, 'APPROVED') && item.status !== 'APPROVED' && (
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'APPROVED')}
@@ -559,7 +664,18 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             </button>
                           )}
 
-                          {item.status === 'APPROVED' && canPublish && (
+                          {['UNDER_REVIEW', 'APPROVED'].includes(item.status) && allowed(item, 'NEEDS_REVISION') && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenStatusModal(item, 'NEEDS_REVISION')}
+                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg"
+                              title="إعادة للكاتب مع ملاحظات"
+                            >
+                              <Undo2 className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {allowed(item, 'PUBLISHED') && item.status !== 'PUBLISHED' && (
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'PUBLISHED')}
@@ -570,17 +686,17 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             </button>
                           )}
 
-                          {/* Breaking News Toggle */}
-                          {canManageBreaking && (
+                          {/* Breaking flag: only for published stories (or to take one off air) */}
+                          {canManageBreaking && (item.status === 'PUBLISHED' || item.isBreaking) && (
                             <button
                               type="button"
                               onClick={() => onToggleBreaking(item)}
                               className={`p-1.5 rounded-lg transition-colors ${
-                                item.isBreaking
+                                isBreakingLive(item)
                                   ? 'text-red-600 bg-red-50 hover:bg-red-100'
                                   : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
                               }`}
-                              title={item.isBreaking ? 'إلغاء صفة العاجل' : 'إطلاق كخبر عاجل على الشريط'}
+                              title={isBreakingLive(item) ? 'إيقاف من شريط العاجل' : 'إطلاق على شريط العاجل (4 ساعات)'}
                             >
                               <Flame className="w-4 h-4" />
                             </button>
@@ -592,10 +708,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               type="button"
                               onClick={() => setConfirmDeleteId(item.id)}
                               className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
-                              title="حذف الخبر"
+                              title="نقل إلى سلة المحذوفات"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                          )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -606,6 +724,34 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             </tbody>
           </table>
         </div>
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs">
+            <span className="text-slate-500">
+              {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filteredNews.length)} من {filteredNews.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+              >
+                السابق
+              </button>
+              <span className="px-2 font-mono">
+                {currentPage + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= pageCount - 1}
+                onClick={() => setPage(currentPage + 1)}
+                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+              >
+                التالي
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Preview News & Workflow History Modal */}
@@ -764,7 +910,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <button
               type="button"
               onClick={handleConfirmStatusChange}
-              className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
+              disabled={['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim()}
+              title={['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim() ? 'اكتب ملاحظات للكاتب أولاً' : undefined}
+              className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs disabled:opacity-50"
             >
               تأكيد التحديث
             </button>
@@ -780,9 +928,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           if (confirmDeleteId) onDeleteNews(confirmDeleteId);
           setConfirmDeleteId(null);
         }}
-        title="حذف الخبر الصحفي"
-        message="هل أنت متأكد من رغبتك في حذف هذا الخبر؟ سيتم الاحتفاظ بنسخة مؤرشفة في سجل العمليات."
-        confirmLabel="حذف نهائي"
+        title="نقل الخبر إلى سلة المحذوفات"
+        message="سيختفي الخبر من القوائم وشريط العاجل، ويمكن لمن يملك صلاحية الحذف استعادته من «سلة المحذوفات»."
+        confirmLabel="نقل إلى السلة"
         isDestructive
       />
     </div>

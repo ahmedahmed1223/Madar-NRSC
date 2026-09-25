@@ -273,6 +273,16 @@ export class DataStore {
     return { c, op, id, d: m ? JSON.parse(m.json) : undefined, p: m?.p, baseV };
   }
 
+  /** Pushes everything pending and waits until the server has answered (or the timeout passes). */
+  async settle(timeoutMs = 10_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.pendingCount() > 0 && Date.now() < deadline) {
+      await this.flush();
+      if (this.pendingCount() > 0) await new Promise((r) => setTimeout(r, 100));
+    }
+    return this.pendingCount() === 0;
+  }
+
   /** Sends dirty rows; rows already in flight wait for the next round. */
   async flush(): Promise<void> {
     if (!this.ready || this.inFlight.size > 0) return;

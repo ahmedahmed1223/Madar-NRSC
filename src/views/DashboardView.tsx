@@ -58,7 +58,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [selectedDashboardCategory, setSelectedDashboardCategory] = useState<string>('ALL');
 
   const publishedNewsCount = (newsList || []).filter((n) => n.status === 'PUBLISHED').length;
-  const pendingReviewNewsCount = (newsList || []).filter((n) => ['UNDER_REVIEW', 'EDITOR_CHECK'].includes(n.status)).length;
+  const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
   const todayEpisodes = (episodes || []).filter((e) => ['READY_FOR_BROADCAST', 'IN_PREPARATION', 'ON_AIR'].includes(e.status));
   const openTasks = (tasks || []).filter((t) => t.status !== 'COMPLETED');

@@ -1,5 +1,6 @@
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
+import { canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -33,37 +34,57 @@ function changed(before: any, after: any, field: string) {
 }
 
 const newsPolicy: Policy = ({ auth, kind, before, after }) => {
+  const can = (p: string) => auth.can(p);
+  const me = auth.user.id;
   if (kind === 'delete' || isSoftDelete(before, after)) {
     return auth.can('news.delete') ? null : 'صلاحياتك لا تسمح بحذف الأخبار';
   }
-  if (kind === 'create') {
-    if (!auth.can('news.create')) return 'صلاحياتك لا تسمح بإنشاء الأخبار';
-  } else {
-    const isOwn = before?.authorId === auth.user.id;
-    const statusChange = before?.status !== after?.status;
-    // A workflow transition by a reviewer is allowed even on someone else's story.
-    const reviewer = statusChange && any(auth, 'news.review', 'news.approve', 'news.publish');
-    if (!auth.can('news.edit_any') && !(isOwn && auth.can('news.edit_own')) && !reviewer) {
-      return 'صلاحياتك لا تسمح بتعديل هذا الخبر';
-    }
-    // Content that is live (or cleared to go live) must not change without the matching sign-off.
-    if (before?.status === 'PUBLISHED' && !auth.can('news.publish')) return 'لا يمكن تعديل خبر منشور دون صلاحية النشر';
-    if (before?.status === 'APPROVED' && !any(auth, 'news.approve', 'news.publish')) {
-      return 'لا يمكن تعديل خبر معتمد دون صلاحية الاعتماد';
-    }
+  if (before?.deletedAt && !after?.deletedAt) {
+    return auth.can('news.delete') ? null : 'صلاحياتك لا تسمح باستعادة الأخبار المحذوفة';
   }
-  const prevStatus = before?.status;
-  const nextStatus = after?.status;
-  if (nextStatus !== prevStatus) {
-    if (nextStatus === 'APPROVED' && !auth.can('news.approve')) return 'صلاحياتك لا تسمح باعتماد الأخبار';
-    if (nextStatus === 'PUBLISHED' && !auth.can('news.publish')) return 'صلاحياتك لا تسمح بنشر الأخبار';
-    if (prevStatus === 'PUBLISHED' && !auth.can('news.publish')) return 'صلاحياتك لا تسمح بإلغاء نشر الأخبار';
+
+  const statusChanged = kind === 'create' || before?.status !== after?.status;
+  if (statusChanged) {
+    const denial = transitionDenial(can, me, kind === 'create' ? null : before, after?.status);
+    if (denial) return denial;
   }
-  if (!!after?.isBreaking && !before?.isBreaking && !auth.can('news.breaking_push')) {
-    return 'صلاحياتك لا تسمح بإطلاق الأخبار العاجلة';
+
+  // Content edits (anything besides workflow bookkeeping) need edit rights on the story as it was.
+  const contentChanged =
+    kind === 'create' ||
+    [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].some(
+      (k) => !WORKFLOW_FIELDS.has(k) && changed(before, after, k)
+    );
+  if (contentChanged && !canEditNewsContent(can, me, kind === 'create' ? null : before)) {
+    if (kind === 'create') return 'صلاحياتك لا تسمح بإنشاء الأخبار';
+    if (before?.status === 'PUBLISHED' || before?.status === 'SCHEDULED') return 'لا يمكن تعديل خبر منشور دون صلاحية النشر';
+    if (before?.status === 'APPROVED') return 'لا يمكن تعديل خبر معتمد دون صلاحية الاعتماد';
+    return 'صلاحياتك لا تسمح بتعديل هذا الخبر';
+  }
+
+  if (!!before?.isBreaking !== !!after?.isBreaking && !auth.can('news.breaking_push')) {
+    return 'صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها';
   }
   return null;
 };
+
+/** Fields a status transition is allowed to touch without content-edit rights. */
+const WORKFLOW_FIELDS = new Set([
+  'status',
+  'workflowLogs',
+  'updatedAt',
+  'publishDate',
+  'editorId',
+  'editorName',
+  'approvedById',
+  'approvedByName',
+  'approvedAt',
+  'publishedById',
+  'publishedByName',
+  'isBreaking',
+  'breakingUntil',
+  'slug',
+]);
 
 const usersPolicy: Policy = ({ auth, kind, before, after }) => {
   const self = auth.user.id;
@@ -156,6 +177,17 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  editLocks: ({ auth, kind, before, after }) => {
+    const target = after ?? before;
+    if (!target || !['news'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
+      return 'قفل تحرير غير صالح';
+    }
+    const heldByOther = before && before.userId !== auth.user.id && before.expiresAt && new Date(before.expiresAt).getTime() > Date.now();
+    // Taking over (or clearing) a colleague's live lock is reserved for editors.
+    if (heldByOther && !auth.can('news.edit_any')) return `الخبر قيد التحرير لدى ${before.userName}`;
+    if (kind !== 'delete' && !auth.can('news.create') && !auth.can('news.edit_any')) return DENIED;
+    return null;
+  },
   messages: ({ kind, after }) => {
     if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
     if (!['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel)) return 'قناة غير معروفة';

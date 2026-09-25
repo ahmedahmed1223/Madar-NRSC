@@ -106,6 +106,7 @@ export interface Story {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface NewsWorkflowLog {
@@ -140,6 +141,11 @@ export interface NewsItem {
   authorName?: string;
   editorId?: string;
   editorName?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  publishedById?: string;
+  publishedByName?: string;
   priority: NewsPriority;
   status: NewsStatus;
   keywords: string[];

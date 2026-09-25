@@ -556,6 +556,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     permissions: [
       'news.view',
       'news.create',
+      'news.edit_own',
       'rundown.view',
       'rundown.edit',
       'rundown.reorder',

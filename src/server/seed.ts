@@ -82,6 +82,24 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
 
   await ensureAdministrator(db, config);
   reconcileTwoFactorFlags(db);
+  migrateRoleDefaults(db);
+}
+
+/**
+ * One-off fixes to stored system roles. Producers could create stories but never
+ * edit them again (news.edit_own was missing).
+ */
+function migrateRoleDefaults(db: NewsroomDatabase) {
+  if (db.getMeta('roles_migration') === '1') return;
+  db.transaction(() => {
+    for (const row of db.listCollection('roles')) {
+      const role = row.d;
+      if (role?.roleCode === 'PRODUCER' && role.permissions?.includes('news.create') && !role.permissions.includes('news.edit_own')) {
+        db.writeRow('roles', row.id, { ...role, permissions: [...role.permissions, 'news.edit_own'] }, row.p, null);
+      }
+    }
+    db.setMeta('roles_migration', '1');
+  });
 }
 
 /** The user record's twoFactorEnabled flag must mirror real TOTP enrolment (never trust seeded/legacy values). */

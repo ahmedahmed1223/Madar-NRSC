@@ -33,6 +33,7 @@ import {
   verifyPassword,
 } from './auth';
 import { newId } from '../shared/ids';
+import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
 export const APP_VERSION = '3.0.0';
@@ -434,6 +435,15 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       clearInterval(heartbeat);
       changeBus.off('rev', onRev);
     });
+  });
+
+  // --- Revision history -----------------------------------------------------
+
+  app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), (req, res) => {
+    const collection = req.params.collection as CollectionName;
+    if (!HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: db.listHistory(collection, req.params.id) });
   });
 
   // --- Broadcast exports ----------------------------------------------------
