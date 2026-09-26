@@ -156,7 +156,7 @@ export class SyncService {
             return {
               ok: false,
               code: 'CONFLICT',
-              message: `الخبر قيد التحرير الآن لدى ${lock.userName}، لا يمكن حفظ تغييرات عليه حتى ينتهي`,
+              message: `${collection === 'episodes' ? 'الحلقة' : 'الخبر'} قيد التحرير الآن لدى ${lock.userName}، لا يمكن حفظ تغييرات عليها حتى ينتهي`,
               current,
             } as SyncOpResult;
           }

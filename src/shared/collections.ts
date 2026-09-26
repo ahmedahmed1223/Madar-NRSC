@@ -51,7 +51,7 @@ export interface BroadcastState {
 export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories']);
 
 /** Collections protected by edit locks. */
-export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news']);
+export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'episodes']);
 
 /** A lock expires unless the editor renews it (the client heartbeats well within this window). */
 export const EDIT_LOCK_TTL_MS = 2 * 60 * 1000;

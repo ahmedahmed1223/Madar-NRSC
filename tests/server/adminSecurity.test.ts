@@ -94,3 +94,35 @@ describe('reference data in use', () => {
     expect(removed.body.results[0].ok).toBe(true);
   });
 });
+
+describe('episode edit locks', () => {
+  const epLock = (id: string, baseV?: number) => ({
+    c: 'editLocks',
+    op: 'upsert',
+    id: `episodes:${id}`,
+    d: { id: `episodes:${id}`, collection: 'episodes', entityId: id },
+    ...(baseV ? { baseV } : {}),
+  });
+
+  it('blocks colleagues from saving an episode while its rundown is being edited', async () => {
+    const producer = await loginAgent(server.app, 'producer@akhbar.tv');
+    const presenter = await loginAgent(server.app, 'presenter@akhbar.tv');
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const ep = server.db.listCollection('episodes').find((r) => !r.d.deletedAt)!;
+
+    const acquired = await sync(producer, [epLock(ep.id)]);
+    expect(acquired.body.results[0].ok).toBe(true);
+
+    const blocked = await sync(presenter, [{ c: 'episodes', op: 'upsert', id: ep.id, d: { ...ep.d, questions: [] }, baseV: ep.v }]);
+    expect(blocked.body.results[0].code).toBe('CONFLICT');
+
+    const lockRow = server.db.getRow('editLocks', `episodes:${ep.id}`)!;
+    const presenterTakeover = await sync(presenter, [epLock(ep.id, lockRow.v)]);
+    expect(presenterTakeover.body.results[0].code).toBe('FORBIDDEN');
+
+    const editorTakeover = await sync(editor, [epLock(ep.id, lockRow.v)]);
+    expect(editorTakeover.body.results[0].ok).toBe(true); // rundown.lock_override
+    const producerSave = await sync(producer, [{ c: 'episodes', op: 'upsert', id: ep.id, d: { ...ep.d, title: 'x' }, baseV: ep.v }]);
+    expect(producerSave.body.results[0].code).toBe('CONFLICT');
+  });
+});

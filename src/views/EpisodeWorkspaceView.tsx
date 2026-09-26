@@ -24,6 +24,7 @@ import {
   X,
   Copy,
   Check,
+  Lock,
 } from 'lucide-react';
 import {
   Episode,
@@ -35,6 +36,7 @@ import {
   User,
   EpisodeStatus,
 } from '../types';
+import { useEditLock } from '../hooks/useNewsEditLock';
 import { RundownTable } from '../components/rundown/RundownTable';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -78,9 +80,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   // What this user may change (mirrors the server's episodesPolicy).
   const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
-  const canEditEpisode = can('episodes.edit');
-  const canEditRundown = canEditEpisode || can('rundown.edit') || can('rundown.reorder');
-  const canEditQuestions = canEditEpisode || can('rundown.presenter_teleprompter');
+  const mayEditEpisode = can('episodes.edit');
+  const mayEditRundown = mayEditEpisode || can('rundown.edit') || can('rundown.reorder');
+  const mayEditQuestions = mayEditEpisode || can('rundown.presenter_teleprompter');
+
+  // Hold the episode's edit lock while this workspace is open so colleagues cannot save over it.
+  const lock = useEditLock('episodes', episode.id, mayEditRundown || mayEditQuestions);
+  const lockedByOther = lock.status === 'locked';
+  const canEditEpisode = mayEditEpisode && !lockedByOther;
+  const canEditRundown = mayEditRundown && !lockedByOther;
+  const canEditQuestions = mayEditQuestions && !lockedByOther;
 
   // Script state (follows the server copy unless the user has unsaved edits)
   const [introScript, setIntroScript] = useState(episode.introScript || '');
@@ -246,6 +255,29 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         onBack={onBack}
         backLabel="العودة للحلقات"
       />
+
+      {lockedByOther && lock.holder && (
+        <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
+          <div className="flex items-center gap-2.5">
+            <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <strong className="text-xs font-bold block">هذه الحلقة قيد التحرير الآن لدى {lock.holder.userName}</strong>
+              <span className="text-[11px] text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
+            </div>
+          </div>
+          {can('rundown.lock_override') && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الحلقة؟`)) void lock.takeOver();
+              }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
+            >
+              تولي التحرير
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Top Episode Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">

@@ -1,3 +1,4 @@
+import { findStudioConflicts } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import {
@@ -75,25 +76,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return days;
   }, [weekOffset]);
 
-  // Conflict detector: check if 2 episodes have same studio & date & overlapping time
-  const conflicts = useMemo(() => {
-    const map = new Map<string, Episode[]>();
-    episodes.forEach((ep) => {
-      if (ep.studioName && ep.broadcastDate && ep.startTime) {
-        const key = `${ep.broadcastDate}_${ep.studioName}_${ep.startTime}`;
-        if (!map.has(key)) map.set(key, []);
-        map.get(key)!.push(ep);
-      }
-    });
-
-    const conflictingIds = new Set<string>();
-    map.forEach((eps) => {
-      if (eps.length > 1) {
-        eps.forEach((ep) => conflictingIds.add(ep.id));
-      }
-    });
-    return conflictingIds;
-  }, [episodes]);
+  // Episodes booked in the same studio with overlapping on-air windows (incl. past midnight).
+  const conflicts = useMemo(() => findStudioConflicts(episodes), [episodes]);
 
   const filteredEpisodes = useMemo(() => {
     return episodes.filter((ep) => {

@@ -1,3 +1,4 @@
+import { studioConflictsFor } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
@@ -138,6 +139,20 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const handleCreateEpisode = (e: React.FormEvent) => {
     e.preventDefault();
     const selProg = programs.find((p) => p.id === programId);
+    const clashes = studioConflictsFor(
+      { id: '__new__', studioName: studioName || selProg?.studioName, broadcastDate, startTime, endTime, durationMinutes: Number(durationMinutes) || 50 },
+      episodes
+    );
+    if (
+      clashes.length > 0 &&
+      !window.confirm(
+        `تنبيه تعارض استوديو: الموعد يتداخل مع ${clashes
+          .map((c) => `«${c.programName} – ${c.title}» (${c.startTime}–${c.endTime})`)
+          .join('، ')}. هل تريد الحفظ رغم ذلك؟`
+      )
+    ) {
+      return;
+    }
 
     onSaveEpisode({
       programId,

@@ -4,6 +4,8 @@ import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
 import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
+type LockTarget = 'news' | 'episodes';
+
 export type EditLockStatus = 'none' | 'acquiring' | 'held' | 'locked';
 
 const HEARTBEAT_MS = Math.floor(EDIT_LOCK_TTL_MS / 3);
@@ -14,6 +16,12 @@ const HEARTBEAT_MS = Math.floor(EDIT_LOCK_TTL_MS / 3);
  * someone else holds (or takes over) the story.
  */
 export function useNewsEditLock(newsId: string | undefined) {
+  return useEditLock('news', newsId);
+}
+
+/** Generic edit lock for lockable collections (stories and programme episodes). */
+export function useEditLock(collection: LockTarget, entityId: string | undefined, enabled = true) {
+  const newsId = enabled ? entityId : undefined;
   const [status, setStatus] = useState<EditLockStatus>('none');
   const [holder, setHolder] = useState<EditLock | null>(null);
   const heldRef = useRef(false);
@@ -25,7 +33,7 @@ export function useNewsEditLock(newsId: string | undefined) {
 
   const evaluate = useCallback(() => {
     if (!newsId || acquiringRef.current) return;
-    const lock = apiService.getEditLocks().find((l) => l.id === lockIdFor('news', newsId));
+    const lock = apiService.getEditLocks().find((l) => l.id === lockIdFor(collection, newsId));
     if (lock && isLockActive(lock) && lock.userId !== me) {
       heldRef.current = false;
       setHolder(lock);
@@ -38,14 +46,14 @@ export function useNewsEditLock(newsId: string | undefined) {
       // Released or expired (possibly our own): (re)acquire so the editor stays protected.
       void acquireRef.current();
     }
-  }, [newsId, me]);
+  }, [collection, newsId, me]);
 
   const acquire = useCallback(async () => {
     if (!newsId || acquiringRef.current) return;
     acquiringRef.current = true;
     setStatus('acquiring');
     try {
-      const lock = await apiService.acquireNewsLock(newsId);
+      const lock = await apiService.acquireEditLock(collection, newsId);
       if (lock && lock.userId === me && isLockActive(lock)) {
         heldRef.current = true;
         setHolder(null);
@@ -60,7 +68,7 @@ export function useNewsEditLock(newsId: string | undefined) {
     } finally {
       acquiringRef.current = false;
     }
-  }, [newsId, me]);
+  }, [collection, newsId, me]);
   acquireRef.current = acquire;
 
   useEffect(() => {
@@ -70,7 +78,7 @@ export function useNewsEditLock(newsId: string | undefined) {
       setStatus('none');
       return;
     }
-    const foreign = apiService.getForeignLock(newsId);
+    const foreign = apiService.getForeignLock(newsId, collection);
     if (foreign) {
       setHolder(foreign);
       setStatus('locked');
@@ -96,7 +104,7 @@ export function useNewsEditLock(newsId: string | undefined) {
           keepalive: true,
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
-          body: JSON.stringify({ ops: [{ c: 'editLocks', op: 'delete', id: lockIdFor('news', newsId) }] }),
+          body: JSON.stringify({ ops: [{ c: 'editLocks', op: 'delete', id: lockIdFor(collection, newsId) }] }),
         });
       } catch {
         // ignore
@@ -108,10 +116,10 @@ export function useNewsEditLock(newsId: string | undefined) {
       clearInterval(heartbeat);
       unsubscribe();
       window.removeEventListener('beforeunload', onUnload);
-      if (heldRef.current) apiService.releaseNewsLock(newsId);
+      if (heldRef.current) apiService.releaseEditLock(collection, newsId);
       heldRef.current = false;
     };
-  }, [newsId, acquire, evaluate]);
+  }, [collection, newsId, acquire, evaluate]);
 
   return {
     status,

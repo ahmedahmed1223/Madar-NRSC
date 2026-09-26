@@ -231,13 +231,19 @@ export const POLICIES: Record<CollectionName, Policy> = {
   broadcastState: require('rundown.lock_override'),
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;
-    if (!target || !['news'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
+    if (!target || !['news', 'episodes'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
       return 'قفل تحرير غير صالح';
     }
+    const isEpisode = target.collection === 'episodes';
     const heldByOther = before && before.userId !== auth.user.id && before.expiresAt && new Date(before.expiresAt).getTime() > Date.now();
-    // Taking over (or clearing) a colleague's live lock is reserved for editors.
-    if (heldByOther && !auth.can('news.edit_any')) return `الخبر قيد التحرير لدى ${before.userName}`;
-    if (kind !== 'delete' && !auth.can('news.create') && !auth.can('news.edit_any')) return DENIED;
+    // Taking over (or clearing) a colleague's live lock is reserved for editors / rundown supervisors.
+    if (heldByOther && !auth.can(isEpisode ? 'rundown.lock_override' : 'news.edit_any')) {
+      return `${isEpisode ? 'الحلقة' : 'الخبر'} قيد التحرير لدى ${before.userName}`;
+    }
+    const canHold = isEpisode
+      ? any(auth, 'episodes.edit', 'rundown.edit', 'rundown.reorder', 'rundown.presenter_teleprompter')
+      : any(auth, 'news.create', 'news.edit_any');
+    if (kind !== 'delete' && !canHold) return DENIED;
     return null;
   },
   messages: ({ kind, after }) => {

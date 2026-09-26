@@ -31,6 +31,7 @@ import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch } from './http';
 import { newId } from '../shared/ids';
+import { localDateString } from '../shared/dates';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -526,7 +527,7 @@ export class ApiService {
       broadcastTime: program.broadcastTime || '20:00',
       durationMinutes: program.durationMinutes || 50,
       channelName: program.channelName || 'القناة الإخبارية الأولى',
-      studioName: program.studioName || 'استوديو الأخبار الرئيسي (A1)',
+      studioName: program.studioName || '',
       status: 'ACTIVE',
       episodesCount: 0,
       createdAt: now,
@@ -703,8 +704,8 @@ export class ApiService {
       episodeNumber: episodeData.episodeNumber || 1,
       title: episodeData.title || 'حلقة جديدة',
       description: episodeData.description || '',
-      recordingDate: episodeData.recordingDate || now.slice(0, 10),
-      broadcastDate: episodeData.broadcastDate || now.slice(0, 10),
+      recordingDate: episodeData.recordingDate || localDateString(),
+      broadcastDate: episodeData.broadcastDate || localDateString(),
       startTime: episodeData.startTime || '21:00',
       endTime: episodeData.endTime || '21:50',
       durationMinutes: episodeData.durationMinutes || 50,
@@ -712,8 +713,8 @@ export class ApiService {
       presenterName: episodeData.presenterName || currentUser.fullName,
       producerId: episodeData.producerId || currentUser.id,
       producerName: episodeData.producerName || currentUser.fullName,
-      directorName: episodeData.directorName || 'مخرج الحلقة',
-      studioName: episodeData.studioName || 'استوديو A1',
+      directorName: episodeData.directorName || '',
+      studioName: episodeData.studioName || '',
       introScript: episodeData.introScript || '',
       discussionTopics: episodeData.discussionTopics || [],
       status: episodeData.status || 'PLANNING',
@@ -1218,9 +1219,9 @@ export class ApiService {
   }
 
   /** Active lock on a story held by someone else (null when free or held by me). */
-  static getForeignLock(entityId: string): EditLock | null {
+  static getForeignLock(entityId: string, collection: 'news' | 'episodes' = 'news'): EditLock | null {
     const me = authClient.getSession()?.user.id;
-    const lock = this.getEditLocks().find((l) => l.id === lockIdFor('news', entityId));
+    const lock = this.getEditLocks().find((l) => l.id === lockIdFor(collection, entityId));
     return lock && isLockActive(lock) && lock.userId !== me ? lock : null;
   }
 
@@ -1229,17 +1230,25 @@ export class ApiService {
    * Returns the lock as stored on the server.
    */
   static async acquireNewsLock(entityId: string): Promise<EditLock | null> {
-    const id = lockIdFor('news', entityId);
+    return this.acquireEditLock('news', entityId);
+  }
+
+  static async acquireEditLock(collection: 'news' | 'episodes', entityId: string): Promise<EditLock | null> {
+    const id = lockIdFor(collection, entityId);
     const locks = this.getEditLocks().filter((l) => l.id !== id);
     // `heartbeat` makes every renewal a real change; the server recomputes the expiry.
-    locks.unshift({ id, collection: 'news', entityId, heartbeat: Date.now() } as EditLock);
+    locks.unshift({ id, collection, entityId, heartbeat: Date.now() } as EditLock);
     setStored(COLLECTIONS.editLocks.storageKey, locks);
     await dataStore.settle();
     return this.getEditLocks().find((l) => l.id === id) || null;
   }
 
   static releaseNewsLock(entityId: string): void {
-    const id = lockIdFor('news', entityId);
+    this.releaseEditLock('news', entityId);
+  }
+
+  static releaseEditLock(collection: 'news' | 'episodes', entityId: string): void {
+    const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();
     const mine = locks.find((l) => l.id === id && l.userId === me);
