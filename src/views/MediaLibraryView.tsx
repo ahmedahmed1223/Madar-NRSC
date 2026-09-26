@@ -1,3 +1,5 @@
+import { apiService } from '../services/api';
+import { VIDEO_STATUSES, isVideoReady, videoStatusName } from '../shared/production';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
@@ -58,6 +60,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   onDeleteMedia,
 }) => {
   const canUpload = RbacService.hasPermission(currentUser, 'media.upload');
+  // How many stories/segments use each item (computed once per render).
+  const usageMap = new Map<string, number>();
+  apiService.getNews().forEach((n) => (n.mediaIds || []).forEach((id) => usageMap.set(id, (usageMap.get(id) || 0) + 1)));
+  apiService.getEpisodes().forEach((e) => (e.rundown || []).forEach((seg) => (seg.mediaIds || []).forEach((id) => usageMap.set(id, (usageMap.get(id) || 0) + 1))));
+  const usageCount = (id: string) => usageMap.get(id) || 0;
   // Same rule as the server: media.delete, or the owner with upload rights.
   const canDeleteAsset = (a: MediaAsset) =>
     RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id));
@@ -347,6 +354,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 >
                   {asset.title || asset.fileName}
                 </h4>
+                {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] font-bold">
+                    {asset.mediaType === 'VIDEO' && (
+                      <span className={`px-1.5 py-0.5 rounded-md ${isVideoReady(asset.videoStatus) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                        {videoStatusName(asset.videoStatus)}
+                      </span>
+                    )}
+                    {usageCount(asset.id) > 0 && <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700">مستخدمة في {usageCount(asset.id)}</span>}
+                  </div>
+                )}
                 {asset.tags && asset.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {asset.tags.map((tg) => (
@@ -671,6 +688,54 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">النوع:</span>
                 <span className="font-semibold text-slate-800">{previewAsset.mediaType}</span>
+              </div>
+              {previewAsset.mediaType === 'VIDEO' && (
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="preview-video-status" className="text-slate-500">حالة الفيديو:</label>
+                  {canUpload ? (
+                    <select
+                      id="preview-video-status"
+                      value={previewAsset.videoStatus || 'RAW'}
+                      onChange={(e) => {
+                        const updated = apiService.updateMedia(previewAsset.id, {
+                          videoStatus: e.target.value as any,
+                          ...(e.target.value === 'EDITING' && !previewAsset.editorId ? { editorId: currentUser.id, editorName: currentUser.fullName } : {}),
+                        });
+                        setPreviewAsset(updated as any);
+                      }}
+                      className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white"
+                    >
+                      {VIDEO_STATUSES.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="font-semibold text-slate-800">{videoStatusName(previewAsset.videoStatus)}</span>
+                  )}
+                </div>
+              )}
+              {previewAsset.editorName && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">المونتير:</span>
+                  <span className="font-semibold text-slate-800">{previewAsset.editorName}</span>
+                </div>
+              )}
+              <div className="pt-1 border-t border-slate-200">
+                <span className="text-slate-500 block mb-1">مستخدمة في:</span>
+                {apiService.getMediaUsage(previewAsset.id).length === 0 ? (
+                  <span className="text-slate-400">غير مرتبطة بأي خبر أو فقرة بعد</span>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {apiService.getMediaUsage(previewAsset.id).map((u) => (
+                      <li key={`${u.kind}:${u.id}`} className="text-slate-700">
+                        {u.kind === 'news' ? 'خبر' : 'فقرة'}: <strong>{u.title}</strong>
+                        {u.episodeTitle ? ` (${u.episodeTitle})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">تم الرفع بواسطة:</span>

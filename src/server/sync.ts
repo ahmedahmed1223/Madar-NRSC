@@ -21,6 +21,10 @@ import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { removeUpload, uploadIdFromMedia } from './uploads';
+import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
+import { departmentIdOf } from '../shared/departments';
+import { onDutyAt, RosterEntry } from '../shared/roster';
+import { newId } from '../shared/ids';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -39,6 +43,55 @@ class SyncReject extends Error {
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Requester, department, history and assignee of a request are decided by the server. */
+function stampRequest(before: any, after: any, auth: AuthContext) {
+  const now = new Date().toISOString();
+  const by = { byId: auth.user.id, byName: auth.user.fullName, at: now };
+  if (!before) {
+    const { assigneeId: _a, assigneeName: _n, resultMediaId: _r, ...rest } = after;
+    return {
+      ...rest,
+      status: 'OPEN',
+      priority: after.priority === 'URGENT' ? 'URGENT' : 'NORMAL',
+      departmentId: requestTypeOf(after.type)?.departmentId ?? after.departmentId,
+      requesterId: auth.user.id,
+      requesterName: auth.user.fullName,
+      requesterDepartmentId: departmentIdOf(auth.user),
+      createdAt: now,
+      updatedAt: now,
+      history: [{ status: 'OPEN', ...by }],
+    };
+  }
+  const next: any = {
+    ...after,
+    requesterId: before.requesterId,
+    requesterName: before.requesterName,
+    requesterDepartmentId: before.requesterDepartmentId,
+    departmentId: before.departmentId,
+    createdAt: before.createdAt,
+    updatedAt: now,
+    history: before.history || [],
+    assigneeId: before.assigneeId,
+    assigneeName: before.assigneeName,
+  };
+  if (after.status !== before.status) {
+    next.history = [...next.history, { status: after.status, ...by, note: after.status === 'REJECTED' ? after.resolution : undefined }];
+    if (after.status === 'ACCEPTED' && before.status === 'OPEN') {
+      next.assigneeId = auth.user.id;
+      next.assigneeName = auth.user.fullName;
+    }
+    if (after.status === 'OPEN') {
+      next.assigneeId = undefined;
+      next.assigneeName = undefined;
+    }
+    if ((after.status === 'DONE' || after.status === 'REJECTED') && !next.assigneeId) {
+      next.assigneeId = auth.user.id;
+      next.assigneeName = auth.user.fullName;
+    }
+  }
+  return next;
 }
 
 /** Server-authoritative fields: clients cannot forge who did what, from where, or when. */
@@ -93,6 +146,48 @@ export class SyncService {
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
     return row.deleted ? true : canRead(auth, row.c, row.d);
+  }
+
+  /** Tells the right people about a request: the target department's on-duty staff, or the requester. */
+  private notifyRequest(before: any, after: DeptRequest, auth: AuthContext) {
+    const type = requestTypeOf(after.type);
+    const recipients = new Set<string>();
+    let title = '';
+    if (!before) {
+      const onDuty = onDutyAt(this.listData('roster') as RosterEntry[], Date.now(), after.departmentId).map((e) => e.userId);
+      const members = this.listData('users')
+        .filter((u: any) => u.isActive !== false && departmentIdOf(u) === after.departmentId)
+        .map((u: any) => u.id);
+      (onDuty.length ? onDuty : members).forEach((id) => recipients.add(id));
+      title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}طلب ${type?.name || ''} جديد`;
+    } else if (before.status !== after.status) {
+      recipients.add(after.requesterId);
+      if (after.status === 'CANCELLED' && after.assigneeId) recipients.add(after.assigneeId);
+      title = `طلب ${type?.name || ''}: ${requestStatusName(after.status)}`;
+    } else {
+      return;
+    }
+    recipients.delete(auth.user.id);
+    const now = new Date().toISOString();
+    for (const userId of recipients) {
+      const id = newId('notif');
+      this.db.writeRow(
+        'notifications',
+        id,
+        {
+          id,
+          userId,
+          title,
+          message: `${after.title} — ${after.requesterName}${after.link?.title ? ` (${after.link.title})` : ''}`,
+          type: 'TASK',
+          linkUrl: '/requests',
+          isRead: false,
+          createdAt: now,
+        },
+        this.db.positionBounds('notifications').min - 1,
+        null
+      );
+    }
   }
 
   bootstrap(auth: AuthContext) {
@@ -207,6 +302,7 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'requests' && !after.deletedAt) after = stampRequest(before, after, auth);
         if (collection === 'roster' && !after.deletedAt) {
           // The person on duty must be a real, active colleague; their name comes from the server.
           const member = this.db.getRow('users', String(after.userId))?.d;
@@ -247,6 +343,7 @@ export class SyncService {
           this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
         }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
+        if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
 
         if (collection === 'media') {
           // Only the uploader's own files may be attached, and each upload to a single record.

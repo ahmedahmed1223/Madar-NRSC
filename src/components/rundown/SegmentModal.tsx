@@ -1,3 +1,4 @@
+import { AttachmentsPanel } from '../media/AttachmentsPanel';
 import { FormPage } from '../common/FormPage';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -51,6 +52,19 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   const [scriptText, setScriptText] = useState('');
   const [videoAssetUrl, setVideoAssetUrl] = useState('');
   const [notes, setNotes] = useState('');
+  const [mediaIds, setMediaIds] = useState<string[]>([]);
+  const currentUser = apiService.getCurrentUser();
+
+  /** Attaching an edited package fills in its real length. */
+  const handleMediaChange = (ids: string[]) => {
+    const added = ids.filter((id) => !mediaIds.includes(id));
+    setMediaIds(ids);
+    const video = apiService.getMedia().find((m) => added.includes(m.id) && m.mediaType === 'VIDEO' && (m.durationSeconds || 0) > 0);
+    if (video?.durationSeconds) {
+      const secs = Math.round(video.durationSeconds);
+      setDurationInput(`${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`);
+    }
+  };
 
   const DURATION_PRESETS = [
     { label: '+15ث', seconds: 15, isAdd: true },
@@ -76,6 +90,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
       setScriptText(segment.scriptText || '');
       setVideoAssetUrl(segment.videoAssetUrl || '');
       setNotes(segment.notes || '');
+      setMediaIds(segment.mediaIds || []);
     } else {
       setTitle('');
       setSegmentType('REPORT');
@@ -86,6 +101,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
       setScriptText('');
       setVideoAssetUrl('');
       setNotes('');
+      setMediaIds([]);
     }
   }, [segment, defaultPresenter, isOpen]);
 
@@ -140,6 +156,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
       newsTitle: selectedNews?.shortTitle || selectedNews?.title,
       scriptText,
       videoAssetUrl: videoAssetUrl || undefined,
+      mediaIds,
       notes,
     });
     onClose();
@@ -312,7 +329,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="segment-video-input" className="block text-xs font-bold text-slate-700">رابط الفيديو أو معرف السيرفر</label>
+              <label htmlFor="segment-video-input" className="block text-xs font-bold text-slate-700">معرّف سيرفر البث (اختياري)</label>
               {videoAssetUrl && (
                 <button
                   type="button"
@@ -335,6 +352,10 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               spellCheck="false"
             />
           </div>
+        </div>
+
+        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/60">
+          <AttachmentsPanel mediaIds={mediaIds} onChange={handleMediaChange} currentUser={currentUser} title="فيديو ومواد الفقرة" />
         </div>
 
         {/* Autocue / Script Text with Live Reading Pace Calculator */}

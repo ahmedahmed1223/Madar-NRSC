@@ -67,6 +67,8 @@ export interface WireStatusInfo {
 }
 import { localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
+import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
+import { departmentIdOf } from '../shared/departments';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -343,6 +345,7 @@ export class ApiService {
       videoUrl: data.videoUrl,
       storyId: data.storyId,
       wireId: data.wireId,
+      mediaIds: data.mediaIds || [],
       sourceId: data.sourceId || '',
       sourceName: data.sourceName || '',
       categoryId: data.categoryId || '',
@@ -1011,6 +1014,92 @@ export class ApiService {
 
   static deleteMediaAsset(mediaId: string, user?: User): void {
     this.deleteMedia(mediaId, user);
+  }
+
+  /** Updates metadata of a library item (e.g. the video workflow state). */
+  static updateMedia(mediaId: string, changes: Partial<MediaFile>): MediaFile {
+    const all = this.getMedia();
+    const idx = all.findIndex((m) => m.id === mediaId);
+    if (idx === -1) throw new Error('المادة غير موجودة في المكتبة');
+    const { id: _id, ownerId: _o, uploadedById: _u, ...allowed } = changes as any;
+    all[idx] = { ...all[idx], ...allowed };
+    setStored(STORAGE_KEYS.MEDIA, all);
+    return all[idx];
+  }
+
+  /** Where a library item is used: stories and rundown segments. */
+  static getMediaUsage(mediaId: string): { kind: 'news' | 'segment'; id: string; title: string; episodeId?: string; episodeTitle?: string }[] {
+    const usage: { kind: 'news' | 'segment'; id: string; title: string; episodeId?: string; episodeTitle?: string }[] = [];
+    this.getNews().forEach((n) => {
+      if ((n.mediaIds || []).includes(mediaId)) usage.push({ kind: 'news', id: n.id, title: n.title });
+    });
+    this.getEpisodes().forEach((e) =>
+      (e.rundown || []).forEach((seg) => {
+        if ((seg.mediaIds || []).includes(mediaId)) usage.push({ kind: 'segment', id: seg.id, title: seg.title, episodeId: e.id, episodeTitle: e.title });
+      })
+    );
+    return usage;
+  }
+
+  // --- REQUESTS BETWEEN DEPARTMENTS ---
+  static getRequests(): DeptRequest[] {
+    return getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).filter((r) => !r.deletedAt);
+  }
+
+  static createRequest(data: Pick<DeptRequest, 'type' | 'title'> & Partial<DeptRequest>): DeptRequest {
+    const me = this.getCurrentUser();
+    if (!RbacService.hasPermission(me, 'requests.create')) throw new Error('صلاحياتك لا تسمح بإرسال طلبات للأقسام');
+    const type = requestTypeOf(data.type);
+    if (!type) throw new Error('نوع الطلب غير معروف');
+    if (!data.title?.trim()) throw new Error('عنوان الطلب مطلوب');
+    const now = new Date().toISOString();
+    const req: DeptRequest = {
+      id: newId('req'),
+      type: type.id,
+      departmentId: type.departmentId,
+      title: data.title.trim(),
+      details: data.details?.trim() || '',
+      priority: data.priority === 'URGENT' ? 'URGENT' : 'NORMAL',
+      status: 'OPEN',
+      requesterId: me.id,
+      requesterName: me.fullName,
+      link: data.link,
+      lines: data.lines?.filter((l) => l.trim()),
+      dueAt: data.dueAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
+    setStored(COLLECTIONS.requests.storageKey, [req, ...all]);
+    return req;
+  }
+
+  /** Applies a change after checking it with the same rules the server enforces. */
+  static updateRequest(id: string, changes: Partial<DeptRequest>): DeptRequest {
+    const me = this.getCurrentUser();
+    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
+    const idx = all.findIndex((r) => r.id === id);
+    if (idx === -1) throw new Error('الطلب غير موجود');
+    const before = all[idx];
+    const after: DeptRequest = { ...before, ...changes };
+    if (changes.status === 'ACCEPTED' && before.status === 'OPEN') {
+      after.assigneeId = me.id;
+      after.assigneeName = me.fullName;
+    }
+    const err = requestChangeError(before, after, {
+      id: me.id,
+      departmentId: departmentIdOf(me),
+      canManage: RbacService.hasPermission(me, 'requests.manage'),
+    });
+    if (err) throw new Error(err);
+    all[idx] = { ...after, updatedAt: new Date().toISOString() };
+    setStored(COLLECTIONS.requests.storageKey, all);
+    return all[idx];
+  }
+
+  static deleteRequest(id: string): void {
+    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
+    setStored(COLLECTIONS.requests.storageKey, all.filter((r) => r.id !== id));
   }
 
   // --- TAXONOMY & CONFIG ---

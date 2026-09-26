@@ -11,6 +11,7 @@ export type UserRole =
   | 'PRESENTER'
   | 'REPORTER'
   | 'MEDIA'
+  | 'CREW'
   | 'VIEWER';
 
 
@@ -162,6 +163,8 @@ export interface NewsItem {
   sourceName?: string;
   /** Agency wire item this story was written from. */
   wireId?: string;
+  /** Library items attached to the story (images, video, audio, documents). */
+  mediaIds?: string[];
   categoryId: string;
   categoryName?: string;
   authorId: string;
@@ -295,6 +298,8 @@ export interface RundownSegment {
   scriptText: string;
   script?: string;
   videoAssetUrl?: string;
+  /** Library items used by the segment (the edited package, stills, audio). */
+  mediaIds?: string[];
   newsId?: string;
   newsTitle?: string;
   notes?: string;
@@ -444,6 +449,11 @@ export interface MediaFile {
   description?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /** Video workflow: RAW -> EDITING -> READY -> APPROVED (see shared/production). */
+  videoStatus?: 'RAW' | 'EDITING' | 'READY' | 'APPROVED';
+  /** Montage editor handling the video. */
+  editorId?: string;
+  editorName?: string;
   createdAt?: string;
 }
 

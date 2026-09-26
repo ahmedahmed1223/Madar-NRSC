@@ -1,3 +1,6 @@
+import { apiService } from '../services/api';
+import { episodeReadiness } from '../shared/production';
+import { departmentName } from '../shared/departments';
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
@@ -112,8 +115,21 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
 
   // Status updates
+  const readiness = episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
+  const [showBlockers, setShowBlockers] = useState(false);
+
   const handleUpdateStatus = (newStatus: EpisodeStatus) => {
     if (!canEditEpisode) return;
+    if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !readiness.ready) {
+      setShowBlockers(true);
+      window.alert(
+        readiness.total === 0
+          ? 'لا يمكن اعتماد حلقة بلا فقرات للبث.'
+          : `لا يمكن اعتماد الحلقة للبث بعد: ${readiness.blockers.length} عنصر غير جاهز.\n\n` +
+              readiness.blockers.slice(0, 6).map((b) => `• ${b.segmentTitle}: ${b.detail} (${departmentName(b.departmentId)})`).join('\n')
+      );
+      return;
+    }
     onSaveEpisode({ id: episode.id, status: newStatus });
   };
 
@@ -280,6 +296,45 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           )}
         </div>
       )}
+
+      {/* On-air readiness across departments */}
+      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-800">
+              جاهزية البث: {readiness.readySegments} من {readiness.total} فقرة جاهزة
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {readiness.ready
+                ? 'كل الأقسام سلّمت ما يلزم؛ يمكن اعتماد الحلقة للبث.'
+                : readiness.total === 0
+                ? 'أضف فقرات الرانداون أولاً.'
+                : `${readiness.blockers.length} عنصر ينتظر التحرير أو المونتاج أو الأقسام الأخرى.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-40 h-2 rounded-full bg-slate-200 overflow-hidden" aria-hidden>
+              <div className={`h-full ${readiness.ready ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${readiness.total ? (readiness.readySegments / readiness.total) * 100 : 0}%` }} />
+            </div>
+            {readiness.blockers.length > 0 && (
+              <button type="button" onClick={() => setShowBlockers((v) => !v)} aria-expanded={showBlockers} className="text-xs font-bold text-blue-700 hover:underline">
+                {showBlockers ? 'إخفاء النواقص' : 'عرض النواقص'}
+              </button>
+            )}
+          </div>
+        </div>
+        {showBlockers && readiness.blockers.length > 0 && (
+          <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
+            {readiness.blockers.map((b, i) => (
+              <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
+                <span className="font-bold text-slate-800 truncate">{b.segmentTitle}</span>
+                <span className="text-amber-800">{b.detail}</span>
+                <span className="mr-auto text-[10px] text-slate-500 shrink-0">{departmentName(b.departmentId)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* Top Episode Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">

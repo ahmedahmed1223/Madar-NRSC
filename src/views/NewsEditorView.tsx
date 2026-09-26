@@ -1,3 +1,5 @@
+import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
+import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { apiService } from '../services/api';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -31,6 +33,7 @@ import {
   Zap,
   Check,
   Lock,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { RichTextEditor } from '../components/editor/RichTextEditor';
@@ -97,6 +100,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [isBreaking, setIsBreaking] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
+  const [mediaIds, setMediaIds] = useState<string[]>([]);
+  const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
+  const [requestNotice, setRequestNotice] = useState<string | null>(null);
 
   const [statusComment, setStatusComment] = useState('');
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -225,6 +231,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     isBreaking,
     internalNotes,
     storyId,
+    mediaIds,
   });
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
 
@@ -273,7 +280,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     }, 1200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videoUrl, keywords, isBreaking, internalNotes, storyId, draftKey, lockedByOther]);
+  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videoUrl, keywords, isBreaking, internalNotes, storyId, mediaIds, draftKey, lockedByOther]);
 
   const handleRestoreEmergencyDraft = () => {
     try {
@@ -295,6 +302,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.isBreaking !== undefined) setIsBreaking(parsed.isBreaking);
         if (parsed.internalNotes !== undefined) setInternalNotes(parsed.internalNotes);
         if (parsed.storyId !== undefined) setStoryId(parsed.storyId);
+        if (Array.isArray(parsed.mediaIds)) setMediaIds(parsed.mediaIds);
         setHasEmergencyDraft(false);
       }
     } catch {
@@ -340,6 +348,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       isBreaking: !!item.isBreaking,
       internalNotes: item.internalNotes || '',
       storyId: item.storyId || '',
+      mediaIds: item.mediaIds || [],
     };
     setTitle(fields.title);
     setShortTitle(fields.shortTitle);
@@ -356,6 +365,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setIsBreaking(fields.isBreaking);
     setInternalNotes(fields.internalNotes);
     setStoryId(fields.storyId);
+    setMediaIds(fields.mediaIds);
     loadedSnapshotRef.current = JSON.stringify(fields);
     setBaseUpdatedAt(item.updatedAt);
   };
@@ -381,6 +391,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         isBreaking: false,
         internalNotes: '',
         storyId: defaultStoryId || '',
+        mediaIds: [] as string[],
       };
       setCategoryId(fields.categoryId);
       setSourceId(seed?.sourceId || fields.sourceId);
@@ -446,6 +457,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       isBreaking,
       internalNotes,
       storyId: storyId || undefined,
+      mediaIds,
       wireId: newsItem?.wireId ?? seed?.wireId,
       expectedUpdatedAt: newsItem?.id ? baseUpdatedAt : undefined,
     };
@@ -756,6 +768,18 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-blue-400" />
             مولد الشارات (CG Lower Thirds)
           </button>
+
+          {newsItem?.id && can('requests.create') && (
+            <button
+              type="button"
+              onClick={() => setRequestDraft({ link: { kind: 'news', newsId: newsItem.id, title: newsItem.title }, title: '' })}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-violet-300 rounded-xl text-xs font-bold transition-colors border border-slate-700"
+              title="طلب مونتاج أو جرافيك أو غيرها لهذا الخبر"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              طلب من قسم
+            </button>
+          )}
 
           <button
             type="button"
@@ -1233,6 +1257,24 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               الوسائط المرفقة وسيرفرات البث
             </h3>
 
+            <AttachmentsPanel
+              mediaIds={mediaIds}
+              onChange={setMediaIds}
+              currentUser={currentUser}
+              readOnly={!canEditContent}
+              onRequestMontage={
+                newsItem?.id
+                  ? (m) =>
+                      setRequestDraft({
+                        type: 'MONTAGE',
+                        title: `مونتاج: ${m.title || m.fileName}`,
+                        details: `المادة الخام في المكتبة: ${m.title || m.fileName}`,
+                        link: { kind: 'news', newsId: newsItem.id, title: newsItem.title },
+                      })
+                  : undefined
+              }
+            />
+
             {/* Image URL */}
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -1501,7 +1543,27 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         onClose={() => setIsCgModalOpen(false)}
         onInsertTag={handleInsertCgTag}
         defaultTitle={title}
+        onSendToGraphics={
+          newsItem?.id && can('requests.create')
+            ? (tag) => setRequestDraft({ type: 'GRAPHICS', title: `شارات: ${title}`, lines: [tag], link: { kind: 'news', newsId: newsItem.id, title: newsItem.title } })
+            : undefined
+        }
       />
+
+      <RequestFormPage
+        isOpen={!!requestDraft}
+        onClose={() => setRequestDraft(null)}
+        draft={requestDraft || undefined}
+        onCreated={(text) => {
+          setRequestNotice(text);
+          window.setTimeout(() => setRequestNotice(null), 5000);
+        }}
+      />
+      {requestNotice && (
+        <div role="status" className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-lg">
+          {requestNotice}
+        </div>
+      )}
 
       {/* AI Newsroom Co-Pilot Modal */}
       <AiNewsCoPilotModal

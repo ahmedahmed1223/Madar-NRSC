@@ -1,3 +1,4 @@
+import { departmentIdOf } from '../../shared/departments';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
@@ -6,6 +7,7 @@ import {
   LayoutDashboard,
   Newspaper, FolderGit2,
   Flame,
+  ArrowLeftRight,
   CalendarClock,
   Rss,
   Tv,
@@ -125,6 +127,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
   const canSeeNav = (id: string) => !currentUser || !NAV_PERMISSIONS[id] || RbacService.hasPermission(currentUser, NAV_PERMISSIONS[id]);
 
+  // Open requests waiting on my department.
+  const myDepartment = currentUser ? departmentIdOf(currentUser) : null;
+  const requestsBadge = myDepartment
+    ? apiService.getRequests().filter((r) => r.departmentId === myDepartment && (r.status === 'OPEN' || r.status === 'ACCEPTED')).length
+    : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -150,6 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الفريق',
       items: [
+        { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
         { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
       ],

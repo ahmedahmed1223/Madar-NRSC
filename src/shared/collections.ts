@@ -27,6 +27,8 @@ export const COLLECTIONS = {
   messages: { storageKey: 'nrcs_messages_v1', kind: 'list' },
   /** Soft edit locks ("X is editing this story"); id = `${collection}:${entityId}`. */
   editLocks: { storageKey: 'nrcs_edit_locks_v1', kind: 'list' },
+  /** Requests between departments (montage, graphics, studio, ...). */
+  requests: { storageKey: 'nrcs_requests_v1', kind: 'list' },
   /** Duty roster: who is on shift in each department; id = `${date}:${departmentId}:${shift}:${userId}`. */
   roster: { storageKey: 'nrcs_roster_v1', kind: 'list' },
   /** Agency wire items pulled by the server from RSS/Atom feeds (server-written only). */

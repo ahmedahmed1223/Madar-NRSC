@@ -1,3 +1,5 @@
+import { episodeReadiness, requestChangeError } from '../shared/production';
+import { departmentIdOf } from '../shared/departments';
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
@@ -153,7 +155,17 @@ const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   return null;
 };
 
-const episodesPolicy: Policy = ({ auth, kind, before, after }) => {
+const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  // An episode is only declared ready for air when every department has delivered.
+  if (after?.status === 'READY_FOR_BROADCAST' && before?.status !== 'READY_FOR_BROADCAST' && !after?.deletedAt) {
+    const readiness = episodeReadiness(after, { requests: list?.('requests') || [], media: list?.('media') || [] });
+    if (!readiness.ready) {
+      const first = readiness.blockers[0];
+      return readiness.total === 0
+        ? 'لا يمكن اعتماد حلقة بلا فقرات للبث'
+        : `لا يمكن اعتماد الحلقة للبث: ${readiness.blockers.length} عنصر غير جاهز (مثلاً «${first.segmentTitle}»: ${first.detail})`;
+    }
+  }
   if (kind === 'create') return auth.can('episodes.create') ? null : 'صلاحياتك لا تسمح بإنشاء الحلقات';
   if (kind === 'delete' || isSoftDelete(before, after)) {
     return any(auth, 'programs.manage', 'episodes.edit') ? null : 'صلاحياتك لا تسمح بحذف الحلقات';
@@ -229,6 +241,14 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  requests: ({ auth, kind, before, after }) => {
+    const canManage = auth.can('requests.manage');
+    if (kind === 'delete' || isSoftDelete(before, after)) {
+      return canManage || (before?.requesterId === auth.user.id && before?.status === 'OPEN') ? null : 'لا يمكنك حذف هذا الطلب';
+    }
+    if (kind === 'create' && !auth.can('requests.create')) return 'صلاحياتك لا تسمح بإرسال طلبات للأقسام';
+    return requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
+  },
   roster: ({ auth, kind, after }) => {
     if (!auth.can('roster.manage')) return 'صلاحياتك لا تسمح بتعديل جدول المناوبات';
     if (kind === 'delete') return null;

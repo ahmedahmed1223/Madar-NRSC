@@ -41,6 +41,7 @@ const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ 
 const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const RequestsView = lazy(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazy(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
 const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
 const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
@@ -888,6 +889,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             )}
 
             {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
+
+            {activeNav === 'requests' && (
+              <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
+            )}
             </Suspense>
           </main>
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-24 w-full empty:hidden" />

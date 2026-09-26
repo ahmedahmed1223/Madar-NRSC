@@ -7,6 +7,8 @@ interface LowerThirdGeneratorModalProps {
   onClose: () => void;
   onInsertTag: (tag: string) => void;
   defaultTitle?: string;
+  /** Sends the lower third to the graphics desk as a request. */
+  onSendToGraphics?: (tag: string) => void;
 }
 
 export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> = ({
@@ -14,6 +16,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
   onClose,
   onInsertTag,
   defaultTitle = '',
+  onSendToGraphics,
 }) => {
   const [activeTab, setActiveTab] = useState<'GUEST' | 'HEADLINE' | 'LOCATION' | 'BREAKING'>('GUEST');
 
@@ -329,6 +332,18 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
               <Sparkles className="w-3.5 h-3.5" />
               إدراج في المحرر
             </button>
+            {onSendToGraphics && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSendToGraphics(tagResult);
+                  onClose();
+                }}
+                className="flex items-center gap-1 px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-[11px] font-bold"
+              >
+                إرسال لقسم الجرافيك
+              </button>
+            )}
           </div>
         </div>
       </div>

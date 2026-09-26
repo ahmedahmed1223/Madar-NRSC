@@ -83,13 +83,26 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   reconcileTwoFactorFlags(db);
   migrateRoleDefaults(db);
   migrateToDepartments(db);
+  ensureSystemRoles(db);
   grantNewPermissions(db);
 }
 
 /** Permissions added after roles were first stored: granted once to the system roles that need them. */
 const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'roster.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'requests.create': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
+  'requests.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
 };
+
+/** System roles introduced after a database was created are added once. */
+function ensureSystemRoles(db: NewsroomDatabase) {
+  const existing = new Set(db.listCollection('roles').map((r) => r.d?.roleCode));
+  const missing = DEFAULT_ROLE_DEFINITIONS.filter((r) => !existing.has(r.roleCode));
+  if (!missing.length) return;
+  db.transaction(() => {
+    missing.forEach((role) => db.writeRow('roles', role.id, role, db.positionBounds('roles').max + 1, null));
+  });
+}
 
 function grantNewPermissions(db: NewsroomDatabase) {
   for (const [code, roleCodes] of Object.entries(NEW_PERMISSION_GRANTS)) {

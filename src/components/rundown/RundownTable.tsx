@@ -28,6 +28,10 @@ import {
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
+import { RequestFormPage, RequestDraft } from '../requests/RequestFormPage';
+import { RbacService } from '../../services/rbacService';
+import { segmentReadiness } from '../../shared/production';
+import { departmentName } from '../../shared/departments';
 import { TeleprompterModal } from './TeleprompterModal';
 import { formatSecondsToTime, apiService } from '../../services/api';
 
@@ -52,6 +56,10 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   canEdit = true,
   episodeId,
 }) => {
+  const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
+  const canRequest = !!episodeId && RbacService.hasPermission(apiService.getCurrentUser(), 'requests.create');
+  const episodeRecord = episodeId ? apiService.getEpisodes().find((e) => e.id === episodeId) : undefined;
+  const readinessCtx = { requests: apiService.getRequests(), media: apiService.getMedia() as any[] };
   const [editingSegment, setEditingSegment] = useState<RundownSegment | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncingDb, setIsSyncingDb] = useState(false);
@@ -379,19 +387,20 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                 <th className="py-3 px-3 font-mono text-center">النهاية</th>
                 <th className="py-3 px-3">المذيع / الضيف</th>
                 <th className="py-3 px-3">ملاحظات البث والمواد</th>
+                <th className="py-3 px-3">الجاهزية</th>
                 {canEdit && <th className="py-3 px-3 text-center w-28">إجراءات</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {segments.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 10 : 9} className="py-12 text-center text-slate-400">
+                  <td colSpan={canEdit ? 11 : 10} className="py-12 text-center text-slate-400">
                     لا توجد فقرات في جدول الرانداون بعد. انقر على "إضافة فقرة" لبدء تنظيم الحلقة.
                   </td>
                 </tr>
               ) : displayedSegments.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 10 : 9} className="py-10 text-center text-slate-400">
+                  <td colSpan={canEdit ? 11 : 10} className="py-10 text-center text-slate-400">
                     لا توجد فقرات تطابق بحثك أو التصفية الحالية.
                     <button
                       type="button"
@@ -530,6 +539,42 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                         </div>
                       </td>
 
+                      {/* Readiness per department */}
+                      <td className="py-3.5 px-3">
+                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                          {segmentReadiness(seg, episodeRecord, readinessCtx).map((item) => (
+                            <span
+                              key={item.key}
+                              title={`${departmentName(item.departmentId)}: ${item.detail}`}
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                item.state === 'ready'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : item.state === 'pending'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {item.state === 'ready' ? '✓' : item.state === 'pending' ? '…' : '✗'} {item.label}
+                            </span>
+                          ))}
+                          {canRequest && seg.segmentType !== 'BREAK' && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRequestDraft({
+                                  title: '',
+                                  link: { kind: 'segment', episodeId, segmentId: seg.id, title: `${episodeRecord?.title || 'حلقة'} — ${seg.title}` },
+                                })
+                              }
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
+                              title="طلب مونتاج أو جرافيك أو استديو لهذه الفقرة"
+                            >
+                              + طلب
+                            </button>
+                          )}
+                        </div>
+                      </td>
+
                       {/* Action buttons */}
                       {canEdit && (
                         <td className="py-3.5 px-3 text-center">
@@ -584,6 +629,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
       </div>
 
       {/* Add / Edit Segment Modal */}
+      <RequestFormPage isOpen={!!requestDraft} onClose={() => setRequestDraft(null)} draft={requestDraft || undefined} onCreated={(t) => { setSyncStatusMsg(t); setTimeout(() => setSyncStatusMsg(null), 4000); }} />
+
       <SegmentModal
         isOpen={isAddModalOpen}
         onClose={() => {
