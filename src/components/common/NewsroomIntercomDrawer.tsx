@@ -92,7 +92,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   return (
     <>
       {/* Floating Trigger Button on Bottom-Left */}
-      <div className="fixed bottom-5 left-5 z-40">
+      <div className="theme-fixed fixed bottom-5 left-5 z-40">
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
@@ -112,7 +112,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
       {/* Slide-out Drawer */}
       {isOpen && (
-        <div className="fixed inset-y-0 left-0 z-50 w-full max-w-sm sm:max-w-md bg-slate-950 text-white shadow-2xl border-r border-slate-800 flex flex-col animate-in slide-in-from-left duration-200" dir="rtl">
+        <div className="theme-fixed fixed inset-y-0 left-0 z-50 w-full max-w-sm sm:max-w-md bg-slate-950 text-white shadow-2xl border-r border-slate-800 flex flex-col animate-in slide-in-from-left duration-200" dir="rtl">
           {/* Drawer Header */}
           <div className="h-16 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                     <span className="font-bold text-white">{msg.userName}</span>
                   </div>
                   <span className="font-mono text-slate-500">
-                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '...'}
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '...'}
                   </span>
                 </div>
 

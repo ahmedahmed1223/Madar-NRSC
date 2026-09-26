@@ -43,9 +43,11 @@ export default function AppShell() {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      // A 401 on the first session check just means nobody is signed in yet.
+      const hadSession = !!authClient.getSession();
       dataStore.stop();
       authClient.setSession(null);
-      setNotice('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
+      if (hadSession) setNotice('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
       setPhase('login');
     });
     authClient.fetchSession().then((session) => (session ? enter(session) : setPhase('login')));

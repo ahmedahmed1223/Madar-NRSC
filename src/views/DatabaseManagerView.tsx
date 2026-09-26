@@ -623,7 +623,7 @@ export const DatabaseManagerView: React.FC = () => {
                           {b.fileName}
                         </td>
                         <td className="py-3 px-4 text-slate-600">
-                          {new Date(b.createdAt).toLocaleString('ar-SA')}
+                          {new Date(b.createdAt).toLocaleString('ar-EG')}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-700 font-semibold">
                           {b.sizeFormatted}

@@ -1,3 +1,4 @@
+import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
 import {
   Newspaper,
@@ -108,7 +109,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Welcome & Live Banner */}
-      <div className="bg-gradient-to-l from-slate-900 via-slate-800 to-blue-950 rounded-3xl p-6 text-white shadow-lg border border-slate-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="theme-fixed bg-gradient-to-l from-slate-900 via-slate-800 to-blue-950 rounded-3xl p-6 text-white shadow-lg border border-slate-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold border border-blue-400/30 flex items-center gap-1.5">
@@ -468,7 +469,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>•</span>
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
-                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       </div>
 
@@ -562,11 +563,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-3">
               {guests.slice(0, 3).map((guest) => (
                 <div key={guest.id} className="flex items-center gap-3">
-                  <img
-                    src={guest.avatarUrl}
-                    alt={guest.fullName}
-                    className="w-10 h-10 rounded-full object-cover ring-1 ring-slate-200"
-                  />
+                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-10 h-10 rounded-full ring-1 ring-slate-200" />
                   <div className="truncate flex-1">
                     <span className="text-xs font-bold text-slate-800 block truncate">
                       {guest.fullName}

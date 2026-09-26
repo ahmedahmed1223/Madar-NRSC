@@ -1,3 +1,4 @@
+import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { User, UserRole, SecurityClearance, ShiftType } from '../../types';
@@ -153,11 +154,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             الصورة الشخصية والرمز التعريفي:
           </label>
           <div className="flex items-center gap-4">
-            <img
-              src={avatarUrl}
-              alt="Avatar Preview"
-              className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-600 shadow-md shrink-0"
-            />
+            <Avatar src={avatarUrl} name={fullName} className="w-16 h-16 rounded-2xl border-2 border-blue-600 shadow-md shrink-0" />
             <div className="flex-1">
               <div className="mt-2">
                 <input

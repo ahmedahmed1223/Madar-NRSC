@@ -310,7 +310,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         </div>
 
         {/* Tag String & Insert/Copy */}
-        <div className="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-xs flex items-center justify-between gap-2 border border-slate-700">
+        <div className="theme-fixed bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-xs flex items-center justify-between gap-2 border border-slate-700">
           <span className="truncate text-blue-300 font-bold">{tagResult}</span>
           <div className="flex items-center gap-2 shrink-0">
             <button

@@ -78,7 +78,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(notif.createdAt).toLocaleTimeString('ar-SA', {
+                    {new Date(notif.createdAt).toLocaleTimeString('ar-EG', {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}

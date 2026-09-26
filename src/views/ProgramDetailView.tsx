@@ -213,7 +213,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
       />
 
       {/* Program Hero Banner */}
-      <div className="relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white">
+      <div className="theme-fixed relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white">
         <div className="absolute inset-0 z-0">
           <img
             src={program.coverImageUrl || '/cover.svg'}

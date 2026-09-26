@@ -1,3 +1,4 @@
+import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, SecurityClearance, ShiftType } from '../types';
 import { ApiService } from '../services/api';
@@ -599,11 +600,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
                       {/* User Profile Info */}
                       <div className="flex items-start gap-3">
-                        <img
-                          src={user.avatarUrl}
-                          alt={user.fullName}
-                          className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-100 shadow-xs shrink-0"
-                        />
+                        <Avatar src={user.avatarUrl} name={user.fullName} className="w-14 h-14 rounded-2xl border-2 border-slate-100 shadow-xs shrink-0" />
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-black text-slate-900 truncate">{user.fullName}</h3>
                           {user.fullNameEn && (
@@ -756,11 +753,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-3">
                             <div className="flex items-center gap-3">
-                              <img
-                                src={user.avatarUrl}
-                                alt={user.fullName}
-                                className="w-9 h-9 rounded-xl object-cover border border-slate-200"
-                              />
+                              <Avatar src={user.avatarUrl} name={user.fullName} className="w-9 h-9 rounded-xl border border-slate-200" />
                               <div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{user.fullName}</span>

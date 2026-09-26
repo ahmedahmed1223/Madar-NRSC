@@ -1,3 +1,4 @@
+import { Avatar } from '../common/Avatar';
 import React from 'react';
 import { User, ShiftType } from '../../types';
 import { RbacService } from '../../services/rbacService';
@@ -72,7 +73,7 @@ export const ShiftScheduleBoard: React.FC<ShiftScheduleBoardProps> = ({
   return (
     <div className="space-y-6 font-sans text-right" dir="rtl">
       {/* Shift Live Banner */}
-      <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 flex items-center justify-between flex-wrap gap-4 shadow-md">
+      <div className="theme-fixed bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 flex items-center justify-between flex-wrap gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center animate-pulse shrink-0">
             <Radio className="w-5 h-5 text-white" />
@@ -160,11 +161,7 @@ export const ShiftScheduleBoard: React.FC<ShiftScheduleBoardProps> = ({
                               onClick={() => onUserClick(user)}
                               className="flex items-center gap-2.5 cursor-pointer flex-1"
                             >
-                              <img
-                                src={user.avatarUrl}
-                                alt={user.fullName}
-                                className="w-8 h-8 rounded-full object-cover border border-slate-200"
-                              />
+                              <Avatar src={user.avatarUrl} name={user.fullName} className="w-8 h-8 rounded-full border border-slate-200" />
                               <div>
                                 <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
                                   {user.fullName}

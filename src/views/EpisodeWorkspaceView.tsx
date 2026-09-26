@@ -1,3 +1,4 @@
+import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import { newId } from '../shared/ids';
 import React, { useState , useRef, useEffect} from 'react';
@@ -571,11 +572,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={g.guestAvatar || '/avatar.svg'}
-                          alt={g.guestName}
-                          className="w-12 h-12 rounded-xl object-cover ring-1 ring-slate-200"
-                        />
+                        <Avatar src={g.guestAvatar} name={g.guestName} className="w-12 h-12 rounded-xl ring-1 ring-slate-200" />
                         <div>
                           <h4 className="text-sm font-bold text-slate-800">{g.guestName}</h4>
                           <p className="text-xs text-slate-500">

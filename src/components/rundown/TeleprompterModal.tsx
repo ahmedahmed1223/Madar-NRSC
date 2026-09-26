@@ -146,7 +146,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   }[colorTheme];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black text-white flex flex-col select-none" dir="rtl">
+    <div className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col select-none" dir="rtl">
       {/* Studio Prompter Top Bar */}
       <div className="h-16 px-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">

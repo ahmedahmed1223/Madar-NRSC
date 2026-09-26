@@ -68,7 +68,7 @@ Component Stack: ${this.state.errorInfo?.componentStack}`;
         <div
           id="production-error-boundary-screen"
           dir="rtl"
-          className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans"
+          className="theme-fixed min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans"
         >
           <div className="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
             <div className="flex items-center gap-4">

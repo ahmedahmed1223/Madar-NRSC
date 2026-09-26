@@ -1,3 +1,4 @@
+import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
@@ -200,11 +201,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <img
-                    src={guest.avatarUrl}
-                    alt={guest.fullName}
-                    className="w-14 h-14 rounded-2xl object-cover ring-2 ring-slate-100"
-                  />
+                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 rounded-2xl ring-2 ring-slate-100" />
                   <div>
                     <h3 className="font-bold text-slate-800 text-sm">{guest.fullName}</h3>
                     <p className="text-xs text-slate-500">{guest.jobTitle}</p>

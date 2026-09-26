@@ -343,7 +343,7 @@ class SelfHealingEngine {
   }
 
   private logRepair(msg: string) {
-    const timestamp = new Date().toLocaleTimeString('ar-SA', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString('ar-EG', { hour12: false });
     this.autoRepairLogs.unshift(`[${timestamp}] ${msg}`);
     if (this.autoRepairLogs.length > 40) this.autoRepairLogs.pop();
   }

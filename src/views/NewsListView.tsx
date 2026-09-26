@@ -531,7 +531,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <th className="py-3.5 px-3">الأولوية</th>
                 <th className="py-3.5 px-3">المصدر / المحرر</th>
                 <th className="py-3.5 px-3">الحالة التحريرية</th>
-                <th className="py-3.5 px-3 font-mono text-center">المشاهدات</th>
+                <th className="py-3.5 px-3 text-center">آخر تحديث</th>
                 <th className="py-3.5 px-4 text-center w-36">إجراءات تحريرية</th>
               </tr>
             </thead>
@@ -592,7 +592,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
                               <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
-                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' })}
+                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
@@ -653,9 +653,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                         </Badge>
                       </td>
 
-                      {/* Views */}
-                      <td className="py-3.5 px-3 text-center font-mono font-semibold text-slate-600">
-                        {item.viewsCount}
+                      {/* Last update */}
+                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG') : ''}>
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
 
                       {/* Actions */}
@@ -831,7 +831,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 </span>
               </div>
               <div className="text-xs text-slate-500 font-mono">
-                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString('ar-SA')}
+                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString('ar-EG')}
               </div>
             </div>
 
@@ -853,7 +853,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
             {/* Body */}
             <div
-              className="prose prose-slate max-w-none text-slate-800 leading-relaxed text-sm"
+              className="rich-content text-slate-800 text-sm"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewNews.content) }}
             />
 
@@ -879,7 +879,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(log.timestamp).toLocaleString('ar-SA')}
+                      {new Date(log.timestamp).toLocaleString('ar-EG')}
                     </span>
                   </div>
                 ))}

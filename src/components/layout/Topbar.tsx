@@ -1,3 +1,5 @@
+import { Avatar } from '../common/Avatar';
+import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useState, useEffect } from 'react';
 import {
   Search,
@@ -78,7 +80,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     // Saudi Arabia / Arabic clock
     const updateTime = () => {
       const now = new Date();
-      const formatted = now.toLocaleTimeString('ar-SA', {
+      const formatted = now.toLocaleTimeString('ar-EG', {
         timeZone: 'Asia/Riyadh',
         hour: '2-digit',
         minute: '2-digit',
@@ -128,7 +130,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
       {/* Right side (RTL Start): Station Live Clock & Search */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
         {/* Mobile menu trigger */}
         {onToggleMobileMenu && (
           <button
@@ -142,7 +144,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Station clock + shared on-air lock (enforced by the server for every user) */}
-        <div className="flex items-center gap-2 sm:gap-2.5 bg-slate-900 text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs shadow-xs font-mono">
+        <div className="theme-fixed flex items-center gap-1.5 sm:gap-2.5 bg-slate-900 text-white px-2 sm:px-3 py-1.5 rounded-xl text-xs shadow-xs font-mono shrink-0">
           <button
             type="button"
             onClick={onToggleLiveLock}
@@ -155,9 +157,9 @@ export const Topbar: React.FC<TopbarProps> = ({
             className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-400' : 'text-slate-400 hover:text-slate-200'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-[10px] tracking-wider">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
+            <span className="font-bold text-[10px] tracking-wider hidden sm:inline">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
           </button>
-          <span className="text-slate-500">|</span>
+          <span className="text-slate-500 hidden sm:inline">|</span>
           <div className="flex items-center gap-1 font-bold text-slate-200">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
             <span>{timeStr || '00:00:00'}</span>
@@ -206,7 +208,7 @@ export const Topbar: React.FC<TopbarProps> = ({
       </div>
 
       {/* Left side (RTL End): Quick Actions, Notifications, Role Switcher */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-3 shrink-0">
         {/* PWA Workstation Install Prompt */}
         <PWAInstallButton />
 
@@ -215,7 +217,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">إنشاء جديد</span>
@@ -302,6 +304,8 @@ export const Topbar: React.FC<TopbarProps> = ({
           />
         </div>
 
+        <ThemeToggle />
+
         {/* Keyboard Shortcuts Trigger Button */}
         {onOpenShortcuts && (
           <button
@@ -322,16 +326,12 @@ export const Topbar: React.FC<TopbarProps> = ({
             className="flex items-center gap-2.5 p-1.5 pr-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-all"
             title="حساب المستخدم"
           >
-            <img
-              src={currentUser.avatarUrl}
-              alt={currentUser.fullName}
-              className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200"
-            />
-            <div className="text-right hidden sm:block">
-              <span className="text-xs font-bold text-slate-800 block leading-tight">
+            <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" />
+            <div className="text-right hidden lg:block max-w-[9rem] min-w-0">
+              <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
                 {currentUser.fullName}
               </span>
-              <span className="text-[10px] text-blue-600 font-semibold block leading-tight">
+              <span className="text-[10px] text-blue-600 font-semibold block leading-tight truncate">
                 {roleLabels[currentUser.role] || currentUser.jobTitle}
               </span>
             </div>

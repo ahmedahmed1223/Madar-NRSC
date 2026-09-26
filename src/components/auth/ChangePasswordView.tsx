@@ -51,7 +51,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans" dir="rtl">
+    <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4 font-sans" dir="rtl">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 sm:p-8">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center">

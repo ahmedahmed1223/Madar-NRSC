@@ -592,7 +592,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       {newsItem?.status === 'SCHEDULED' && newsItem.scheduledDate && (
         <div className="bg-sky-50 border border-sky-200 p-3 rounded-2xl text-xs text-sky-900 font-semibold flex items-center gap-2">
           <Clock className="w-4 h-4 text-sky-600" />
-          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-SA')}
+          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-EG')}
         </div>
       )}
 
@@ -642,7 +642,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 ) : lastSaved && isDirty ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
-                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-SA')})
+                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-EG')})
                   </>
                 ) : null}
               </div>
@@ -955,6 +955,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <RichTextEditor
               value={content}
               onChange={(val) => setContent(val)}
+              readOnly={!canEditContent}
               minHeight="400px"
               placeholder="اكتب تفاصيل القصة الإخبارية كاملة، التصريحات، الخلفيات، والتحليلات الميدانية..."
             />
@@ -1198,7 +1199,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       <div className="flex items-center justify-between">
                         <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(log.timestamp).toLocaleString('ar-SA', {
+                          {new Date(log.timestamp).toLocaleString('ar-EG', {
                             hour: '2-digit',
                             minute: '2-digit',
                             month: 'short',

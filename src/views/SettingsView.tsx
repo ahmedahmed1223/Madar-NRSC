@@ -1,3 +1,4 @@
+import { Avatar } from '../components/common/Avatar';
 import React, { useState, useMemo } from 'react';
 import {
   Settings,
@@ -1048,11 +1049,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs"
               >
                 <div className="flex items-center gap-3">
-                  <img
-                    src={u.avatarUrl}
-                    alt={u.fullName}
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
+                  <Avatar src={u.avatarUrl} name={u.fullName} className="w-8 h-8 rounded-full" />
                   <div>
                     <strong className="text-slate-800 block">{u.fullName}</strong>
                     <span className="text-[10px] text-slate-400 font-mono" dir="ltr">

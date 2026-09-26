@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Bold,
   Italic,
@@ -10,7 +10,6 @@ import {
   Link as LinkIcon,
   Image as ImageIcon,
   Video,
-  Eye,
   Edit3,
   Undo2,
   Redo2,
@@ -25,15 +24,48 @@ interface RichTextEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   minHeight?: string;
+  /** Shows the text without allowing changes (e.g. while a colleague holds the story). */
+  readOnly?: boolean;
 }
 
+const BLOCKS = new Set(['UL', 'OL', 'H2', 'H3', 'BLOCKQUOTE', 'FIGURE', 'P', 'DIV']);
+
+/** Browsers nest lists and headings inside <p> when editing; store valid, tidy HTML instead. */
+function normalizeHtml(html: string): string {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const root = tpl.content;
+  root.querySelectorAll('p, div').forEach((el) => {
+    if ([...el.children].some((c) => BLOCKS.has(c.tagName))) el.replaceWith(...el.childNodes);
+  });
+  root.querySelectorAll('div').forEach((el) => {
+    const p = document.createElement('p');
+    p.append(...el.childNodes);
+    el.replaceWith(p);
+  });
+  root.querySelectorAll('p').forEach((el) => {
+    if (!el.textContent?.trim() && !el.querySelector('img, video, br')) el.remove();
+  });
+  const wrapper = document.createElement('div');
+  wrapper.appendChild(root);
+  return wrapper.innerHTML;
+}
+
+const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const safeUrl = (url: string) => (/^(https?:\/\/|\/)/i.test(url.trim()) ? url.trim() : '');
+
+/**
+ * What-you-see-is-what-you-get editor for story bodies. Stores sanitised HTML; an "HTML source"
+ * mode remains for advanced edits.
+ */
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
   placeholder = 'اكتب نص المادة الصحفية هنا بصياغة مهنية ودقيقة...',
   minHeight = '320px',
+  readOnly = false,
 }) => {
-  const [isPreview, setIsPreview] = useState(false);
+  const [isSource, setIsSource] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [mediaType, setMediaType] = useState<'IMAGE' | 'VIDEO'>('IMAGE');
@@ -42,63 +74,117 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [linkUrl, setLinkUrl] = useState('');
   const [linkText, setLinkText] = useState('');
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const lastEmitted = useRef<string | null>(null);
+  const savedRange = useRef<Range | null>(null);
 
-  const insertText = (before: string, after: string = '', defaultInside: string = '') => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+  // Mirror outside changes (loading a story, AI co-pilot, restored drafts) into the editable area,
+  // but never overwrite what the user is typing.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el || isSource) return;
+    if (value !== lastEmitted.current) {
+      el.innerHTML = sanitizeHtml(value);
+      lastEmitted.current = value;
+    }
+  }, [value, isSource]);
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = value.substring(start, end) || defaultInside;
-    const replacement = before + selected + after;
-
-    const newValue = value.substring(0, start) + replacement + value.substring(end);
-    onChange(newValue);
-
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + before.length, start + before.length + selected.length);
-    }, 0);
+  const emit = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    const html = ['<br>', '<p><br></p>'].includes(el.innerHTML) ? '' : el.innerHTML;
+    const clean = html ? sanitizeHtml(normalizeHtml(html)) : '';
+    lastEmitted.current = clean;
+    onChange(clean);
   };
 
-  const handleBold = () => insertText('<strong>', '</strong>', 'نص عريض');
-  const handleItalic = () => insertText('<em>', '</em>', 'نص مائل');
-  const handleH2 = () => insertText('\n<h2>', '</h2>\n', 'عنوان رئيسي');
-  const handleH3 = () => insertText('\n<h3>', '</h3>\n', 'عنوان فرعي');
-  const handleQuote = () => insertText('\n<blockquote>"', '"</blockquote>\n', 'اقتباس أو تصريح صحفي');
-  const handleBulletList = () => {
-    insertText('\n<ul>\n  <li>', '</li>\n  <li>عنصر ثانٍ</li>\n</ul>\n', 'عنصر قائمة');
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && editorRef.current?.contains(sel.anchorNode)) savedRange.current = sel.getRangeAt(0).cloneRange();
   };
-  const handleNumberedList = () => {
-    insertText('\n<ol>\n  <li>', '</li>\n  <li>عنصر ثانٍ</li>\n</ol>\n', 'عنصر مرقم');
+
+  const restoreSelection = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    if (sel && savedRange.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+  };
+
+  const exec = (command: string, arg?: string) => {
+    if (readOnly) return;
+    if (isSource) setIsSource(false);
+    editorRef.current?.focus();
+    document.execCommand('defaultParagraphSeparator', false, 'p');
+    document.execCommand(command, false, arg);
+    emit();
+  };
+
+  const insertHtml = (html: string) => {
+    restoreSelection();
+    document.execCommand('insertHTML', false, sanitizeHtml(html));
+    emit();
+  };
+
+  const toggleBlock = (tag: 'h2' | 'h3' | 'blockquote') => {
+    const current = String(document.queryCommandValue('formatBlock') || '').toLowerCase();
+    exec('formatBlock', current === tag ? 'p' : tag);
+  };
+
+  const handleBold = () => exec('bold');
+  const handleItalic = () => exec('italic');
+  const handleH2 = () => toggleBlock('h2');
+  const handleH3 = () => toggleBlock('h3');
+  const handleQuote = () => toggleBlock('blockquote');
+  const handleBulletList = () => exec('insertUnorderedList');
+  const handleNumberedList = () => exec('insertOrderedList');
+
+  const openModal = (open: () => void) => {
+    saveSelection();
+    open();
   };
 
   const handleInsertLink = () => {
-    if (!linkUrl) return;
-    const text = linkText || linkUrl;
-    insertText(`<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">`, `</a>`, text);
+    const url = safeUrl(linkUrl);
+    if (!url) return;
+    const selected = savedRange.current?.toString() || '';
+    const text = linkText || selected || url;
+    insertHtml(`<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeAttr(text)}</a>`);
     setLinkUrl('');
     setLinkText('');
     setIsLinkModalOpen(false);
   };
 
   const handleInsertMedia = () => {
-    if (!mediaUrl) return;
-    if (mediaType === 'IMAGE') {
-      const imgTag = `\n<figure class="my-4"><img src="${mediaUrl}" alt="${mediaCaption || 'صورة مرافقة للخبر'}" class="w-full rounded-xl max-h-96 object-cover shadow-sm" />${
-        mediaCaption ? `<figcaption class="text-xs text-slate-500 mt-1.5 text-center">${mediaCaption}</figcaption>` : ''
-      }</figure>\n`;
-      insertText(imgTag);
-    } else {
-      const videoTag = `\n<figure class="my-4"><video controls src="${mediaUrl}" class="w-full rounded-xl max-h-96 bg-black"></video>${
-        mediaCaption ? `<figcaption class="text-xs text-slate-500 mt-1.5 text-center">${mediaCaption}</figcaption>` : ''
-      }</figure>\n`;
-      insertText(videoTag);
-    }
+    const url = safeUrl(mediaUrl);
+    if (!url) return;
+    const caption = mediaCaption ? `<figcaption>${escapeAttr(mediaCaption)}</figcaption>` : '';
+    insertHtml(
+      mediaType === 'IMAGE'
+        ? `<figure><img src="${escapeAttr(url)}" alt="${escapeAttr(mediaCaption || 'صورة مرافقة للخبر')}" />${caption}</figure><p><br></p>`
+        : `<figure><video controls src="${escapeAttr(url)}"></video>${caption}</figure><p><br></p>`
+    );
     setMediaUrl('');
     setMediaCaption('');
     setIsMediaModalOpen(false);
+  };
+
+  // Pasted text keeps its paragraphs but not the source site's styling or scripts.
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    const content = html
+      ? sanitizeHtml(html).replace(/\s(style|class|id)="[^"]*"/gi, '')
+      : text
+          .split(/\n{2,}|\r\n\r\n/)
+          .map((p) => `<p>${escapeAttr(p).replace(/\n/g, '<br>')}</p>`)
+          .join('');
+    document.execCommand('insertHTML', false, content);
+    emit();
   };
 
   // Word count & Char count calculation
@@ -116,9 +202,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs focus-within:border-blue-500 transition-all">
       {/* Editor Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-slate-50 border-b border-slate-200 text-slate-700">
-        <div className="flex flex-wrap items-center gap-1">
+        <div className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40 pointer-events-none' : ''}`} aria-disabled={readOnly}>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleH2}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors text-slate-700 font-bold"
             title="عنوان رئيسي (H2)"
@@ -127,6 +214,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleH3}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors text-slate-700 font-semibold"
             title="عنوان فرعي (H3)"
@@ -138,6 +226,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleBold}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="نص عريض (Bold)"
@@ -146,6 +235,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleItalic}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="نص مائل (Italic)"
@@ -157,6 +247,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleBulletList}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="قائمة نقطية"
@@ -165,6 +256,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleNumberedList}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="قائمة رقمية"
@@ -173,6 +265,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleQuote}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="اقتباس أو تصريح"
@@ -184,7 +277,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsLinkModalOpen(true)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => openModal(() => setIsLinkModalOpen(true))}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="إدراج رابط"
           >
@@ -192,10 +286,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
-              setMediaType('IMAGE');
-              setIsMediaModalOpen(true);
-            }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() =>
+              openModal(() => {
+                setMediaType('IMAGE');
+                setIsMediaModalOpen(true);
+              })
+            }
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="إدراج صورة"
           >
@@ -203,10 +300,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
-              setMediaType('VIDEO');
-              setIsMediaModalOpen(true);
-            }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() =>
+              openModal(() => {
+                setMediaType('VIDEO');
+                setIsMediaModalOpen(true);
+              })
+            }
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
             title="إدراج فيديو"
           >
@@ -214,48 +314,72 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
         </div>
 
-        {/* View Toggle */}
+        {/* Source toggle for advanced edits */}
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsPreview(!isPreview)}
+            onClick={() => setIsSource(!isSource)}
+            aria-pressed={isSource}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
-              isPreview
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+              isSource ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
             }`}
+            title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}
           >
-            {isPreview ? (
-              <>
-                <Edit3 className="w-3.5 h-3.5" />
-                تحرير
-              </>
-            ) : (
-              <>
-                <Eye className="w-3.5 h-3.5" />
-                معاينة
-              </>
-            )}
+            {isSource ? <Edit3 className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
+            {isSource ? 'المحرر المرئي' : 'HTML'}
           </button>
         </div>
       </div>
 
       {/* Editor Body */}
       <div className="p-4">
-        {isPreview ? (
-          <div
-            className="prose prose-slate max-w-none min-h-[300px] text-slate-800 leading-relaxed font-sans"
-            dangerouslySetInnerHTML={{ __html: value ? sanitizeHtml(value) : '<p class="text-slate-400">لا يوجد نص للمعاينة بعد...</p>' }}
+        {isSource ? (
+          <textarea
+            value={value}
+            readOnly={readOnly}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ minHeight }}
+            aria-label="شيفرة HTML لمحتوى الخبر"
+            className="w-full bg-transparent border-0 focus:ring-0 focus:outline-hidden resize-y text-slate-800 text-sm leading-relaxed font-mono"
+            dir="ltr"
           />
         ) : (
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
+          <div
+            ref={editorRef}
+            role="textbox"
+            aria-multiline="true"
+            aria-label="محتوى الخبر"
+            aria-readonly={readOnly}
+            contentEditable={!readOnly}
+            suppressContentEditableWarning
+            data-placeholder={placeholder}
+            onInput={emit}
+            onFocus={() => {
+              document.execCommand('defaultParagraphSeparator', false, 'p');
+              const el = editorRef.current;
+              // Start the body inside a paragraph so every line is stored as <p>.
+              if (el && !el.innerHTML.trim()) {
+                el.innerHTML = '<p><br></p>';
+                const range = document.createRange();
+                range.setStart(el.firstChild!, 0);
+                range.collapse(true);
+                const sel = window.getSelection();
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+              }
+            }}
+            onBlur={() => {
+              const el = editorRef.current;
+              if (el && el.innerHTML === '<p><br></p>') el.innerHTML = '';
+              saveSelection();
+              emit();
+            }}
+            onKeyUp={saveSelection}
+            onMouseUp={saveSelection}
+            onPaste={handlePaste}
             style={{ minHeight }}
-            className="w-full bg-transparent border-0 focus:ring-0 focus:outline-hidden resize-y text-slate-800 text-base leading-relaxed placeholder:text-slate-400 font-sans"
             dir="rtl"
+            className="rich-editor text-slate-800 text-base leading-relaxed font-sans focus:outline-hidden"
           />
         )}
       </div>

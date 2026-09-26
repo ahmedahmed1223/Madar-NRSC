@@ -287,7 +287,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
           >
             {/* Visual Thumbnail */}
-            <div className="relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
+            <div className="theme-fixed relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
                 <img
                   src={asset.fileUrl || asset.url}
@@ -640,10 +640,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               <img
                 src={previewAsset.fileUrl || previewAsset.url}
                 alt={previewAsset.title}
-                className="w-full max-h-96 object-contain rounded-xl bg-slate-950"
+                className="theme-fixed w-full max-h-96 object-contain rounded-xl bg-slate-950"
               />
             ) : previewAsset.mediaType === 'VIDEO' ? (
-              <div className="relative rounded-xl overflow-hidden bg-slate-950">
+              <div className="theme-fixed relative rounded-xl overflow-hidden bg-slate-950">
                 <img
                   src={previewAsset.fileUrl || previewAsset.url}
                   alt=""
@@ -656,7 +656,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="p-8 bg-slate-900 rounded-xl text-center text-white space-y-2">
+              <div className="theme-fixed p-8 bg-slate-900 rounded-xl text-center text-white space-y-2">
                 <Music className="w-12 h-12 mx-auto text-purple-400" />
                 <p className="text-xs font-mono">{previewAsset.fileName}</p>
               </div>

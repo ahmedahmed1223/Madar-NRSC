@@ -256,7 +256,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`bg-slate-900 text-slate-300 border-l border-slate-800 flex flex-col transition-all duration-300 select-none
+        className={`theme-fixed bg-slate-900 text-slate-300 border-l border-slate-800 flex flex-col transition-all duration-300 select-none
           fixed inset-y-0 right-0 z-50 md:relative md:z-20
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'}
           ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'}

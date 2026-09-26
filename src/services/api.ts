@@ -433,7 +433,7 @@ export class ApiService {
           comment:
             comment ||
             (scheduledDate
-              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-SA')}`
+              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-EG')}`
               : `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`),
           timestamp: now,
         },

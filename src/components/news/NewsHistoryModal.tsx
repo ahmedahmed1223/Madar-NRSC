@@ -82,7 +82,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                       <span className="text-[10px] font-semibold text-slate-500">({STATUS_LABELS[rev.data.status] || rev.data.status})</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1">
-                      {new Date(rev.changedAt).toLocaleString('ar-SA')} — عدّلها بعد ذلك: {rev.changedByName || 'النظام'}
+                      {new Date(rev.changedAt).toLocaleString('ar-EG')} — عدّلها بعد ذلك: {rev.changedByName || 'النظام'}
                     </div>
                     <div className="text-[11px] text-slate-700 mt-1 truncate">{rev.data.title}</div>
                   </button>
@@ -94,7 +94,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                 <h3 className="text-base font-extrabold text-slate-900">{selected.data.title}</h3>
                 {selected.data.summary && <p className="text-xs text-slate-600 leading-relaxed">{selected.data.summary}</p>}
                 <div
-                  className="prose prose-slate max-w-none text-sm leading-relaxed"
+                  className="rich-content text-sm text-slate-800"
                   dangerouslySetInnerHTML={{ __html: sanitizeHtml(selected.data.content) }}
                 />
                 {canRestore && (

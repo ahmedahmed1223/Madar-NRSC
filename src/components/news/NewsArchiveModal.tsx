@@ -99,7 +99,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
             {STATUS_LABELS[preview.status] || preview.status} · {preview.categoryName || '—'} · {preview.authorName || '—'} · نُشر {fmt(preview.publishDate)}
           </p>
           {preview.summary && <p className="text-sm text-slate-700 font-semibold">{preview.summary}</p>}
-          <div className="prose prose-sm max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.content || '') }} />
+          <div className="rich-content text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.content || '') }} />
           {canReactivate && (
             <button
               type="button"

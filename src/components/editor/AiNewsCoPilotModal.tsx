@@ -322,7 +322,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 <div>
                   <span className="text-[11px] text-slate-400 font-bold block">متن التقرير التلفزيوني:</span>
                   <div
-                    className="text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1 leading-relaxed space-y-2"
+                    className="rich-content text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(generatedResult.content) }}
                   />
                 </div>

@@ -213,7 +213,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       id: n.id,
       newsId: n.id,
       title: n.title,
-      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
+      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
     }));
 
   // --- NEWS ACTIONS ---
@@ -622,7 +622,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           />
 
           {/* Dynamic Page Views */}
-          <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+          <main className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
             >

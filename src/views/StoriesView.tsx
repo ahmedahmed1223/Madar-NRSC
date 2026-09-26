@@ -325,7 +325,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                  بدأت: {new Date(story.startedAt).toLocaleDateString('ar-SA')}
+                  بدأت: {new Date(story.startedAt).toLocaleDateString('ar-EG')}
                 </span>
 
                 <button
@@ -580,7 +580,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                           {item.sourceName || 'المصدر الداخلي'}
                         </span>
                         <span className="text-[10px] text-slate-400">
-                          {new Date(item.createdAt).toLocaleDateString('ar-SA')}
+                          {new Date(item.createdAt).toLocaleDateString('ar-EG')}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-slate-800 truncate">{item.title}</p>
