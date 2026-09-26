@@ -87,7 +87,7 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
 }
 
 export class SyncService {
-  constructor(private db: NewsroomDatabase, private dataDir: string) {}
+  constructor(private db: NewsroomDatabase, private dataDir: string, private newsActiveDays = 0) {}
 
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
 
@@ -103,6 +103,9 @@ export class SyncService {
       if (APPEND_ONLY_COLLECTIONS.has(name)) {
         // Logs are ordered newest first (lowest position); only ship the recent window.
         rows = this.db.listCollection(name, { limit: LOG_BOOTSTRAP_LIMIT });
+      } else if (name === 'news' && this.newsActiveDays > 0) {
+        // Old finished news stays on the server (archive search) instead of every browser.
+        rows = this.db.listActiveNews(new Date(Date.now() - this.newsActiveDays * 24 * 60 * 60 * 1000).toISOString());
       } else {
         rows = this.db.listCollection(name);
       }

@@ -44,6 +44,23 @@ export interface WireFeedStatus {
   checkedAt: string;
 }
 
+export interface NewsArchivePage {
+  total: number;
+  page: number;
+  pageSize: number;
+  activeDays: number;
+  items: {
+    id: string;
+    title: string;
+    summary: string;
+    status: string;
+    categoryName: string;
+    authorName: string;
+    publishDate: string | null;
+    updatedAt: string;
+  }[];
+}
+
 export interface WireStatusInfo {
   pollMinutes: number;
   retentionDays: number;
@@ -1215,6 +1232,24 @@ export class ApiService {
 
   static deleteNewsSource(id: string): void {
     this.deleteSource(id);
+  }
+
+  // --- NEWS ARCHIVE (settled news kept on the server only) ---
+  static async searchNewsArchive(query: string, page = 1): Promise<NewsArchivePage> {
+    const params = new URLSearchParams({ q: query, page: String(page) });
+    const res = await apiFetch<{ data: NewsArchivePage }>(`/api/v1/archive/news?${params}`);
+    return res.data;
+  }
+
+  static async getArchivedNews(id: string): Promise<NewsItem> {
+    const res = await apiFetch<{ data: NewsItem }>(`/api/v1/archive/news/${encodeURIComponent(id)}`);
+    return res.data;
+  }
+
+  /** Returns an archived story to the synced newsroom; resolves once it has arrived locally. */
+  static async reactivateArchivedNews(id: string): Promise<void> {
+    await apiFetch(`/api/v1/archive/news/${encodeURIComponent(id)}/reactivate`, { method: 'POST', json: {} });
+    await dataStore.pull();
   }
 
   // --- AGENCY WIRES ---

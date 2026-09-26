@@ -1,3 +1,4 @@
+import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -67,6 +68,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   initialTab = 'ALL',
 }) => {
   const [activeTab, setActiveTab] = useState<ListTab>(initialTab);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
   const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
@@ -214,15 +217,41 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onCreateNews}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          إنشاء خبر جديد
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setIsArchiveOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all"
+          >
+            <Archive className="w-4 h-4" />
+            الأرشيف القديم
+          </button>
+          <button
+            type="button"
+            onClick={onCreateNews}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+          >
+            <Plus className="w-4 h-4" />
+            إنشاء خبر جديد
+          </button>
+        </div>
       </div>
+
+      <NewsArchiveModal
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        canReactivate={RbacService.hasPermission(currentUser, 'news.edit_any')}
+        onReactivated={() => {
+          setIsArchiveOpen(false);
+          setArchiveNotice('أُعيد الخبر إلى غرفة الأخبار وسيظهر في القائمة خلال لحظات.');
+        }}
+      />
+      {archiveNotice && (
+        <div role="status" className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex justify-between">
+          <span>{archiveNotice}</span>
+          <button type="button" onClick={() => setArchiveNotice(null)} aria-label="إغلاق">×</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 text-xs font-semibold">

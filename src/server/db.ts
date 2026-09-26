@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { CollectionName, EntityRow, isCollectionName } from '../shared/collections';
+import { CollectionName, EntityRow, SETTLED_NEWS_STATUSES, isCollectionName } from '../shared/collections';
 import { logger } from './logger';
 
 export interface DbBackupFileInfo {
@@ -50,6 +50,8 @@ interface RawEntityRow {
   rev: number;
   deleted: number;
 }
+
+const SETTLED_SQL = SETTLED_NEWS_STATUSES.map((s) => `'${s}'`).join(', ');
 
 const BACKUP_NAME_PATTERN = /^newsroom_backup_[0-9TZ\-]+(?:_[a-z]+)?\.sqlite$/;
 
@@ -258,6 +260,48 @@ export class NewsroomDatabase {
     const stmt = this.db.prepare(sql);
     const rows = (opts.limit ? stmt.all(collection, opts.limit) : stmt.all(collection)) as RawEntityRow[];
     return rows.map(toEntityRow);
+  }
+
+  /** News still in the working set: unfinished work, or settled work touched since `sinceIso`. */
+  listActiveNews(sinceIso: string): EntityRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM entities WHERE collection = 'news' AND deleted = 0
+           AND (COALESCE(json_extract(data, '$.status'), '') NOT IN (${SETTLED_SQL}) OR updated_at >= ?)
+         ORDER BY position ASC`
+      )
+      .all(sinceIso) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  /** Settled news untouched since `beforeIso`, newest first, optionally filtered by text. */
+  searchNewsArchive(beforeIso: string, query: string, limit: number, offset: number) {
+    const q = query.trim();
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const textFilter = q
+      ? `AND (json_extract(data, '$.title') LIKE @like ESCAPE '\\' OR json_extract(data, '$.summary') LIKE @like ESCAPE '\\' OR json_extract(data, '$.content') LIKE @like ESCAPE '\\')`
+      : '';
+    const where = `collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') IN (${SETTLED_SQL})
+      AND json_extract(data, '$.deletedAt') IS NULL AND updated_at < @before ${textFilter}`;
+    const params = { before: beforeIso, like, limit, offset };
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities WHERE ${where}`).get(params) as { n: number }).n;
+    const rows = this.db
+      .prepare(`SELECT id, data, updated_at FROM entities WHERE ${where} ORDER BY updated_at DESC LIMIT @limit OFFSET @offset`)
+      .all(params) as { id: string; data: string; updated_at: string }[];
+    const items = rows.map((r) => {
+      const d = JSON.parse(r.data);
+      return {
+        id: r.id,
+        title: d.title || '',
+        summary: d.summary || '',
+        status: d.status,
+        categoryName: d.categoryName || '',
+        authorName: d.authorName || '',
+        publishDate: d.publishDate || null,
+        updatedAt: r.updated_at,
+      };
+    });
+    return { total, items };
   }
 
   countCollection(collection: CollectionName): number {

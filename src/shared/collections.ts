@@ -90,6 +90,12 @@ export interface ChatMessage {
 /** Maximum rows of an append-only log sent to a browser on bootstrap. */
 export const LOG_BOOTSTRAP_LIMIT = 500;
 
+/**
+ * News in these states is finished work. Once untouched for NEWS_ACTIVE_DAYS it leaves the
+ * synced newsroom (browsers stop downloading it) and is reached through the archive search.
+ */
+export const SETTLED_NEWS_STATUSES = ['PUBLISHED', 'ARCHIVED', 'UNPUBLISHED', 'REJECTED'] as const;
+
 export function isCollectionName(value: unknown): value is CollectionName {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(COLLECTIONS, value);
 }

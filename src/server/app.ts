@@ -78,7 +78,7 @@ function securityHeaders(config: AppConfig) {
 
 export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const app = express();
-  const sync = new SyncService(db, config.dataDir);
+  const sync = new SyncService(db, config.dataDir, config.newsActiveDays);
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -455,6 +455,37 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="episode_${encodeURIComponent(episode.id)}_mos.xml"`);
     res.send(generateEpisodeMosXml(episode));
+  });
+
+  // --- News archive (settled news outside the synced working set) ------------
+
+  const archiveCutoff = () =>
+    new Date(Date.now() - (config.newsActiveDays > 0 ? config.newsActiveDays : 36500) * 24 * 60 * 60 * 1000).toISOString();
+
+  app.get('/api/v1/archive/news', requirePermission('news.view'), (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+    const page = Math.max(1, Math.min(1000, Number(req.query.page) || 1));
+    const pageSize = 25;
+    const result = db.searchNewsArchive(archiveCutoff(), q, pageSize, (page - 1) * pageSize);
+    res.json({ success: true, data: { ...result, page, pageSize, activeDays: config.newsActiveDays } });
+  });
+
+  app.get('/api/v1/archive/news/:id', requirePermission('news.view'), (req, res) => {
+    const row = db.getRow('news', String(req.params.id));
+    if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
+    res.json({ success: true, data: row.d });
+  });
+
+  /** Brings an archived story back into the synced newsroom (e.g. to update or republish it). */
+  app.post('/api/v1/archive/news/:id/reactivate', requirePermission('news.edit_any'), (req, res) => {
+    const id = String(req.params.id);
+    const row = db.getRow('news', id);
+    if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
+    const now = new Date().toISOString();
+    db.writeRow('news', id, { ...row.d, updatedAt: now }, row.p, req.auth!.user.id);
+    audit(req.auth!.user, 'NEWS_REACTIVATE', 'NEWS', id, 'INFO', `إعادة خبر من الأرشيف إلى غرفة الأخبار: ${row.d.title}`, req.ip);
+    changeBus.emit('rev', db.currentRev());
+    res.json({ success: true });
   });
 
   // --- Agency wire feeds -----------------------------------------------------
