@@ -1,3 +1,4 @@
+import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSeen';
 import { departmentIdOf } from '../../shared/departments';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
@@ -7,6 +8,7 @@ import {
   LayoutDashboard,
   Newspaper, FolderGit2,
   Flame,
+  BookOpen,
   ArrowLeftRight,
   CalendarClock,
   Rss,
@@ -132,6 +134,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const requestsBadge = myDepartment
     ? apiService.getRequests().filter((r) => r.departmentId === myDepartment && (r.status === 'OPEN' || r.status === 'ACCEPTED')).length
     : 0;
+  const [whatsNewUnseen, setWhatsNewUnseen] = useState(() => !!currentUser && !hasSeenWhatsNew(currentUser.id));
+  useEffect(() => {
+    const update = () => setWhatsNewUnseen(!!currentUser && !hasSeenWhatsNew(currentUser.id));
+    update();
+    window.addEventListener(WHATS_NEW_SEEN_EVENT, update);
+    return () => window.removeEventListener(WHATS_NEW_SEEN_EVENT, update);
+  }, [currentUser?.id]);
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -169,6 +178,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
         { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
         { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },
+      ],
+    },
+    {
+      label: 'المساعدة',
+      items: [
+        { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
+        { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-500 text-white' },
       ],
     },
   ];

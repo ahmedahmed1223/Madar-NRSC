@@ -41,6 +41,8 @@ const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ 
 const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const HelpView = lazy(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
+const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazy(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazy(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
 const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
@@ -889,6 +891,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             )}
 
             {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
+
+            {activeNav === 'help' && (
+              <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
+            )}
+
+            {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 
             {activeNav === 'requests' && (
               <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
