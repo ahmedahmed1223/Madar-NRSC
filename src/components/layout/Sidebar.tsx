@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Newspaper, FolderGit2,
   Flame,
+  MonitorPlay,
   BookOpen,
   ArrowLeftRight,
   CalendarClock,
@@ -141,6 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     window.addEventListener(WHATS_NEW_SEEN_EVENT, update);
     return () => window.removeEventListener(WHATS_NEW_SEEN_EVENT, update);
   }, [currentUser?.id]);
+  const liveCount = apiService.getOnAirStates().filter((s) => s.status === 'LIVE').length;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -160,6 +162,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'episodes', label: 'الحلقات', icon: Video, badge: null },
         { id: 'calendar', label: 'جدول البث', icon: Calendar, badge: null },
         { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
+      ],
+    },
+    {
+      label: 'الهواء والاستديو',
+      items: [
+        { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white animate-pulse' },
+        { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
       ],
     },
     { label: 'الوسائط', items: [{ id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null }] },

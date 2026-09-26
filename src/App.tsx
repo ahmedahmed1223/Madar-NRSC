@@ -1,3 +1,4 @@
+import { CueAlertOverlay } from './components/common/CueAlertOverlay';
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   NewsItem, Story,
@@ -41,6 +42,8 @@ const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ 
 const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const OnAirView = lazy(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
+const StudioScreenView = lazy(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
 const HelpView = lazy(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
 const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazy(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
@@ -123,6 +126,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [sources, setSources] = useState<NewsSource[]>([]);
   const [wires, setWires] = useState<WireItem[]>([]);
+  const [studioEpisodeId, setStudioEpisodeId] = useState<string | null>(null);
   // Prefilled fields for a new story written from an agency wire.
   const [newsSeed, setNewsSeed] = useState<NewsDraftSeed | null>(null);
   const [programTypes, setProgramTypes] = useState(apiService.getProgramTypes());
@@ -892,6 +896,18 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
 
+            {activeNav === 'on-air' && (
+              <OnAirView
+                currentUser={currentUser}
+                onOpenStudioScreen={(id) => {
+                  setStudioEpisodeId(id);
+                  setActiveNav('studio-screen');
+                }}
+              />
+            )}
+
+            {activeNav === 'studio-screen' && <StudioScreenView currentUser={currentUser} initialEpisodeId={studioEpisodeId} />}
+
             {activeNav === 'help' && (
               <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
             )}
@@ -936,6 +952,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
       {/* Global Newsroom Intercom & Audio Production Drawer */}
       <NewsroomIntercomDrawer currentUser={currentUser} />
+      <CueAlertOverlay currentUser={currentUser} />
     </div>
   );
 }

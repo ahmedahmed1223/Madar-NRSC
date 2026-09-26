@@ -94,6 +94,60 @@ function stampRequest(before: any, after: any, auth: AuthContext) {
   return next;
 }
 
+/** Live timings use server time so every screen counts down from the same moment. */
+function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
+  const now = new Date().toISOString();
+  const title = (segmentId: string) => (episode?.rundown || []).find((s: any) => s.id === segmentId)?.title || '';
+  const base = {
+    id: after.id,
+    episodeId: after.episodeId,
+    episodeTitle: episode?.title || '',
+    programName: episode?.programName || '',
+    status: after.status,
+    currentSegmentId: after.currentSegmentId,
+    operatorId: auth.user.id,
+    operatorName: auth.user.fullName,
+  };
+  const starting = !before || (before.status === 'ENDED' && after.status === 'LIVE');
+  if (starting) {
+    return { ...base, startedAt: now, segmentStartedAt: now, log: [{ segmentId: after.currentSegmentId, title: title(after.currentSegmentId), startedAt: now }] };
+  }
+  const log = [...(before.log || [])];
+  const closeLast = () => {
+    if (log.length && !log[log.length - 1].endedAt) log[log.length - 1] = { ...log[log.length - 1], endedAt: now };
+  };
+  let segmentStartedAt = before.segmentStartedAt;
+  if (before.status === 'LIVE' && after.status === 'LIVE' && after.currentSegmentId !== before.currentSegmentId) {
+    closeLast();
+    log.push({ segmentId: after.currentSegmentId, title: title(after.currentSegmentId), startedAt: now });
+    segmentStartedAt = now;
+  }
+  let endedAt = before.endedAt;
+  if (before.status === 'LIVE' && after.status === 'ENDED') {
+    closeLast();
+    endedAt = now;
+  }
+  return { ...base, startedAt: before.startedAt, segmentStartedAt, endedAt, log };
+}
+
+function stampCue(before: any, after: any, auth: AuthContext) {
+  const now = new Date().toISOString();
+  if (!before) {
+    return {
+      ...after,
+      message: String(after.message || '').trim(),
+      level: ['info', 'standby', 'urgent'].includes(after.level) ? after.level : 'info',
+      fromId: auth.user.id,
+      fromName: auth.user.fullName,
+      createdAt: now,
+      acks: [],
+    };
+  }
+  const acks = [...(before.acks || [])];
+  if (!acks.some((a: any) => a.userId === auth.user.id)) acks.push({ userId: auth.user.id, userName: auth.user.fullName, at: now });
+  return { ...before, acks };
+}
+
 /** Server-authoritative fields: clients cannot forge who did what, from where, or when. */
 function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: string | undefined) {
   const now = new Date().toISOString();
@@ -303,6 +357,8 @@ export class SyncService {
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
         if (collection === 'requests' && !after.deletedAt) after = stampRequest(before, after, auth);
+        if (collection === 'onAir') after = stampOnAir(before, after, auth, this.db.getRow('episodes', String(after.episodeId))?.d);
+        if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'roster' && !after.deletedAt) {
           // The person on duty must be a real, active colleague; their name comes from the server.
           const member = this.db.getRow('users', String(after.userId))?.d;
@@ -344,6 +400,14 @@ export class SyncService {
         }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+        if (collection === 'onAir') {
+          // The episode follows the live state: on air while live, broadcast once ended.
+          const ep = this.db.getRow('episodes', String(after.episodeId));
+          const status = after.status === 'LIVE' ? 'ON_AIR' : 'BROADCASTED';
+          if (ep && ep.d.status !== status) {
+            this.db.writeRow('episodes', ep.id, { ...ep.d, status, updatedAt: new Date().toISOString() }, ep.p, null);
+          }
+        }
 
         if (collection === 'media') {
           // Only the uploader's own files may be attached, and each upload to a single record.

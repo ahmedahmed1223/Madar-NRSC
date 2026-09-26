@@ -357,6 +357,15 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     riskLevel: 'MEDIUM',
   },
   {
+    code: 'onair.control',
+    nameAr: 'تشغيل وضع الهواء وإرسال تنبيهات البث',
+    nameEn: 'Run On-Air Mode',
+    description: 'بدء البث ونقل الفقرات وإنهاؤه وإرسال التنبيهات للأقسام (للمخرج والكنترول تلقائياً)',
+    category: 'RUNDOWN',
+    categoryNameAr: 'الرانداون والبث الحي',
+    riskLevel: 'HIGH',
+  },
+  {
     code: 'roster.manage',
     nameAr: 'إدارة جدول المناوبات',
     nameEn: 'Manage Duty Roster',

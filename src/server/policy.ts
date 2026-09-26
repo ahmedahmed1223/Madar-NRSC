@@ -1,5 +1,6 @@
 import { episodeReadiness, requestChangeError } from '../shared/production';
-import { departmentIdOf } from '../shared/departments';
+import { departmentIdOf, isDepartmentId } from '../shared/departments';
+import { canControlOnAir } from '../shared/onair';
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
@@ -241,6 +242,28 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  onAir: ({ auth, kind, after, list }) => {
+    if (!canControlOnAir(auth.user, auth.can)) return 'تشغيل وضع الهواء للمخرج والكنترول فقط';
+    if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;
+    if (!['LIVE', 'ENDED'].includes(after?.status)) return 'حالة البث غير صالحة';
+    const episode = (list?.('episodes') || []).find((e: any) => e.id === after?.episodeId);
+    if (!episode || after?.id !== episode.id) return 'الحلقة غير موجودة';
+    if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون الحلقة';
+    return null;
+  },
+  cues: ({ auth, kind, before, after }) => {
+    if (kind === 'create') {
+      if (!canControlOnAir(auth.user, auth.can) && !auth.can('tasks.intercom_broadcast')) return 'إرسال تنبيهات الهواء للمخرج والكنترول';
+      if (typeof after?.message !== 'string' || !after.message.trim() || after.message.length > 300) return 'نص التنبيه غير صالح';
+      if (!Array.isArray(after?.targetDepartmentIds) || !after.targetDepartmentIds.every(isDepartmentId)) return 'القسم المستهدف غير معروف';
+      return null;
+    }
+    if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;
+    // Recipients may only acknowledge (the server records who and when).
+    const { acks: _a, ...restBefore } = before || {};
+    const { acks: _b, ...restAfter } = after || {};
+    return JSON.stringify(restBefore) === JSON.stringify(restAfter) ? null : 'التنبيه لا يُعدَّل بعد إرساله';
+  },
   requests: ({ auth, kind, before, after }) => {
     const canManage = auth.can('requests.manage');
     if (kind === 'delete' || isSoftDelete(before, after)) {
@@ -275,7 +298,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   },
   messages: ({ kind, after }) => {
     if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
-    if (!['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel)) return 'قناة غير معروفة';
+    if (!(after?.channel === 'general' || isDepartmentId(after?.channel) || ['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel))) return 'قناة غير معروفة';
     if (typeof after?.text !== 'string' || !after.text.trim() || after.text.length > 2000) return 'نص الرسالة غير صالح';
     return null;
   },

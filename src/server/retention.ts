@@ -44,6 +44,8 @@ export function runRetention(db: NewsroomDatabase, dataDir: string, cfg: Retenti
     purge('notifications', db.retentionCandidates('notifications', 'readNotification', cutoff(Math.min(30, cfg.notificationDays))));
     purge('notifications', db.retentionCandidates('notifications', 'updated', cutoff(cfg.notificationDays)));
   }
+  // On-air alerts only matter during the broadcast.
+  purge('cues', db.retentionCandidates('cues', 'updated', cutoff(1), 5000));
   // Locks left behind by crashed tabs.
   purge('editLocks', db.retentionCandidates('editLocks', 'expiredLock', new Date(now - 60 * 60 * 1000).toISOString()));
   if (cfg.logDays > 0) {

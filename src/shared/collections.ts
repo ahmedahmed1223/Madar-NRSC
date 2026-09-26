@@ -27,6 +27,10 @@ export const COLLECTIONS = {
   messages: { storageKey: 'nrcs_messages_v1', kind: 'list' },
   /** Soft edit locks ("X is editing this story"); id = `${collection}:${entityId}`. */
   editLocks: { storageKey: 'nrcs_edit_locks_v1', kind: 'list' },
+  /** Live broadcast state per episode (id = episodeId); timings are stamped by the server. */
+  onAir: { storageKey: 'nrcs_onair_v1', kind: 'list' },
+  /** On-air alerts from the director/control room to departments. */
+  cues: { storageKey: 'nrcs_cues_v1', kind: 'list' },
   /** Requests between departments (montage, graphics, studio, ...). */
   requests: { storageKey: 'nrcs_requests_v1', kind: 'list' },
   /** Duty roster: who is on shift in each department; id = `${date}:${departmentId}:${shift}:${userId}`. */
@@ -81,7 +85,8 @@ export function isLockActive(lock: EditLock | null | undefined, now = Date.now()
 
 export interface ChatMessage {
   id: string;
-  channel: 'STUDIO_PCR' | 'NEWSROOM' | 'FIELD';
+  /** 'general', a department id, or a legacy channel (STUDIO_PCR, NEWSROOM, FIELD). */
+  channel: string;
   text: string;
   userId?: string;
   userName?: string;

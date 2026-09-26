@@ -92,6 +92,7 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'roster.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'requests.create': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
   'requests.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'onair.control': ['SUPER_ADMIN', 'ADMIN', 'PRODUCER'],
 };
 
 /** System roles introduced after a database was created are added once. */

@@ -650,6 +650,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         onClose={() => setIsPrompterOpen(false)}
         segments={segments}
         episodeTitle="شاشة الملقن للفقرات (Teleprompter)"
+        episodeId={episodeId}
       />
 
     </div>

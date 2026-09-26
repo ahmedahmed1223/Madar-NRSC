@@ -1,3 +1,5 @@
+import { useLiveData } from '../../hooks/useLiveData';
+import { apiService } from '../../services/api';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
@@ -22,6 +24,8 @@ interface TeleprompterModalProps {
   onClose: () => void;
   segments: RundownSegment[];
   episodeTitle?: string;
+  /** While this episode is on air, the prompter follows the director's current segment. */
+  episodeId?: string;
 }
 
 export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
@@ -29,8 +33,18 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   onClose,
   segments,
   episodeTitle = 'الرانداون المباشر',
+  episodeId,
 }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const liveVersion = useLiveData(['onAir'], 0);
+  const liveSegmentId = episodeId ? apiService.getOnAir(episodeId) : null;
+  const followId = liveSegmentId?.status === 'LIVE' ? liveSegmentId.currentSegmentId : null;
+  useEffect(() => {
+    if (!isOpen || !followId) return;
+    const idx = segments.findIndex((s) => s.id === followId);
+    if (idx >= 0) setCurrentSegmentIndex(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followId, isOpen, liveVersion]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(2); // 1 to 5
   const [fontSize, setFontSize] = useState(36); // px

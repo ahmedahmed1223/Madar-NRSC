@@ -69,6 +69,7 @@ import { localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { departmentIdOf } from '../shared/departments';
+import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -1039,6 +1040,74 @@ export class ApiService {
       })
     );
     return usage;
+  }
+
+  // --- ON AIR ---
+  static getOnAirStates(): OnAirState[] {
+    return getStored<OnAirState[]>(COLLECTIONS.onAir.storageKey, []);
+  }
+
+  static getOnAir(episodeId: string): OnAirState | null {
+    return this.getOnAirStates().find((s) => s.episodeId === episodeId) || null;
+  }
+
+  /** Starts, moves or ends the live show; the server stamps the times. */
+  static setOnAir(episodeId: string, status: 'LIVE' | 'ENDED', currentSegmentId: string): OnAirState {
+    const me = this.getCurrentUser();
+    if (!canControlOnAir(me, (p) => RbacService.hasPermission(me, p))) throw new Error('تشغيل وضع الهواء للمخرج والكنترول فقط');
+    const episode = this.getEpisodes().find((e) => e.id === episodeId);
+    if (!episode) throw new Error('الحلقة غير موجودة');
+    const all = this.getOnAirStates();
+    const before = all.find((s) => s.episodeId === episodeId);
+    const now = new Date().toISOString();
+    const moved = !before || before.currentSegmentId !== currentSegmentId || before.status !== status;
+    const next: OnAirState = {
+      ...(before || { log: [], startedAt: now }),
+      id: episodeId,
+      episodeId,
+      episodeTitle: episode.title,
+      programName: episode.programName,
+      status,
+      currentSegmentId,
+      // Optimistic local timing; replaced by the server's stamp on sync.
+      segmentStartedAt: moved ? now : before!.segmentStartedAt,
+      startedAt: !before || (before.status === 'ENDED' && status === 'LIVE') ? now : before.startedAt,
+      endedAt: status === 'ENDED' ? now : undefined,
+    } as OnAirState;
+    setStored(COLLECTIONS.onAir.storageKey, [...all.filter((s) => s.episodeId !== episodeId), next]);
+    return next;
+  }
+
+  // --- ON-AIR ALERTS ---
+  static getCues(): Cue[] {
+    return getStored<Cue[]>(COLLECTIONS.cues.storageKey, []);
+  }
+
+  static sendCue(message: string, level: Cue['level'], targetDepartmentIds: string[], episodeId?: string): Cue {
+    const me = this.getCurrentUser();
+    const cue: Cue = {
+      id: newId('cue'),
+      episodeId,
+      targetDepartmentIds,
+      message: message.trim(),
+      level,
+      fromId: me.id,
+      fromName: me.fullName,
+      createdAt: new Date().toISOString(),
+      acks: [],
+    };
+    if (!cue.message) throw new Error('اكتب نص التنبيه');
+    setStored(COLLECTIONS.cues.storageKey, [cue, ...this.getCues()]);
+    return cue;
+  }
+
+  static ackCue(id: string): void {
+    const me = this.getCurrentUser();
+    const all = this.getCues();
+    setStored(
+      COLLECTIONS.cues.storageKey,
+      all.map((c) => (c.id === id && !c.acks.some((a) => a.userId === me.id) ? { ...c, acks: [...c.acks, { userId: me.id, userName: me.fullName, at: new Date().toISOString() }] } : c))
+    );
   }
 
   // --- REQUESTS BETWEEN DEPARTMENTS ---

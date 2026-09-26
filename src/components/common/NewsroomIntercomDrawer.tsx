@@ -1,3 +1,4 @@
+import { DEPARTMENTS, departmentIdOf } from '../../shared/departments';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
@@ -16,7 +17,11 @@ import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import type { ChatMessage } from '../../shared/collections';
 
-type Channel = 'STUDIO_PCR' | 'NEWSROOM' | 'FIELD';
+type Channel = string;
+
+/** Messages from the three original channels live on in the matching departments. */
+const LEGACY_CHANNELS: Record<string, string> = { STUDIO_PCR: 'control', NEWSROOM: 'newsroom', FIELD: 'field' };
+const channelOf = (m: { channel: string }) => LEGACY_CHANNELS[m.channel] || m.channel;
 
 interface NewsroomIntercomDrawerProps {
   currentUser?: UserType | null;
@@ -40,7 +45,13 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeChannel, setActiveChannel] = useState<Channel>('NEWSROOM');
+  const myDept = currentUser ? departmentIdOf(currentUser) : 'newsroom';
+  const [activeChannel, setActiveChannel] = useState<Channel>(myDept);
+  const channels = [
+    { id: 'general', name: 'عام' },
+    ...DEPARTMENTS.filter((d) => d.id === myDept),
+    ...DEPARTMENTS.filter((d) => d.id !== myDept),
+  ];
   const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => apiService.getMessages());
   const [inputText, setInputText] = useState('');
   const [isUrgentCue, setIsUrgentCue] = useState(false);
@@ -87,7 +98,8 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     }
   };
 
-  const channelFilteredMessages = messages.filter((m) => m.channel === activeChannel);
+  const channelFilteredMessages = messages.filter((m) => channelOf(m) === activeChannel);
+  const unreadIn = (id: string) => messages.filter((m) => channelOf(m) === id && m.userId !== currentUser?.id && (m.timestamp || '') > lastSeen).length;
 
   return (
     <>
@@ -120,7 +132,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <Radio className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-white">المحادثة الداخلية لغرفة الأخبار</h3>
+                <h3 className="text-xs font-black text-white">المحادثة الداخلية بين الأقسام</h3>
                 <span className="text-[10px] text-slate-400">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
@@ -134,46 +146,24 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
             </button>
           </div>
 
-          {/* Channels Selector */}
-          <div className="p-2 bg-slate-900/60 border-b border-slate-800 grid grid-cols-3 gap-1 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setActiveChannel('STUDIO_PCR')}
-              className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                activeChannel === 'STUDIO_PCR'
-                  ? 'bg-red-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-            >
-              <Tv className="w-3 h-3" />
-              الاستوديو والبث
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveChannel('NEWSROOM')}
-              className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                activeChannel === 'NEWSROOM'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-            >
-              <Users className="w-3 h-3" />
-              صالة التحرير
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveChannel('FIELD')}
-              className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                activeChannel === 'FIELD'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-            >
-              <Radio className="w-3 h-3" />
-              المراسلون SNG
-            </button>
+          {/* Channels: general + one per department (yours first) */}
+          <div className="p-2 bg-slate-900/60 border-b border-slate-800 flex gap-1 overflow-x-auto text-[11px]" role="tablist" aria-label="قنوات المحادثة">
+            {channels.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={activeChannel === c.id}
+                onClick={() => setActiveChannel(c.id)}
+                className={`py-1.5 px-2.5 rounded-lg font-bold whitespace-nowrap transition-all ${
+                  activeChannel === c.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                }`}
+              >
+                {c.name}
+                {c.id === myDept ? ' (قسمي)' : ''}
+                {unreadIn(c.id) > 0 && activeChannel !== c.id && <span className="mr-1 px-1 rounded bg-red-600 text-white">{unreadIn(c.id)}</span>}
+              </button>
+            ))}
           </div>
 
           {/* Messages Stream */}
@@ -231,9 +221,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 maxLength={2000}
-                placeholder={`أرسل رسالة في قنوات ${
-                  activeChannel === 'STUDIO_PCR' ? 'استوديو البث' : activeChannel === 'NEWSROOM' ? 'التحرير' : 'المراسلين'
-                }...`}
+                placeholder={`رسالة إلى قناة ${channels.find((c) => c.id === activeChannel)?.name || ''}...`}
                 className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500"
               />
 
