@@ -8,6 +8,7 @@ import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
 import { publishDueScheduledNews } from './src/server/scheduler';
+import { runRetention } from './src/server/retention';
 
 async function main() {
   const config = loadConfig();
@@ -50,6 +51,7 @@ async function main() {
     setInterval(() => {
       try {
         db.purgeExpiredSessions();
+        runRetention(db, config.dataDir, config.retention);
         db.purgeTombstones(30 * 24 * 60 * 60 * 1000);
         // Files uploaded but never attached to a media record (abandoned forms).
         db.findOrphanUploads(24 * 60 * 60 * 1000).forEach((u) => removeUpload(db, config.dataDir, u.id));

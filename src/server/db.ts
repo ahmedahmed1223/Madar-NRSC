@@ -309,6 +309,41 @@ export class NewsroomDatabase {
     return this.getRow(collection, id)!;
   }
 
+  /**
+   * Ids of live rows eligible for a retention rule (oldest first, bounded per run).
+   * - `updated`: last written before the cutoff (logs are append-only, so this is their age)
+   * - `trashed`: soft-deleted (data.deletedAt) before the cutoff
+   * - `readNotification`: marked read and untouched since the cutoff
+   * - `expiredLock`: an edit lock that expired before the cutoff
+   */
+  retentionCandidates(
+    collection: CollectionName,
+    rule: 'updated' | 'trashed' | 'readNotification' | 'expiredLock',
+    cutoffIso: string,
+    limit = 1000
+  ): string[] {
+    const condition = {
+      updated: 'updated_at < ?',
+      trashed: "json_extract(data, '$.deletedAt') IS NOT NULL AND json_extract(data, '$.deletedAt') < ?",
+      readNotification: "json_extract(data, '$.isRead') = 1 AND updated_at < ?",
+      expiredLock: "json_extract(data, '$.expiresAt') < ?",
+    }[rule];
+    const rows = this.db
+      .prepare(`SELECT id FROM entities WHERE collection = ? AND deleted = 0 AND ${condition} ORDER BY updated_at ASC LIMIT ?`)
+      .all(collection, cutoffIso, limit) as { id: string }[];
+    return rows.map((r) => r.id);
+  }
+
+  /** Revision history of rows that no longer exist. */
+  purgeOrphanHistory(): number {
+    return this.db
+      .prepare(
+        `DELETE FROM entity_history WHERE NOT EXISTS (
+           SELECT 1 FROM entities e WHERE e.collection = entity_history.collection AND e.id = entity_history.entity_id AND e.deleted = 0)`
+      )
+      .run().changes;
+  }
+
   /** Soft-delete (tombstone) so other browsers learn about the removal via the change feed. */
   deleteRow(collection: CollectionName, id: string, userId: string | null): EntityRow | null {
     const rev = this.nextRev();

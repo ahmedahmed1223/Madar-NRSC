@@ -222,7 +222,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       audit(user, 'LOGIN', 'USER', user.id, 'INFO', `تسجيل دخول ناجح: ${user.fullName}`, req.ip);
       setSessionCookie(res, token, config);
       const ctx = buildAuthContext(db, updatedUser, session.id);
-      res.json({ success: true, ...publicUser(updatedUser, cred.mustChangePassword, ctx.permissions) });
+      res.json({ success: true, ...publicUser(updatedUser, cred.mustChangePassword, ctx.permissions), trashRetentionDays: config.retention.trashDays });
     })
   );
 
@@ -237,7 +237,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.get('/api/v1/auth/me', requireAuth, (req, res) => {
     const cred = db.getCredentials(req.auth!.user.id);
-    res.json({ success: true, ...publicUser(req.auth!.user, !!cred?.mustChangePassword, req.auth!.permissions) });
+    res.json({ success: true, ...publicUser(req.auth!.user, !!cred?.mustChangePassword, req.auth!.permissions), trashRetentionDays: config.retention.trashDays });
   });
 
   app.post(

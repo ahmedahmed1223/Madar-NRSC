@@ -5,6 +5,8 @@ export interface SessionInfo {
   user: User;
   permissions: string[];
   mustChangePassword: boolean;
+  /** Days before trashed items are purged by the server (0 = kept forever). */
+  trashRetentionDays?: number;
 }
 
 let session: SessionInfo | null = null;
@@ -21,7 +23,7 @@ export const authClient = {
   async fetchSession(): Promise<SessionInfo | null> {
     try {
       const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/me');
-      session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword };
+      session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
       return session;
     } catch {
       session = null;
@@ -35,7 +37,7 @@ export const authClient = {
       method: 'POST',
       json: totp ? { email, password, totp } : { email, password },
     });
-    session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword };
+    session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
     return session;
   },
 

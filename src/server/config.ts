@@ -47,6 +47,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ALLOW_DB_RESET: bool(!isProduction),
     BACKUP_INTERVAL_HOURS: int(24, 0),
     BACKUP_RETENTION: int(20, 1),
+    // Data retention (days; 0 keeps forever).
+    TRASH_RETENTION_DAYS: int(30, 0),
+    NOTIFICATION_RETENTION_DAYS: int(90, 0),
+    LOG_RETENTION_DAYS: int(365, 0),
+    AUDIT_LOG_RETENTION_DAYS: int(0, 0),
 
     RATE_LIMIT_PER_MINUTE: int(600, 10),
     LOGIN_RATE_LIMIT_PER_15MIN: int(20, 3),
@@ -96,6 +101,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     allowDbReset: c.ALLOW_DB_RESET,
     backupIntervalHours: c.BACKUP_INTERVAL_HOURS,
     backupRetention: c.BACKUP_RETENTION,
+    retention: {
+      trashDays: c.TRASH_RETENTION_DAYS,
+      notificationDays: c.NOTIFICATION_RETENTION_DAYS,
+      logDays: c.LOG_RETENTION_DAYS,
+      auditLogDays: c.AUDIT_LOG_RETENTION_DAYS,
+    },
     rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
     mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,

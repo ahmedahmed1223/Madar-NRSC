@@ -1,3 +1,4 @@
+import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
@@ -330,6 +331,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           </button>
         )}
       </div>
+
+      {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
+        <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
+          تُحذف المواد نهائياً من السلة تلقائياً بعد {authClient.getSession()?.trashRetentionDays} يوماً من نقلها إليها.
+        </div>
+      )}
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
