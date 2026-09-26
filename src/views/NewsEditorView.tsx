@@ -40,7 +40,7 @@ import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
 import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
-import type { Story } from '../types';
+import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
 
@@ -50,6 +50,8 @@ interface NewsEditorViewProps {
   categories: Category[];
   sources: NewsSource[];
   stories?: Story[];
+  /** Prefilled fields for a new story (e.g. written from an agency wire). */
+  seed?: NewsDraftSeed;
   /** Pre-links a new story to a coverage (from the stories desk). */
   defaultStoryId?: string;
   /** Returns the saved story, or null if the save was refused. */
@@ -65,6 +67,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   sources,
   stories = [],
   defaultStoryId,
+  seed,
   onSave,
   onUpdateStatus,
   onCancel,
@@ -380,9 +383,16 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         storyId: defaultStoryId || '',
       };
       setCategoryId(fields.categoryId);
-      setSourceId(fields.sourceId);
+      setSourceId(seed?.sourceId || fields.sourceId);
       setStoryId(fields.storyId);
       loadedSnapshotRef.current = JSON.stringify(fields);
+      if (seed) {
+        setTitle(seed.title);
+        setShortTitle(seed.title.slice(0, 80));
+        setSummary(seed.summary);
+        setContent(seed.content);
+        setInternalNotes(seed.internalNotes);
+      }
     }
     checkForDraft(newsItem?.updatedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -436,6 +446,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       isBreaking,
       internalNotes,
       storyId: storyId || undefined,
+      wireId: newsItem?.wireId ?? seed?.wireId,
       expectedUpdatedAt: newsItem?.id ? baseUpdatedAt : undefined,
     };
   };

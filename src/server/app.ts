@@ -32,6 +32,7 @@ import {
   validatePasswordStrength,
   verifyPassword,
 } from './auth';
+import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
@@ -455,6 +456,46 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Content-Disposition', `attachment; filename="episode_${encodeURIComponent(episode.id)}_mos.xml"`);
     res.send(generateEpisodeMosXml(episode));
   });
+
+  // --- Agency wire feeds -----------------------------------------------------
+
+  app.get('/api/v1/wires/status', requirePermission('news.view'), (_req, res) => {
+    res.json({ success: true, data: { pollMinutes: config.wires.pollMinutes, retentionDays: config.wires.retentionDays, feeds: getFeedStatus() } });
+  });
+
+  const wireRefreshLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 6,
+    key: (req) => req.auth?.user.id || req.ip || 'unknown',
+    message: 'تم تحديث البرقيات قبل قليل، حاول بعد دقيقة',
+  });
+
+  app.post(
+    '/api/v1/wires/refresh',
+    requirePermission('news.create'),
+    wireRefreshLimiter,
+    wrap(async (_req, res) => {
+      const feeds = await pollWires(db, config.wires);
+      res.json({ success: true, data: { feeds } });
+    })
+  );
+
+  app.post(
+    '/api/v1/wires/test',
+    requirePermission('system.settings'),
+    wireRefreshLimiter,
+    wrap(async (req, res) => {
+      const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+      if (!url) throw new HttpError(400, 'رابط الخلاصة مطلوب');
+      try {
+        const feed = parseFeed(await fetchFeed(url, config.wires.allowPrivateHosts));
+        res.json({ success: true, data: { title: feed.title, itemCount: feed.items.length, sample: feed.items.slice(0, 3).map((i) => i.title) } });
+      } catch (err: any) {
+        const message = err?.name === 'TimeoutError' ? 'انتهت مهلة الاتصال بمصدر الخلاصة' : String(err?.message || err);
+        throw new HttpError(422, message, 'FEED_INVALID');
+      }
+    })
+  );
 
   // --- AI co-pilot ----------------------------------------------------------
 

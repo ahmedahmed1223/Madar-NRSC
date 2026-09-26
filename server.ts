@@ -9,6 +9,7 @@ import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
 import { publishDueScheduledNews } from './src/server/scheduler';
 import { runRetention } from './src/server/retention';
+import { pollWires } from './src/server/wires';
 
 async function main() {
   const config = loadConfig();
@@ -51,7 +52,7 @@ async function main() {
     setInterval(() => {
       try {
         db.purgeExpiredSessions();
-        runRetention(db, config.dataDir, config.retention);
+        runRetention(db, config.dataDir, { ...config.retention, wireDays: config.wires.retentionDays });
         db.purgeTombstones(30 * 24 * 60 * 60 * 1000);
         // Files uploaded but never attached to a media record (abandoned forms).
         db.findOrphanUploads(24 * 60 * 60 * 1000).forEach((u) => removeUpload(db, config.dataDir, u.id));
@@ -60,6 +61,12 @@ async function main() {
       }
     }, 60 * 60 * 1000)
   );
+  // Agency wire feeds.
+  if (config.wires.pollMinutes > 0) {
+    const poll = () => pollWires(db, config.wires).catch((err) => logger.error('wire polling failed', { error: String(err) }));
+    timers.push(setInterval(poll, config.wires.pollMinutes * 60 * 1000));
+    setTimeout(poll, 5_000).unref();
+  }
   // Scheduled publishing: checked every 30 seconds.
   timers.push(
     setInterval(() => {

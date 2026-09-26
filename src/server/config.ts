@@ -47,6 +47,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ALLOW_DB_RESET: bool(!isProduction),
     BACKUP_INTERVAL_HOURS: int(24, 0),
     BACKUP_RETENTION: int(20, 1),
+    // Agency wire feeds (RSS/Atom) configured per news source.
+    WIRE_POLL_MINUTES: int(5, 0),
+    WIRE_RETENTION_DAYS: int(3, 1),
+    WIRE_ALLOW_PRIVATE_HOSTS: bool(false),
     // Data retention (days; 0 keeps forever).
     TRASH_RETENTION_DAYS: int(30, 0),
     NOTIFICATION_RETENTION_DAYS: int(90, 0),
@@ -101,6 +105,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     allowDbReset: c.ALLOW_DB_RESET,
     backupIntervalHours: c.BACKUP_INTERVAL_HOURS,
     backupRetention: c.BACKUP_RETENTION,
+    wires: {
+      pollMinutes: c.WIRE_POLL_MINUTES,
+      retentionDays: c.WIRE_RETENTION_DAYS,
+      allowPrivateHosts: c.WIRE_ALLOW_PRIVATE_HOSTS,
+    },
     retention: {
       trashDays: c.TRASH_RETENTION_DAYS,
       notificationDays: c.NOTIFICATION_RETENTION_DAYS,

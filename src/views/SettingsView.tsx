@@ -3,6 +3,7 @@ import {
   Settings,
   Tv,
   Globe,
+  Rss,
   Users,
   Layers,
   Save,
@@ -26,6 +27,7 @@ import { Category, NewsSource, User, NewsItem } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { SourceFeedEditor } from '../components/settings/SourceFeedEditor';
 import { apiService } from '../services/api';
 
 interface SettingsViewProps {
@@ -102,6 +104,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // New Source State
   const [newSourceName, setNewSourceName] = useState('');
+  const [feedEditingId, setFeedEditingId] = useState<string | null>(null);
   const [newSourceType, setNewSourceType] = useState('وكالة أنباء عالمية');
   const [newSourceReliability, setNewSourceReliability] = useState(5);
 
@@ -983,15 +986,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {sources.map((src) => (
-              <div
-                key={src.id}
-                className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs"
-              >
+              <div key={src.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+              <div className="flex items-center justify-between">
                 <div>
                   <strong className="text-slate-800 block">{src.name}</strong>
                   <span className="text-[11px] text-slate-400">{src.type}</span>
+                  {src.feedUrl && (
+                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-600' : 'text-slate-400'}`}>
+                      {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFeedEditingId(feedEditingId === src.id ? null : src.id)}
+                    className="text-orange-500 hover:text-orange-700 p-1"
+                    title="ربط خلاصة RSS للبرقيات"
+                    aria-label={`خلاصة RSS للمصدر ${src.name}`}
+                  >
+                    <Rss className="w-4 h-4" />
+                  </button>
                   <span className="text-[11px] font-mono text-emerald-600 font-bold">
                     موثوقية {src.reliabilityScore}/5
                   </span>
@@ -1010,6 +1025,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+              </div>
+              {feedEditingId === src.id && (
+                <SourceFeedEditor source={src} onSave={onSaveSource} onClose={() => setFeedEditingId(null)} />
+              )}
               </div>
             ))}
           </div>

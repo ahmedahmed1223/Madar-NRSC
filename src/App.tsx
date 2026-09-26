@@ -10,6 +10,8 @@ import {
   User,
   Category,
   NewsSource,
+  WireItem,
+  NewsDraftSeed,
   NewsStatus,
   RundownSegment,
 } from './types';
@@ -23,6 +25,7 @@ import { CommandPalette } from './components/layout/CommandPalette';
 
 // Views are code-split so the first load only ships what is on screen.
 const DashboardView = lazy(() => import('./views/DashboardView').then((m) => ({ default: m.DashboardView })));
+const WiresView = lazy(() => import('./views/WiresView').then((m) => ({ default: m.WiresView })));
 const NewsListView = lazy(() => import('./views/NewsListView').then((m) => ({ default: m.NewsListView })));
 const NewsEditorView = lazy(() => import('./views/NewsEditorView').then((m) => ({ default: m.NewsEditorView })));
 const ProgramsView = lazy(() => import('./views/ProgramsView').then((m) => ({ default: m.ProgramsView })));
@@ -114,6 +117,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [sources, setSources] = useState<NewsSource[]>([]);
+  const [wires, setWires] = useState<WireItem[]>([]);
+  // Prefilled fields for a new story written from an agency wire.
+  const [newsSeed, setNewsSeed] = useState<NewsDraftSeed | null>(null);
   const [programTypes, setProgramTypes] = useState(apiService.getProgramTypes());
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
@@ -139,6 +145,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     setAuditLogs(apiService.getAuditLogs());
     setCategories(apiService.getCategories());
     setSources(apiService.getNewsSources());
+    setWires(apiService.getWires());
     setAllUsers(apiService.getUsers());
   };
 
@@ -301,7 +308,25 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
+  const handleConvertWire = (wire: WireItem) => {
+    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const paragraphs = (wire.summary || '').split('\n').filter(Boolean).map((p) => `<p>${escape(p)}</p>`).join('');
+    const known = sources.find((s) => s.id === wire.sourceId);
+    setSelectedNewsItem(null);
+    setNewNewsStoryId(null);
+    setNewsSeed({
+      wireId: wire.id,
+      title: wire.title,
+      summary: (wire.summary || '').slice(0, 400),
+      content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
+      sourceId: known?.id,
+      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString('ar-EG')})${wire.link ? `\n${wire.link}` : ''}`,
+    });
+    setActiveNav('news-editor');
+  };
+
   const handleCreateNewNewsClick = () => {
+    setNewsSeed(null);
     setNewNewsStoryId(null);
     setSelectedNewsItem(null);
     setActiveNav('news-editor');
@@ -314,11 +339,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       return;
     }
     setNewNewsStoryId(null);
+    setNewsSeed(null);
     setSelectedNewsItem(found);
     setActiveNav('news-editor');
   };
 
   const handleCreateNewsForStory = (storyId: string) => {
+    setNewsSeed(null);
     setSelectedNewsItem(null);
     setNewNewsStoryId(storyId);
     setActiveNav('news-editor');
@@ -663,10 +690,23 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
+            {activeNav === 'wires' && (
+              <WiresView
+                wires={wires}
+                sources={sources}
+                newsList={newsList}
+                currentUser={currentUser}
+                onConvert={handleConvertWire}
+                onOpenNews={handleEditNewsClick}
+                onOpenSettings={() => setActiveNav('settings')}
+              />
+            )}
+
             {activeNav === 'news-editor' && (
               <NewsEditorView
-                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}`}
+                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}-${newsSeed?.wireId || ''}`}
                 newsItem={editorNewsItem}
+                seed={editorNewsItem ? undefined : newsSeed || undefined}
                 defaultStoryId={newNewsStoryId || undefined}
                 stories={stories}
                 currentUser={currentUser}

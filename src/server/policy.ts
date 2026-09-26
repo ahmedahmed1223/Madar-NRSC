@@ -229,6 +229,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;
     if (!target || !['news', 'episodes'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
@@ -261,6 +262,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
   switch (collection) {
     case 'auditLogs':
       return auth.can('audit.view');
+    case 'wires':
+      return auth.can('news.view') || auth.can('news.create');
     case 'notifications':
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
     default:

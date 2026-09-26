@@ -87,6 +87,32 @@ export interface NewsSource {
   reliabilityScore: number; // 1 to 5
   contactInfo?: string;
   notes?: string;
+  /** RSS/Atom feed polled by the server into the wire desk. */
+  feedUrl?: string;
+  feedEnabled?: boolean;
+}
+
+/** Fields prefilled into a new story (e.g. from an agency wire). */
+export interface NewsDraftSeed {
+  wireId?: string;
+  title: string;
+  summary: string;
+  content: string;
+  sourceId?: string;
+  internalNotes: string;
+}
+
+/** An item fetched by the server from an agency feed (read-only for clients). */
+export interface WireItem {
+  id: string;
+  sourceId: string;
+  sourceName: string;
+  title: string;
+  summary: string;
+  link?: string;
+  categories: string[];
+  publishedAt: string;
+  fetchedAt: string;
 }
 
 // New Type: Story (representing the overarching event or coverage)
@@ -135,6 +161,8 @@ export interface NewsItem {
   videoUrl?: string;
   sourceId: string;
   sourceName?: string;
+  /** Agency wire item this story was written from. */
+  wireId?: string;
   categoryId: string;
   categoryName?: string;
   authorId: string;

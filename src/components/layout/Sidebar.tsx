@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Newspaper, FolderGit2,
   Flame,
+  Rss,
   Tv,
   Video,
   ListOrdered,
@@ -119,6 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
   const NAV_PERMISSIONS: Record<string, string> = {
+    wires: 'news.view',
     audit: 'audit.view',
     users: 'users.view',
     database: 'system.database_manage',
@@ -146,6 +148,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Newspaper,
       badge: newsBadge > 0 ? `${newsBadge} مراجعة` : null,
       badgeColor: 'bg-amber-100 text-amber-800',
+    },
+    {
+      id: 'wires',
+      label: 'مكتب برقيات الوكالات',
+      icon: Rss,
+      badge: null,
+      badgeColor: '',
     },
     {
       id: 'breaking',

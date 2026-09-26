@@ -1,6 +1,7 @@
 import type { NewsroomDatabase } from './db';
 import type { CollectionName } from '../shared/collections';
 import { logger } from './logger';
+import { changeBus } from './sync';
 import { removeUpload, uploadIdFromMedia } from './uploads';
 
 export interface RetentionConfig {
@@ -8,6 +9,8 @@ export interface RetentionConfig {
   notificationDays: number;
   logDays: number;
   auditLogDays: number;
+  /** Agency wire items (always bounded). */
+  wireDays?: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,7 +53,11 @@ export function runRetention(db: NewsroomDatabase, dataDir: string, cfg: Retenti
   if (cfg.auditLogDays > 0) {
     purge('auditLogs', db.retentionCandidates('auditLogs', 'updated', cutoff(cfg.auditLogDays), 5000));
   }
+  if (cfg.wireDays && cfg.wireDays > 0) {
+    purge('wires', db.retentionCandidates('wires', 'updated', cutoff(cfg.wireDays), 5000));
+  }
   const history = db.purgeOrphanHistory();
+  if (Object.keys(removed).length) changeBus.emit('rev', db.currentRev());
   if (Object.keys(removed).length || history) logger.info('retention cleanup', { removed, history });
   return { removed, history };
 }

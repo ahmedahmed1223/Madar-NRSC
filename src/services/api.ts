@@ -24,6 +24,7 @@ import {
   SqlQueryResult,
   DbBackupFileInfo,
   ProgramEvaluation,
+  WireItem,
 } from '../types';
 
 import { INITIAL_SETTINGS } from './mockData';
@@ -31,6 +32,23 @@ import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch } from './http';
 import { newId } from '../shared/ids';
+
+export interface WireFeedStatus {
+  sourceId: string;
+  sourceName: string;
+  feedUrl: string;
+  ok: boolean;
+  message: string;
+  added: number;
+  itemCount: number;
+  checkedAt: string;
+}
+
+export interface WireStatusInfo {
+  pollMinutes: number;
+  retentionDays: number;
+  feeds: WireFeedStatus[];
+}
 import { localDateString } from '../shared/dates';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
@@ -309,6 +327,7 @@ export class ApiService {
       mainImageUrl: data.mainImageUrl || '',
       videoUrl: data.videoUrl,
       storyId: data.storyId,
+      wireId: data.wireId,
       sourceId: data.sourceId || '',
       sourceName: data.sourceName || '',
       categoryId: data.categoryId || '',
@@ -1174,6 +1193,8 @@ export class ApiService {
       reliabilityScore: src.reliabilityScore || 4,
       contactInfo: src.contactInfo || '',
       notes: src.notes || '',
+      feedUrl: src.feedUrl?.trim() || undefined,
+      feedEnabled: !!src.feedEnabled && !!src.feedUrl?.trim(),
     };
     all.push(newSrc);
     setStored(STORAGE_KEYS.SOURCES, all);
@@ -1194,6 +1215,28 @@ export class ApiService {
 
   static deleteNewsSource(id: string): void {
     this.deleteSource(id);
+  }
+
+  // --- AGENCY WIRES ---
+  static getWires(): WireItem[] {
+    return getStored<WireItem[]>(COLLECTIONS.wires.storageKey, []);
+  }
+
+  static async getWireStatus(): Promise<WireStatusInfo> {
+    const res = await apiFetch<{ data: WireStatusInfo }>('/api/v1/wires/status');
+    return res.data;
+  }
+
+  /** Polls every enabled feed now; new items arrive through the normal change feed. */
+  static async refreshWires(): Promise<WireFeedStatus[]> {
+    const res = await apiFetch<{ data: { feeds: WireFeedStatus[] } }>('/api/v1/wires/refresh', { method: 'POST', json: {} });
+    await dataStore.pull();
+    return res.data.feeds;
+  }
+
+  static async testFeed(url: string): Promise<{ title: string; itemCount: number; sample: string[] }> {
+    const res = await apiFetch<{ data: { title: string; itemCount: number; sample: string[] } }>('/api/v1/wires/test', { method: 'POST', json: { url } });
+    return res.data;
   }
 
   static getProgramTypes(): ProgramType[] {
