@@ -1,3 +1,4 @@
+import { FormPage } from '../common/FormPage';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   RundownSegment,
@@ -155,7 +156,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   ];
 
   return (
-    <Modal
+    <FormPage
       isOpen={isOpen}
       onClose={onClose}
       title={segment ? 'تعديل فقرة الرانداون' : 'إضافة فقرة جديدة للرانداون'}
@@ -396,6 +397,6 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
           </button>
         </div>
       </form>
-    </Modal>
+    </FormPage>
   );
 };

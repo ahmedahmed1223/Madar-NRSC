@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
 import { formatSecondsToTime } from '../shared/rundown';
@@ -31,7 +32,6 @@ import {
 } from 'lucide-react';
 import { Program, Episode, User, ProgramEvaluation } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { apiService } from '../services/api';
 
@@ -939,7 +939,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
       {/* MODAL: ADD PROGRAM EVALUATION */}
       {isAddEvalModalOpen && (
-        <Modal
+        <FormPage
           isOpen={isAddEvalModalOpen}
           onClose={() => setIsAddEvalModalOpen(false)}
           title={`إضافة تقييم تحريري: ${program.name}`}
@@ -1124,7 +1124,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               </button>
             </div>
           </form>
-        </Modal>
+        </FormPage>
       )}
     </div>
   );

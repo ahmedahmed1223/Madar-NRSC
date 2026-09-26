@@ -622,7 +622,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           />
 
           {/* Dynamic Page Views */}
-          <main className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
+          <main id="app-main" className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
             >
@@ -858,6 +858,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'tests' && <TestingView />}
             </Suspense>
           </main>
+          <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-24 w-full empty:hidden" />
         </div>
       </div>
 

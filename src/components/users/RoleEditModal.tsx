@@ -1,5 +1,5 @@
+import { FormPage } from '../common/FormPage';
 import React, { useState, useEffect } from 'react';
-import { Modal } from '../common/Modal';
 import {
   RoleDefinition,
   ALL_PERMISSIONS,
@@ -119,7 +119,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       : ALL_PERMISSIONS.filter((p) => p.category === activeCategory);
 
   return (
-    <Modal
+    <FormPage
       isOpen={isOpen}
       onClose={onClose}
       title={roleToEdit ? `تعديل صلاحيات الدور: ${roleToEdit.nameAr}` : 'إنشاء وتخصيص دور وصلاحيات جديدة'}
@@ -356,6 +356,6 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
           </button>
         </div>
       </form>
-    </Modal>
+    </FormPage>
   );
 };

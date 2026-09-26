@@ -5,7 +5,9 @@ const COLORS = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amber-600'
 /** First letters of the first two words (skips titles such as «د.» and «م.»). */
 export function initialsOf(name?: string): string {
   const words = (name || '').replace(/^(د|م|أ|ا)\.\s*/u, '').trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, 2).map((w) => [...w][0]).join(' ') || '؟';
+  // Skip the Arabic definite article so «المنصوري» gives «م», not «ا».
+  const letter = (w: string) => [...(w.length > 3 && w.startsWith('ال') ? w.slice(2) : w)][0];
+  return words.slice(0, 2).map(letter).join(' ') || '؟';
 }
 
 function colorFor(name?: string) {

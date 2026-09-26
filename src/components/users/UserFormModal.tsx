@@ -1,6 +1,6 @@
+import { FormPage } from '../common/FormPage';
 import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
-import { Modal } from '../common/Modal';
 import { User, UserRole, SecurityClearance, ShiftType } from '../../types';
 import { RbacService, RoleDefinition } from '../../services/rbacService';
 import {
@@ -141,7 +141,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   };
 
   return (
-    <Modal
+    <FormPage
       isOpen={isOpen}
       onClose={onClose}
       title={userToEdit ? 'تعديل بيانات المستخدم والصلاحيات' : 'إضافة مستخدم جديد لطاقم الأخبار'}
@@ -184,6 +184,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   setFullName(e.target.value);
                   if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: '' }));
                 }}
+                data-autofocus
                 placeholder="مثال: أحمد المنصوري"
                 className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none ${
                   errors.fullName ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
@@ -446,6 +447,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </button>
         </div>
       </form>
-    </Modal>
+    </FormPage>
   );
 };

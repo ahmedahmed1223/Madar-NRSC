@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { studioConflictsFor } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
@@ -400,7 +401,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       </div>
 
       {/* Add Episode Modal */}
-      <Modal
+      <FormPage
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title="إعداد وتجهيز حلقة جديدة"
@@ -575,7 +576,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
     </div>
   );
 };

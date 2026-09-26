@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
@@ -280,7 +281,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       </div>
 
       {/* Add/Edit Modal */}
-      <Modal
+      <FormPage
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingGuest ? 'تعديل بيانات الضيف' : 'إضافة ضيف جديد للأرشيف'}
@@ -491,7 +492,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
     </div>
   );
 };

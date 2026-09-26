@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useMemo } from 'react';
 import {
@@ -670,7 +671,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* MODAL: EDIT CATEGORY */}
       {editingCategory && (
-        <Modal
+        <FormPage
           isOpen={true}
           onClose={() => setEditingCategory(null)}
           title={`تعديل القسم الصحفي: ${editingCategory.nameAr}`}
@@ -819,7 +820,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
           </form>
-        </Modal>
+        </FormPage>
       )}
 
       {/* CONFIRM DELETE CATEGORY DIALOG */}

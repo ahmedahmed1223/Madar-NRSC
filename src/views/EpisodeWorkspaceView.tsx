@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import { newId } from '../shared/ids';
@@ -728,7 +729,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       )}
 
       {/* Add / Edit Question Modal */}
-      <Modal
+      <FormPage
         isOpen={isQuestionModalOpen}
         onClose={() => setIsQuestionModalOpen(false)}
         title={editingQuestion ? 'تعديل السؤال' : 'إضافة سؤال ومحور حوار'}
@@ -868,10 +869,10 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
 
       {/* Link Guest Modal */}
-      <Modal
+      <FormPage
         isOpen={isGuestModalOpen}
         onClose={() => setIsGuestModalOpen(false)}
         title="ربط ضيف من الأرشيف بالحلقة"
@@ -985,7 +986,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
     </div>
   );
 };

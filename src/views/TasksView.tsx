@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
@@ -397,7 +398,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       )}
 
       {/* Task Add / Edit Modal */}
-      <Modal
+      <FormPage
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingTask ? 'تعديل المهمة التحريرية' : 'إسناد وتكليف بمهمة صحفية'}
@@ -555,7 +556,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
     </div>
   );
 };

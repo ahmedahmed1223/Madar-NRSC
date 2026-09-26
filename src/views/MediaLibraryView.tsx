@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
@@ -401,7 +402,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       </div>
 
       {/* Upload Modal */}
-      <Modal
+      <FormPage
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         title="رفع وتسجيل مادة وسائط جديدة"
@@ -624,7 +625,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
 
       {/* Preview Modal */}
       {previewAsset && (

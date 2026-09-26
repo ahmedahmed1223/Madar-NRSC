@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
 import {
@@ -355,7 +356,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       </div>
 
       {/* Program Add / Edit Modal */}
-      <Modal
+      <FormPage
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingProgram ? 'تعديل بيانات البرنامج' : 'إضافة برنامج تلفزيوني جديد'}
@@ -594,7 +595,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
     </div>
   );
 };

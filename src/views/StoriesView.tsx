@@ -1,3 +1,4 @@
+import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
@@ -351,7 +352,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
       </div>
 
       {/* Create / Edit Story Modal */}
-      <Modal
+      <FormPage
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingStory ? 'تعديل التغطية والقصة الإخبارية' : 'إنشاء تغطية أو قصة مركزية جديدة'}
@@ -525,7 +526,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </button>
           </div>
         </form>
-      </Modal>
+      </FormPage>
 
       {/* Story Detail & Linked News Modal */}
       {detailStory && (
