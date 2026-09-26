@@ -679,6 +679,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveStory={handleSaveStory}
                 onDeleteStory={handleDeleteStory}
                 onSelectNews={(id) => handleEditNewsClick(id)}
+                onSelectEpisode={handleSelectEpisode}
                 onCreateNewsForStory={handleCreateNewsForStory}
               />
             )}

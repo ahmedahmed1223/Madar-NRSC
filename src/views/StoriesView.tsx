@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { Story, NewsItem, NewsPriority, Category, User } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
+import { CoverageHub } from '../components/stories/CoverageHub';
+import { apiService } from '../services/api';
 
 interface StoriesViewProps {
   stories: Story[];
@@ -34,6 +35,7 @@ interface StoriesViewProps {
   onDeleteStory?: (id: string) => void;
   onSelectNews?: (id: string) => void;
   onCreateNewsForStory?: (storyId: string) => void;
+  onSelectEpisode?: (id: string) => void;
 }
 
 
@@ -57,6 +59,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
   onDeleteStory,
   onSelectNews,
   onCreateNewsForStory,
+  onSelectEpisode,
 }) => {
   const canCreateNews = RbacService.hasPermission(currentUser, 'news.create');
   const canManageStories = canCreateNews || RbacService.hasPermission(currentUser, 'news.edit_any');
@@ -528,109 +531,25 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
         </form>
       </FormPage>
 
-      {/* Story Detail & Linked News Modal */}
       {detailStory && (
-        <Modal
-          isOpen={true}
+        <FormPage
+          isOpen
           onClose={() => setDetailStory(null)}
-          title={`تفاصيل التغطية: ${detailStory.title}`}
-          subtitle="استعراض التقارير والأخبار المرتبطة بهذا الملف الإخباري"
-          maxWidth="2xl"
+          title={`ملف التغطية: ${detailStory.title}`}
+          subtitle="الأخبار والوسائط وطلبات الأقسام والحلقات ونقاش الفريق حول هذه التغطية"
+          maxWidth="6xl"
         >
-          <div className="space-y-4">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
-              <p className="text-slate-700 leading-relaxed">{detailStory.description}</p>
-              <div className="flex flex-wrap items-center gap-4 text-slate-500 pt-2 border-t border-slate-200">
-                <span>التصنيف: <strong>{detailStory.categoryName || 'عام'}</strong></span>
-                <span>الموقع: <strong>{detailStory.locationName || 'غير محدد'}</strong></span>
-                <span>الحالة: <strong>{detailStory.status === 'ACTIVE' ? 'نشطة' : 'مغلقة'}</strong></span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-indigo-600" />
-                المواد الإخبارية المرتبطة بهذه القصة ({newsList.filter((n) => n.storyId === detailStory.id).length})
-              </h4>
-              {onCreateNewsForStory && canCreateNews && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCreateNewsForStory(detailStory.id);
-                    setDetailStory(null);
-                  }}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  إضافة خبر جديد لهذا الملف
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {newsList
-                .filter((n) => n.storyId === detailStory.id)
-                .map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-colors flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {item.sourceName || 'المصدر الداخلي'}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(item.createdAt).toLocaleDateString('ar-EG')}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-slate-800 truncate">{item.title}</p>
-                    </div>
-
-                    {onSelectNews && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSelectNews(item.id);
-                          setDetailStory(null);
-                        }}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg shrink-0"
-                        title="فتح الخبر في المحرر"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-
-              {newsList.filter((n) => n.storyId === detailStory.id).length === 0 && (
-                <div className="py-8 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  لا توجد مواد إخبارية مرتبطة بهذه القصة حالياً.
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenEditModal(detailStory);
-                  setDetailStory(null);
-                }}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl"
-              >
-                تعديل القصة
-              </button>
-              <button
-                type="button"
-                onClick={() => setDetailStory(null)}
-                className="px-4 py-2 text-xs font-bold bg-slate-800 text-white hover:bg-slate-900 rounded-xl"
-              >
-                إغلاق
-              </button>
-            </div>
-          </div>
-        </Modal>
+          <CoverageHub
+            story={detailStory}
+            newsList={newsList}
+            currentUser={(currentUser || apiService.getCurrentUser()) as User}
+            canCreateNews={canCreateNews}
+            onOpenNews={onSelectNews ? (id) => { setDetailStory(null); onSelectNews(id); } : undefined}
+            onCreateNews={onCreateNewsForStory ? () => { const id = detailStory.id; setDetailStory(null); onCreateNewsForStory(id); } : undefined}
+            onOpenEpisode={onSelectEpisode ? (id) => { setDetailStory(null); onSelectEpisode(id); } : undefined}
+            onEdit={() => { handleOpenEditModal(detailStory); setDetailStory(null); }}
+          />
+        </FormPage>
       )}
     </div>
   );

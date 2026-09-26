@@ -70,6 +70,7 @@ import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
+import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -1040,6 +1041,34 @@ export class ApiService {
       })
     );
     return usage;
+  }
+
+  // --- TEAM COMMENTS ---
+  static getComments(target?: Pick<CommentTarget, 'kind' | 'id'>): TeamComment[] {
+    const all = getStored<TeamComment[]>(COLLECTIONS.comments.storageKey, []).filter((c: any) => !c.deletedAt);
+    const list = target ? all.filter((c) => c.target.kind === target.kind && c.target.id === target.id) : all;
+    return [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  static addComment(target: CommentTarget, text: string, mentions: string[]): TeamComment {
+    const me = this.getCurrentUser();
+    const comment: TeamComment = {
+      id: newId('cmt'),
+      target,
+      text: text.trim(),
+      mentions: [...new Set(mentions.filter((id) => id !== me.id))],
+      authorId: me.id,
+      authorName: me.fullName,
+      createdAt: new Date().toISOString(),
+    };
+    const err = commentError(comment);
+    if (err) throw new Error(err);
+    setStored(COLLECTIONS.comments.storageKey, [...getStored<TeamComment[]>(COLLECTIONS.comments.storageKey, []), comment]);
+    return comment;
+  }
+
+  static deleteComment(id: string): void {
+    setStored(COLLECTIONS.comments.storageKey, getStored<TeamComment[]>(COLLECTIONS.comments.storageKey, []).filter((c) => c.id !== id));
   }
 
   // --- ON AIR ---

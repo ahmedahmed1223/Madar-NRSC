@@ -1,3 +1,4 @@
+import { commentError } from '../shared/comments';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, isDepartmentId } from '../shared/departments';
 import { canControlOnAir } from '../shared/onair';
@@ -242,6 +243,14 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  comments: ({ auth, kind, before, after }) => {
+    if (kind === 'delete' || isSoftDelete(before, after)) {
+      return before?.authorId === auth.user.id || auth.can('system.settings') ? null : 'يحذف التعليق كاتبه فقط';
+    }
+    if (kind !== 'create') return 'التعليقات لا تُعدَّل بعد نشرها';
+    if (!auth.can('news.view')) return DENIED;
+    return commentError(after);
+  },
   onAir: ({ auth, kind, after, list }) => {
     if (!canControlOnAir(auth.user, auth.can)) return 'تشغيل وضع الهواء للمخرج والكنترول فقط';
     if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;

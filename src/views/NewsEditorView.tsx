@@ -1,3 +1,4 @@
+import { CommentThread } from '../components/comments/CommentThread';
 import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { apiService } from '../services/api';
@@ -1209,6 +1210,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Team discussion */}
+          {newsItem?.id && (
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+              <CommentThread target={{ kind: 'news', id: newsItem.id, title: newsItem.title }} currentUser={currentUser} />
+            </div>
+          )}
 
           {/* Workflow Timeline */}
           {newsItem && newsItem.workflowLogs && newsItem.workflowLogs.length > 0 && (

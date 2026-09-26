@@ -1,3 +1,4 @@
+import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { episodeReadiness } from '../shared/production';
 import { departmentName } from '../shared/departments';
@@ -30,6 +31,7 @@ import {
   Copy,
   Check,
   Lock,
+  MessageSquareText,
 } from 'lucide-react';
 import {
   Episode,
@@ -66,7 +68,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   onSaveEpisode,
   onBack,
 }) => {
-  const [activeTab, setActiveTab] = useState<'RUNDOWN' | 'QUESTIONS' | 'GUESTS' | 'SCRIPT'>('RUNDOWN');
+  const [activeTab, setActiveTab] = useState<'RUNDOWN' | 'QUESTIONS' | 'GUESTS' | 'SCRIPT' | 'NOTES'>('RUNDOWN');
 
   // Question modal state
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState(false);
@@ -462,7 +464,24 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           <FileText className="w-4 h-4" />
           <span>سكريبت المقدمة والأوتوكيو</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('NOTES')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+            activeTab === 'NOTES' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <MessageSquareText className="w-4 h-4" />
+          <span>ملاحظات الفريق ({apiService.getComments({ kind: 'episode', id: episode.id }).length})</span>
+        </button>
       </div>
+
+      {activeTab === 'NOTES' && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+          <CommentThread target={{ kind: 'episode', id: episode.id, title: `${episode.programName} — ${episode.title}` }} currentUser={currentUser} />
+        </div>
+      )}
 
       {/* TAB 1: RUNDOWN */}
       {activeTab === 'RUNDOWN' && (

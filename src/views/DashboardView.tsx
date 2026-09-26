@@ -22,6 +22,7 @@ import { Badge } from '../components/common/Badge';
 import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, Category } from '../types';
 import { AppView } from '../components/layout/Sidebar';
 
+import { MyWorkPanel } from '../components/dashboard/MyWorkPanel';
 interface DashboardViewProps {
   newsList: NewsItem[];
   breakingNews?: BreakingNews[];
@@ -70,7 +71,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const publishedNewsCount = (newsList || []).filter((n) => n.status === 'PUBLISHED').length;
   const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
-  const todayEpisodes = (episodes || []).filter((e) => ['READY_FOR_BROADCAST', 'IN_PREPARATION', 'ON_AIR'].includes(e.status));
+  const todayKey = new Date().toLocaleDateString('en-CA');
+  const todayEpisodes = (episodes || []).filter(
+    (e) => e.status === 'ON_AIR' || ((e.broadcastDate || '').slice(0, 10) === todayKey && !['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status))
+  );
   const openTasks = (tasks || []).filter((t) => !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status));
 
   // CRITICAL Priority News
@@ -145,6 +149,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </div>
       </div>
+
+      <MyWorkPanel
+        currentUser={currentUser}
+        newsList={newsList}
+        episodes={episodes}
+        tasks={tasks}
+        onOpenNews={onSelectNews}
+        onOpenEpisode={onSelectEpisode}
+        onNavigate={(v) => onNavigate(v as AppView)}
+      />
 
       {/* Critical/Breaking News Banner */}
       {criticalNews.length > 0 && (
@@ -232,7 +246,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-xs text-purple-600 font-semibold">{programs.length} برامج</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
-            <span>{todayEpisodes.length} حلقات مجهزة للبث اليوم</span>
+            <span>{todayEpisodes.length} حلقات مجدولة للبث اليوم</span>
           </div>
         </div>
 

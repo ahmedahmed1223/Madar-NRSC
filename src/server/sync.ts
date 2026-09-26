@@ -25,6 +25,7 @@ import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/product
 import { departmentIdOf } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
+import { commentLink, TeamComment } from '../shared/comments';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -202,6 +203,28 @@ export class SyncService {
     return row.deleted ? true : canRead(auth, row.c, row.d);
   }
 
+  /** Mentioned colleagues, and the story's author, hear about a new comment. */
+  private notifyComment(c: TeamComment, auth: AuthContext) {
+    const recipients = new Map<string, string>();
+    c.mentions.forEach((id) => recipients.set(id, `${c.authorName} أشار إليك`));
+    if (c.target.kind === 'news') {
+      const authorId = this.db.getRow('news', c.target.id)?.d?.authorId;
+      if (authorId && !recipients.has(authorId)) recipients.set(authorId, `تعليق جديد من ${c.authorName} على خبرك`);
+    }
+    recipients.delete(auth.user.id);
+    const now = new Date().toISOString();
+    for (const [userId, title] of recipients) {
+      const id = newId('notif');
+      this.db.writeRow(
+        'notifications',
+        id,
+        { id, userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, type: 'SYSTEM', linkUrl: commentLink(c.target), isRead: false, createdAt: now },
+        this.db.positionBounds('notifications').min - 1,
+        null
+      );
+    }
+  }
+
   /** Tells the right people about a request: the target department's on-duty staff, or the requester. */
   private notifyRequest(before: any, after: DeptRequest, auth: AuthContext) {
     const type = requestTypeOf(after.type);
@@ -359,6 +382,17 @@ export class SyncService {
         if (collection === 'requests' && !after.deletedAt) after = stampRequest(before, after, auth);
         if (collection === 'onAir') after = stampOnAir(before, after, auth, this.db.getRow('episodes', String(after.episodeId))?.d);
         if (collection === 'cues') after = stampCue(before, after, auth);
+        if (collection === 'comments' && !before && !after.deletedAt) {
+          const known = new Set(this.listData('users').filter((u: any) => u.isActive !== false).map((u: any) => u.id));
+          after = {
+            ...after,
+            text: String(after.text).trim(),
+            mentions: [...new Set<string>((after.mentions || []).filter((id: string) => known.has(id) && id !== auth.user.id))],
+            authorId: auth.user.id,
+            authorName: auth.user.fullName,
+            createdAt: new Date().toISOString(),
+          };
+        }
         if (collection === 'roster' && !after.deletedAt) {
           // The person on duty must be a real, active colleague; their name comes from the server.
           const member = this.db.getRow('users', String(after.userId))?.d;
@@ -400,6 +434,7 @@ export class SyncService {
         }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+        if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'onAir') {
           // The episode follows the live state: on air while live, broadcast once ended.
           const ep = this.db.getRow('episodes', String(after.episodeId));
