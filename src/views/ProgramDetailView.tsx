@@ -983,10 +983,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
                   <div className="flex justify-between">
-                    <label className="text-slate-700 font-medium">جودة الإعداد والبحث الصحفي:</label>
+                    <label htmlFor="program-detail-view-field-1" className="text-slate-700 font-medium">جودة الإعداد والبحث الصحفي:</label>
                     <strong className="font-mono">{editorialQuality}/5</strong>
                   </div>
-                  <input
+                  <input id="program-detail-view-field-1"
                     type="range"
                     min="1"
                     max="5"
@@ -999,10 +999,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                 <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
                   <div className="flex justify-between">
-                    <label className="text-slate-700 font-medium">الانضباط الزمني ومخطط الرانداون:</label>
+                    <label htmlFor="program-detail-view-field-2" className="text-slate-700 font-medium">الانضباط الزمني ومخطط الرانداون:</label>
                     <strong className="font-mono">{timeCommitment}/5</strong>
                   </div>
-                  <input
+                  <input id="program-detail-view-field-2"
                     type="range"
                     min="1"
                     max="5"
@@ -1015,10 +1015,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                 <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
                   <div className="flex justify-between">
-                    <label className="text-slate-700 font-medium">مستوى وخبرة الضيوف:</label>
+                    <label htmlFor="program-detail-view-field-3" className="text-slate-700 font-medium">مستوى وخبرة الضيوف:</label>
                     <strong className="font-mono">{guestRelevance}/5</strong>
                   </div>
-                  <input
+                  <input id="program-detail-view-field-3"
                     type="range"
                     min="1"
                     max="5"
@@ -1031,10 +1031,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                 <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
                   <div className="flex justify-between">
-                    <label className="text-slate-700 font-medium">الإخراج البصري والغرافيك:</label>
+                    <label htmlFor="program-detail-view-field-4" className="text-slate-700 font-medium">الإخراج البصري والغرافيك:</label>
                     <strong className="font-mono">{visualDirection}/5</strong>
                   </div>
-                  <input
+                  <input id="program-detail-view-field-4"
                     type="range"
                     min="1"
                     max="5"
@@ -1047,10 +1047,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                 <div className="p-3 bg-slate-50 rounded-xl space-y-1.5 sm:col-span-2">
                   <div className="flex justify-between">
-                    <label className="text-slate-700 font-medium">تفاعل الجمهور وريتنج المشاهدة:</label>
+                    <label htmlFor="program-detail-view-field-5" className="text-slate-700 font-medium">تفاعل الجمهور وريتنج المشاهدة:</label>
                     <strong className="font-mono">{viewerEngagement}/5</strong>
                   </div>
-                  <input
+                  <input id="program-detail-view-field-5"
                     type="range"
                     min="1"
                     max="5"
@@ -1066,10 +1066,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {/* Strengths & Improvements */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label htmlFor="program-detail-view-field-6" className="block text-xs font-bold text-slate-700 mb-1">
                   أبرز نقاط القوة والتميز (سطر لكل نقطة):
                 </label>
-                <textarea
+                <textarea id="program-detail-view-field-6"
                   rows={3}
                   value={evalStrengths}
                   onChange={(e) => setEvalStrengths(e.target.value)}
@@ -1079,10 +1079,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label htmlFor="program-detail-view-field-7" className="block text-xs font-bold text-slate-700 mb-1">
                   فرص وتوصيات التحسين (سطر لكل نقطة):
                 </label>
-                <textarea
+                <textarea id="program-detail-view-field-7"
                   rows={3}
                   value={evalImprovements}
                   onChange={(e) => setEvalImprovements(e.target.value)}
@@ -1094,10 +1094,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
             {/* General Notes */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label htmlFor="program-detail-view-field-8" className="block text-xs font-bold text-slate-700 mb-1">
                 التقرير والتقييم التحريري العام:
               </label>
-              <textarea
+              <textarea id="program-detail-view-field-8"
                 rows={3}
                 value={evalNotes}
                 onChange={(e) => setEvalNotes(e.target.value)}

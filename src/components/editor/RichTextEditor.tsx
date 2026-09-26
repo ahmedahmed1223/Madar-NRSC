@@ -406,8 +406,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">عنوان الرابط (URL)</label>
-            <input
+            <label htmlFor="rich-text-editor-field-1" className="block text-xs font-semibold text-slate-700 mb-1">عنوان الرابط (URL)</label>
+            <input id="rich-text-editor-field-1"
               type="url"
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
@@ -417,8 +417,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">نص الرابط (اختياري)</label>
-            <input
+            <label htmlFor="rich-text-editor-field-2" className="block text-xs font-semibold text-slate-700 mb-1">نص الرابط (اختياري)</label>
+            <input id="rich-text-editor-field-2"
               type="text"
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
@@ -454,10 +454,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
+            <label htmlFor="rich-text-editor-field-3" className="block text-xs font-semibold text-slate-700 mb-1">
               رابط {mediaType === 'IMAGE' ? 'الصورة' : 'الفيديو'} (URL)
             </label>
-            <input
+            <input id="rich-text-editor-field-3"
               type="url"
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
@@ -467,8 +467,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">وصف أو تعليق توضيحي (Caption)</label>
-            <input
+            <label htmlFor="rich-text-editor-field-4" className="block text-xs font-semibold text-slate-700 mb-1">وصف أو تعليق توضيحي (Caption)</label>
+            <input id="rich-text-editor-field-4"
               type="text"
               value={mediaCaption}
               onChange={(e) => setMediaCaption(e.target.value)}

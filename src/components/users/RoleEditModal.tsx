@@ -129,10 +129,10 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
         {/* Role Identity Details */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="role-edit-modal-field-1" className="block text-xs font-bold text-slate-700 mb-1.5">
               اسم الدور (بالعربية) <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="role-edit-modal-field-1"
               type="text"
               value={nameAr}
               onChange={(e) => {
@@ -148,10 +148,10 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="role-edit-modal-field-2" className="block text-xs font-bold text-slate-700 mb-1.5">
               الاسم بالإنجليزية (Role Title)
             </label>
-            <input
+            <input id="role-edit-modal-field-2"
               type="text"
               value={nameEn}
               onChange={(e) => setNameEn(e.target.value)}
@@ -162,10 +162,10 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="role-edit-modal-field-3" className="block text-xs font-bold text-slate-700 mb-1.5">
               الرمز التعريفي البرمجي (Role Code) <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="role-edit-modal-field-3"
               type="text"
               value={roleCode}
               disabled={roleToEdit?.isSystemRole}
@@ -177,10 +177,10 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="role-edit-modal-field-4" className="block text-xs font-bold text-slate-700 mb-1.5">
               وصف الدور ونطاق المسؤولية التحريرية
             </label>
-            <input
+            <input id="role-edit-modal-field-4"
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}

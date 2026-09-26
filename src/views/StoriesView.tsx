@@ -361,7 +361,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">عنوان القصة / الملف التحريري *</label>
+              <label htmlFor="stories-view-field-1" className="block text-xs font-bold text-slate-700">عنوان القصة / الملف التحريري *</label>
               {title && (
                 <button
                   type="button"
@@ -372,7 +372,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 </button>
               )}
             </div>
-            <input
+            <input id="stories-view-field-1"
               type="text"
               required
               value={title}
@@ -384,8 +384,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">التصنيف الإخباري</label>
-              <select
+              <label htmlFor="stories-view-field-2" className="block text-xs font-bold text-slate-700 mb-1">التصنيف الإخباري</label>
+              <select id="stories-view-field-2"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
@@ -399,8 +399,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الأولوية التحريرية</label>
-              <select
+              <label htmlFor="stories-view-field-3" className="block text-xs font-bold text-slate-700 mb-1">الأولوية التحريرية</label>
+              <select id="stories-view-field-3"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
@@ -413,8 +413,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">حالة التغطية</label>
-              <select
+              <label htmlFor="stories-view-field-4" className="block text-xs font-bold text-slate-700 mb-1">حالة التغطية</label>
+              <select id="stories-view-field-4"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as 'ACTIVE' | 'RESOLVED' | 'ARCHIVED')}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
@@ -429,7 +429,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">الموقع / المدينة الرئيسية</label>
+                <label htmlFor="stories-view-field-5" className="block text-xs font-bold text-slate-700">الموقع / المدينة الرئيسية</label>
                 {locationName && (
                   <button
                     type="button"
@@ -440,7 +440,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   </button>
                 )}
               </div>
-              <input
+              <input id="stories-view-field-5"
                 type="text"
                 value={locationName}
                 onChange={(e) => setLocationName(e.target.value)}
@@ -463,7 +463,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">الكلمات الدلالية (مفصولة بفواصل)</label>
+                <label htmlFor="stories-view-field-6" className="block text-xs font-bold text-slate-700">الكلمات الدلالية (مفصولة بفواصل)</label>
                 {keywordsInput && (
                   <button
                     type="button"
@@ -474,7 +474,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   </button>
                 )}
               </div>
-              <input
+              <input id="stories-view-field-6"
                 type="text"
                 value={keywordsInput}
                 onChange={(e) => setKeywordsInput(e.target.value)}
@@ -486,7 +486,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700">شرح وتفاصيل التغطية</label>
+              <label htmlFor="stories-view-field-7" className="block text-xs font-bold text-slate-700">شرح وتفاصيل التغطية</label>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-slate-400">{description.length} حرف</span>
                 {description && (
@@ -500,7 +500,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 )}
               </div>
             </div>
-            <textarea
+            <textarea id="stories-view-field-7"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}

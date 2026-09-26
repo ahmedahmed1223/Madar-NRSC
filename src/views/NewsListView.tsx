@@ -899,7 +899,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
+            <label htmlFor="news-status-comment-textarea" className="block text-xs font-bold text-slate-700 mb-1">
               الحالة المستهدفة:
             </label>
             <div className="p-2.5 bg-blue-50 text-blue-900 rounded-lg text-xs font-bold">

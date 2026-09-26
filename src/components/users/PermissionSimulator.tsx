@@ -39,10 +39,10 @@ export const PermissionSimulator: React.FC<PermissionSimulatorProps> = ({ users,
       {/* Simulator Inputs */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          <label htmlFor="permission-simulator-field-1" className="block text-xs font-bold text-slate-700 mb-1.5">
             اختر المستخدم للاختبار:
           </label>
-          <select
+          <select id="permission-simulator-field-1"
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
             className="w-full text-xs px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold"
@@ -56,10 +56,10 @@ export const PermissionSimulator: React.FC<PermissionSimulatorProps> = ({ users,
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          <label htmlFor="permission-simulator-field-2" className="block text-xs font-bold text-slate-700 mb-1.5">
             اختر الإجراء أو الصلاحية المراد فحصها:
           </label>
-          <select
+          <select id="permission-simulator-field-2"
             value={selectedPermissionCode}
             onChange={(e) => setSelectedPermissionCode(e.target.value)}
             className="w-full text-xs px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"

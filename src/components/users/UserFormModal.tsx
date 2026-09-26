@@ -150,14 +150,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-5 text-right font-sans" dir="rtl">
         {/* Avatar Preset Selector */}
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <label className="block text-xs font-bold text-slate-700 mb-2">
+          <label htmlFor="user-form-modal-field-1" className="block text-xs font-bold text-slate-700 mb-2">
             الصورة الشخصية والرمز التعريفي:
           </label>
           <div className="flex items-center gap-4">
             <Avatar src={avatarUrl} name={fullName} className="w-16 h-16 rounded-2xl border-2 border-blue-600 shadow-md shrink-0" />
             <div className="flex-1">
               <div className="mt-2">
-                <input
+                <input id="user-form-modal-field-1"
                   type="text"
                   value={avatarUrl}
                   onChange={(e) => setAvatarUrl(e.target.value)}
@@ -172,12 +172,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {/* Basic Info Fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-2" className="block text-xs font-bold text-slate-700 mb-1.5">
               الاسم الكامل (بالعربية) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <UserIcon className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <input
+              <input id="user-form-modal-field-2"
                 type="text"
                 value={fullName}
                 onChange={(e) => {
@@ -194,10 +194,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-3" className="block text-xs font-bold text-slate-700 mb-1.5">
               الاسم بالإنجليزية (English Full Name)
             </label>
-            <input
+            <input id="user-form-modal-field-3"
               type="text"
               value={fullNameEn}
               onChange={(e) => setFullNameEn(e.target.value)}
@@ -208,12 +208,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-4" className="block text-xs font-bold text-slate-700 mb-1.5">
               البريد الإلكتروني المهني <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <input
+              <input id="user-form-modal-field-4"
                 type="email"
                 value={email}
                 onChange={(e) => {
@@ -232,12 +232,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
           {!userToEdit && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label htmlFor="user-form-modal-field-5" className="block text-xs font-bold text-slate-700 mb-1.5">
                 كلمة المرور الأولية <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-                <input
+                <input id="user-form-modal-field-5"
                   type="password"
                   autoComplete="new-password"
                   value={initialPassword}
@@ -257,12 +257,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-6" className="block text-xs font-bold text-slate-700 mb-1.5">
               رقم الهاتف المباشر / الاتصال
             </label>
             <div className="relative">
               <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <input
+              <input id="user-form-modal-field-6"
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -277,12 +277,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {/* Professional & Security Parameters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-7" className="block text-xs font-bold text-slate-700 mb-1.5">
               الدور والصلاحية (Role) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <Shield className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <select
+              <select id="user-form-modal-field-7"
                 value={role}
                 onChange={(e) => setRole(e.target.value as UserRole)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold text-slate-800"
@@ -297,12 +297,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-8" className="block text-xs font-bold text-slate-700 mb-1.5">
               المسمى الوظيفي (Job Title) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <Briefcase className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <input
+              <input id="user-form-modal-field-8"
                 type="text"
                 value={jobTitle}
                 onChange={(e) => {
@@ -319,12 +319,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-9" className="block text-xs font-bold text-slate-700 mb-1.5">
               القسم التحريري / الإداري
             </label>
             <div className="relative">
               <Building className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <select
+              <select id="user-form-modal-field-9"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
@@ -342,10 +342,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {/* Broadcast Shifts, Clearance & Security Flags */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-10" className="block text-xs font-bold text-slate-700 mb-1.5">
               التصنيف الأمني للمواد (Security Clearance)
             </label>
-            <select
+            <select id="user-form-modal-field-10"
               value={securityClearance}
               onChange={(e) => setSecurityClearance(e.target.value as SecurityClearance)}
               className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold"
@@ -358,12 +358,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-11" className="block text-xs font-bold text-slate-700 mb-1.5">
               وردية العمل التلفزيونية (Shift)
             </label>
             <div className="relative">
               <Clock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
-              <select
+              <select id="user-form-modal-field-11"
                 value={shift}
                 onChange={(e) => setShift(e.target.value as ShiftType)}
                 className="w-full text-xs pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
@@ -377,10 +377,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="user-form-modal-field-12" className="block text-xs font-bold text-slate-700 mb-1.5">
               الرقم الوظيفي (Staff ID)
             </label>
-            <input
+            <input id="user-form-modal-field-12"
               type="text"
               value={staffId}
               onChange={(e) => setStaffId(e.target.value)}
@@ -392,10 +392,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
         {/* Bio / Description */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          <label htmlFor="user-form-modal-field-13" className="block text-xs font-bold text-slate-700 mb-1.5">
             نبذة مهنية وسجل التخصص التحريري (Bio & Specialization)
           </label>
-          <textarea
+          <textarea id="user-form-modal-field-13"
             rows={2}
             value={bio}
             onChange={(e) => setBio(e.target.value)}

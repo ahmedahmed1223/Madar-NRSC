@@ -493,6 +493,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     if (fresh) setBaseUpdatedAt(fresh.updatedAt);
     setShowCommentModal(false);
     setStatusComment('');
+    // The story now belongs to someone else (writer or reviewers): leave it so the edit lock is released.
+    if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
   };
 
   const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
@@ -706,7 +708,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       </div>
 
       {/* Broadcast Timing & Production Tools Banner */}
-      <div className="bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      <div className="theme-fixed bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-blue-500/20 text-blue-400 rounded-lg">
@@ -964,7 +966,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           {/* Internal Notes with Quick Directives */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <label htmlFor="news-editor-view-field-1" className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Info className="w-4 h-4 text-blue-500" />
                 ملاحظات داخلية لغرفة الأخبار وهيئة التحرير والمخرج
               </label>
@@ -978,7 +980,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </button>
               )}
             </div>
-            <textarea
+            <textarea id="news-editor-view-field-1"
               rows={2}
               value={internalNotes}
               onChange={(e) => setInternalNotes(e.target.value)}
