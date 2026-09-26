@@ -23,7 +23,6 @@ import {
   DbStats,
   SqlQueryResult,
   DbBackupFileInfo,
-  ProgramEvaluation,
   WireItem,
 } from '../types';
 
@@ -67,6 +66,7 @@ export interface WireStatusInfo {
   feeds: WireFeedStatus[];
 }
 import { localDateString } from '../shared/dates';
+import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -98,7 +98,6 @@ const STORAGE_KEYS = {
   STORIES: COLLECTIONS.stories.storageKey,
   BREAKING: COLLECTIONS.breaking.storageKey,
   PROGRAMS: COLLECTIONS.programs.storageKey,
-  PROGRAM_EVALUATIONS: COLLECTIONS.programEvaluations.storageKey,
   EPISODES: COLLECTIONS.episodes.storageKey,
   GUESTS: COLLECTIONS.guests.storageKey,
   TASKS: COLLECTIONS.tasks.storageKey,
@@ -221,10 +220,9 @@ export class ApiService {
       customRoleId: user.customRoleId,
       avatarUrl: user.avatarUrl || '/avatar.svg',
       jobTitle: user.jobTitle || 'صحفي',
-      department: user.department || 'غرفة الأخبار',
+      departmentId: user.departmentId || 'newsroom',
+      department: user.department || 'غرفة التحرير',
       staffId: user.staffId || '',
-      securityClearance: user.securityClearance || 'CONFIDENTIAL',
-      shift: user.shift || 'MORNING',
       bio: user.bio || '',
       twoFactorEnabled: user.twoFactorEnabled ?? false,
       lastLogin: new Date().toISOString(),
@@ -587,121 +585,6 @@ export class ApiService {
     }
   }
 
-  // --- PROGRAM EVALUATIONS ---
-  static getProgramEvaluations(programId: string): ProgramEvaluation[] {
-    const all = getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, []);
-    return all.filter((e) => e.programId === programId).sort((a, b) => new Date(b.evaluatedAt).getTime() - new Date(a.evaluatedAt).getTime());
-  }
-
-  static getAllProgramEvaluations(): ProgramEvaluation[] {
-    return getStored<ProgramEvaluation[]>(STORAGE_KEYS.PROGRAM_EVALUATIONS, []);
-  }
-
-  static addProgramEvaluation(evalData: Partial<ProgramEvaluation>, user?: User): ProgramEvaluation {
-    const all = this.getAllProgramEvaluations();
-    const currentUser = user || this.getCurrentUser();
-    const now = new Date().toISOString();
-
-    const criteria = evalData.criteria || {
-      editorialQuality: 5,
-      timeCommitment: 5,
-      guestRelevance: 5,
-      visualDirection: 5,
-      viewerEngagement: 5,
-    };
-
-    // Calculate overall rating from criteria if not explicitly set
-    const values = Object.values(criteria);
-    const calculatedAvg = values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 5;
-    const overallRating = evalData.overallRating || calculatedAvg;
-
-    const newEval: ProgramEvaluation = {
-      id: newId('eval'),
-      programId: evalData.programId || '',
-      episodeId: evalData.episodeId,
-      evaluatorId: currentUser.id,
-      evaluatorName: currentUser.fullName,
-      evaluatorRole: currentUser.jobTitle || 'عضو هيئة التحرير والتقييم',
-      overallRating,
-      criteria,
-      strengths: evalData.strengths || [],
-      improvements: evalData.improvements || [],
-      notes: evalData.notes || '',
-      evaluatedAt: now,
-    };
-
-    all.unshift(newEval);
-    setStored(STORAGE_KEYS.PROGRAM_EVALUATIONS, all);
-
-    const prog = this.getProgramById(newEval.programId);
-    this.logActivity(
-      'تقييم برنامج',
-      'PROGRAM',
-      newEval.programId,
-      prog ? prog.name : 'برنامج',
-      `أضاف ${currentUser.fullName} تقييماً تحريرياً جديداً للبرنامج (${overallRating}/5)`
-    );
-
-    return newEval;
-  }
-
-  static getProgramRatingSummary(programId: string): {
-    average: number;
-    count: number;
-    criteriaAverages: {
-      editorialQuality: number;
-      timeCommitment: number;
-      guestRelevance: number;
-      visualDirection: number;
-      viewerEngagement: number;
-    };
-  } {
-    const evals = this.getProgramEvaluations(programId);
-    if (evals.length === 0) {
-      return {
-        average: 0,
-        count: 0,
-        criteriaAverages: {
-          editorialQuality: 0,
-          timeCommitment: 0,
-          guestRelevance: 0,
-          visualDirection: 0,
-          viewerEngagement: 0,
-        },
-      };
-    }
-
-    const avg = Number((evals.reduce((sum, e) => sum + e.overallRating, 0) / evals.length).toFixed(1));
-
-    const criteriaTotals = {
-      editorialQuality: 0,
-      timeCommitment: 0,
-      guestRelevance: 0,
-      visualDirection: 0,
-      viewerEngagement: 0,
-    };
-
-    evals.forEach((e) => {
-      criteriaTotals.editorialQuality += e.criteria.editorialQuality;
-      criteriaTotals.timeCommitment += e.criteria.timeCommitment;
-      criteriaTotals.guestRelevance += e.criteria.guestRelevance;
-      criteriaTotals.visualDirection += e.criteria.visualDirection;
-      criteriaTotals.viewerEngagement += e.criteria.viewerEngagement;
-    });
-
-    return {
-      average: avg,
-      count: evals.length,
-      criteriaAverages: {
-        editorialQuality: Number((criteriaTotals.editorialQuality / evals.length).toFixed(1)),
-        timeCommitment: Number((criteriaTotals.timeCommitment / evals.length).toFixed(1)),
-        guestRelevance: Number((criteriaTotals.guestRelevance / evals.length).toFixed(1)),
-        visualDirection: Number((criteriaTotals.visualDirection / evals.length).toFixed(1)),
-        viewerEngagement: Number((criteriaTotals.viewerEngagement / evals.length).toFixed(1)),
-      },
-    };
-  }
-
   static getEpisodes(): Episode[] {
     const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
     // Episodes of a deleted program disappear with it (calendar, lists, search).
@@ -878,15 +761,23 @@ export class ApiService {
   // --- GUESTS ---
   static getGuests(): Guest[] {
     const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
-    // Appearances = episodes the guest is linked to.
-    const appearances = new Map<string, number>();
+    // Appearances are derived from the episodes each guest is linked to (newest first).
+    const history = new Map<string, NonNullable<Guest['appearanceHistory']>>();
     this.getEpisodes().forEach((e) =>
       (e.guests || []).forEach((g: any) => {
         const id = g.guestId || g.id;
-        if (id) appearances.set(id, (appearances.get(id) || 0) + 1);
+        if (!id) return;
+        const list = history.get(id) || [];
+        list.push({ episodeId: e.id, episodeTitle: e.title, programName: e.programName, date: e.broadcastDate });
+        history.set(id, list);
       })
     );
-    return items.filter((g) => !g.deletedAt).map((g) => ({ ...g, totalAppearances: appearances.get(g.id) || 0 }));
+    return items
+      .filter((g) => !g.deletedAt)
+      .map((g) => {
+        const appearances = (history.get(g.id) || []).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        return { ...g, appearanceHistory: appearances, totalAppearances: appearances.length, lastAppearanceDate: appearances[0]?.date };
+      });
   }
 
   static saveGuest(guest: Partial<Guest>, user?: User): Guest {
@@ -914,7 +805,6 @@ export class ApiService {
       phone: guest.phone || '',
       email: guest.email || '',
       notes: guest.notes || '',
-      rating: guest.rating || 5,
       totalAppearances: 0,
       createdAt: now,
     };
@@ -935,6 +825,57 @@ export class ApiService {
       const currentUser = user || this.getCurrentUser();
       this.logActivity('حذف ضيف', 'GUEST', id, guestName, `قام ${currentUser.fullName} بحذف الضيف: ${guestName}`);
     }
+  }
+
+  // --- DUTY ROSTER ---
+  static getRoster(): RosterEntry[] {
+    return getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []).filter((e: any) => !e.deletedAt);
+  }
+
+  static addRosterEntry(entry: Omit<RosterEntry, 'id' | 'userName'> & { userName?: string }): RosterEntry {
+    if (!RbacService.hasPermission(this.getCurrentUser(), 'roster.manage')) throw new Error('صلاحياتك لا تسمح بتعديل جدول المناوبات');
+    const user = this.getUsers().find((u) => u.id === entry.userId);
+    const row: RosterEntry = { ...entry, userName: user?.fullName || entry.userName || '', id: rosterEntryId(entry) };
+    const err = rosterEntryError(row);
+    if (err) throw new Error(err);
+    const all = getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []);
+    if (all.some((e) => e.id === row.id)) return row;
+    setStored(COLLECTIONS.roster.storageKey, [...all, row]);
+    return row;
+  }
+
+  static updateRosterEntry(id: string, changes: Partial<Pick<RosterEntry, 'isLead' | 'notes'>>): void {
+    if (!RbacService.hasPermission(this.getCurrentUser(), 'roster.manage')) throw new Error('صلاحياتك لا تسمح بتعديل جدول المناوبات');
+    const all = getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []);
+    setStored(COLLECTIONS.roster.storageKey, all.map((e) => (e.id === id ? { ...e, ...changes } : e)));
+  }
+
+  static removeRosterEntry(id: string): void {
+    if (!RbacService.hasPermission(this.getCurrentUser(), 'roster.manage')) throw new Error('صلاحياتك لا تسمح بتعديل جدول المناوبات');
+    const all = getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []);
+    setStored(COLLECTIONS.roster.storageKey, all.filter((e) => e.id !== id));
+  }
+
+  /** Copies every entry of the 7 days starting `fromWeekStart` one week later (existing entries are kept). */
+  static copyRosterWeek(fromWeekStart: string): number {
+    if (!RbacService.hasPermission(this.getCurrentUser(), 'roster.manage')) throw new Error('صلاحياتك لا تسمح بتعديل جدول المناوبات');
+    const shift = (date: string, days: number) => {
+      const [y, m, d] = date.split('-').map(Number);
+      return localDateString(new Date(y, m - 1, d + days));
+    };
+    const end = shift(fromWeekStart, 7);
+    const all = getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []);
+    const existing = new Set(all.map((e) => e.id));
+    const copies = all
+      .filter((e) => !(e as any).deletedAt && e.date >= fromWeekStart && e.date < end)
+      .map((e) => {
+        const date = shift(e.date, 7);
+        const { createdBy: _c, ...rest } = e;
+        return { ...rest, date, id: rosterEntryId({ ...e, date }) };
+      })
+      .filter((e) => !existing.has(e.id));
+    if (copies.length) setStored(COLLECTIONS.roster.storageKey, [...all, ...copies]);
+    return copies.length;
   }
 
   // --- TASKS ---

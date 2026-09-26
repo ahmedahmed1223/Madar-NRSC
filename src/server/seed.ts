@@ -12,7 +12,6 @@ import {
   INITIAL_MEDIA_FILES,
   INITIAL_NEWS,
   INITIAL_NOTIFICATIONS,
-  INITIAL_PROGRAM_EVALUATIONS,
   INITIAL_PROGRAM_TYPES,
   INITIAL_PROGRAMS,
   INITIAL_SETTINGS,
@@ -23,6 +22,7 @@ import {
 } from '../services/mockData';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
+import { departmentIdOf, departmentName } from '../shared/departments';
 import { generatePassword, hashPassword } from './auth';
 import { logger } from './logger';
 
@@ -40,7 +40,6 @@ export const DEMO_COLLECTIONS: [CollectionName, any[]][] = [
   ['stories', INITIAL_STORIES],
   ['breaking', INITIAL_BREAKING_NEWS],
   ['programs', INITIAL_PROGRAMS],
-  ['programEvaluations', INITIAL_PROGRAM_EVALUATIONS],
   ['episodes', INITIAL_EPISODES],
   ['guests', INITIAL_GUESTS],
   ['tasks', INITIAL_TASKS],
@@ -83,6 +82,61 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   await ensureAdministrator(db, config);
   reconcileTwoFactorFlags(db);
   migrateRoleDefaults(db);
+  migrateToDepartments(db);
+  grantNewPermissions(db);
+}
+
+/** Permissions added after roles were first stored: granted once to the system roles that need them. */
+const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
+  'roster.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+};
+
+function grantNewPermissions(db: NewsroomDatabase) {
+  for (const [code, roleCodes] of Object.entries(NEW_PERMISSION_GRANTS)) {
+    const key = `perm_grant:${code}`;
+    if (db.getMeta(key) === '1') continue;
+    db.transaction(() => {
+      for (const row of db.listCollection('roles')) {
+        const role = row.d;
+        if (!role?.isSystemRole || !roleCodes.includes(role.roleCode)) continue;
+        const perms: string[] = role.permissions || [];
+        if (!perms.includes(code)) db.writeRow('roles', row.id, { ...role, permissions: [...perms, code] }, row.p, null);
+      }
+      db.setMeta(key, '1');
+    });
+  }
+}
+
+/**
+ * Newsroom/programmes focus: structured departments on users; program evaluations, guest ratings,
+ * security clearances and the old shift field are retired.
+ */
+function migrateToDepartments(db: NewsroomDatabase) {
+  if (db.getMeta('departments_migration') === '1') return;
+  db.transaction(() => {
+    for (const row of db.listCollection('users')) {
+      const { securityClearance: _c, shift: _s, ...user } = row.d || {};
+      const departmentId = departmentIdOf(user);
+      const customPermissions = Array.isArray(user.customPermissions)
+        ? user.customPermissions.filter((p: string) => p !== 'episodes.evaluate')
+        : user.customPermissions;
+      db.writeRow('users', row.id, { ...user, departmentId, department: departmentName(departmentId), customPermissions }, row.p, null);
+    }
+    for (const row of db.listCollection('roles')) {
+      const perms: string[] = row.d?.permissions || [];
+      if (perms.includes('episodes.evaluate')) {
+        db.writeRow('roles', row.id, { ...row.d, permissions: perms.filter((p) => p !== 'episodes.evaluate') }, row.p, null);
+      }
+    }
+    for (const row of db.listCollection('guests')) {
+      if (row.d && 'rating' in row.d) {
+        const { rating: _r, ...guest } = row.d;
+        db.writeRow('guests', row.id, guest, row.p, null);
+      }
+    }
+    db.dropRetiredCollection('programEvaluations');
+    db.setMeta('departments_migration', '1');
+  });
 }
 
 /**
@@ -144,8 +198,8 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
         role: 'SUPER_ADMIN',
         avatarUrl: '/icon.svg',
         jobTitle: 'مدير النظام',
-        department: 'الإدارة العامة والتحرير',
-        securityClearance: 'TOP_SECRET',
+        department: 'غرفة التحرير',
+        departmentId: 'newsroom',
         isActive: true,
         createdAt: new Date().toISOString(),
       };

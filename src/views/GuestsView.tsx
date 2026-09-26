@@ -6,7 +6,6 @@ import {
   Plus,
   Users,
   Search,
-  Star,
   Phone,
   Mail,
   Building,
@@ -50,7 +49,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
-  const [rating, setRating] = useState<number>(5);
   const [avatarUrl, setAvatarUrl] = useState('');
 
   const SPECIALTY_PRESETS = [
@@ -83,7 +81,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     setPhone('');
     setEmail('');
     setNotes('');
-    setRating(5);
     setAvatarUrl('');
     setIsModalOpen(true);
   };
@@ -97,7 +94,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     setPhone(guest.phone || '');
     setEmail(guest.email || '');
     setNotes(guest.notes || '');
-    setRating(guest.rating || 5);
     setAvatarUrl(guest.avatarUrl || '');
     setIsModalOpen(true);
   };
@@ -113,7 +109,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       phone,
       email,
       notes,
-      rating: Number(rating) || 5,
       avatarUrl: avatarUrl || '/avatar.svg',
     });
     setIsModalOpen(false);
@@ -239,15 +234,16 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 </div>
               </div>
 
-              {/* Badges & Rating */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                <Badge variant="primary" size="sm">
-                  {guest.specialty}
-                </Badge>
-                <div className="flex items-center gap-1 text-amber-500 font-bold font-mono">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{guest.rating} / 5</span>
-                </div>
+              {/* Specialty & last appearance */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                {guest.specialty ? (
+                  <Badge variant="primary" size="sm">
+                    {guest.specialty}
+                  </Badge>
+                ) : <span />}
+                <span className="text-[11px] text-slate-500">
+                  {guest.lastAppearanceDate ? `آخر ظهور: ${guest.lastAppearanceDate}` : 'لم يظهر بعد'}
+                </span>
               </div>
 
               {/* Contact Info */}
@@ -272,9 +268,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs text-slate-500">
-              <span>إجمالي المشاركات: <strong className="text-slate-800 font-mono">{guest.totalAppearances}</strong></span>
-              <span className="text-blue-600 font-semibold">سجل معتمد</span>
+            <div className="pt-4 border-t border-slate-100 mt-4 space-y-1.5 text-xs text-slate-500">
+              <span>عدد مرات الظهور: <strong className="text-slate-800 font-mono">{guest.totalAppearances}</strong></span>
+              {(guest.appearanceHistory || []).slice(0, 3).map((a) => (
+                <div key={a.episodeId} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="truncate text-slate-700">{a.programName} — {a.episodeTitle}</span>
+                  <span className="font-mono shrink-0">{a.date}</span>
+                </div>
+              ))}
             </div>
           </div>
         ))}
@@ -378,31 +379,6 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   {sp}
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Star Rating Interactive Selector */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-            <span className="block text-xs font-bold text-slate-700">تقييم الموثوقية والأداء التلفزيوني</span>
-            <div className="flex items-center gap-1" role="group" aria-label="تقييم الضيف من 1 إلى 5">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setRating(s)}
-                  aria-label={`${s} نجوم`}
-                  className="p-1 hover:scale-125 transition-transform focus:outline-hidden focus:ring-1 focus:ring-amber-400 rounded"
-                >
-                  <Star
-                    className={`w-5 h-5 ${
-                      s <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
-                    }`}
-                  />
-                </button>
-              ))}
-              <span className="text-xs font-mono font-bold text-slate-700 mr-2">
-                ({rating} من 5)
-              </span>
             </div>
           </div>
 

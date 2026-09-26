@@ -1,6 +1,7 @@
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, SecurityClearance, ShiftType } from '../types';
+import { User, UserRole } from '../types';
+import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
@@ -13,8 +14,6 @@ import {
 import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
-import { ShiftScheduleBoard } from '../components/users/ShiftScheduleBoard';
-import { PermissionSimulator } from '../components/users/PermissionSimulator';
 import {
   Users as UsersIcon,
   UserCheck,
@@ -54,7 +53,7 @@ interface UsersViewProps {
 export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
-  const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'MATRIX' | 'SHIFTS' | 'SIMULATOR'>('DIRECTORY');
+  const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'MATRIX'>('DIRECTORY');
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
 
   // Filters
@@ -62,7 +61,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
-  const [selectedClearanceFilter, setSelectedClearanceFilter] = useState<string>('ALL');
 
   // Modals
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -173,16 +171,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     }
   };
 
-  const handleQuickShiftChange = (userId: string, newShift: ShiftType) => {
-    if (!canEditProfile) return;
-    const user = users.find((u) => u.id === userId);
-    if (user) {
-      ApiService.saveUser({ ...user, shift: newShift });
-      loadData();
-      showToast(`تم نقل ${user.fullName} إلى الوردية الجديدة`);
-    }
-  };
-
   // --- ROLE & RBAC ACTIONS ---
   const handleSaveRole = (roleData: RoleDefinition) => {
     if (!canManageRoles) {
@@ -263,8 +251,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       u.department.includes(searchQuery);
 
     const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
-    const matchesDept = selectedDepartmentFilter === 'ALL' || u.department === selectedDepartmentFilter;
-    const matchesClearance = selectedClearanceFilter === 'ALL' || u.securityClearance === selectedClearanceFilter;
+    const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
     const matchesStatus =
       selectedStatusFilter === 'ALL'
         ? true
@@ -272,10 +259,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         ? u.isActive
         : !u.isActive;
 
-    return matchesSearch && matchesRole && matchesDept && matchesClearance && matchesStatus;
+    return matchesSearch && matchesRole && matchesDept && matchesStatus;
   });
 
-  const departmentsList = Array.from(new Set(users.map((u) => u.department)));
+  const departmentsList = Array.from(new Set(users.map((u) => departmentIdOf(u))));
 
   // KPI Metrics
   const activeCount = users.filter((u) => u.isActive).length;
@@ -411,31 +398,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <span>مصفوفة الصلاحيات والأدوار (Permissions Matrix)</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('SHIFTS')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'SHIFTS'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>جدول المناوبات والورديات (Broadcast Shifts)</span>
-        </button>
+        
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('SIMULATOR')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'SIMULATOR'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <UserCog className="w-4 h-4" />
-          <span>محاكي وفاحص الصلاحيات (Simulator)</span>
-        </button>
+        
       </div>
 
       {/* TAB 1: USERS DIRECTORY */}
@@ -474,9 +439,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">كافة الأقسام</option>
-                {departmentsList.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
+                {DEPARTMENTS.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
                   </option>
                 ))}
               </select>
@@ -544,27 +509,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 const roleBadge = RbacService.getRoleBadge(user.role);
                 const isCurrentActive = currentUser.id === user.id;
 
-                const clearanceBadge = {
-                  TOP_SECRET: 'bg-red-100 text-red-800 border-red-200',
-                  RESTRICTED: 'bg-amber-100 text-amber-800 border-amber-200',
-                  CONFIDENTIAL: 'bg-blue-100 text-blue-800 border-blue-200',
-                  PUBLIC: 'bg-slate-100 text-slate-700 border-slate-200',
-                }[user.securityClearance || 'CONFIDENTIAL'];
-
-                const clearanceLabel = {
-                  TOP_SECRET: 'سري للغاية',
-                  RESTRICTED: 'مقيد / حساس',
-                  CONFIDENTIAL: 'خاص بالغرفة',
-                  PUBLIC: 'عام',
-                }[user.securityClearance || 'CONFIDENTIAL'];
-
-                const shiftLabel = {
-                  MORNING: 'صباحية',
-                  EVENING: 'مسائية',
-                  NIGHT_ON_CALL: 'ليلية / طوارئ',
-                  FLEXIBLE: 'مرن',
-                }[user.shift || 'MORNING'];
-
                 return (
                   <div
                     key={user.id}
@@ -609,7 +553,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             </p>
                           )}
                           <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{user.jobTitle}</p>
-                          <p className="text-[11px] text-slate-500 truncate">{user.department}</p>
+                          <p className="text-[11px] text-slate-500 truncate">{departmentName(departmentIdOf(user))}</p>
                         </div>
                       </div>
 
@@ -619,19 +563,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           {user.bio}
                         </p>
                       )}
-
-                      {/* Metadata Chips */}
-                      <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
-                        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100 flex items-center gap-1 text-slate-600">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          <span>الوردية: {shiftLabel}</span>
-                        </div>
-
-                        <div className={`p-1.5 rounded-lg border flex items-center gap-1 font-bold ${clearanceBadge}`}>
-                          <ShieldAlert className="w-3 h-3" />
-                          <span>{clearanceLabel}</span>
-                        </div>
-                      </div>
 
                       {/* Contact Info */}
                       <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
@@ -737,9 +668,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                     <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 border-b border-slate-200">
                       <th className="p-3.5">المستخدم والبيانات</th>
                       <th className="p-3.5">الدور والصلاحية</th>
-                      <th className="p-3.5">القسم التحريري</th>
-                      <th className="p-3.5">الوردية</th>
-                      <th className="p-3.5">التصنيف الأمني</th>
+                      <th className="p-3.5">القسم</th>
                       <th className="p-3.5 text-center">الحالة</th>
                       <th className="p-3.5 text-center">إجراءات</th>
                     </tr>
@@ -776,13 +705,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             </span>
                           </td>
 
-                          <td className="p-3 font-medium text-slate-700">{user.department}</td>
-                          <td className="p-3 text-slate-600">{user.shift || 'MORNING'}</td>
-                          <td className="p-3">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
-                              {user.securityClearance || 'CONFIDENTIAL'}
-                            </span>
-                          </td>
+                          <td className="p-3 font-medium text-slate-700">{departmentName(departmentIdOf(user))}</td>
 
                           <td className="p-3 text-center">
                             <span
@@ -849,21 +772,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           onResetDefaults={handleResetDefaults}
         />
       )}
-
-      {/* TAB 3: SHIFTS */}
-      {activeTab === 'SHIFTS' && (
-        <ShiftScheduleBoard
-          users={users}
-          onUserClick={(user) => {
-            setUserToEdit(user);
-            setIsUserModalOpen(true);
-          }}
-          onQuickShiftChange={handleQuickShiftChange}
-        />
-      )}
-
-      {/* TAB 4: SIMULATOR */}
-      {activeTab === 'SIMULATOR' && <PermissionSimulator users={users} roles={roles} />}
 
       {/* MODALS */}
       <UserFormModal

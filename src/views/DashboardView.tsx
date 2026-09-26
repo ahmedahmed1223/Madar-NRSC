@@ -572,8 +572,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {guest.jobTitle} - {guest.organization}
                     </span>
                   </div>
-                  <span className="text-xs font-bold text-amber-500 font-mono">
-                    ★ {guest.rating}
+                  <span className="text-[11px] text-slate-500 shrink-0">
+                    {guest.totalAppearances ? `${guest.totalAppearances} ظهور` : 'جديد'}
                   </span>
                 </div>
               ))}

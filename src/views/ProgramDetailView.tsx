@@ -1,4 +1,3 @@
-import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
 import { formatSecondsToTime } from '../shared/rundown';
@@ -6,7 +5,6 @@ import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   Tv,
-  Star,
   Calendar,
   Clock,
   User as UserIcon,
@@ -30,7 +28,7 @@ import {
   Share2,
   ChevronLeft,
 } from 'lucide-react';
-import { Program, Episode, User, ProgramEvaluation } from '../types';
+import { Program, Episode, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { apiService } from '../services/api';
@@ -60,23 +58,8 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
   onOpenWorkspace,
   onSwitchProgram,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'evaluations' | 'episodes' | 'template' | 'team'>('overview');
-  // Read on every render so colleagues' evaluations (and server rejections) are reflected.
-  const evaluations: ProgramEvaluation[] = apiService.getProgramEvaluations(program.id);
-  const [isAddEvalModalOpen, setIsAddEvalModalOpen] = useState(false);
-  const canEvaluate = RbacService.hasPermission(currentUser, 'episodes.evaluate');
+  const [activeTab, setActiveTab] = useState<'overview' | 'episodes' | 'template' | 'team'>('overview');
   const canManageProgram = RbacService.hasPermission(currentUser, 'programs.manage');
-
-  // New evaluation form state
-  const [evalRating, setEvalRating] = useState(5);
-  const [editorialQuality, setEditorialQuality] = useState(5);
-  const [timeCommitment, setTimeCommitment] = useState(5);
-  const [guestRelevance, setGuestRelevance] = useState(5);
-  const [visualDirection, setVisualDirection] = useState(5);
-  const [viewerEngagement, setViewerEngagement] = useState(5);
-  const [evalStrengths, setEvalStrengths] = useState('');
-  const [evalImprovements, setEvalImprovements] = useState('');
-  const [evalNotes, setEvalNotes] = useState('');
 
   // Filter episodes belonging to this program
   const programEpisodes = (allEpisodes || []).filter((e) => e.programId === program.id);
@@ -95,46 +78,6 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
     duration: formatSecondsToTime(seg.durationSeconds || 0).slice(3),
     notes: seg.notes || '',
   }));
-
-  // Ratings calculation
-  const ratingSummary = apiService.getProgramRatingSummary(program.id);
-
-  const handleAddEvaluationSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const strengthsArr = evalStrengths
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const improvementsArr = evalImprovements
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    apiService.addProgramEvaluation(
-      {
-        programId: program.id,
-        overallRating: evalRating,
-        criteria: {
-          editorialQuality,
-          timeCommitment,
-          guestRelevance,
-          visualDirection,
-          viewerEngagement,
-        },
-        strengths: strengthsArr,
-        improvements: improvementsArr,
-        notes: evalNotes,
-      },
-      currentUser
-    );
-
-    setIsAddEvalModalOpen(false);
-
-    // Reset form
-    setEvalStrengths('');
-    setEvalImprovements('');
-    setEvalNotes('');
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -272,45 +215,25 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             </div>
           </div>
 
-          {/* Program Rating Scorecard in Hero */}
-          <div className="bg-slate-900/90 backdrop-blur-md p-5 rounded-2xl border border-slate-700/80 flex flex-col items-center justify-center text-center shrink-0 w-full md:w-56 shadow-md">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              مؤشر تقييم البرنامج
-            </span>
-            <div className="flex items-center gap-2 my-1">
-              <span className="text-3xl sm:text-4xl font-black text-amber-400 font-mono">
-                {ratingSummary.count > 0 ? ratingSummary.average : '—'}
-              </span>
-              <span className="text-slate-400 text-sm">{ratingSummary.count > 0 ? '/ 5.0' : 'لا تقييمات بعد'}</span>
-            </div>
-            <div className="flex items-center gap-1 text-amber-400 mb-2">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <Star
-                  key={s}
-                  className={`w-4 h-4 ${
-                    s <= Math.round(ratingSummary.average)
-                      ? 'fill-amber-400 text-amber-400'
-                      : 'text-slate-600'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium">
-              بناءً على {ratingSummary.count || evaluations.length} تقييماً تحريرياً
-            </span>
-
-            {canEvaluate && (
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('evaluations');
-                setIsAddEvalModalOpen(true);
-              }}
-              className="mt-3 w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
-            >
-              <Star className="w-3.5 h-3.5 fill-slate-950" />
-              <span>تقييم البرنامج الآن</span>
-            </button>
+          {/* Next episode at a glance */}
+          <div className="bg-slate-900/90 backdrop-blur-md p-5 rounded-2xl border border-slate-700/80 flex flex-col gap-2 text-right shrink-0 w-full md:w-64 shadow-md">
+            <span className="text-[11px] font-bold text-slate-400">الحلقة القادمة</span>
+            {nextEpisode ? (
+              <>
+                <strong className="text-sm text-white leading-snug line-clamp-2">{nextEpisode.title}</strong>
+                <span className="text-xs text-slate-300 font-mono">
+                  {nextEpisode.broadcastDate} · {nextEpisode.startTime}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenWorkspace(nextEpisode)}
+                  className="mt-1 w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-colors"
+                >
+                  فتح مساحة العمل
+                </button>
+              </>
+            ) : (
+              <span className="text-xs text-slate-400">لا توجد حلقة مجدولة بعد</span>
             )}
           </div>
         </div>
@@ -331,18 +254,6 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
           <span>الملف التعريفي والهوية</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('evaluations')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-            activeTab === 'evaluations'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Star className="w-4 h-4" />
-          <span>تقييم البرنامج ومؤشرات الجودة ({evaluations.length})</span>
-        </button>
 
         <button
           type="button"
@@ -422,9 +333,9 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-amber-500 font-mono">
-                    {ratingSummary.count > 0 ? ratingSummary.average : '—'}
+                    {programEpisodes.filter((e) => (e.broadcastDate || '') >= today).length}
                   </span>
-                  <span className="text-[11px] text-slate-500">معدل التقييم</span>
+                  <span className="text-[11px] text-slate-500">حلقات قادمة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-emerald-600 font-mono">
@@ -541,210 +452,6 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB CONTENT: 2. EVALUATIONS & QUALITY RATINGS */}
-      {activeTab === 'evaluations' && (
-        <div className="space-y-6">
-          {/* Top Scorecard & Criteria */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-slate-100">
-              <div>
-                <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-500" />
-                  <span>لوحة التقييم التحريري ومؤشرات الجودة</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  معايير قياس الأداء المهني، جودة المحتوى، الالتزام بالرانداون وتفاعل الجمهور
-                </p>
-              </div>
-
-              {canEvaluate && (
-              <button
-                type="button"
-                onClick={() => setIsAddEvalModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-colors shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>إضافة تقييم تحريري جديد</span>
-              </button>
-              )}
-            </div>
-
-            {/* Criteria Progress Bars */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-6">
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">جودة الإعداد والتحرير</span>
-                  <strong className="text-slate-900 font-mono">{ratingSummary.criteriaAverages.editorialQuality} / 5</strong>
-                </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 rounded-full"
-                    style={{ width: `${(ratingSummary.criteriaAverages.editorialQuality / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">الانضباط الزمني والرانداون</span>
-                  <strong className="text-slate-900 font-mono">{ratingSummary.criteriaAverages.timeCommitment} / 5</strong>
-                </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-600 rounded-full"
-                    style={{ width: `${(ratingSummary.criteriaAverages.timeCommitment / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">مستوى الضيوف والنقاش</span>
-                  <strong className="text-slate-900 font-mono">{ratingSummary.criteriaAverages.guestRelevance} / 5</strong>
-                </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-purple-600 rounded-full"
-                    style={{ width: `${(ratingSummary.criteriaAverages.guestRelevance / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">الإخراج البصري والغرافيك</span>
-                  <strong className="text-slate-900 font-mono">{ratingSummary.criteriaAverages.visualDirection} / 5</strong>
-                </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-500 rounded-full"
-                    style={{ width: `${(ratingSummary.criteriaAverages.visualDirection / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">التفاعل وريتنج المشاهدة</span>
-                  <strong className="text-slate-900 font-mono">{ratingSummary.criteriaAverages.viewerEngagement} / 5</strong>
-                </div>
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-rose-500 rounded-full"
-                    style={{ width: `${(ratingSummary.criteriaAverages.viewerEngagement / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Evaluations History List */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold text-slate-700">
-              سجل التقييمات التحريرية السابقة ({evaluations.length})
-            </h3>
-
-            {evaluations.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-3">
-                <Award className="w-12 h-12 text-slate-300 mx-auto" />
-                <h4 className="text-sm font-bold text-slate-700">لا توجد تقييمات مسجلة بعد</h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  كن أول من يقيم أداء هذا البرنامج من خلال إضافة التقييم التحريري الأول.
-                </p>
-                {canEvaluate && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddEvalModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-bold"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إضافة تقييم الآن</span>
-                </button>
-                )}
-              </div>
-            ) : (
-              evaluations.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-sm">
-                        {ev.evaluatorName.charAt(0)}
-                      </div>
-                      <div>
-                        <strong className="block text-sm text-slate-900">{ev.evaluatorName}</strong>
-                        <span className="text-xs text-slate-500">{ev.evaluatorRole}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1 text-amber-400">
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Star
-                            key={s}
-                            className={`w-4 h-4 ${
-                              s <= Math.round(ev.overallRating)
-                                ? 'fill-amber-400 text-amber-400'
-                                : 'text-slate-300'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-sm font-black text-slate-900 font-mono">
-                        {ev.overallRating} / 5
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {new Date(ev.evaluatedAt).toLocaleDateString('ar-EG')}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Notes */}
-                  {ev.notes && (
-                    <p className="text-xs sm:text-sm text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-100 leading-relaxed">
-                      {ev.notes}
-                    </p>
-                  )}
-
-                  {/* Strengths & Improvements */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-xs">
-                    {ev.strengths && ev.strengths.length > 0 && (
-                      <div className="p-3 bg-emerald-50/60 border border-emerald-200/60 rounded-xl space-y-1.5">
-                        <strong className="text-emerald-900 block font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          نقاط القوة والتميز:
-                        </strong>
-                        <ul className="list-disc list-inside text-emerald-800 space-y-1 text-[11px]">
-                          {ev.strengths.map((str, i) => (
-                            <li key={i}>{str}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {ev.improvements && ev.improvements.length > 0 && (
-                      <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl space-y-1.5">
-                        <strong className="text-amber-900 block font-bold flex items-center gap-1.5">
-                          <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                          فرص التحسين الموصى بها:
-                        </strong>
-                        <ul className="list-disc list-inside text-amber-800 space-y-1 text-[11px]">
-                          {ev.improvements.map((imp, i) => (
-                            <li key={i}>{imp}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         </div>
       )}
@@ -937,195 +644,6 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
         </div>
       )}
 
-      {/* MODAL: ADD PROGRAM EVALUATION */}
-      {isAddEvalModalOpen && (
-        <FormPage
-          isOpen={isAddEvalModalOpen}
-          onClose={() => setIsAddEvalModalOpen(false)}
-          title={`إضافة تقييم تحريري: ${program.name}`}
-          size="lg"
-        >
-          <form onSubmit={handleAddEvaluationSubmit} className="space-y-5">
-            {/* Overall Rating Selection */}
-            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl text-center space-y-2">
-              <span className="text-xs font-bold text-amber-900 block">
-                التقييم التحريري الإجمالي للبرنامج
-              </span>
-              <div className="flex items-center justify-center gap-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => setEvalRating(star)}
-                    className="p-1.5 focus:outline-hidden transition-transform hover:scale-110"
-                  >
-                    <Star
-                      className={`w-7 h-7 ${
-                        star <= evalRating
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'text-slate-300'
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
-              <span className="text-xs font-mono font-bold text-amber-900">
-                {evalRating} من 5 نجوم
-              </span>
-            </div>
-
-            {/* Criteria Detailed Sliders */}
-            <div className="space-y-3 pt-2">
-              <span className="text-xs font-bold text-slate-700 block">
-                تقييم معايير الجودة الخمسة (من 1 إلى 5):
-              </span>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
-                  <div className="flex justify-between">
-                    <label htmlFor="program-detail-view-field-1" className="text-slate-700 font-medium">جودة الإعداد والبحث الصحفي:</label>
-                    <strong className="font-mono">{editorialQuality}/5</strong>
-                  </div>
-                  <input id="program-detail-view-field-1"
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="1"
-                    value={editorialQuality}
-                    onChange={(e) => setEditorialQuality(Number(e.target.value))}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
-                  <div className="flex justify-between">
-                    <label htmlFor="program-detail-view-field-2" className="text-slate-700 font-medium">الانضباط الزمني ومخطط الرانداون:</label>
-                    <strong className="font-mono">{timeCommitment}/5</strong>
-                  </div>
-                  <input id="program-detail-view-field-2"
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="1"
-                    value={timeCommitment}
-                    onChange={(e) => setTimeCommitment(Number(e.target.value))}
-                    className="w-full accent-emerald-600"
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
-                  <div className="flex justify-between">
-                    <label htmlFor="program-detail-view-field-3" className="text-slate-700 font-medium">مستوى وخبرة الضيوف:</label>
-                    <strong className="font-mono">{guestRelevance}/5</strong>
-                  </div>
-                  <input id="program-detail-view-field-3"
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="1"
-                    value={guestRelevance}
-                    onChange={(e) => setGuestRelevance(Number(e.target.value))}
-                    className="w-full accent-purple-600"
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl space-y-1.5">
-                  <div className="flex justify-between">
-                    <label htmlFor="program-detail-view-field-4" className="text-slate-700 font-medium">الإخراج البصري والغرافيك:</label>
-                    <strong className="font-mono">{visualDirection}/5</strong>
-                  </div>
-                  <input id="program-detail-view-field-4"
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="1"
-                    value={visualDirection}
-                    onChange={(e) => setVisualDirection(Number(e.target.value))}
-                    className="w-full accent-amber-500"
-                  />
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl space-y-1.5 sm:col-span-2">
-                  <div className="flex justify-between">
-                    <label htmlFor="program-detail-view-field-5" className="text-slate-700 font-medium">تفاعل الجمهور وريتنج المشاهدة:</label>
-                    <strong className="font-mono">{viewerEngagement}/5</strong>
-                  </div>
-                  <input id="program-detail-view-field-5"
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="1"
-                    value={viewerEngagement}
-                    onChange={(e) => setViewerEngagement(Number(e.target.value))}
-                    className="w-full accent-rose-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Strengths & Improvements */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="program-detail-view-field-6" className="block text-xs font-bold text-slate-700 mb-1">
-                  أبرز نقاط القوة والتميز (سطر لكل نقطة):
-                </label>
-                <textarea id="program-detail-view-field-6"
-                  rows={3}
-                  value={evalStrengths}
-                  onChange={(e) => setEvalStrengths(e.target.value)}
-                  placeholder="مثال: حوار متوازن، مقدمة قوية، ربط ممتاز بين الفقرات..."
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="program-detail-view-field-7" className="block text-xs font-bold text-slate-700 mb-1">
-                  فرص وتوصيات التحسين (سطر لكل نقطة):
-                </label>
-                <textarea id="program-detail-view-field-7"
-                  rows={3}
-                  value={evalImprovements}
-                  onChange={(e) => setEvalImprovements(e.target.value)}
-                  placeholder="مثال: ضرورة توفير مقتطفات فيديو للمنصات، الالتزام بوقت الفاصل..."
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* General Notes */}
-            <div>
-              <label htmlFor="program-detail-view-field-8" className="block text-xs font-bold text-slate-700 mb-1">
-                التقرير والتقييم التحريري العام:
-              </label>
-              <textarea id="program-detail-view-field-8"
-                rows={3}
-                value={evalNotes}
-                onChange={(e) => setEvalNotes(e.target.value)}
-                placeholder="اكتب خلاصة تقييمك لأداء البرنامج أو الحلقة وتوجيهاتك لفريق العمل..."
-                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsAddEvalModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-600 rounded-xl transition-all shadow-xs flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>حفظ التقييم واعتماده</span>
-              </button>
-            </div>
-          </form>
-        </FormPage>
-      )}
     </div>
   );
 };

@@ -238,6 +238,11 @@ export class NewsroomDatabase {
     return Number((this.db.prepare(`SELECT value FROM meta WHERE key = 'tombstone_floor'`).get() as { value: string }).value);
   }
 
+  /** Removes every row of a collection that is no longer part of the product. */
+  dropRetiredCollection(collection: string) {
+    return this.db.prepare('DELETE FROM entities WHERE collection = ?').run(collection).changes;
+  }
+
   getMeta(key: string): string | null {
     const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined;
     return row?.value ?? null;

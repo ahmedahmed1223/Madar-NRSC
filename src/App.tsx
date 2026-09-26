@@ -15,6 +15,7 @@ import {
   NewsStatus,
   RundownSegment,
 } from './types';
+import { RbacService } from './services/rbacService';
 import { apiService } from './services/api';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
@@ -40,6 +41,7 @@ const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ 
 const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const RosterView = lazy(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
 const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
 const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
 const StoriesView = lazy(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
@@ -840,6 +842,32 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               <UsersView currentUser={currentUser} />
             )}
 
+            {['settings', 'database', 'tests'].includes(activeNav) && (
+              <div className="space-y-5">
+                {(RbacService.hasPermission(currentUser, 'system.database_manage') || RbacService.hasPermission(currentUser, 'system.self_healing')) && (
+                  <div className="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="أقسام الإعدادات">
+                    {[
+                      { id: 'settings', label: 'الإعدادات العامة', show: RbacService.hasPermission(currentUser, 'system.settings') },
+                      { id: 'database', label: 'النسخ الاحتياطي وقاعدة البيانات', show: RbacService.hasPermission(currentUser, 'system.database_manage') },
+                      { id: 'tests', label: 'حالة النظام', show: RbacService.hasPermission(currentUser, 'system.self_healing') },
+                    ]
+                      .filter((t) => t.show)
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={activeNav === t.id}
+                          onClick={() => setActiveNav(t.id)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
+                            activeNav === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                  </div>
+                )}
             {activeNav === 'settings' && (
               <SettingsView
                 categories={categories}
@@ -856,6 +884,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'database' && <DatabaseManagerView />}
 
             {activeNav === 'tests' && <TestingView />}
+              </div>
+            )}
+
+            {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
             </Suspense>
           </main>
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-24 w-full empty:hidden" />

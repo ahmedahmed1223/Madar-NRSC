@@ -186,10 +186,10 @@ export const TestingView: React.FC = () => {
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-emerald-600" />
-            فحص سلامة النظام المباشر
+            حالة النظام
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            فحوصات حية للقراءة فقط على الخادم الفعلي، آمنة للتشغيل في بيئة الإنتاج. الاختبارات الآلية الكاملة تعمل عبر <code>npm test</code>.
+            فحوصات فورية لاتصال الخادم وقاعدة البيانات والمزامنة، للقراءة فقط وآمنة في أي وقت.
           </p>
         </div>
         <button

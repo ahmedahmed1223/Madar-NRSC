@@ -207,6 +207,14 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'roster' && !after.deletedAt) {
+          // The person on duty must be a real, active colleague; their name comes from the server.
+          const member = this.db.getRow('users', String(after.userId))?.d;
+          if (!member || member.isActive === false) {
+            return { ok: false, code: 'INVALID', message: 'الموظف غير موجود أو موقوف' } as SyncOpResult;
+          }
+          after = { ...after, userName: member.fullName, createdBy: before?.createdBy ?? auth.user.id };
+        }
         if (collection === 'media') {
           // Ownership decides who may delete a file, so it is set by the server and never changes.
           const owner = kind === 'create'

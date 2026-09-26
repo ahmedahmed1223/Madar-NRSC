@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Newspaper, FolderGit2,
   Flame,
+  CalendarClock,
   Rss,
   Tv,
   Video,
@@ -21,9 +22,6 @@ import {
   ChevronLeft,
   Radio,
   Sparkles,
-  FlaskConical,
-  Database,
-  Star,
   UserCog,
   X,
 } from 'lucide-react';
@@ -123,124 +121,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
     wires: 'news.view',
     audit: 'audit.view',
     users: 'users.view',
-    database: 'system.database_manage',
     settings: 'system.settings',
-    tests: 'system.self_healing',
   };
   const canSeeNav = (id: string) => !currentUser || !NAV_PERMISSIONS[id] || RbacService.hasPermission(currentUser, NAV_PERMISSIONS[id]);
 
-  const navItems = [
+  const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
+  const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
+    { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
     {
-      id: 'dashboard',
-      label: 'الرئيسية والتحكم',
-      icon: LayoutDashboard,
-      badge: null,
+      label: 'غرفة الأخبار',
+      items: [
+        { id: 'wires', label: 'البرقيات', icon: Rss, badge: null },
+        { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800' },
+        { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white animate-pulse' },
+        { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
+      ],
     },
     {
-      id: 'stories',
-      label: 'القصص والملفات المركزية',
-      icon: FolderGit2,
-      badge: null,
+      label: 'البرامج',
+      items: [
+        { id: 'programs', label: 'البرامج', icon: Tv, badge: null },
+        { id: 'episodes', label: 'الحلقات', icon: Video, badge: null },
+        { id: 'calendar', label: 'جدول البث', icon: Calendar, badge: null },
+        { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
+      ],
+    },
+    { label: 'الوسائط', items: [{ id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null }] },
+    {
+      label: 'الفريق',
+      items: [
+        { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
+        { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
+      ],
     },
     {
-      id: 'news',
-      label: 'غرفة الأخبار والتقارير',
-      icon: Newspaper,
-      badge: newsBadge > 0 ? `${newsBadge} مراجعة` : null,
-      badgeColor: 'bg-amber-100 text-amber-800',
-    },
-    {
-      id: 'wires',
-      label: 'مكتب برقيات الوكالات',
-      icon: Rss,
-      badge: null,
-      badgeColor: '',
-    },
-    {
-      id: 'breaking',
-      label: 'شريط الأخبار العاجلة',
-      icon: Flame,
-      badge: breakingCount > 0 ? `${breakingCount} عاجل` : null,
-      badgeColor: 'bg-red-500 text-white animate-pulse',
-    },
-    {
-      id: 'programs',
-      label: 'البرامج التلفزيونية',
-      icon: Tv,
-      badge: null,
-    },
-    {
-      id: 'program-detail',
-      label: 'شاشة البرنامج والتقييم',
-      icon: Star,
-      badge: null,
-    },
-    {
-      id: 'episodes',
-      label: 'حلقات البرامج',
-      icon: Video,
-      badge: null,
-    },
-    {
-      id: 'guests',
-      label: 'أرشيف وبنك الضيوف',
-      icon: Users,
-      badge: null,
-    },
-    {
-      id: 'tasks',
-      label: 'المهام التحريرية',
-      icon: CheckSquare,
-      badge: tasksBadge > 0 ? `${tasksBadge}` : null,
-      badgeColor: 'bg-blue-100 text-blue-800',
-    },
-    {
-      id: 'calendar',
-      label: 'جدول البث والمواعيد',
-      icon: Calendar,
-      badge: null,
-    },
-    {
-      id: 'media',
-      label: 'مكتبة الوسائط والأرشيف',
-      icon: ImageIcon,
-      badge: null,
-    },
-    {
-      id: 'reports',
-      label: 'التقارير والإحصائيات',
-      icon: BarChart3,
-      badge: null,
-    },
-    {
-      id: 'audit',
-      label: 'سجل التدقيق والأمان',
-      icon: ShieldCheck,
-      badge: null,
-    },
-    {
-      id: 'users',
-      label: 'إدارة المستخدمين والصلاحيات',
-      icon: UserCog,
-      badge: null,
-    },
-    {
-      id: 'database',
-      label: 'قاعدة بيانات SQLite',
-      icon: Database,
-      badge: null,
-    },
-    {
-      id: 'tests',
-      label: 'فحص واختبار النظام',
-      icon: FlaskConical,
-      badge: null,
-    },
-    {
-      id: 'settings',
-      label: 'إعدادات المحطة والنظام',
-      icon: Settings,
-      badge: null,
+      label: 'الإدارة',
+      items: [
+        { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
+        { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
+        { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
+        { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },
+      ],
     },
   ];
 
@@ -313,12 +234,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation List */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-        {navItems.filter((item) => canSeeNav(item.id)).map((item) => {
+        {navGroups.map((group) => {
+          const items = group.items.filter((item) => canSeeNav(item.id));
+          if (!items.length) return null;
+          return (
+            <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
+              {group.label && !isCollapsed && (
+                <div className="px-3 pt-3 pb-1 text-[10px] font-bold text-slate-500 tracking-wide">{group.label}</div>
+              )}
+              {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
+        {items.map((item) => {
           const Icon = item.icon;
           const isActive =
             activeIdentifier === item.id ||
-            (item.id === 'news' && ['news_list', 'news_create', 'news_edit'].includes(activeIdentifier)) ||
-            (item.id === 'episodes' && activeIdentifier === 'episode-workspace');
+            (item.id === 'news' && ['news_list', 'news_create', 'news_edit', 'news-editor'].includes(activeIdentifier)) ||
+            (item.id === 'episodes' && activeIdentifier === 'episode-workspace') ||
+            (item.id === 'programs' && ['program-detail', 'program_detail'].includes(activeIdentifier));
 
           return (
             <button
@@ -358,6 +289,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               )}
             </button>
+          );
+        })}
+            </div>
           );
         })}
       </nav>

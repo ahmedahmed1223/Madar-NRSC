@@ -13,8 +13,6 @@ export type UserRole =
   | 'MEDIA'
   | 'VIEWER';
 
-export type SecurityClearance = 'TOP_SECRET' | 'RESTRICTED' | 'CONFIDENTIAL' | 'PUBLIC';
-export type ShiftType = 'MORNING' | 'EVENING' | 'NIGHT_ON_CALL' | 'FLEXIBLE';
 
 export interface User {
   id: string;
@@ -26,10 +24,11 @@ export interface User {
   customRoleId?: string;
   avatarUrl: string;
   jobTitle: string;
+  /** Display name of the department (kept in sync with departmentId). */
   department: string;
+  /** Structured department id (see shared/departments). */
+  departmentId?: string;
   staffId?: string;
-  securityClearance?: SecurityClearance;
-  shift?: ShiftType;
   bio?: string;
   lastLogin?: string;
   twoFactorEnabled?: boolean;
@@ -256,27 +255,6 @@ export interface Program {
   deletedAt?: string | null;
 }
 
-export interface ProgramEvaluation {
-  id: string;
-  programId: string;
-  episodeId?: string;
-  evaluatorId: string;
-  evaluatorName: string;
-  evaluatorRole: string;
-  overallRating: number; // 1 to 5
-  criteria: {
-    editorialQuality: number; // 1 to 5 (جودة الإعداد والتحرير)
-    timeCommitment: number;   // 1 to 5 (الالتزام بالوقت والرانداون)
-    guestRelevance: number;   // 1 to 5 (مستوى الضيوف والنقاش)
-    visualDirection: number;  // 1 to 5 (الإخراج البصري والغرافيك)
-    viewerEngagement: number; // 1 to 5 (التفاعل والريتنج)
-  };
-  strengths: string[];
-  improvements: string[];
-  notes: string;
-  evaluatedAt: string;
-}
-
 export type EpisodeStatus =
   | 'PLANNING'
   | 'IN_PREPARATION'
@@ -398,8 +376,8 @@ export interface Guest {
   phone: string;
   email: string;
   notes?: string;
-  rating: number; // 1 to 5
   totalAppearances: number;
+  lastAppearanceDate?: string;
   appearanceHistory?: {
     episodeId: string;
     episodeTitle: string;

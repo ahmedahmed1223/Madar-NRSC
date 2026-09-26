@@ -1,3 +1,4 @@
+import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
@@ -29,7 +30,7 @@ const require =
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
 
-const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'securityClearance'] as const;
+const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId'] as const;
 
 function changed(before: any, after: any, field: string) {
   return JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after?.[field] ?? null);
@@ -218,7 +219,6 @@ export const POLICIES: Record<CollectionName, Policy> = {
       : any(auth, 'news.create', 'news.edit_any') ? null : DENIED,
   breaking: require('news.breaking_push'),
   programs: require('programs.manage'),
-  programEvaluations: require('episodes.evaluate'),
   episodes: episodesPolicy,
   guests: require('guests.manage'),
   tasks: tasksPolicy,
@@ -229,6 +229,12 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: require('system.settings'),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
+  roster: ({ auth, kind, after }) => {
+    if (!auth.can('roster.manage')) return 'صلاحياتك لا تسمح بتعديل جدول المناوبات';
+    if (kind === 'delete') return null;
+    if (after?.deletedAt) return null;
+    return rosterEntryError(after);
+  },
   wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;

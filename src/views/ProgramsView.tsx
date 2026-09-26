@@ -235,7 +235,6 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Programs Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPrograms.map((prog) => {
-          const rating = apiService.getProgramRatingSummary(prog.id);
           return (
             <div
               key={prog.id}
@@ -245,7 +244,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               <div
                 className="relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
                 onClick={() => onSelectProgram && onSelectProgram(prog.id)}
-                title="اضغط لفتح شاشة البرنامج والتقييم"
+                title="فتح ملف البرنامج"
               >
                 <img
                   src={prog.coverImageUrl}
@@ -257,10 +256,6 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <Badge variant="primary" size="sm">
                     {prog.typeName}
                   </Badge>
-                  <span className="flex items-center gap-1 bg-slate-900/80 backdrop-blur-md px-2 py-0.5 rounded-lg text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30">
-                    <Star className="w-3 h-3 fill-amber-400" />
-                    {rating.count > 0 ? rating.average : '—'}
-                  </span>
                 </div>
                 <div className="absolute bottom-3 right-3 left-3 text-white">
                   <h3 className="text-lg font-bold leading-tight hover:text-blue-300 transition-colors">
@@ -305,11 +300,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs"
                   >
                     <Eye className="w-4 h-4" />
-                    <span>شاشة البرنامج والتقييم</span>
-                    <span className="bg-blue-800/80 text-amber-300 font-mono px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1">
-                      <Star className="w-2.5 h-2.5 fill-amber-300" />
-                      {rating.count > 0 ? `${rating.average} / 5` : 'لا تقييمات'}
-                    </span>
+                    <span>ملف البرنامج</span>
                   </button>
 
                   <div className="flex items-center justify-between gap-2">

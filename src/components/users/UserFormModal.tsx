@@ -1,7 +1,8 @@
 import { FormPage } from '../common/FormPage';
 import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, SecurityClearance, ShiftType } from '../../types';
+import { User, UserRole } from '../../types';
+import { DEPARTMENTS, departmentIdOf, departmentName } from '../../shared/departments';
 import { RbacService, RoleDefinition } from '../../services/rbacService';
 import {
   User as UserIcon,
@@ -26,18 +27,7 @@ interface UserFormModalProps {
 }
 
 
-const DEPARTMENTS = [
-  'غرفة الأخبار',
-  'الإدارة العامة والتحرير',
-  'القسم الدولي',
-  'القسم الاقتصادي',
-  'الإنتاج والبرامج',
-  'المذيعين والتقديم',
-  'المراسلين الميدانيين',
-  'الوسائط والمكتبة',
-  'إدارة البث والعمليات',
-  'التحقيقات والتقارير الخاصة',
-];
+
 
 export const UserFormModal: React.FC<UserFormModalProps> = ({
   isOpen,
@@ -52,10 +42,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('JOURNALIST');
   const [jobTitle, setJobTitle] = useState('');
-  const [department, setDepartment] = useState(DEPARTMENTS[0]);
+  const [departmentId, setDepartmentId] = useState<string>('newsroom');
   const [staffId, setStaffId] = useState('');
-  const [securityClearance, setSecurityClearance] = useState<SecurityClearance>('CONFIDENTIAL');
-  const [shift, setShift] = useState<ShiftType>('MORNING');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('/avatar.svg');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -71,10 +59,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPhone(userToEdit.phone || '');
       setRole(userToEdit.role || 'JOURNALIST');
       setJobTitle(userToEdit.jobTitle || '');
-      setDepartment(userToEdit.department || DEPARTMENTS[0]);
+      setDepartmentId(departmentIdOf(userToEdit));
       setStaffId(userToEdit.staffId || '');
-      setSecurityClearance(userToEdit.securityClearance || 'CONFIDENTIAL');
-      setShift(userToEdit.shift || 'MORNING');
       setBio(userToEdit.bio || '');
       setAvatarUrl(userToEdit.avatarUrl || '/avatar.svg');
       setTwoFactorEnabled(userToEdit.twoFactorEnabled ?? false);
@@ -86,10 +72,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPhone('');
       setRole('JOURNALIST');
       setJobTitle('');
-      setDepartment(DEPARTMENTS[0]);
+      setDepartmentId('newsroom');
       setStaffId('');
-      setSecurityClearance('CONFIDENTIAL');
-      setShift('MORNING');
       setBio('');
       setAvatarUrl('/avatar.svg');
       setTwoFactorEnabled(false);
@@ -129,10 +113,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       phone: phone.trim(),
       role,
       jobTitle: jobTitle.trim(),
-      department,
+      departmentId,
+      department: departmentName(departmentId),
       staffId: staffId.trim(),
-      securityClearance,
-      shift,
       bio: bio.trim(),
       avatarUrl,
       isActive,
@@ -321,18 +304,18 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
           <div>
             <label htmlFor="user-form-modal-field-9" className="block text-xs font-bold text-slate-700 mb-1.5">
-              القسم التحريري / الإداري
+              القسم
             </label>
             <div className="relative">
               <Building className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
               <select id="user-form-modal-field-9"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
               >
                 {DEPARTMENTS.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
                   </option>
                 ))}
               </select>
@@ -340,48 +323,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
         </div>
 
-        {/* Broadcast Shifts, Clearance & Security Flags */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+        {/* Staff ID */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="user-form-modal-field-10" className="block text-xs font-bold text-slate-700 mb-1.5">
-              التصنيف الأمني للمواد (Security Clearance)
+            <label htmlFor="user-form-modal-staff-id" className="block text-xs font-bold text-slate-700 mb-1.5">
+              الرقم الوظيفي
             </label>
-            <select id="user-form-modal-field-10"
-              value={securityClearance}
-              onChange={(e) => setSecurityClearance(e.target.value as SecurityClearance)}
-              className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold"
-            >
-              <option value="TOP_SECRET">سري للغاية (Top Secret - سيادي)</option>
-              <option value="RESTRICTED">مقيد / حساس (Restricted)</option>
-              <option value="CONFIDENTIAL">خاص بغرفة الأخبار (Confidential)</option>
-              <option value="PUBLIC">عام للجمهور (Public)</option>
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="user-form-modal-field-11" className="block text-xs font-bold text-slate-700 mb-1.5">
-              وردية العمل التلفزيونية (Shift)
-            </label>
-            <div className="relative">
-              <Clock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
-              <select id="user-form-modal-field-11"
-                value={shift}
-                onChange={(e) => setShift(e.target.value as ShiftType)}
-                className="w-full text-xs pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
-              >
-                <option value="MORNING">الوردية الصباحية (06:00 - 14:00)</option>
-                <option value="EVENING">الوردية المسائية (14:00 - 22:00)</option>
-                <option value="NIGHT_ON_CALL">المناوبة الليلية / الطوارئ (22:00 - 06:00)</option>
-                <option value="FLEXIBLE">مرن / تغطية مفتوحة</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="user-form-modal-field-12" className="block text-xs font-bold text-slate-700 mb-1.5">
-              الرقم الوظيفي (Staff ID)
-            </label>
-            <input id="user-form-modal-field-12"
+            <input id="user-form-modal-staff-id"
               type="text"
               value={staffId}
               onChange={(e) => setStaffId(e.target.value)}

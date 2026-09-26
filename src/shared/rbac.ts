@@ -259,15 +259,7 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     categoryNameAr: 'البرامج التلفزيونية',
     riskLevel: 'MEDIUM',
   },
-  {
-    code: 'episodes.evaluate',
-    nameAr: 'إجراء التقييم المهني للحلقات',
-    nameEn: 'Evaluate Episodes',
-    description: 'تسجيل بطاقة التقييم النقدية وتدوين مؤشرات الجودة والريتنج',
-    category: 'PROGRAMS',
-    categoryNameAr: 'البرامج التلفزيونية',
-    riskLevel: 'MEDIUM',
-  },
+
 
   // --- GUESTS ---
   {
@@ -342,6 +334,15 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     nameAr: 'إنشاء وتعيين مهام للآخرين',
     nameEn: 'Create & Assign Tasks',
     description: 'تكليف الصحفيين والمراسلين وتحديد المواعيد النهائية',
+    category: 'TASKS',
+    categoryNameAr: 'المهام التحريرية',
+    riskLevel: 'MEDIUM',
+  },
+  {
+    code: 'roster.manage',
+    nameAr: 'إدارة جدول المناوبات',
+    nameEn: 'Manage Duty Roster',
+    description: 'تحديد المناوبين في كل قسم وكل وردية',
     category: 'TASKS',
     categoryNameAr: 'المهام التحريرية',
     riskLevel: 'MEDIUM',
@@ -505,7 +506,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'programs.view',
       'episodes.create',
       'episodes.edit',
-      'episodes.evaluate',
+      'roster.manage',
       'guests.view',
       'guests.manage',
       'guests.confidential_contacts',
@@ -564,7 +565,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'programs.manage',
       'episodes.create',
       'episodes.edit',
-      'episodes.evaluate',
+      'roster.manage',
       'guests.view',
       'guests.manage',
       'guests.confidential_contacts',

@@ -202,7 +202,7 @@ export const DatabaseManagerView: React.FC = () => {
             </div>
             
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              إدارة قاعدة البيانات ووحدة استعلامات SQLite
+              النسخ الاحتياطي وقاعدة البيانات
             </h1>
             <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
               إدارة متكاملة لقاعدة بيانات المحطة الإخبارية؛ تدعم التخزين الدائم على ملف القرص الصلب، تنفيذ استعلامات SQL الفورية، ومزامنة الجداول والرانداون.
