@@ -39,6 +39,12 @@ export const COLLECTIONS = {
   roster: { storageKey: 'nrcs_roster_v1', kind: 'list' },
   /** Agency wire items pulled by the server from RSS/Atom feeds (server-written only). */
   wires: { storageKey: 'nrcs_wires_v1', kind: 'list' },
+  /** News bulletins (newscasts): time slot, editor, anchors. */
+  bulletins: { storageKey: 'nrcs_bulletins_v1', kind: 'list' },
+  /** Stories of a bulletin, one row each so colleagues can edit different stories at once. */
+  bulletinStories: { storageKey: 'nrcs_bulletin_stories_v1', kind: 'list' },
+  /** Bulletin templates, optionally scheduled on weekdays. */
+  bulletinFormats: { storageKey: 'nrcs_bulletin_formats_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;
@@ -62,7 +68,7 @@ export interface BroadcastState {
 export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories']);
 
 /** Collections protected by edit locks. */
-export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'episodes']);
+export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'episodes', 'bulletinStories']);
 
 /** A lock expires unless the editor renews it (the client heartbeats well within this window). */
 export const EDIT_LOCK_TTL_MS = 2 * 60 * 1000;

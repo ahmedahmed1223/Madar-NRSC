@@ -48,6 +48,8 @@ const HelpView = lazy(() => import('./views/HelpView').then((m) => ({ default: m
 const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazy(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazy(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
+const BulletinsView = lazy(() => import('./views/BulletinsView').then((m) => ({ default: m.BulletinsView })));
+const BulletinRundownView = lazy(() => import('./views/BulletinRundownView').then((m) => ({ default: m.BulletinRundownView })));
 const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
 const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
 const StoriesView = lazy(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
@@ -127,6 +129,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [sources, setSources] = useState<NewsSource[]>([]);
   const [wires, setWires] = useState<WireItem[]>([]);
   const [studioEpisodeId, setStudioEpisodeId] = useState<string | null>(null);
+  const [activeBulletinId, setActiveBulletinId] = useState<string | null>(null);
+  const [onAirShowId, setOnAirShowId] = useState<string | null>(null);
+  const openBulletin = (id: string | null) => {
+    setActiveBulletinId(id);
+    setActiveNav('bulletins');
+  };
   // Prefilled fields for a new story written from an agency wire.
   const [newsSeed, setNewsSeed] = useState<NewsDraftSeed | null>(null);
   const [programTypes, setProgramTypes] = useState(apiService.getProgramTypes());
@@ -612,6 +620,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               // Notification links are stored as paths ("/tasks", "/episodes/<id>").
               const [view, id] = nav.replace(/^\/+/, '').split('/');
               if (view === 'episodes' && id) handleSelectEpisode(id);
+              else if (view === 'bulletins') openBulletin(id || null);
               else if (view === 'news' && id) handleEditNewsClick(id);
               else if (view === 'programs' && id) handleSelectProgram(id);
               else setActiveNav(view || 'dashboard');
@@ -667,6 +676,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   setActiveNav(map[view] || String(view).toLowerCase().replace(/_/g, '-'));
                 }}
                 onSelectEpisode={handleSelectEpisode}
+                onOpenBulletin={(id) => openBulletin(id)}
               />
             )}
 
@@ -898,9 +908,27 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
 
+            {activeNav === 'bulletins' &&
+              (activeBulletinId ? (
+                <BulletinRundownView
+                  key={activeBulletinId}
+                  bulletinId={activeBulletinId}
+                  currentUser={currentUser}
+                  onBack={() => setActiveBulletinId(null)}
+                  onOpenNews={(id) => handleEditNewsClick(id)}
+                  onOpenOnAir={(id) => {
+                    setOnAirShowId(id);
+                    setActiveNav('on-air');
+                  }}
+                />
+              ) : (
+                <BulletinsView currentUser={currentUser} onOpenBulletin={(id) => setActiveBulletinId(id)} />
+              ))}
+
             {activeNav === 'on-air' && (
               <OnAirView
                 currentUser={currentUser}
+                initialShowId={onAirShowId}
                 onOpenStudioScreen={(id) => {
                   setStudioEpisodeId(id);
                   setActiveNav('studio-screen');
@@ -929,7 +957,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        onNavigate={(nav) => setActiveNav(nav)}
+        onNavigate={(nav) => {
+          if (nav === 'bulletins') setActiveBulletinId(null);
+          if (nav === 'on-air') setOnAirShowId(null);
+          setActiveNav(nav);
+        }}
         onQuickCreateNews={handleCreateNewNewsClick}
         newsList={newsList}
         programs={programs}

@@ -13,14 +13,17 @@ import { localDateString } from '../shared/dates';
 interface OnAirViewProps {
   currentUser: User;
   onOpenStudioScreen: (episodeId: string) => void;
+  /** Episode or bulletin to show first (e.g. opened from a bulletin rundown). */
+  initialShowId?: string | null;
 }
 
 /** Live control of the show, shared in real time with every department. */
-export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen }) => {
-  useLiveData(['onAir', 'episodes', 'cues', 'requests', 'media'], 1000);
+export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, initialShowId }) => {
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media'], 1000);
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
   const today = localDateString();
-  const episodes = apiService.getEpisodes().filter((e) => !e.deletedAt);
+  // Programme episodes and news bulletins both run here.
+  const episodes = apiService.getAirShows().filter((e) => !e.deletedAt);
   const states = apiService.getOnAirStates();
   const liveIds = states.filter((s) => s.status === 'LIVE').map((s) => s.episodeId);
   const candidates = useMemo(
@@ -35,7 +38,7 @@ export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioS
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [episodes.length, liveIds.join(','), today]
   );
-  const [episodeId, setEpisodeId] = useState<string>(() => liveIds[0] || candidates[0]?.id || '');
+  const [episodeId, setEpisodeId] = useState<string>(() => initialShowId || liveIds[0] || candidates[0]?.id || '');
   const [error, setError] = useState<string | null>(null);
   const [cueText, setCueText] = useState('');
   const [cueTargets, setCueTargets] = useState<string[]>([]);
@@ -45,7 +48,16 @@ export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioS
   const rundown = (episode?.rundown || []).filter((s) => s && s.id);
   const live = state?.status === 'LIVE';
   const timing = liveTiming(state, episode);
-  const readiness = episode ? episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] }) : null;
+  const isBulletin = (episode as any)?.kind === 'bulletin';
+  // A bulletin is ready when every story on air is approved; an episode when every department delivered.
+  const readiness = !episode
+    ? null
+    : isBulletin
+    ? (() => {
+        const pending = rundown.filter((s: any) => s.notApproved);
+        return { ready: rundown.length > 0 && pending.length === 0, blockers: pending.map((s: any) => ({ segmentTitle: s.title, detail: 'غير معتمدة' })) };
+      })()
+    : episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
   const myCues = apiService
     .getCues()
     .filter((c) => c.fromId === currentUser.id && (!episode || !c.episodeId || c.episodeId === episode.id))
@@ -85,7 +97,7 @@ export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioS
 
   const start = () => {
     if (!episode || !rundown.length) return;
-    if (readiness && !readiness.ready && !window.confirm(`الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`)) return;
+    if (readiness && !readiness.ready && !window.confirm(isBulletin ? `${readiness.blockers.length} قصة غير معتمدة في النشرة. بدء البث رغم ذلك؟` : `الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`)) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
 
@@ -110,7 +122,7 @@ export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioS
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-xs">
+          <select value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-xs">
             {candidates.length === 0 && <option value="">لا توجد حلقات قادمة</option>}
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>

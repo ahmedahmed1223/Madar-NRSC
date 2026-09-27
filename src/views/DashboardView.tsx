@@ -38,6 +38,7 @@ interface DashboardViewProps {
   onCreateNews?: () => void;
   onCreateEpisode?: () => void;
   onCreateTask?: () => void;
+  onOpenBulletin?: (id: string) => void;
 }
 
 const TASK_PRIORITY_LABELS: Record<string, string> = {
@@ -64,6 +65,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onCreateNews = () => {},
   onCreateEpisode = () => {},
   onCreateTask = () => {},
+  onOpenBulletin,
 }) => {
   const [activeQueueTab, setActiveQueueTab] = useState<'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'PUBLISHED'>('UNDER_REVIEW');
   const [selectedDashboardCategory, setSelectedDashboardCategory] = useState<string>('ALL');
@@ -158,6 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         onOpenNews={onSelectNews}
         onOpenEpisode={onSelectEpisode}
         onNavigate={(v) => onNavigate(v as AppView)}
+        onOpenBulletin={onOpenBulletin}
       />
 
       {/* Critical/Breaking News Banner */}

@@ -1,5 +1,7 @@
 import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSeen';
 import { departmentIdOf } from '../../shared/departments';
+import { isApprover } from '../../shared/bulletins';
+import { localDateString } from '../../shared/dates';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
@@ -28,8 +30,7 @@ import {
   Radio,
   Sparkles,
   UserCog,
-  X,
-} from 'lucide-react';
+  X, ListVideo } from 'lucide-react';
 import { User } from '../../types';
 
 export type AppView =
@@ -143,6 +144,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => window.removeEventListener(WHATS_NEW_SEEN_EVENT, update);
   }, [currentUser?.id]);
   const liveCount = apiService.getOnAirStates().filter((s) => s.status === 'LIVE').length;
+  // Bulletin stories waiting for my approval (as the bulletin's editor or a chief editor).
+  const bulletinActor = currentUser
+    ? { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit') }
+    : null;
+  const today = localDateString();
+  const myBulletins = bulletinActor ? apiService.getBulletins().filter((b) => b.date >= today && b.status !== 'DONE' && isApprover(b, bulletinActor)).map((b) => b.id) : [];
+  const toApprove = myBulletins.length ? apiService.getBulletinStories().filter((s) => s.status === 'READY' && !s.killed && myBulletins.includes(s.bulletinId)).length : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -152,6 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'wires', label: 'البرقيات', icon: Rss, badge: null },
         { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800' },
         { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white animate-pulse' },
+        { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800' },
         { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
       ],
     },

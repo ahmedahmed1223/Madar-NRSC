@@ -70,6 +70,23 @@ import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
+import {
+  Bulletin,
+  bulletinAsShow,
+  bulletinError,
+  BulletinFormat,
+  bulletinFromFormat,
+  BulletinStory,
+  byRank,
+  formatError,
+  isApprover,
+  isScheduledOn,
+  rankBetween,
+  scheduledBulletinId,
+  storyContentChanged,
+  storyError,
+  storyStatusError,
+} from '../shared/bulletins';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
@@ -1085,8 +1102,8 @@ export class ApiService {
   static setOnAir(episodeId: string, status: 'LIVE' | 'ENDED', currentSegmentId: string): OnAirState {
     const me = this.getCurrentUser();
     if (!canControlOnAir(me, (p) => RbacService.hasPermission(me, p))) throw new Error('تشغيل وضع الهواء للمخرج والكنترول فقط');
-    const episode = this.getEpisodes().find((e) => e.id === episodeId);
-    if (!episode) throw new Error('الحلقة غير موجودة');
+    const episode = this.getAirShows().find((e) => e.id === episodeId);
+    if (!episode) throw new Error('الحلقة أو النشرة غير موجودة');
     const all = this.getOnAirStates();
     const before = all.find((s) => s.episodeId === episodeId);
     const now = new Date().toISOString();
@@ -1141,6 +1158,167 @@ export class ApiService {
   }
 
   // --- REQUESTS BETWEEN DEPARTMENTS ---
+  // --- BULLETINS ---
+  static getBulletins(): Bulletin[] {
+    return getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).filter((b) => !b.deletedAt);
+  }
+
+  static getBulletinStories(bulletinId?: string): BulletinStory[] {
+    return getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, [])
+      .filter((s) => !s.deletedAt && (!bulletinId || s.bulletinId === bulletinId))
+      .sort(byRank);
+  }
+
+  static getBulletinFormats(): BulletinFormat[] {
+    return getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []).filter((f) => !f.deletedAt);
+  }
+
+  private static bulletinActor() {
+    const me = this.getCurrentUser();
+    return { id: me.id, canApprove: RbacService.hasPermission(me, 'bulletins.approve'), canEdit: RbacService.hasPermission(me, 'bulletins.edit') };
+  }
+
+  static saveBulletin(data: Partial<Bulletin>): Bulletin {
+    const all = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    const now = new Date().toISOString();
+    const idx = data.id ? all.findIndex((b) => b.id === data.id) : -1;
+    const editor = data.editorId ? this.getUsers().find((u) => u.id === data.editorId) : undefined;
+    const next: Bulletin = {
+      ...(idx >= 0 ? all[idx] : { id: data.id || newId('bul'), status: 'PLANNING', anchors: [], createdAt: now }),
+      ...data,
+      ...(data.editorId !== undefined ? { editorName: editor?.fullName } : {}),
+      updatedAt: now,
+    } as Bulletin;
+    const err = bulletinError(next);
+    if (err) throw new Error(err);
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.bulletins.storageKey, all);
+    return next;
+  }
+
+  static deleteBulletin(id: string): void {
+    const all = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    setStored(COLLECTIONS.bulletins.storageKey, all.map((b) => (b.id === id ? { ...b, deletedAt: new Date().toISOString() } : b)));
+  }
+
+  /** Saves a story after the same checks the server applies (the server has the last word). */
+  static saveBulletinStory(data: Partial<BulletinStory> & { bulletinId: string }): BulletinStory {
+    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
+    const now = new Date().toISOString();
+    const me = this.getCurrentUser();
+    const idx = data.id ? all.findIndex((x) => x.id === data.id) : -1;
+    const before = idx >= 0 ? all[idx] : null;
+    const bulletin = this.getBulletins().find((b) => b.id === data.bulletinId);
+    const actor = this.bulletinActor();
+    const siblings = this.getBulletinStories(data.bulletinId);
+    const next: BulletinStory = {
+      ...(before || {
+        id: data.id || newId('bst'),
+        rank: rankBetween(siblings[siblings.length - 1]?.rank),
+        status: 'DRAFT',
+        script: '',
+        type: 'READER',
+        writerId: me.id,
+        writerName: me.fullName,
+        createdAt: now,
+      }),
+      ...data,
+      updatedAt: now,
+    } as BulletinStory;
+    if (before?.status === 'APPROVED' && next.status === 'APPROVED' && storyContentChanged(before, next) && !isApprover(bulletin, actor)) {
+      next.status = 'READY';
+    }
+    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
+    if (next.status !== 'APPROVED') Object.assign(next, { approvedById: undefined, approvedByName: undefined, approvedAt: undefined });
+    const err = storyError(next) || storyStatusError(before, next, bulletin, actor) || (!actor.canEdit && !isApprover(bulletin, actor) ? 'صلاحياتك لا تسمح بتعديل قصص النشرة' : null);
+    if (err) throw new Error(err);
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.bulletinStories.storageKey, all);
+    return next;
+  }
+
+  static deleteBulletinStory(id: string): void {
+    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
+    setStored(COLLECTIONS.bulletinStories.storageKey, all.map((x) => (x.id === id ? { ...x, deletedAt: new Date().toISOString() } : x)));
+  }
+
+  /** Moves a story up or down one place (only that story is rewritten). */
+  static moveBulletinStory(id: string, dir: -1 | 1): void {
+    const story = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).find((x) => x.id === id);
+    if (!story) return;
+    const list = this.getBulletinStories(story.bulletinId);
+    const i = list.findIndex((x) => x.id === id);
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    const rank = dir < 0 ? rankBetween(list[j - 1]?.rank, list[j].rank) : rankBetween(list[j].rank, list[j + 1]?.rank);
+    this.saveBulletinStory({ id, bulletinId: story.bulletinId, rank });
+  }
+
+  /** Copies stories into another bulletin as fresh drafts (like copying a story to another rundown). */
+  static copyStoriesToBulletin(storyIds: string[], bulletinId: string): number {
+    const source = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).filter((x) => storyIds.includes(x.id));
+    source.sort(byRank).forEach((x) => {
+      const { id: _id, rank: _r, status: _s, approvedById: _a, approvedByName: _n, approvedAt: _t, writerId: _w, writerName: _wn, createdAt: _c, floated: _f, killed: _k, ...rest } = x;
+      this.saveBulletinStory({ ...rest, bulletinId, status: 'DRAFT' });
+    });
+    return source.length;
+  }
+
+  static saveBulletinFormat(data: Partial<BulletinFormat>): BulletinFormat {
+    const all = getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []);
+    const now = new Date().toISOString();
+    const idx = data.id ? all.findIndex((f) => f.id === data.id) : -1;
+    const editor = data.editorId ? this.getUsers().find((u) => u.id === data.editorId) : undefined;
+    const next = {
+      ...(idx >= 0 ? all[idx] : { id: newId('fmt'), days: [], autoCreate: false, stories: [], anchors: [], createdAt: now }),
+      ...data,
+      ...(data.editorId !== undefined ? { editorName: editor?.fullName } : {}),
+      updatedAt: now,
+    } as BulletinFormat;
+    const err = formatError(next);
+    if (err) throw new Error(err);
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.bulletinFormats.storageKey, all);
+    return next;
+  }
+
+  static deleteBulletinFormat(id: string): void {
+    const all = getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []);
+    setStored(COLLECTIONS.bulletinFormats.storageKey, all.map((f) => (f.id === id ? { ...f, deletedAt: new Date().toISOString() } : f)));
+  }
+
+  /** Creates a bulletin with its skeleton stories from a format (a stable id for scheduled days). */
+  static createBulletinFromFormat(formatId: string, date: string, opts: { scheduled?: boolean; overrides?: Partial<Bulletin> } = {}): Bulletin {
+    const f = this.getBulletinFormats().find((x) => x.id === formatId);
+    if (!f) throw new Error('القالب غير موجود');
+    const id = opts.scheduled ? scheduledBulletinId(f.id, date) : newId('bul');
+    if (getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).some((b) => b.id === id)) throw new Error('هذه النشرة موجودة مسبقاً');
+    const { bulletin, stories } = bulletinFromFormat(f, date, id, newId);
+    const saved = this.saveBulletin({ ...bulletin, ...opts.overrides, id });
+    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
+    const me = this.getCurrentUser();
+    setStored(COLLECTIONS.bulletinStories.storageKey, [...all, ...stories.map((x) => ({ ...x, writerId: me.id, writerName: me.fullName }))]);
+    return saved;
+  }
+
+  /** Scheduled bulletins for a day that have not been created yet. */
+  static missingScheduledBulletins(date: string): BulletinFormat[] {
+    const existing = new Set(getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).map((b) => b.id));
+    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !existing.has(scheduledBulletinId(f.id, date)));
+  }
+
+  /** Programme episodes and bulletins that can run in on-air mode. */
+  static getAirShows(): any[] {
+    const stories = this.getBulletinStories();
+    return [
+      ...this.getEpisodes(),
+      ...this.getBulletins().map((b) => bulletinAsShow(b, stories.filter((x) => x.bulletinId === b.id))),
+    ];
+  }
+
   static getRequests(): DeptRequest[] {
     return getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).filter((r) => !r.deletedAt);
   }
@@ -1427,7 +1605,7 @@ export class ApiService {
   }
 
   /** Active lock on a story held by someone else (null when free or held by me). */
-  static getForeignLock(entityId: string, collection: 'news' | 'episodes' = 'news'): EditLock | null {
+  static getForeignLock(entityId: string, collection: 'news' | 'episodes' | 'bulletinStories' = 'news'): EditLock | null {
     const me = authClient.getSession()?.user.id;
     const lock = this.getEditLocks().find((l) => l.id === lockIdFor(collection, entityId));
     return lock && isLockActive(lock) && lock.userId !== me ? lock : null;
@@ -1441,7 +1619,7 @@ export class ApiService {
     return this.acquireEditLock('news', entityId);
   }
 
-  static async acquireEditLock(collection: 'news' | 'episodes', entityId: string): Promise<EditLock | null> {
+  static async acquireEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): Promise<EditLock | null> {
     const id = lockIdFor(collection, entityId);
     const locks = this.getEditLocks().filter((l) => l.id !== id);
     // `heartbeat` makes every renewal a real change; the server recomputes the expiry.
@@ -1455,7 +1633,7 @@ export class ApiService {
     this.releaseEditLock('news', entityId);
   }
 
-  static releaseEditLock(collection: 'news' | 'episodes', entityId: string): void {
+  static releaseEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
     const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();

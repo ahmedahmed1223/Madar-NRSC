@@ -366,6 +366,33 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     riskLevel: 'HIGH',
   },
   {
+    code: 'bulletins.edit',
+    nameAr: 'كتابة قصص النشرات',
+    nameEn: 'Write Bulletin Stories',
+    description: 'إضافة قصص للنشرات الإخبارية وكتابة نصوص المذيع وإرفاق اللقطات والشارات',
+    category: 'RUNDOWN',
+    categoryNameAr: 'الرانداون والبث الحي',
+    riskLevel: 'MEDIUM',
+  },
+  {
+    code: 'bulletins.approve',
+    nameAr: 'اعتماد قصص كل النشرات',
+    nameEn: 'Approve Bulletin Stories',
+    description: 'اعتماد قصص أي نشرة للهواء (محرر النشرة المسؤول يعتمد قصص نشرته تلقائياً)',
+    category: 'RUNDOWN',
+    categoryNameAr: 'الرانداون والبث الحي',
+    riskLevel: 'HIGH',
+  },
+  {
+    code: 'bulletins.manage',
+    nameAr: 'إنشاء النشرات وقوالبها وجدولتها',
+    nameEn: 'Manage Bulletins',
+    description: 'إنشاء النشرات وحذفها، وتعيين محرر النشرة والمذيعين، وإدارة القوالب والجدولة',
+    category: 'RUNDOWN',
+    categoryNameAr: 'الرانداون والبث الحي',
+    riskLevel: 'HIGH',
+  },
+  {
     code: 'roster.manage',
     nameAr: 'إدارة جدول المناوبات',
     nameEn: 'Manage Duty Roster',
@@ -517,6 +544,9 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'رئيس تحرير',
     isSystemRole: true,
     permissions: [
+      'bulletins.edit',
+      'bulletins.approve',
+      'bulletins.manage',
       'news.view',
       'news.create',
       'news.edit_own',
@@ -559,6 +589,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'محرر صحفي',
     isSystemRole: true,
     permissions: [
+      'bulletins.edit',
       'news.view',
       'news.create',
       'news.edit_own',
@@ -582,6 +613,8 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'منتج برامج',
     isSystemRole: true,
     permissions: [
+      'bulletins.edit',
+      'bulletins.manage',
       'news.view',
       'news.create',
       'news.edit_own',
@@ -635,6 +668,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'مراسل ميداني',
     isSystemRole: true,
     permissions: [
+      'bulletins.edit',
       'news.view',
       'news.create',
       'news.edit_own',

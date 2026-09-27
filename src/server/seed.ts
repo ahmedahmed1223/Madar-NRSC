@@ -20,6 +20,8 @@ import {
   INITIAL_TASKS,
   INITIAL_USERS,
 } from '../services/mockData';
+import { demoBulletin, INITIAL_BULLETIN_FORMATS } from '../services/demoBulletins';
+import { localDateString } from '../shared/dates';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { departmentIdOf, departmentName } from '../shared/departments';
@@ -47,6 +49,7 @@ export const DEMO_COLLECTIONS: [CollectionName, any[]][] = [
   ['notifications', INITIAL_NOTIFICATIONS],
   ['activityLogs', INITIAL_ACTIVITY_LOGS],
   ['auditLogs', INITIAL_AUDIT_LOGS],
+  ['bulletinFormats', INITIAL_BULLETIN_FORMATS],
 ];
 
 function seedList(db: NewsroomDatabase, collection: CollectionName, items: any[]) {
@@ -85,6 +88,21 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   migrateToDepartments(db);
   ensureSystemRoles(db);
   grantNewPermissions(db);
+  if (config.seedDemoData) seedDemoBulletins(db);
+}
+
+/** Demo bulletins arrived after the first demo release: added once to demo databases. */
+function seedDemoBulletins(db: NewsroomDatabase) {
+  if (db.getMeta('demo_bulletins') === '1') return;
+  db.transaction(() => {
+    seedList(db, 'bulletinFormats', INITIAL_BULLETIN_FORMATS);
+    if (db.countCollection('bulletins') === 0) {
+      const { bulletin, stories } = demoBulletin(localDateString());
+      db.writeRow('bulletins', bulletin.id, bulletin, 0, null);
+      stories.forEach((st, i) => db.writeRow('bulletinStories', st.id, st, i, null));
+    }
+    db.setMeta('demo_bulletins', '1');
+  });
 }
 
 /** Permissions added after roles were first stored: granted once to the system roles that need them. */
@@ -93,6 +111,9 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'requests.create': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
   'requests.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'onair.control': ['SUPER_ADMIN', 'ADMIN', 'PRODUCER'],
+  'bulletins.edit': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER'],
+  'bulletins.approve': ['SUPER_ADMIN', 'ADMIN', 'EDITOR'],
+  'bulletins.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
 };
 
 /** System roles introduced after a database was created are added once. */

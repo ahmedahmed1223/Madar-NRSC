@@ -4,6 +4,8 @@ import type { NewsItem } from '../types/index';
 import type { NewsroomDatabase } from './db';
 import { changeBus } from './sync';
 import { logger } from './logger';
+import { localDateString } from '../shared/dates';
+import { BulletinFormat, bulletinFromFormat, isScheduledOn, scheduledBulletinId } from '../shared/bulletins';
 
 const SYSTEM_ACTOR = { id: 'system', name: 'النشر المجدول', role: 'SUPER_ADMIN' as const };
 
@@ -78,4 +80,34 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
     changeBus.emit('rev', db.currentRev());
   }
   return published;
+}
+
+/**
+ * Creates the day's bulletins for formats set to create automatically (today and tomorrow),
+ * so the desk finds them ready to fill. Ids are stable per format and day, so a bulletin is
+ * never created twice, and one the desk deleted is not brought back.
+ */
+export function createScheduledBulletins(db: NewsroomDatabase, now = new Date()): string[] {
+  const created: string[] = [];
+  const days = [0, 1].map((d) => localDateString(new Date(now.getTime() + d * 86400_000)));
+  db.transaction(() => {
+    for (const row of db.listCollection('bulletinFormats')) {
+      const f = row.d as BulletinFormat;
+      if (!f || f.deletedAt || !f.autoCreate) continue;
+      for (const date of days) {
+        if (!isScheduledOn(f, date)) continue;
+        const id = scheduledBulletinId(f.id, date);
+        if (db.getRow('bulletins', id)) continue;
+        const { bulletin, stories } = bulletinFromFormat(f, date, id, newId, now.toISOString());
+        db.writeRow('bulletins', id, bulletin, db.positionBounds('bulletins').max + 1, null);
+        stories.forEach((s) => db.writeRow('bulletinStories', s.id, s, db.positionBounds('bulletinStories').max + 1, null));
+        created.push(id);
+      }
+    }
+  });
+  if (created.length) {
+    logger.info('scheduled bulletins created', { ids: created });
+    changeBus.emit('rev', db.currentRev());
+  }
+  return created;
 }

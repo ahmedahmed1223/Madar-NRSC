@@ -8,7 +8,8 @@ import type { NewsroomDatabase } from './db';
 import { logger } from './logger';
 import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
-import { generateEpisodeMosXml } from './mos';
+import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
+import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, CopilotMode, isAiConfigured, runCopilot } from './ai';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
@@ -37,7 +38,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.5.0';
+export const APP_VERSION = '3.6.0';
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
 const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => fn(req, res, next).catch(next);
@@ -455,6 +456,16 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="episode_${encodeURIComponent(episode.id)}_mos.xml"`);
     res.send(generateEpisodeMosXml(episode));
+  });
+
+  app.get('/api/v1/bulletins/:id/mos', requirePermission('rundown.view'), (req, res) => {
+    const bulletin = db.getRow('bulletins', req.params.id)?.d as Bulletin | undefined;
+    if (!bulletin || bulletin.deletedAt) throw new HttpError(404, 'النشرة غير موجودة');
+    const stories = db.listCollection('bulletinStories').map((r) => r.d).filter((s: any) => s?.bulletinId === bulletin.id && !s.deletedAt);
+    const media = db.listCollection('media').map((r) => r.d);
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="bulletin_${encodeURIComponent(bulletin.id)}_mos.xml"`);
+    res.send(generateBulletinMosXml(bulletin, stories as BulletinStory[], media));
   });
 
   // --- News archive (settled news outside the synced working set) ------------

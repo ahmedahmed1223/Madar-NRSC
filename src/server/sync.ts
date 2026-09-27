@@ -26,6 +26,7 @@ import { departmentIdOf } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
+import { findShow, isApprover, storyContentChanged } from '../shared/bulletins';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -133,6 +134,41 @@ function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
   return { ...base, startedAt: before.startedAt, segmentStartedAt, endedAt, log };
 }
 
+/**
+ * Server-owned story fields: the writer, and the approval. Editing the copy of an approved
+ * story sends it back for approval unless the approver made the edit.
+ */
+function stampBulletinStory(before: any, after: any, auth: AuthContext, bulletin: any) {
+  const now = new Date().toISOString();
+  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit') };
+  const next: any = {
+    ...after,
+    writerId: before?.writerId ?? auth.user.id,
+    writerName: before?.writerName ?? auth.user.fullName,
+    createdAt: before?.createdAt ?? now,
+    updatedAt: now,
+    status: before ? after.status : after.status === 'APPROVED' && !isApprover(bulletin, actor) ? 'DRAFT' : after.status || 'DRAFT',
+    approvedById: before?.approvedById,
+    approvedByName: before?.approvedByName,
+    approvedAt: before?.approvedAt,
+  };
+  if (before?.status === 'APPROVED' && next.status === 'APPROVED' && storyContentChanged(before, after) && !isApprover(bulletin, actor)) {
+    next.status = 'READY';
+  }
+  if (next.status === 'APPROVED' && before?.status !== 'APPROVED') {
+    next.approvedById = auth.user.id;
+    next.approvedByName = auth.user.fullName;
+    next.approvedAt = now;
+  }
+  if (next.status !== 'APPROVED') {
+    next.approvedById = undefined;
+    next.approvedByName = undefined;
+    next.approvedAt = undefined;
+  }
+  if (next.status !== 'DRAFT') next.returnNote = undefined;
+  return next;
+}
+
 function stampCue(before: any, after: any, auth: AuthContext) {
   const now = new Date().toISOString();
   if (!before) {
@@ -203,6 +239,31 @@ export class SyncService {
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
     return row.deleted ? true : canRead(auth, row.c, row.d);
+  }
+
+  private notify(userId: string, title: string, message: string, linkUrl: string) {
+    const id = newId('notif');
+    this.db.writeRow(
+      'notifications',
+      id,
+      { id, userId, title, message, type: 'TASK', linkUrl, isRead: false, createdAt: new Date().toISOString() },
+      this.db.positionBounds('notifications').min - 1,
+      null
+    );
+  }
+
+  /** The bulletin editor hears when a story is ready; the writer hears when it comes back. */
+  private notifyBulletinStory(before: any, after: any, auth: AuthContext) {
+    if (before?.status === after.status) return;
+    const bulletin = this.db.getRow('bulletins', String(after.bulletinId))?.d;
+    if (!bulletin) return;
+    const link = `/bulletins/${bulletin.id}`;
+    if (after.status === 'READY' && bulletin.editorId && bulletin.editorId !== auth.user.id) {
+      this.notify(bulletin.editorId, `قصة جاهزة للاعتماد: ${after.slug}`, `${bulletin.title} — ${after.writerName || auth.user.fullName}`, link);
+    }
+    if (after.status === 'DRAFT' && before?.status && after.writerId && after.writerId !== auth.user.id) {
+      this.notify(after.writerId, `أُعيدت قصة للتعديل: ${after.slug}`, `${bulletin.title}${after.returnNote ? ` — ${after.returnNote}` : ''}`, link);
+    }
   }
 
   /** Mentioned colleagues, and the story's author, hear about a new comment. */
@@ -336,7 +397,7 @@ export class SyncService {
             return {
               ok: false,
               code: 'CONFLICT',
-              message: `${collection === 'episodes' ? 'الحلقة' : 'الخبر'} قيد التحرير الآن لدى ${lock.userName}، لا يمكن حفظ تغييرات عليها حتى ينتهي`,
+              message: `${collection === 'episodes' ? 'الحلقة' : collection === 'bulletinStories' ? 'قصة النشرة' : 'الخبر'} قيد التحرير الآن لدى ${lock.userName}، لا يمكن حفظ تغييرات عليها حتى ينتهي`,
               current,
             } as SyncOpResult;
           }
@@ -395,7 +456,17 @@ export class SyncService {
             after = { ...after, addressedToName: member.fullName };
           }
         }
-        if (collection === 'onAir') after = stampOnAir(before, after, auth, this.db.getRow('episodes', String(after.episodeId))?.d);
+        if (collection === 'onAir') after = stampOnAir(before, after, auth, findShow(String(after.episodeId), this.listData));
+        if (collection === 'bulletins' && !after.deletedAt) {
+          // The editor's name comes from the directory, never from the client.
+          const editor = after.editorId ? this.db.getRow('users', String(after.editorId))?.d : null;
+          if (after.editorId && (!editor || editor.isActive === false)) throw new SyncReject('INVALID', 'محرر النشرة غير موجود أو موقوف');
+          after = { ...after, editorName: editor?.fullName, createdAt: before?.createdAt ?? after.createdAt ?? new Date().toISOString() };
+        }
+        if (collection === 'bulletinStories' && !after.deletedAt) {
+          const bulletin = this.db.getRow('bulletins', String(after.bulletinId))?.d;
+          after = stampBulletinStory(before, after, auth, bulletin);
+        }
         if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'comments' && !before && !after.deletedAt) {
           const known = new Set(this.listData('users').filter((u: any) => u.isActive !== false).map((u: any) => u.id));
@@ -450,12 +521,21 @@ export class SyncService {
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
+        if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
+        if (collection === 'bulletins' && !after.deletedAt && after.editorId && after.editorId !== before?.editorId && after.editorId !== auth.user.id) {
+          this.notify(after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, '/bulletins');
+        }
         if (collection === 'onAir') {
-          // The episode follows the live state: on air while live, broadcast once ended.
+          // The episode (or bulletin) follows the live state: on air while live, broadcast once ended.
           const ep = this.db.getRow('episodes', String(after.episodeId));
           const status = after.status === 'LIVE' ? 'ON_AIR' : 'BROADCASTED';
           if (ep && ep.d.status !== status) {
             this.db.writeRow('episodes', ep.id, { ...ep.d, status, updatedAt: new Date().toISOString() }, ep.p, null);
+          }
+          const bul = this.db.getRow('bulletins', String(after.episodeId));
+          const bulStatus = after.status === 'LIVE' ? 'ON_AIR' : 'DONE';
+          if (bul && bul.d.status !== bulStatus) {
+            this.db.writeRow('bulletins', bul.id, { ...bul.d, status: bulStatus, updatedAt: new Date().toISOString() }, bul.p, null);
           }
         }
 

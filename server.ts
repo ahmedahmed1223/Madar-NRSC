@@ -7,7 +7,7 @@ import { NewsroomDatabase } from './src/server/db';
 import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
-import { publishDueScheduledNews } from './src/server/scheduler';
+import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 
@@ -78,6 +78,16 @@ async function main() {
     }, 30_000)
   );
   publishDueScheduledNews(db);
+  // Scheduled bulletins (only formats set to create automatically).
+  const scheduleBulletins = () => {
+    try {
+      createScheduledBulletins(db);
+    } catch (err) {
+      logger.error('scheduled bulletins failed', { error: String(err) });
+    }
+  };
+  timers.push(setInterval(scheduleBulletins, 10 * 60 * 1000));
+  scheduleBulletins();
 
   if (config.backupIntervalHours > 0) {
     timers.push(

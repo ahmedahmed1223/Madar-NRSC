@@ -4,7 +4,7 @@ import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
 import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
-type LockTarget = 'news' | 'episodes';
+type LockTarget = 'news' | 'episodes' | 'bulletinStories';
 
 export type EditLockStatus = 'none' | 'acquiring' | 'held' | 'locked';
 

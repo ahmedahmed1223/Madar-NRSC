@@ -3,6 +3,7 @@ import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, isDepartmentId } from '../shared/departments';
 import { canControlOnAir } from '../shared/onair';
+import { bulletinError, findShow, formatError, isApprover, storyError, storyStatusError } from '../shared/bulletins';
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
@@ -190,6 +191,30 @@ const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   return [...changedKeys].every((k) => allowed.has(k)) ? null : 'صلاحياتك لا تسمح بتعديل هذه الحلقة';
 };
 
+const bulletinsPolicy: Policy = ({ auth, kind, before, after }) => {
+  if (kind === 'create' || kind === 'delete' || isSoftDelete(before, after)) {
+    return auth.can('bulletins.manage') ? null : 'إنشاء النشرات وحذفها لمسؤولي النشرات';
+  }
+  const isEditor = !!before?.editorId && before.editorId === auth.user.id;
+  if (!auth.can('bulletins.manage') && !isEditor) return 'تعديل بيانات النشرة لمحررها المسؤول';
+  if (!auth.can('bulletins.manage') && after?.editorId !== before?.editorId) return 'تغيير محرر النشرة لمسؤولي النشرات';
+  return after?.deletedAt ? null : bulletinError(after);
+};
+
+const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  const record = after || before;
+  const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === record?.bulletinId);
+  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit') };
+  const approver = isApprover(bulletin, actor);
+  if (kind === 'delete' || isSoftDelete(before, after)) {
+    return approver || auth.can('bulletins.manage') || (actor.canEdit && before?.writerId === auth.user.id) ? null : 'حذف القصة لكاتبها أو لمحرر النشرة';
+  }
+  if (!bulletin || bulletin.deletedAt) return 'النشرة غير موجودة';
+  if (!actor.canEdit && !approver) return 'صلاحياتك لا تسمح بتعديل قصص النشرة';
+  if (before && before.bulletinId !== after.bulletinId) return 'لا يمكن نقل القصة بين النشرات؛ انسخها بدلاً من ذلك';
+  return storyError(after) || storyStatusError(before, after, bulletin, actor);
+};
+
 const tasksPolicy: Policy = ({ auth, kind, before, after }) => {
   if (auth.can('tasks.create_assign')) return null;
   // Assignees may progress their own tasks.
@@ -256,13 +281,16 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (!auth.can('news.view')) return DENIED;
     return commentError(after);
   },
+  bulletins: bulletinsPolicy,
+  bulletinStories: bulletinStoriesPolicy,
+  bulletinFormats: (input) => require('bulletins.manage')(input) || (input.after && !input.after.deletedAt ? formatError(input.after) : null),
   onAir: ({ auth, kind, after, list }) => {
     if (!canControlOnAir(auth.user, auth.can)) return 'تشغيل وضع الهواء للمخرج والكنترول فقط';
     if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;
     if (!['LIVE', 'ENDED'].includes(after?.status)) return 'حالة البث غير صالحة';
-    const episode = (list?.('episodes') || []).find((e: any) => e.id === after?.episodeId);
-    if (!episode || after?.id !== episode.id) return 'الحلقة غير موجودة';
-    if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون الحلقة';
+    const episode = findShow(String(after?.episodeId), (c) => list?.(c) || []);
+    if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
+    if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
     return null;
   },
   cues: ({ auth, kind, before, after }) => {
@@ -295,18 +323,22 @@ export const POLICIES: Record<CollectionName, Policy> = {
   wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;
-    if (!target || !['news', 'episodes'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
+    if (!target || !['news', 'episodes', 'bulletinStories'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {
       return 'قفل تحرير غير صالح';
     }
-    const isEpisode = target.collection === 'episodes';
+    const noun = target.collection === 'episodes' ? 'الحلقة' : target.collection === 'bulletinStories' ? 'قصة النشرة' : 'الخبر';
+    const overridePerm = target.collection === 'episodes' ? 'rundown.lock_override' : target.collection === 'bulletinStories' ? 'bulletins.approve' : 'news.edit_any';
     const heldByOther = before && before.userId !== auth.user.id && before.expiresAt && new Date(before.expiresAt).getTime() > Date.now();
     // Taking over (or clearing) a colleague's live lock is reserved for editors / rundown supervisors.
-    if (heldByOther && !auth.can(isEpisode ? 'rundown.lock_override' : 'news.edit_any')) {
-      return `${isEpisode ? 'الحلقة' : 'الخبر'} قيد التحرير لدى ${before.userName}`;
+    if (heldByOther && !auth.can(overridePerm)) {
+      return `${noun} قيد التحرير لدى ${before.userName}`;
     }
-    const canHold = isEpisode
-      ? any(auth, 'episodes.edit', 'rundown.edit', 'rundown.reorder', 'rundown.presenter_teleprompter')
-      : any(auth, 'news.create', 'news.edit_any');
+    const canHold =
+      target.collection === 'episodes'
+        ? any(auth, 'episodes.edit', 'rundown.edit', 'rundown.reorder', 'rundown.presenter_teleprompter')
+        : target.collection === 'bulletinStories'
+        ? any(auth, 'bulletins.edit', 'bulletins.approve', 'bulletins.manage')
+        : any(auth, 'news.create', 'news.edit_any');
     if (kind !== 'delete' && !canHold) return DENIED;
     return null;
   },

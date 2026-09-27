@@ -1,5 +1,5 @@
 import React from 'react';
-import { AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
+import { Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
@@ -8,6 +8,7 @@ import { departmentIdOf, departmentName } from '../../shared/departments';
 import { isRequestClosed, requestStatusName, requestTypeOf, episodeReadiness } from '../../shared/production';
 import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
+import { isApprover } from '../../shared/bulletins';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -17,6 +18,7 @@ interface MyWorkPanelProps {
   onOpenNews: (id: string) => void;
   onOpenEpisode: (id: string) => void;
   onNavigate: (view: string) => void;
+  onOpenBulletin?: (id: string) => void;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -74,8 +76,8 @@ const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; mor
 );
 
 /** Personal work queue: what needs me now, by role and department. */
-export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate }) => {
-  useLiveData(['requests', 'roster', 'comments', 'media']);
+export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin }) => {
+  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories']);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review');
@@ -162,6 +164,22 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       },
     }));
 
+  // Bulletin stories: waiting for my approval, and my own stories sent back or still in draft.
+  const bulletinActor = { id: me, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit') };
+  const today = localDate(new Date());
+  const upcoming = apiService.getBulletins().filter((b) => b.date >= today && b.status !== 'DONE');
+  const byId = new Map(upcoming.map((b) => [b.id, b]));
+  const bulletinStories = apiService.getBulletinStories().filter((s) => byId.has(s.bulletinId) && !s.killed);
+  const openBulletin = (id: string) => (onOpenBulletin ? onOpenBulletin(id) : onNavigate('bulletins'));
+  const bulletinRows: Row[] = [
+    ...bulletinStories
+      .filter((s) => s.status === 'READY' && isApprover(byId.get(s.bulletinId), bulletinActor))
+      .map((s) => ({ id: s.id, title: s.slug, meta: `اعتماد · ${byId.get(s.bulletinId)!.startTime}`, tone: 'amber' as const, onClick: () => openBulletin(s.bulletinId) })),
+    ...bulletinStories
+      .filter((s) => s.writerId === me && s.status === 'DRAFT' && s.returnNote)
+      .map((s) => ({ id: s.id, title: s.slug, meta: 'أُعيدت إليك', tone: 'red' as const, onClick: () => openBulletin(s.bulletinId) })),
+  ];
+
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
   return (
@@ -188,6 +206,9 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         <Card testId="my-sent-requests" icon={Send} title="طلباتي المرسلة" rows={sent} empty="لا طلبات مفتوحة أرسلتها" more={() => onNavigate('requests')} />
         <Card testId="my-tasks" icon={CheckSquare} title="مهامي" rows={myTasks} empty="لا مهام مفتوحة مسندة إليك" more={() => onNavigate('tasks')} />
         <Card testId="my-episodes" icon={Tv} title="الحلقات القادمة وجاهزيتها" rows={todayEpisodes} empty="لا حلقات خلال اليومين القادمين" more={() => onNavigate('episodes')} />
+        {(bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) && (
+          <Card testId="my-bulletins" icon={Radio} title="قصص النشرات" rows={bulletinRows} empty="لا قصص نشرات تنتظرك" more={() => onNavigate('bulletins')} />
+        )}
         <Card testId="my-mentions" icon={AtSign} title="إشارات إليّ (7 أيام)" rows={mentions} empty="لم يُشر إليك أحد مؤخراً" />
       </div>
     </div>

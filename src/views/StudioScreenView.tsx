@@ -11,14 +11,16 @@ interface StudioScreenViewProps {
   initialEpisodeId?: string | null;
 }
 
+const lowerThirdsFromStory = (seg: any): string[] => (seg?.graphics || []).flatMap((g: any) => g.lines || []);
+
 /** Big, glanceable display for the studio floor and presenters. */
 export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser, initialEpisodeId }) => {
-  useLiveData(['onAir', 'episodes', 'cues', 'requests'], 500);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests'], 500);
   const ref = useRef<HTMLDivElement>(null);
   const live = apiService.getOnAirStates().filter((s) => s.status === 'LIVE');
   const [episodeId, setEpisodeId] = useState<string>(initialEpisodeId || live[0]?.episodeId || '');
   const effectiveId = episodeId || live[0]?.episodeId || '';
-  const episode = apiService.getEpisodes().find((e) => e.id === effectiveId);
+  const episode: any = apiService.getAirShows().find((e) => e.id === effectiveId);
   const state = effectiveId ? apiService.getOnAir(effectiveId) : null;
   const timing = liveTiming(state, episode);
   const seg = timing?.current;
@@ -36,6 +38,9 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             (r.link?.segmentId === seg.id || (r.link?.episodeId === effectiveId && !r.link?.segmentId && guestNames.has(r.lines?.[0] || '')))
         )
         .flatMap((r) => r.lines || [])
+        // Bulletin stories carry their own graphics.
+        .concat(lowerThirdsFromStory(seg))
+        .filter((line, i, arr) => arr.indexOf(line) === i)
     : [];
   const questions = seg && episode ? segmentQuestions(episode, seg).filter((q: any) => !q.isAsked).slice(0, 4) : [];
   const cue = apiService
@@ -51,7 +56,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
         <select value={effectiveId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-sm">
           {!effectiveId && <option value="">لا يوجد بث مباشر الآن</option>}
           {apiService
-            .getEpisodes()
+            .getAirShows()
             .filter((e) => !e.deletedAt && (e.status !== 'BROADCASTED' || live.some((l) => l.episodeId === e.id)))
             .map((e) => (
               <option key={e.id} value={e.id}>
