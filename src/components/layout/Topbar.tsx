@@ -140,6 +140,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClick={onToggleMobileMenu}
             className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl md:hidden transition-colors"
             title="فتح القائمة الرئيسية"
+            aria-label="فتح القائمة الرئيسية"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -205,6 +206,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <button
           type="button"
           onClick={handleSearchClick}
+          aria-label="البحث السريع (Ctrl + K)"
           className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl xl:hidden transition-colors"
           title="البحث السريع"
         >
@@ -235,6 +237,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
+            aria-label="إنشاء جديد"
+            aria-haspopup="menu"
+            aria-expanded={isCreateMenuOpen}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />

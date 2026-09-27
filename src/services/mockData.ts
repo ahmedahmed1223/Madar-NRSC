@@ -179,6 +179,23 @@ export const INITIAL_USERS: User[] = [
     isActive: true,
     createdAt: '2025-03-01T09:00:00Z',
   },
+  {
+    id: 'usr-10',
+    fullName: 'ماجد الحربي',
+    fullNameEn: 'Majed Al-Harbi',
+    email: 'crew@akhbar.tv',
+    phone: '+966 55 444 8812',
+    role: 'CREW',
+    avatarUrl: '/avatar.svg',
+    jobTitle: 'فني استوديو وإضاءة',
+    department: 'الاستديو',
+    departmentId: 'studio',
+    staffId: 'EMP-104',
+    bio: 'تجهيز الاستوديو والإضاءة وتنفيذ طلبات الأقسام أثناء البث.',
+    twoFactorEnabled: false,
+    isActive: true,
+    createdAt: '2025-03-10T09:00:00Z',
+  },
 ];
 
 export const INITIAL_CATEGORIES: Category[] = [

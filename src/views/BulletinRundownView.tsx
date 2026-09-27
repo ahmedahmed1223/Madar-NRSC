@@ -422,19 +422,19 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       {/* Rundown */}
       <SortableScope onDrop={dropStory} disabled={!canEdit}>
       <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-        <table className="w-full text-xs min-w-[900px]" aria-label="رانداون النشرة">
+        <table className="w-full text-xs md:min-w-[900px]" aria-label="رانداون النشرة">
           <thead className="bg-slate-50 text-slate-500 text-[11px]">
             <tr>
               <th className="p-2 text-right w-8">#</th>
               <th className="p-2 text-right">القصة</th>
               <th className="p-2 text-center">النوع</th>
-              <th className="p-2 text-right">المذيع</th>
+              <th className="p-2 text-right hidden lg:table-cell">المذيع</th>
               <th className="p-2 text-center">الحالة</th>
-              <th className="p-2 text-center">قراءة</th>
-              <th className="p-2 text-center">لقطة</th>
+              <th className="p-2 text-center hidden md:table-cell">قراءة</th>
+              <th className="p-2 text-center hidden md:table-cell">لقطة</th>
               <th className="p-2 text-center">المدة</th>
-              <th className="p-2 text-center">البداية</th>
-              <th className="p-2 text-center">Back</th>
+              <th className="p-2 text-center hidden sm:table-cell">البداية</th>
+              <th className="p-2 text-center hidden md:table-cell">Back</th>
               <th className="p-2 text-center">إجراءات</th>
             </tr>
           </thead>
@@ -497,7 +497,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   <td className="p-2 text-center font-mono font-black text-blue-700" title={t.name}>
                     {t.code}
                   </td>
-                  <td className="p-2">{s.anchorName || bulletin.anchors[0] || ''}</td>
+                  <td className="p-2 hidden lg:table-cell">{s.anchorName || bulletin.anchors[0] || ''}</td>
                   <td className="p-2 text-center">
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>
                     {(() => {
@@ -510,15 +510,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       ) : null;
                     })()}
                   </td>
-                  <td className="p-2 text-center font-mono" dir="ltr">{mmss(st.read)}</td>
-                  <td className="p-2 text-center font-mono" dir="ltr">{st.clip || st.manual ? mmss(st.clip + st.manual) : '—'}</td>
+                  <td className="p-2 text-center font-mono hidden md:table-cell" dir="ltr">{mmss(st.read)}</td>
+                  <td className="p-2 text-center font-mono hidden md:table-cell" dir="ltr">{st.clip || st.manual ? mmss(st.clip + st.manual) : '—'}</td>
                   <td className="p-2 text-center font-mono font-bold" dir="ltr">{mmss(st.total)}</td>
-                  <td className="p-2 text-center font-mono text-slate-600" dir="ltr">{row ? clockOf(row.front) : '—'}</td>
-                  <td className="p-2 text-center font-mono text-slate-600" dir="ltr">{row ? clockOf(row.back) : '—'}</td>
+                  <td className="p-2 text-center font-mono text-slate-600 hidden sm:table-cell" dir="ltr">{row ? clockOf(row.front) : '—'}</td>
+                  <td className="p-2 text-center font-mono text-slate-600 hidden md:table-cell" dir="ltr">{row ? clockOf(row.back) : '—'}</td>
                   <td className="p-2">
                     <div className="flex items-center justify-center gap-0.5">
                       {canEdit && (
-                        <>
+                        <span className="hidden sm:contents">
                           <button type="button" disabled={idx === 0} onClick={() => attempt(() => apiService.moveBulletinStory(s.id, -1))} aria-label={`تقديم ${s.slug}`} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
                             <ArrowUp className="w-3.5 h-3.5" />
                           </button>
@@ -531,7 +531,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                           <button type="button" onClick={() => toggle(s, { killed: !s.killed }, s.killed ? 'أُعيدت القصة' : 'استُبعدت القصة')} aria-label={s.killed ? `إعادة ${s.slug}` : `استبعاد ${s.slug}`} title={s.killed ? 'إعادة' : 'استبعاد (Kill)'} className={`p-1 ${s.killed ? 'text-rose-600' : 'text-slate-400 hover:text-rose-600'}`}>
                             <CircleSlash className="w-3.5 h-3.5" />
                           </button>
-                        </>
+                        </span>
                       )}
                       {isApprover(bulletin, actor, s) && s.status !== 'APPROVED' && !s.killed && !lock && (
                         <button

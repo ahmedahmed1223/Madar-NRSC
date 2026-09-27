@@ -79,6 +79,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
   // Status updates
   const readiness = episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
+  // Timing plan is separate from material readiness: planned rundown vs the slot.
+  const slotSeconds = (Number(episode.durationMinutes) || 0) * 60;
+  const plannedSeconds = (episode.rundown || []).reduce((sum, seg: any) => sum + (Number(seg.durationSeconds) || 0), 0);
+  const timingGap = plannedSeconds - slotSeconds; // negative = under, positive = over
+  const timingOk = slotSeconds === 0 || Math.abs(timingGap) <= Math.max(60, slotSeconds * 0.05);
+  const mmssOf = (sec: number) => `${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, '0')}`;
   const [showBlockers, setShowBlockers] = useState(false);
   const [booking, setBooking] = useState<Partial<Booking> | null>(null);
   const canBook = RbacService.hasPermission(currentUser, 'resources.book') || RbacService.hasPermission(currentUser, 'resources.manage');
@@ -105,6 +111,13 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               readiness.blockers.slice(0, 6).map((b) => `• ${b.segmentTitle}: ${b.detail} (${departmentName(b.departmentId)})`).join('\n')
       );
       return;
+    }
+    if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !timingOk) {
+      const msg =
+        timingGap < 0
+          ? `الرانداون أقصر من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة (المخطط ${mmssOf(plannedSeconds)} من ${mmssOf(slotSeconds)}).`
+          : `الرانداون أطول من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة.`;
+      if (!window.confirm(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`)) return;
     }
     onSaveEpisode({ id: episode.id, status: newStatus });
   };
@@ -169,7 +182,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       )}
 
       {/* On-air readiness across departments */}
-      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
+      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready && timingOk ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-800">
@@ -177,7 +190,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {readiness.ready
-                ? 'كل الأقسام سلّمت ما يلزم؛ يمكن اعتماد الحلقة للبث.'
+                ? 'كل الأقسام سلّمت المواد المطلوبة.'
                 : readiness.total === 0
                 ? 'أضف فقرات الرانداون أولاً.'
                 : `${readiness.blockers.length} عنصر ينتظر التحرير أو المونتاج أو الأقسام الأخرى.`}
@@ -194,6 +207,15 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             )}
           </div>
         </div>
+        {slotSeconds > 0 && readiness.total > 0 && (
+          <p
+            role={timingOk ? undefined : 'status'}
+            className={`mt-2 text-[11px] font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
+          >
+            خطة الوقت: {mmssOf(plannedSeconds)} مخطط من {mmssOf(slotSeconds)}
+            {timingOk ? ' — مكتملة' : timingGap < 0 ? ` — ينقص ${mmssOf(timingGap)} دقيقة` : ` — يزيد ${mmssOf(timingGap)} دقيقة`}
+          </p>
+        )}
         {showBlockers && readiness.blockers.length > 0 && (
           <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
             {readiness.blockers.map((b, i) => (

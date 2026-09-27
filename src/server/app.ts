@@ -2,7 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
 import type { AuditLog, Episode, User } from '../types/index';
-import { DEMO_COLLECTIONS, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
+import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger } from './logger';
@@ -39,7 +39,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.9.0';
+export const APP_VERSION = '3.10.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -238,6 +238,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     }
     clearSessionCookie(res, config);
     res.json({ success: true });
+  });
+
+  // Demo installations only: which accounts can be tried (never listed when demo data is off or removed).
+  app.get('/api/v1/auth/demo-accounts', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: config.seedDemoData ? { password: config.demoUserPassword, accounts: demoAccounts(db) } : { accounts: [] } });
   });
 
   app.get('/api/v1/auth/me', requireAuth, (req, res) => {

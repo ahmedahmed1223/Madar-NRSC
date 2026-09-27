@@ -539,6 +539,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   <button
                     type="button"
                     onClick={handleSelectAll}
+                    role="checkbox"
+                    aria-checked={selectedIds.length === 0 ? false : selectedIds.length === pagedNews.length ? true : 'mixed'}
+                    aria-label="تحديد كل الأخبار المعروضة"
                     className="p-1 text-slate-500 hover:text-slate-800"
                   >
                     {selectedIds.length === filteredNews.length && filteredNews.length > 0 ? (
@@ -583,6 +586,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                         <button
                           type="button"
                           onClick={() => toggleSelectOne(item.id)}
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          aria-label={`تحديد الخبر: ${item.title}`}
                           className="p-1 text-slate-400 hover:text-slate-700"
                         >
                           {isSelected ? (

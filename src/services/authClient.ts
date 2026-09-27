@@ -22,7 +22,8 @@ export const authClient = {
 
   async fetchSession(): Promise<SessionInfo | null> {
     try {
-      const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/me');
+      // A slow or stuck first request must not leave the screen waiting forever.
+      const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/me', { signal: AbortSignal.timeout(10_000) });
       session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
       return session;
     } catch {
@@ -34,6 +35,7 @@ export const authClient = {
   /** Throws ApiError with code TOTP_REQUIRED when the account needs an authenticator code. */
   async login(email: string, password: string, totp?: string): Promise<SessionInfo> {
     const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/login', {
+      signal: AbortSignal.timeout(20_000),
       method: 'POST',
       json: totp ? { email, password, totp } : { email, password },
     });

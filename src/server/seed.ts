@@ -92,6 +92,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   ensureSystemRoles(db);
   grantNewPermissions(db);
   if (demoAllowed) {
+    await ensureDemoUsers(db, config);
     seedDemoBulletins(db);
     seedDemoPlanning(db);
   }
@@ -107,6 +108,32 @@ function seedDemoPlanning(db: NewsroomDatabase) {
     seedList(db, 'bookings', demoBookings(today));
     db.setMeta('demo_planning', '1');
   });
+}
+
+/** Demo accounts added after a demo database was created (e.g. the crew account) are added once. */
+async function ensureDemoUsers(db: NewsroomDatabase, config: AppConfig) {
+  const missing = INITIAL_USERS.filter((u) => !db.getRow('users', u.id, true) && !db.getCredentialsByEmail(u.email) && db.getMeta(`demo_user:${u.id}`) !== '1');
+  if (!missing.length) return;
+  const hash = await hashPassword(config.demoUserPassword);
+  db.transaction(() => {
+    for (const u of missing) {
+      db.writeRow('users', u.id, u, db.positionBounds('users').max + 1, null);
+      db.setPassword(u.id, u.email.toLowerCase(), hash, false);
+      db.setMeta(`demo_user:${u.id}`, '1');
+    }
+  });
+}
+
+/** Sign-in cards for demo installations: the real accounts (name, e-mail, role) as they are now. */
+export function demoAccounts(db: NewsroomDatabase) {
+  if (db.getMeta('demo_removed') === '1') return [];
+  const roles = db.listCollection('roles').map((r) => r.d);
+  return INITIAL_USERS.map((u) => db.getRow('users', u.id)?.d)
+    .filter((u: any) => u && u.isActive !== false && db.getCredentialsByEmail(u.email))
+    .map((u: any) => {
+      const role = roles.find((r: any) => (u.customRoleId ? r.id === u.customRoleId : r.roleCode === u.role));
+      return { email: u.email, fullName: u.fullName, jobTitle: u.jobTitle, roleName: String(role?.nameAr || u.role).split(' (')[0], department: u.department };
+    });
 }
 
 /** Demo bulletins arrived after the first demo release: added once to demo databases. */

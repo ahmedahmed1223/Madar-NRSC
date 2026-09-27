@@ -35,15 +35,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   // Filter news based on selected category
-  // Share of episodes whose rundown adds up to within a minute of the planned duration.
-  const rundownAccuracy = useMemo(() => {
-    const withRundown = episodes.filter((e) => Array.isArray(e.rundown) && e.rundown.length > 0 && e.durationMinutes > 0);
-    const onTime = withRundown.filter((e) => {
-      const total = e.rundown.reduce((sum, seg) => sum + (Number(seg.durationSeconds) || 0), 0);
-      return Math.abs(total - e.durationMinutes * 60) <= 60;
-    }).length;
-    return { onTime, total: withRundown.length };
-  }, [episodes]);
 
   // Start of the selected reporting window (local time); null means no limit.
   const periodStart = useMemo(() => {
@@ -54,6 +45,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     if (selectedPeriod === 'month') d.setDate(d.getDate() - 29);
     return d;
   }, [selectedPeriod]);
+  const periodLabel = { today: 'اليوم', week: 'آخر 7 أيام', month: 'آخر 30 يوماً', all: 'كل الفترات' }[selectedPeriod];
 
   const inPeriod = (value?: string) => {
     if (!periodStart) return true;
@@ -75,6 +67,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     () => episodes.filter((e) => inPeriod(e.broadcastDate)),
     [episodes, periodStart]
   );
+
+  // Share of episodes whose rundown adds up to within a minute of the planned duration.
+  const rundownAccuracy = useMemo(() => {
+    const withRundown = periodEpisodes.filter((e) => Array.isArray(e.rundown) && e.rundown.length > 0 && e.durationMinutes > 0);
+    const onTime = withRundown.filter((e) => {
+      const total = e.rundown.reduce((sum, seg) => sum + (Number(seg.durationSeconds) || 0), 0);
+      return Math.abs(total - e.durationMinutes * 60) <= 60;
+    }).length;
+    return { onTime, total: withRundown.length };
+  }, [periodEpisodes]);
 
   // Average minutes from creation to approval for approved/published items in the window.
   const avgApprovalMinutes = useMemo(() => {
@@ -102,6 +104,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const handleExportCsv = () => {
     const csvRows = [
       ['المؤشر الإحصائي', 'القيمة'],
+      ['الفترة', periodLabel],
       ['إجمالي الأخبار المرشحة', String(filteredNews.length)],
       ['الأخبار المنشورة', String(publishedCount)],
       ['الأخبار المعتمدة', String(approvedCount)],
@@ -110,7 +113,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ['إجمالي الحلقات التلفزيونية', String(totalEpisodes)],
       ['حلقات جاهزة للبث المباشر', String(readyEpisodes)],
       ['حلقات تم بثها', String(completedEpisodes)],
-      ['إجمالي الضيوف المعتمدين', String(guests.length)],
+      ['إجمالي الضيوف المعتمدين (كل الفترات)', String(guests.length)],
+      ['دقة توقيت الرانداون', `${rundownAccuracy.onTime}/${rundownAccuracy.total}`],
     ];
 
     const csvContent = '\uFEFF' + csvRows.map((e) => e.join(',')).join('\n');
@@ -275,7 +279,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف</span>
+            <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف <span className="font-normal text-slate-400">(الإجمالي، لا يتأثر بالفترة)</span></span>
             <Users className="w-5 h-5 text-amber-600" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">{guests.length}</div>
@@ -290,12 +294,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Category Breakdown */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800">
-            حجم الإنتاج الإخباري حسب الأقسام الصحفية
+            حجم الإنتاج الإخباري حسب الأقسام الصحفية <span className="text-[11px] font-normal text-slate-500">(ضمن الفترة المختارة)</span>
           </h3>
           <div className="space-y-3">
             {categories.map((cat) => {
-              const count = (newsList || []).filter((n) => n.categoryId === cat.id).length;
-              const pct = (newsList || []).length > 0 ? Math.round((count / newsList.length) * 100) : 0;
+              // Same period as the other indicators (the category filter is ignored here by design).
+              const newsInPeriod = (newsList || []).filter((n) => inPeriod(n.updatedAt || n.createdAt));
+              const count = newsInPeriod.filter((n) => n.categoryId === cat.id).length;
+              const pct = newsInPeriod.length > 0 ? Math.round((count / newsInPeriod.length) * 100) : 0;
 
               return (
                 <div key={cat.id} className="space-y-1">

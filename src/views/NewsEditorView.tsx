@@ -1381,7 +1381,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       <p className="text-[11px] text-slate-600">
                         غيّر الحالة إلى:{' '}
                         <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">
-                          {log.toStatus}
+                          {NEWS_STATUS_LABELS[log.toStatus] || log.toStatus}
                         </span>
                       </p>
                       {log.comment && (

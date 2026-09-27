@@ -20,6 +20,16 @@ interface AuditLogsViewProps {
   logs: AuditLog[];
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  CREATE: 'إنشاء', UPDATE: 'تعديل', DELETE: 'حذف', RESTORE: 'استعادة', PUBLISH: 'نشر', UNPUBLISH: 'إلغاء نشر',
+  STATUS_CHANGE: 'تغيير حالة', LOGIN: 'تسجيل دخول', LOGOUT: 'تسجيل خروج', LOGIN_FAILED: 'محاولة دخول فاشلة',
+  SETTINGS_UPDATE: 'تعديل إعدادات', SECURITY_VIOLATION: 'محاولة غير مصرح بها', PASSWORD_CHANGE: 'تغيير كلمة المرور',
+  PASSWORD_RESET: 'إعادة تعيين كلمة المرور', TWO_FACTOR_ENABLED: 'تفعيل التحقق بخطوتين', TWO_FACTOR_DISABLED: 'إلغاء التحقق بخطوتين',
+  DB_EXPORT: 'تنزيل قاعدة البيانات', DB_RESET: 'إعادة تهيئة البيانات', DB_RESTORE: 'استعادة نسخة احتياطية', BACKUP_CREATE: 'نسخة احتياطية',
+  DEMO_DATA_REMOVED: 'حذف البيانات التجريبية',
+};
+const actionName = (a: string) => ACTION_LABELS[a] || a;
+
 export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState('ALL');
@@ -32,15 +42,16 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const filteredLogs = (logs || []).filter((log) => {
     if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
     if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), actionOf(log));
+      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), actionOf(log), ACTION_LABELS[actionOf(log)]);
     }
     return true;
   });
 
+
   const getActionBadge = (action: string) => {
     switch (action) {
       case 'PUBLISH':
-        return <Badge variant="success" size="sm">نشر فوري (PUBLISH)</Badge>;
+        return <Badge variant="success" size="sm">نشر</Badge>;
       case 'STATUS_CHANGE':
         return <Badge variant="purple" size="sm">تغيير حالة تحريرية</Badge>;
       case 'CREATE':
@@ -52,7 +63,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
       case 'LOGIN':
         return <Badge variant="info" size="sm">تسجيل دخول</Badge>;
       default:
-        return <Badge variant="default" size="sm">{action}</Badge>;
+        return <Badge variant="default" size="sm">{actionName(action)}</Badge>;
     }
   };
 
@@ -103,6 +114,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                 onClick={() => setSearchQuery('')}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                 title="مسح البحث"
+                aria-label="مسح البحث"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -123,7 +135,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                 .sort()
                 .map((a) => (
                   <option key={a} value={a}>
-                    {a}
+                    {actionName(a)}
                   </option>
                 ))}
             </select>

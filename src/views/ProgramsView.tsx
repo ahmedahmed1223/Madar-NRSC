@@ -137,7 +137,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       shortName: shortName || name,
       description,
       typeId,
-      typeName: typeObj?.name || 'نشرة إخبارية',
+      typeName: typeObj?.nameAr || typeObj?.name || 'نشرة إخبارية',
       presenterName,
       producerName,
       broadcastDays,
@@ -221,7 +221,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             <option value="ALL">جميع الأنواع ({programTypes.length})</option>
             {programTypes.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name}
+                {t.nameAr || t.name || 'نوع بلا اسم'}
               </option>
             ))}
           </select>
@@ -385,7 +385,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               >
                 {programTypes.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {t.nameAr || t.name || 'نوع بلا اسم'}
                   </option>
                 ))}
               </select>

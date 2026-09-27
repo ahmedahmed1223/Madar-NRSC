@@ -28,6 +28,7 @@ import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
 import { approvalStepName, approvalStepsOf, canActOnStep, findShow, isApprover, nextApprovalStep, storyContentChanged, type ApprovalStep, type StoryApproval } from '../shared/bulletins';
 import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
+import { statusLabel } from '../shared/labels';
 import { localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
@@ -267,6 +268,36 @@ export class SyncService {
 
   private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false) {
     writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
+  }
+
+  /** Server-side audit trail for the main records: who created, changed status, deleted or restored what. */
+  private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
+    const NAMES: Partial<Record<CollectionName, string>> = {
+      news: 'NEWS', stories: 'STORY', programs: 'PROGRAM', episodes: 'EPISODE', bulletins: 'BULLETIN', guests: 'GUEST',
+      media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', bulletinFormats: 'BULLETIN_FORMAT',
+    };
+    const entity = NAMES[collection];
+    if (!entity || !after) return;
+    const title = after.title || after.name || after.fullName || after.slug || after.id;
+    let action = '';
+    let severity = 'INFO';
+    let details = '';
+    if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
+    else if (after.deletedAt && !before.deletedAt) [action, severity, details] = ['DELETE', 'WARNING', `نقل إلى المحذوفات: ${title}`];
+    else if (!after.deletedAt && before.deletedAt) [action, details] = ['RESTORE', `استعادة: ${title}`];
+    else if (before.status !== after.status && after.status) {
+      if (collection === 'news' && after.status === 'PUBLISHED') [action, details] = ['PUBLISH', `نشر: ${title}`];
+      else if (collection === 'news' && before.status === 'PUBLISHED') [action, severity, details] = ['UNPUBLISH', 'WARNING', `إلغاء نشر: ${title}`];
+      else [action, details] = ['STATUS_CHANGE', `${title}: ${statusLabel(before.status)} ← ${statusLabel(after.status)}`];
+    } else return;
+    const id = newId('aud');
+    this.db.writeRow(
+      'auditLogs',
+      id,
+      { id, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, actionType: action, targetEntity: entity, targetId: after.id, severity, details, ipAddress: ip ?? 'unknown', timestamp: new Date().toISOString() },
+      this.db.positionBounds('auditLogs').min - 1,
+      null
+    );
   }
 
   /** Who can give this sign-off (for notifications). */
@@ -633,6 +664,7 @@ export class SyncService {
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
+        this.auditLifecycle(collection, before, after, auth, ip);
         if (collection === 'news' && !after.deletedAt) this.notifyNewsWorkflow(before, after, auth);
         if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
         if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);

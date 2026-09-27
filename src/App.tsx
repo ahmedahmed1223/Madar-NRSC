@@ -76,6 +76,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [activeNav, setActiveNav] = useState('dashboard');
   /** Item opened from a notification link (wire, diary entry, booking). */
   const [focusId, setFocusId] = useState<string | null>(null);
+  /** Bumped when «حلقة جديدة» is pressed elsewhere: the episodes screen opens its form directly. */
+  const [openNewEpisode, setOpenNewEpisode] = useState(0);
   /** Set when the server answers from different databases (misconfigured multi-instance hosting). */
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
@@ -642,7 +644,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         <Sidebar
           activeNav={activeNav}
           currentUser={currentUser}
-          breakingCount={newsList.filter((n) => n.isBreaking && !n.deletedAt).length}
+          breakingCount={newsList.filter((n) => isBreakingLive(n)).length}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           onSelectNav={(navId) => {
@@ -700,6 +702,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               <DashboardView
                 newsList={newsList}
                 episodes={episodes}
+                programs={programs}
                 tasks={tasks}
                 guests={guests}
                 categories={categories}
@@ -842,6 +845,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 }}
                 onCreateEpisodeForProgram={(prgId) => {
                   setFilterProgramId(prgId);
+                  setOpenNewEpisode((n) => n + 1);
                   setActiveNav('episodes');
                 }}
                 onOpenWorkspace={(ep) => {
@@ -861,6 +865,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveEpisode={handleSaveEpisode}
                 filterProgramId={filterProgramId}
                 onDeleteEpisode={handleDeleteEpisode}
+                openNewRequest={openNewEpisode}
               />
             )}
 

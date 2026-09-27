@@ -497,8 +497,6 @@ export class ApiService {
       item.title,
       `قام ${currentUser.fullName} بنقل الخبر من [${NEWS_STATUS_LABELS[fromStatus] || fromStatus}] إلى [${NEWS_STATUS_LABELS[toStatus]}]`
     );
-    if (toStatus === 'PUBLISHED') this.logAudit('PUBLISH', 'NEWS', item.id, 'INFO', `نشر الخبر رسمياً: ${item.title}`);
-    else if (fromStatus === 'PUBLISHED') this.logAudit('UNPUBLISH', 'NEWS', item.id, 'WARNING', `إلغاء نشر الخبر: ${item.title}`);
 
     return updated;
   }
@@ -511,7 +509,6 @@ export class ApiService {
     if (idx !== -1) {
       all[idx] = { ...all[idx], deletedAt: new Date().toISOString(), isBreaking: false };
       setStored(STORAGE_KEYS.NEWS, all);
-      this.logAudit('DELETE', 'NEWS', newsId, 'WARNING', `نقل الخبر إلى سلة المحذوفات بواسطة ${currentUser.fullName}`);
     }
   }
 
@@ -1818,7 +1815,6 @@ export class ApiService {
     }
     all[idx] = { ...all[idx], deletedAt: null, updatedAt: new Date().toISOString() };
     setStored(STORAGE_KEYS.NEWS, all);
-    this.logAudit('RESTORE', 'NEWS', newsId, 'INFO', `استعادة خبر محذوف: ${all[idx].title}`);
     return all[idx];
   }
 

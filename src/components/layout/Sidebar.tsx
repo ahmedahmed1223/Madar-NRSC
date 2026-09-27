@@ -5,7 +5,7 @@ import { localDateString } from '../../shared/dates';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   Newspaper, FolderGit2,
@@ -122,6 +122,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
   const organizationName = apiService.getSettings()?.organizationName || '';
 
+  // On phones the closed menu is off-screen: keep it out of Tab order and screen readers.
+  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const on = () => setIsSmallScreen(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  const asideRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!isSmallScreen || !isMobileOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    // Focus moves into the menu; Escape closes it and focus returns to the menu button.
+    asideRef.current?.querySelector<HTMLElement>('nav button')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseMobile?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+  }, [isSmallScreen, isMobileOpen]);
+
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
   const NAV_PERMISSIONS: Record<string, string> = {
     wires: 'news.view',
@@ -226,6 +250,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
+        ref={asideRef}
+        aria-label="القائمة الرئيسية"
+        {...(isSmallScreen && !isMobileOpen ? { inert: true, 'aria-hidden': true } : {})}
+        {...(isSmallScreen && isMobileOpen ? { role: 'dialog', 'aria-modal': true } : {})}
         className={`theme-fixed bg-slate-900 text-slate-300 border-l border-slate-800 flex flex-col transition-all duration-300 select-none
           fixed inset-y-0 right-0 z-50 md:relative md:z-20
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'}

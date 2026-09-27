@@ -1,3 +1,4 @@
+import { arabicDate, localDateString } from '../shared/dates';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
 import {
@@ -74,6 +75,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
   const todayKey = new Date().toLocaleDateString('en-CA');
+  // Upcoming = on air now, or scheduled from today on and not yet aired; earliest first.
+  const nowKey = `${todayKey} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+  const upcomingEpisodes = (episodes || [])
+    .filter((e) => e.status === 'ON_AIR' || (!['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status) && `${(e.broadcastDate || '').slice(0, 10)} ${e.endTime || e.startTime || ''}` >= nowKey))
+    .sort((a, b) => `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`));
   const todayEpisodes = (episodes || []).filter(
     (e) => e.status === 'ON_AIR' || ((e.broadcastDate || '').slice(0, 10) === todayKey && !['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status))
   );
@@ -296,7 +302,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-3">
-              {episodes.slice(0, 3).map((ep) => (
+              {upcomingEpisodes.length === 0 && <p className="text-xs text-slate-400 text-center py-6">لا حلقات قادمة مجدولة.</p>}
+              {upcomingEpisodes.slice(0, 3).map((ep) => (
                 <div
                   key={ep.id}
                   onClick={() => onSelectEpisode(ep.id)}
@@ -321,7 +328,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                   <div className="flex items-center gap-4 self-end sm:self-center">
                     <div className="text-left font-mono text-xs">
-                      <span className="text-slate-400 block text-[10px]">موعد البث</span>
+                      <span className="text-slate-400 block text-[10px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
                       <strong className="text-slate-800 font-bold">{ep.startTime} - {ep.endTime}</strong>
                     </div>
                     <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700">
@@ -339,7 +346,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center gap-2">
                 <Newspaper className="w-5 h-5 text-emerald-600" />
                 <h3 className="font-bold text-slate-800 text-sm sm:text-base">
-                  طوابير سير العمل التحريري (Queues)
+                  طوابير سير العمل التحريري
                 </h3>
               </div>
               <button
@@ -554,7 +561,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span>المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
                     <span className="font-mono text-[10px]">
-                      استحقاق: {task.dueDate ? new Date(task.dueDate).toLocaleDateString('ar-EG') : '—'}
+                      {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
+                        <span className="text-rose-700 font-bold">
+                          متأخرة منذ {Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000))} يوم
+                        </span>
+                      ) : (
+                        <>استحقاق: {task.dueDate ? arabicDate(localDateString(new Date(task.dueDate))) : '—'}</>
+                      )}
                     </span>
                   </div>
                 </div>

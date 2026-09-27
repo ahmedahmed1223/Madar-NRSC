@@ -5,7 +5,7 @@ import { FormPage } from '../components/common/FormPage';
 import { studioConflictsFor } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Plus,
   Video,
@@ -47,6 +47,8 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 
 interface EpisodesViewProps {
+  /** Changes when another screen asks to create an episode (opens the form at once). */
+  openNewRequest?: number;
   episodes: Episode[];
   programs: Program[];
   currentUser: User;
@@ -64,6 +66,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   onSaveEpisode,
   filterProgramId,
   onDeleteEpisode,
+  openNewRequest,
 }) => {
   const canCreate = RbacService.hasPermission(currentUser, 'episodes.create');
   const canDelete = RbacService.hasPermission(currentUser, 'episodes.edit') || RbacService.hasPermission(currentUser, 'programs.manage');
@@ -79,7 +82,6 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [seasonNumber, setSeasonNumber] = useState(1);
   const [broadcastDate, setBroadcastDate] = useState(localDateString());
   const [startTime, setStartTime] = useState('21:00');
-  const [endTime, setEndTime] = useState('21:50');
   const [durationMinutes, setDurationMinutes] = useState(50);
   const [presenterName, setPresenterName] = useState(currentUser.fullName);
   const [producerName, setProducerName] = useState(currentUser.fullName);
@@ -101,6 +103,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       setPresenterName(prog.presenterName || currentUser.fullName);
       setProducerName(prog.producerName || currentUser.fullName);
       setDurationMinutes(prog.durationMinutes || 50);
+      if (/^\d{2}:\d{2}$/.test(prog.broadcastTime || '')) setStartTime(prog.broadcastTime);
     }
   };
   const [description, setDescription] = useState('');
@@ -128,15 +131,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     }
   };
 
-  const handleDurationChange = (minutes: number) => {
-    setDurationMinutes(minutes);
-    setEndTime(calculateEndTime(startTime, minutes));
-  };
+  // Always derived from the fields on screen, so it can never show a stale end.
+  const endTime = calculateEndTime(startTime, Number(durationMinutes) || 0);
+  const endsNextDay = (() => {
+    const [h, m] = startTime.split(':').map(Number);
+    return h * 60 + m + (Number(durationMinutes) || 0) >= 24 * 60;
+  })();
 
-  const handleStartTimeChange = (newStart: string) => {
-    setStartTime(newStart);
-    setEndTime(calculateEndTime(newStart, durationMinutes));
-  };
+  const handleDurationChange = (minutes: number) => setDurationMinutes(minutes);
+
+  const handleStartTimeChange = (newStart: string) => setStartTime(newStart);
 
   const statusBadgeInfo: Record<EpisodeStatus, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'default' }> = {
     PLANNING: { label: 'مرحلة التخطيط', variant: 'default' },
@@ -160,14 +164,20 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       (selectedProgId !== 'ALL' && selectedProgId) ||
       programs[0]?.id ||
       '';
+    // Defaults first; the program's own time and length then take over.
+    setStartTime('21:00');
     selectProgramForNew(defaultProgram);
     setSeasonNumber(1);
     setBroadcastDate(localDateString());
-    setStartTime('21:00');
-    setEndTime('21:50');
     setDescription('');
     setIsAddModalOpen(true);
   };
+
+  // «حلقة جديدة» from a programme page: open the form straight away, with that programme selected.
+  useEffect(() => {
+    if (openNewRequest && canCreate) handleOpenAdd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNewRequest]);
 
   const handleCreateEpisode = (e: React.FormEvent) => {
     e.preventDefault();
@@ -577,6 +587,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </div>
             <div className="text-[11px] text-blue-900 font-medium">
               نهاية البث التقديرية: <strong className="font-mono text-blue-700">{endTime}</strong>
+              {endsNextDay && <span className="text-amber-700 font-bold"> (اليوم التالي)</span>}
             </div>
           </div>
 

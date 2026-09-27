@@ -1,6 +1,6 @@
 import { ThemeToggle } from '../common/ThemeToggle';
-import React, { useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string, totp?: string) => Promise<void>;
@@ -15,6 +15,45 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState('');
 
+  // Demo installations list their real accounts (name, e-mail and role as they are now).
+  const [demo, setDemo] = useState<{ password?: string; accounts: { email: string; fullName: string; jobTitle?: string; roleName: string; department?: string }[] } | null>(null);
+  const [demoOpen, setDemoOpen] = useState(true);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    fetch('/api/v1/auth/demo-accounts', { signal: ctrl.signal, headers: { 'X-NRCS-Client': 'web' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.data && setDemo(j.data))
+      .catch(() => undefined)
+      .finally(() => clearTimeout(timer));
+    return () => ctrl.abort();
+  }, []);
+
+  const submit = async (mail: string, pass: string) => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await onLogin(mail.trim(), pass, needsCode ? code.trim() : undefined);
+    } catch (err: any) {
+      if (err?.code === 'TOTP_REQUIRED') {
+        setNeedsCode(true);
+        setError(null);
+      } else {
+        setError(
+          err?.name === 'TimeoutError' || err?.name === 'AbortError'
+            ? 'لم يستجب الخادم في الوقت المناسب؛ تحقق من الاتصال ثم أعد المحاولة'
+            : err?.name === 'TypeError'
+              ? 'تعذر الاتصال بالخادم؛ تحقق من الشبكة ثم أعد المحاولة'
+              : err?.message || 'تعذر تسجيل الدخول'
+        );
+        if (needsCode) setCode('');
+        else setPassword('');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -26,7 +65,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
         setNeedsCode(true);
         setError(null);
       } else {
-        setError(err?.message || 'تعذر تسجيل الدخول');
+        setError(
+          err?.name === 'TimeoutError' || err?.name === 'AbortError'
+            ? 'لم يستجب الخادم في الوقت المناسب؛ تحقق من الاتصال ثم أعد المحاولة'
+            : err?.name === 'TypeError'
+              ? 'تعذر الاتصال بالخادم؛ تحقق من الشبكة ثم أعد المحاولة'
+              : err?.message || 'تعذر تسجيل الدخول'
+        );
         if (needsCode) setCode('');
         else setPassword('');
       }
@@ -127,9 +172,52 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-            <span>تسجيل الدخول</span>
+            <span>{isSubmitting ? 'جارٍ الدخول…' : 'تسجيل الدخول'}</span>
           </button>
         </form>
+
+        {demo && demo.accounts.length > 0 && demo.password && (
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setDemoOpen((v) => !v)}
+              aria-expanded={demoOpen}
+              className="w-full flex items-center justify-between text-xs font-bold text-slate-700"
+            >
+              <span className="flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-blue-600" /> حسابات التجربة ({demo.accounts.length})
+              </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${demoOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {demoOpen && (
+              <ul className="mt-2 space-y-1 max-h-72 overflow-y-auto" aria-label="حسابات التجربة">
+                {demo.accounts.map((a) => (
+                  <li key={a.email}>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setEmail(a.email);
+                        setPassword(demo.password!);
+                        void submit(a.email, demo.password!);
+                      }}
+                      aria-label={`الدخول بحساب ${a.fullName} — ${a.roleName}`}
+                      className="w-full text-right p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <span className="block text-xs font-bold text-slate-800">
+                        {a.fullName} <span className="font-normal text-blue-700">— {a.roleName}</span>
+                      </span>
+                      <span className="block text-[10px] text-slate-500" dir="ltr">
+                        {a.email}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-[10px] text-slate-400">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
+          </div>
+        )}
       </div>
     </div>
   );

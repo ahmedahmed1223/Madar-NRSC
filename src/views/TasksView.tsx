@@ -277,7 +277,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           }
                           size="sm"
                         >
-                          {t.priority}
+                          {priorityLabel(t.priority)}
                         </Badge>
                         <div className="flex items-center gap-1">
                           {canAssign && (
