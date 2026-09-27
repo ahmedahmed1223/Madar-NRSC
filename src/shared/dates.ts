@@ -33,3 +33,32 @@ export function arabicDate(date: string): string {
   if (!m) return date || '';
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
 }
+
+/** "Asia/Riyadh (GMT+3)" → "Asia/Riyadh" when the runtime knows the zone; otherwise undefined. */
+export function stationTimeZone(setting: string | undefined): string | undefined {
+  const tz = String(setting || '').split(/[\s(]/)[0];
+  if (!tz) return undefined;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return tz;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Minutes east of UTC for a time zone at an instant (e.g. 180 for Riyadh). */
+export function zoneOffsetMinutes(timeZone: string, at = new Date()): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value])
+  );
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute);
+  return Math.round((asUtc - Math.floor(at.getTime() / 60000) * 60000) / 60000);
+}
+
+/** Does this device's clock run in a different zone than the station (right now)? */
+export function deviceDiffersFromStation(stationTz: string | undefined, at = new Date()): boolean {
+  if (!stationTz) return false;
+  return zoneOffsetMinutes(stationTz, at) !== -at.getTimezoneOffset();
+}

@@ -9,7 +9,7 @@ import { bulletinError, findShow, formatError, isApprover, storyError, storyStat
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
-import { canEditNewsContent, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
+import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -58,6 +58,9 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
   if (statusChanged) {
     const denial = transitionDenial(can, me, kind === 'create' ? null : before, after?.status);
     if (denial) return denial;
+    // Nothing empty goes to review, approval or air — whichever screen sent it.
+    const empty = contentDenial(after, after?.status);
+    if (empty) return empty.message;
   }
   if (after?.status === 'SCHEDULED') {
     if (!after.scheduledDate || !Number.isFinite(new Date(after.scheduledDate).getTime())) return 'حدد موعداً صالحاً للنشر المجدول';

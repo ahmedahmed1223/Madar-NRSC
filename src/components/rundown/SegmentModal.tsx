@@ -1,3 +1,4 @@
+import { LongTextField } from '../common/TextSizeControls';
 import { AttachmentsPanel } from '../media/AttachmentsPanel';
 import { FormPage } from '../common/FormPage';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -607,10 +608,13 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         </div>
 
         {/* Autocue / Script Text with Live Reading Pace Calculator */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label htmlFor="segment-script-textarea" className="block text-xs font-bold text-slate-700">نص الأوتوكيو / القراءة للمذيع</label>
-            {scriptSpeechPace && (
+        <LongTextField
+          id="segment-script-textarea"
+          name="نص المذيع"
+          sizeKey="anchor-script"
+          label="نص الأوتوكيو / القراءة للمذيع"
+          aside={
+            scriptSpeechPace && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
                   {scriptSpeechPace.words} كلمة ~ {scriptSpeechPace.formatted} دقيقة
@@ -624,17 +628,14 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   تطبيق كمدة للفقرة
                 </button>
               </div>
-            )}
-          </div>
-          <textarea
-            id="segment-script-textarea"
-            rows={3}
-            value={scriptText}
-            onChange={(e) => setScriptText(e.target.value)}
-            placeholder="النص الذي سيظهر على شاشة المذيع أو التوجيه الصوتي على الهواء..."
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-          />
-        </div>
+            )
+          }
+          rows={5}
+          value={scriptText}
+          onChange={(e) => setScriptText(e.target.value)}
+          placeholder="النص الذي سيظهر على شاشة المذيع أو التوجيه الصوتي على الهواء..."
+          className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
 
         {/* Notes */}
         <div>

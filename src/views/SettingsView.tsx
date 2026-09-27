@@ -1,6 +1,7 @@
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { DemoDataCard } from '../components/settings/DemoDataCard';
+import { stationTimeZone } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import {
   Settings,
@@ -208,6 +209,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
     if (!Number.isFinite(duration) || duration < 10 || duration > 3600) {
       setGeneralError('الزمن الافتراضي للفقرة يجب أن يكون بين 10 و 3600 ثانية');
+      return;
+    }
+    if (timezone.trim() && !stationTimeZone(timezone)) {
+      setGeneralError('المنطقة الزمنية غير معروفة؛ اختر من القائمة مثل Asia/Riyadh');
       return;
     }
     try {

@@ -1,3 +1,4 @@
+import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { apiService } from '../services/api';
@@ -30,7 +31,8 @@ import { Modal } from '../components/common/Modal';
 interface TasksViewProps {
   tasks: EditorialTask[];
   currentUser: User;
-  onSaveTask: (task: Partial<EditorialTask>) => void;
+  /** Resolves false when the server refused the task (the form then stays open). */
+  onSaveTask: (task: Partial<EditorialTask>) => boolean | void | Promise<boolean | void>;
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -94,11 +96,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!title.trim()) return;
     const assignee = assignableUsers.find((u) => u.id === assigneeId) || currentUser;
     const assignedToName = assignee.fullName;
-    onSaveTask({
+    const saved = await onSaveTask({
       id: editingTask?.id,
       title,
       description,
@@ -112,24 +115,27 @@ export const TasksView: React.FC<TasksViewProps> = ({
       assigneeAvatar: assignee.avatarUrl,
       ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
     });
-    setIsModalOpen(false);
+    if (saved !== false) setIsModalOpen(false);
   };
 
   const handleQuickStatusChange = (taskId: string, newStatus: TaskStatus) => {
     onSaveTask({ id: taskId, status: newStatus });
   };
 
-  const filteredTasks = (tasks || []).filter((t) => {
+  // One status vocabulary for the board and the table (older tasks use DONE for completed).
+  const assigneeOf = (t: EditorialTask) =>
+    t.assigneeName || t.assignedToName || apiService.getUsers().find((u) => u.id === (t.assigneeId || t.assignedToId))?.fullName || 'غير مسندة';
+  const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, t.title, t.description, t.assignedToName, t.assigneeName, t.relatedEntityTitle);
+      return matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
     }
     return true;
   });
 
   const columns: { status: TaskStatus; label: string; color: string }[] = [
-    { status: 'TODO', label: 'المهام المطلوبة (To Do)', color: 'border-slate-300' },
-    { status: 'IN_PROGRESS', label: 'قيد التنفيذ (In Progress)', color: 'border-blue-400' },
+    { status: 'TODO', label: 'المهام المطلوبة', color: 'border-slate-300' },
+    { status: 'IN_PROGRESS', label: 'قيد التنفيذ', color: 'border-blue-400' },
     { status: 'IN_REVIEW', label: 'قيد المراجعة والتدقيق', color: 'border-amber-400' },
     { status: 'COMPLETED', label: 'مكتملة ومنجزة', color: 'border-emerald-400' },
   ];
@@ -304,7 +310,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                         <div className="flex items-center gap-1">
                           <UserIcon className="w-3 h-3 text-slate-400" />
-                          <span className="font-semibold text-slate-700">{t.assignedToName}</span>
+                          <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
                         </div>
                         <div className="flex items-center gap-1 font-mono text-slate-400">
                           <Clock className="w-3 h-3" />
@@ -372,17 +378,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   <td className="py-3 px-4 font-bold text-slate-800">{t.title}</td>
                   <td className="py-3 px-3">
                     <Badge variant={t.priority === 'URGENT' ? 'danger' : 'default'} size="sm">
-                      {t.priority}
+                      {priorityLabel(t.priority)}
                     </Badge>
                   </td>
-                  <td className="py-3 px-3 font-semibold text-slate-700">{t.assignedToName}</td>
+                  <td className="py-3 px-3 font-semibold text-slate-700">{assigneeOf(t)}</td>
                   <td className="py-3 px-3 font-mono text-slate-600">{t.dueDate ? new Date(t.dueDate).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                   <td className="py-3 px-3">
                     <Badge
                       variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : 'warning'}
                       size="sm"
                     >
-                      {t.status}
+                      {statusLabel(t.status, 'task')}
                     </Badge>
                   </td>
                   <td className="py-3 px-4 text-center">

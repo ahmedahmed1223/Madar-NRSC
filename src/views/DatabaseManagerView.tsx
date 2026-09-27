@@ -185,26 +185,25 @@ export const DatabaseManagerView: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 font-sans" dir="rtl">
       {/* Top Banner - Stitch Aesthetic */}
-      <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-md border border-slate-800 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-white rounded-2xl p-6 text-slate-900 shadow-2xs border border-slate-200 relative overflow-hidden">
         
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-semibold border border-indigo-500/30">
-                <Database className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-200">
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
                 محرك SQLite 3 الأصلي
               </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 متصل ونشط على القرص
               </span>
             </div>
             
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               النسخ الاحتياطي وقاعدة البيانات
             </h1>
-            <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
+            <p className="text-sm text-slate-500 max-w-2xl leading-relaxed">
               إدارة متكاملة لقاعدة بيانات المحطة الإخبارية؛ تدعم التخزين الدائم على ملف القرص الصلب، تنفيذ استعلامات SQL الفورية، ومزامنة الجداول والرانداون.
             </p>
           </div>
@@ -224,7 +223,7 @@ export const DatabaseManagerView: React.FC = () => {
               type="button"
               onClick={handleReset}
               disabled={isResetting}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-all border border-slate-700 disabled:opacity-50 active:scale-95"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all border border-slate-300 disabled:opacity-50 active:scale-95"
             >
               <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
               إعادة تهيئة وتعبئة
@@ -234,31 +233,31 @@ export const DatabaseManagerView: React.FC = () => {
         </div>
 
         {/* Database Metric Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800/80">
-          <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
-            <span className="text-[11px] text-slate-400 block mb-1">مسار ملف التخزين</span>
-            <span className="text-xs font-mono font-bold text-indigo-300 truncate block dir-ltr text-right">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-100">
+          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            <span className="text-[11px] text-slate-500 block mb-1">مسار ملف التخزين</span>
+            <span className="text-xs font-mono font-bold text-indigo-700 truncate block dir-ltr text-right">
               {stats?.filePath || '—'}
             </span>
           </div>
 
-          <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
-            <span className="text-[11px] text-slate-400 block mb-1">حجم قاعدة البيانات</span>
-            <span className="text-xs font-mono font-bold text-slate-200">
+          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            <span className="text-[11px] text-slate-500 block mb-1">حجم قاعدة البيانات</span>
+            <span className="text-xs font-mono font-bold text-slate-800">
               {stats?.fileSizeFormatted || '—'}
             </span>
           </div>
 
-          <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
-            <span className="text-[11px] text-slate-400 block mb-1">عدد الجداول العلائقية</span>
-            <span className="text-xs font-mono font-bold text-slate-200">
+          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            <span className="text-[11px] text-slate-500 block mb-1">عدد الجداول العلائقية</span>
+            <span className="text-xs font-mono font-bold text-slate-800">
               {stats?.totalTables ?? 0} جداول
             </span>
           </div>
 
-          <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
-            <span className="text-[11px] text-slate-400 block mb-1">إجمالي السجلات المخزنة</span>
-            <span className="text-xs font-mono font-bold text-emerald-400">
+          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            <span className="text-[11px] text-slate-500 block mb-1">إجمالي السجلات المخزنة</span>
+            <span className="text-xs font-mono font-bold text-emerald-700">
               {stats?.totalRows || 0} سجل
             </span>
           </div>

@@ -5,6 +5,7 @@ import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { notify, tryAction } from '../services/notify';
 import { useLiveData } from '../hooks/useLiveData';
+import { confirmSaved } from '../services/confirmSave';
 import { FormPage } from '../components/common/FormPage';
 import { BookingForm } from '../components/planning/BookingForm';
 import { arabicDate, localDateString } from '../shared/dates';
@@ -222,8 +223,10 @@ const DiaryEntryPage: React.FC<{
   const resName = (id: string) => apiService.getResources().find((r) => r.id === id)?.name || 'مورد';
   const active = users.filter((u) => u.isActive !== false);
 
-  const save = (e?: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+  const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (saving) return;
     const payload = {
       ...draft,
       title: (draft.title || '').trim(),
@@ -232,7 +235,13 @@ const DiaryEntryPage: React.FC<{
       startTime: draft.startTime || undefined,
       endTime: draft.startTime ? draft.endTime || undefined : undefined,
     };
-    if (tryAction('حفظ الحدث', () => apiService.saveDiaryEntry(payload), entry.id ? 'حُفظ الحدث' : 'أُضيف الحدث إلى الأجندة')) onClose();
+    let saved: DiaryEntry | null = null;
+    if (!tryAction('حفظ الحدث', () => (saved = apiService.saveDiaryEntry(payload)))) return;
+    setSaving(true);
+    // Close only once the server has stored it; otherwise the form keeps what was typed.
+    const ok = await confirmSaved('diary', saved!.id, entry.id ? 'حُفظ الحدث' : 'أُضيف الحدث إلى الأجندة');
+    setSaving(false);
+    if (ok) onClose();
   };
 
   const writeNews = () => {
@@ -436,8 +445,8 @@ const DiaryEntryPage: React.FC<{
               {readOnly && !isAssigned ? 'إغلاق' : 'إلغاء'}
             </button>
             {(canManage || isAssigned) && (
-              <button type="submit" className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
-                حفظ
+              <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold">
+                {saving ? 'جارٍ الحفظ…' : 'حفظ'}
               </button>
             )}
           </div>

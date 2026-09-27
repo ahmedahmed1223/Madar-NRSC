@@ -1,3 +1,4 @@
+import { LongTextField } from '../common/TextSizeControls';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Film, Lock, Plus, RefreshCw, Send, Undo2, X } from 'lucide-react';
 import type { User } from '../../types';
@@ -234,25 +235,23 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
           </div>
 
           {meta.read && (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                <label htmlFor="story-script" className="text-xs font-bold text-slate-700">
-                  نص المذيع {meta.clip ? '(المقدمة / الربط)' : ''}
-                </label>
+            <LongTextField
+              id="story-script"
+              name="نص المذيع"
+              sizeKey="anchor-script"
+              label={`نص المذيع ${meta.clip ? '(المقدمة / الربط)' : ''}`}
+              aside={
                 <span className="text-[11px] font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
                   {words} كلمة · قراءة {mmss(readSeconds(script))}
                 </span>
-              </div>
-              <textarea
-                id="story-script"
-                rows={8}
-                readOnly={!canEdit}
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                placeholder="النص كما سيقرؤه المذيع على الملقن. ضع التوجيهات بين أقواس مربعة [كاميرا 2] ولن تُحسب في زمن القراءة."
-                className="w-full px-3.5 py-3 border border-slate-300 rounded-xl text-base leading-loose"
-              />
-            </div>
+              }
+              rows={8}
+              readOnly={!canEdit}
+              value={script}
+              onChange={(e) => setScript(e.target.value)}
+              placeholder="النص كما سيقرؤه المذيع على الملقن. ضع التوجيهات بين أقواس مربعة [كاميرا 2] ولن تُحسب في زمن القراءة."
+              className="px-3.5 py-3 border border-slate-300 rounded-xl bg-white"
+            />
           )}
 
           {meta.clip && (
@@ -293,11 +292,11 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </label>
           )}
 
-          <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-slate-900 text-white text-xs font-mono" dir="ltr">
+          <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-mono" dir="ltr" aria-label="توقيت القصة">
             <span>READ {mmss(timing.read)}</span>
             {meta.clip && <span>CLIP {mmss(timing.clip)}</span>}
             {meta.manual && <span>EST {mmss(timing.manual)}</span>}
-            <span className="font-black text-emerald-300">TOTAL {mmss(timing.total)}</span>
+            <span className="font-black text-emerald-700">TOTAL {mmss(timing.total)}</span>
           </div>
 
           <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">

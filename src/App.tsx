@@ -1,3 +1,4 @@
+import { confirmSaved } from './services/confirmSave';
 import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
@@ -75,6 +76,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [activeNav, setActiveNav] = useState('dashboard');
   /** Item opened from a notification link (wire, diary entry, booking). */
   const [focusId, setFocusId] = useState<string | null>(null);
+  /** Set when the server answers from different databases (misconfigured multi-instance hosting). */
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
@@ -187,11 +190,19 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         cancelAnimationFrame(frame);
         frame = requestAnimationFrame(refreshData);
       } else if (evt.type === 'sync-error') {
+        const titles: Record<string, string> = {
+          CONFLICT: 'تعارض في التعديل',
+          RETRY: 'تعذر الحفظ على الخادم مؤقتاً',
+          FORBIDDEN: 'لم يُحفظ التغيير: صلاحياتك لا تسمح',
+          INVALID: 'لم يُحفظ التغيير',
+        };
         addToast({
-          type: evt.code === 'CONFLICT' ? 'warning' : 'error',
-          title: evt.code === 'CONFLICT' ? 'تعارض في التعديل' : 'تم رفض العملية من الخادم',
+          type: evt.code === 'CONFLICT' || evt.code === 'RETRY' ? 'warning' : 'error',
+          title: titles[evt.code] || 'تم رفض العملية من الخادم',
           message: evt.message,
         });
+      } else if (evt.type === 'storage-warning') {
+        setStorageWarning(evt.message);
       }
     });
   }, []);
@@ -497,9 +508,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- TASKS ACTIONS ---
-  const handleSaveTask = (taskData: Partial<EditorialTask>) => {
-    if (!attempt('حفظ المهمة', () => apiService.saveTask(taskData, currentUser))) return;
+  const handleSaveTask = async (taskData: Partial<EditorialTask>): Promise<boolean> => {
+    let saved: EditorialTask | null = null;
+    if (!attempt('حفظ المهمة', () => (saved = apiService.saveTask(taskData, currentUser)))) return false;
     refreshData();
+    // Quick status moves confirm quietly; creating or editing a task waits for the server.
+    if (Object.keys(taskData).length <= 2) return true;
+    return confirmSaved('tasks', saved!.id, taskData.id ? 'حُفظت المهمة' : `أُسندت المهمة «${saved!.title}»`);
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -508,21 +523,14 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- STORIES ACTIONS ---
-  const handleSaveStory = (storyData: Partial<Story>) => {
+  const handleSaveStory = async (storyData: Partial<Story>): Promise<boolean> => {
     try {
       const saved = apiService.saveStory(storyData, currentUser);
       refreshData();
-      addToast({
-        title: 'تم حفظ القصة التحريرية',
-        message: `تم حفظ قصة "${saved.title}" بنجاح`,
-        type: 'success',
-      });
-    } catch {
-      addToast({
-        title: 'خطأ في الحفظ',
-        message: 'تعذر حفظ القصة الإخبارية',
-        type: 'error',
-      });
+      return await confirmSaved('stories', saved.id, `حُفظت التغطية «${saved.title}»`);
+    } catch (err: any) {
+      addToast({ title: 'تعذر حفظ التغطية', message: err?.message || 'حاول مرة أخرى', type: 'error' });
+      return false;
     }
   };
 
@@ -678,6 +686,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           />
 
           {/* Dynamic Page Views */}
+          {storageWarning && (
+            <div role="alert" className="mx-4 sm:mx-6 mt-3 p-3 rounded-xl bg-red-50 border border-red-300 text-red-800 text-xs font-bold leading-relaxed">
+              تحذير تخزين: {storageWarning}
+            </div>
+          )}
           <main id="app-main" className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
             <ViewErrorBoundary key={`${activeNav}:${activeBulletinId || ''}:${selectedEpisodeId || ''}`} onHome={() => setActiveNav('dashboard')}>
             <Suspense

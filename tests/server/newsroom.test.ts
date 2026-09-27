@@ -131,7 +131,7 @@ describe('trash', () => {
 describe('journalist workflow end to end', () => {
   it('creates a draft (breaking off), edits it, submits it, and cannot flag breaking', async () => {
     const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
-    const base = { title: 'خبر صحفي جديد', status: 'DRAFT', authorId: 'usr-3', isBreaking: false, keywords: [], content: '' };
+    const base = { title: 'خبر صحفي جديد', status: 'DRAFT', authorId: 'usr-3', isBreaking: false, keywords: [], content: '<p>نص خبر اختبار كامل يحتوي على أكثر من عشر كلمات حتى يمر من قاعدة المحتوى الإلزامي.</p>' };
     const created = await sync(journalist, [{ c: 'news', op: 'upsert', id: 'nws-j-1', d: base }]);
     expect(created.body.results[0].ok).toBe(true);
 
@@ -155,7 +155,7 @@ describe('scheduled publishing', () => {
     const { publishDueScheduledNews } = await import('../../src/server/scheduler');
     const editor = await loginAgent(server.app, 'editor@akhbar.tv');
     const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
-    const base = { title: 'خبر مجدول', status: 'DRAFT', authorId: 'usr-3', isBreaking: false, keywords: [], workflowLogs: [] };
+    const base = { title: 'خبر مجدول', content: '<p>نص خبر اختبار كامل يحتوي على أكثر من عشر كلمات حتى يمر من قاعدة المحتوى الإلزامي.</p>', status: 'DRAFT', authorId: 'usr-3', isBreaking: false, keywords: [], workflowLogs: [] };
     let r = (await sync(journalist, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: base }])).body.results[0].row;
     r = (await sync(journalist, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'UNDER_REVIEW' }, baseV: r.v }])).body.results[0].row;
     r = (await sync(editor, [{ c: 'news', op: 'upsert', id: 'nws-sched', d: { ...r.d, status: 'APPROVED' }, baseV: r.v }])).body.results[0].row;

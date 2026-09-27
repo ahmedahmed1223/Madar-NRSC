@@ -1,3 +1,4 @@
+import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useState, useEffect } from 'react';
@@ -76,22 +77,23 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
+  const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
+  const [stationTime, setStationTime] = useState('');
+  const [zoneMismatch, setZoneMismatch] = useState(false);
   useEffect(() => {
-    // Saudi Arabia / Arabic clock
+    // The clock shows this device's time: the same clock every date/time field uses.
+    const fmt = (timeZone?: string) =>
+      new Date().toLocaleTimeString('ar-EG-u-nu-latn', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     const updateTime = () => {
-      const now = new Date();
-      const formatted = now.toLocaleTimeString('ar-EG', {
-        timeZone: 'Asia/Riyadh',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
-      setTimeStr(formatted);
+      setTimeStr(fmt());
+      const differs = deviceDiffersFromStation(stationTz);
+      setZoneMismatch(differs);
+      setStationTime(differs && stationTz ? fmt(stationTz).slice(0, 5) : '');
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [stationTz]);
 
   useEffect(
     () =>
@@ -144,7 +146,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Station clock + shared on-air lock (enforced by the server for every user) */}
-        <div className="theme-fixed flex items-center gap-1.5 sm:gap-2.5 bg-slate-900 text-white px-2 sm:px-3 py-1.5 rounded-xl text-xs shadow-xs font-mono shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 bg-slate-100 border border-slate-200 text-slate-800 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-mono shrink-0">
           <button
             type="button"
             onClick={onToggleLiveLock}
@@ -154,17 +156,25 @@ export const Topbar: React.FC<TopbarProps> = ({
                 ? 'قفل البث المباشر مفعّل لكل المستخدمين (Ctrl+Alt+L لرفعه)'
                 : 'تفعيل قفل البث المباشر: يمنع حذف البرامج والحلقات أثناء الهواء (Ctrl+Alt+L)'
             }
-            className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-400' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
             <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
           </button>
-          <span className="text-slate-500 hidden lg:inline">|</span>
-          <div className="hidden sm:flex items-center gap-1 font-bold text-slate-200">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-slate-300 hidden lg:inline">|</span>
+          <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span>{timeStr || '00:00:00'}</span>
-            <span className="text-[10px] text-slate-400 font-sans hidden 2xl:inline">بتوقيت الرياض</span>
           </div>
+          {zoneMismatch && (
+            <span
+              role="status"
+              className="font-sans text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
+              title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
+            >
+              المحطة {stationTime}
+            </span>
+          )}
         </div>
 
         {/* Real synchronisation status with the server */}

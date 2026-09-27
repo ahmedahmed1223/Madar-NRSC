@@ -19,6 +19,13 @@ async function main() {
   const db = new NewsroomDatabase(config.dataDir);
   await seedDatabase(db, config);
   logger.info('database ready', { file: db.filePath, rev: db.currentRev() });
+  if (process.env.K_SERVICE) {
+    // Cloud Run: every instance has its own disk. SQLite needs exactly one instance and a mounted volume.
+    logger.warn('running on Cloud Run: set max-instances=1 and put DATA_DIR on a mounted persistent volume, otherwise saves can disappear between instances', {
+      dataDir: config.dataDir,
+      dbId: db.dbId,
+    });
+  }
 
   const { app } = createApp(db, config);
 

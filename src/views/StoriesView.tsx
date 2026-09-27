@@ -32,7 +32,8 @@ interface StoriesViewProps {
   currentUser?: User;
   onSelectStory?: (id: string) => void;
   onCreateStory?: () => void;
-  onSaveStory?: (story: Partial<Story>) => void;
+  /** Resolves true once the server has stored the story (the form stays open otherwise). */
+  onSaveStory?: (story: Partial<Story>) => boolean | Promise<boolean> | void;
   onDeleteStory?: (id: string) => void;
   onSelectNews?: (id: string) => void;
   onCreateNewsForStory?: (storyId: string) => void;
@@ -106,9 +107,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
 
     const matchedCat = categories.find((c) => c.id === categoryId);
     const keywords = keywordsInput
@@ -129,10 +131,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
       startedAt: editingStory?.startedAt || new Date().toISOString(),
     };
 
-    if (onSaveStory) {
-      onSaveStory(storyData);
-    }
-    setIsModalOpen(false);
+    setSaving(true);
+    const saved = onSaveStory ? await onSaveStory(storyData) : true;
+    setSaving(false);
+    if (saved !== false) setIsModalOpen(false);
   };
 
   const filteredStories = stories.filter((story) => {
@@ -520,9 +522,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xs"
+              disabled={saving}
+              className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xs disabled:opacity-60"
             >
-              {editingStory ? 'حفظ التعديلات' : 'إنشاء التغطية'}
+              {saving ? 'جارٍ الحفظ…' : editingStory ? 'حفظ التعديلات' : 'إنشاء التغطية'}
             </button>
           </div>
         </form>

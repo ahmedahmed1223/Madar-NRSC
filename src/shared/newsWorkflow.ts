@@ -83,6 +83,43 @@ export function embargoDenial(item: Partial<NewsItem> | null | undefined, to: Ne
   return null;
 }
 
+/** Title placeholder given to untitled drafts; never acceptable past the draft stage. */
+export const UNTITLED_NEWS = 'خبر جديد بدون عنوان';
+/** Statuses that need a real title and body. */
+export const CONTENT_REQUIRED_STATUSES: NewsStatus[] = ['UNDER_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHED'];
+export const MIN_BODY_WORDS = 10;
+
+/** Visible text of a story body (tags, entities and extra spaces removed). */
+export function plainText(html: string | undefined): string {
+  return String(html || '')
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;|\u00a0/gi, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Drafts may be incomplete; anything sent to review, approved, scheduled or published must have
+ * a real title and body. Returns the field at fault so forms can point to it.
+ */
+export function contentDenial(item: Partial<NewsItem> | null | undefined, to: NewsStatus): { field: 'title' | 'content'; message: string } | null {
+  if (!CONTENT_REQUIRED_STATUSES.includes(to)) return null;
+  const title = String(item?.title || '').trim();
+  if (!title || title === UNTITLED_NEWS || title.length < 5) {
+    return { field: 'title', message: 'اكتب عنواناً فعلياً للخبر (5 أحرف على الأقل) قبل إرساله للمراجعة أو اعتماده أو نشره' };
+  }
+  const words = plainText(item?.content).split(' ').filter(Boolean).length;
+  if (words < MIN_BODY_WORDS) {
+    return {
+      field: 'content',
+      message: words === 0 ? 'نص الخبر فارغ؛ لا يمكن إرساله للمراجعة أو اعتماده أو نشره' : `نص الخبر قصير جداً (${words} كلمات)؛ الحد الأدنى ${MIN_BODY_WORDS} كلمات`,
+    };
+  }
+  return null;
+}
+
 /** Reason the user may not move a story to `to`, or null when allowed. */
 export function transitionDenial(can: Can, userId: string, item: Partial<NewsItem> | null | undefined, to: NewsStatus): string | null {
   const from = item?.id ? (item.status as NewsStatus) : undefined;

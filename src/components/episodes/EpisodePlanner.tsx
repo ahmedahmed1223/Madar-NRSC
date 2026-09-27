@@ -1,3 +1,4 @@
+import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
 import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
@@ -107,14 +108,19 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const saveTopics = (next: EpisodeTopic[], nextRundown?: RundownSegment[]) =>
     onSaveEpisode({ id: episode.id, topics: next, ...(nextRundown ? { rundown: recalculateRundown(nextRundown) } : {}) });
 
-  const submitTopic = (e: React.FormEvent) => {
+  const [savingTopic, setSavingTopic] = useState(false);
+  const submitTopic = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topicForm || !topicForm.title.trim()) return;
+    if (!topicForm || !topicForm.title.trim() || savingTopic) return;
     const { minutes, ...t } = topicForm;
     const topic: EpisodeTopic = { ...t, title: t.title.trim(), targetSeconds: minutes ? mmToSec(minutes) : undefined };
     const exists = topics.some((x) => x.id === topic.id);
     saveTopics(exists ? topics.map((x) => (x.id === topic.id ? topic : x)) : [...topics, topic]);
-    setTopicForm(null);
+    // Close only once the server has stored the episode; the form keeps its input otherwise.
+    setSavingTopic(true);
+    const ok = await confirmSaved('episodes', episode.id, exists ? 'حُفظ المحور' : `أُضيف المحور «${topic.title}»`);
+    setSavingTopic(false);
+    if (ok) setTopicForm(null);
   };
 
   /**
@@ -568,8 +574,8 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               <button type="button" onClick={() => setTopicForm(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
                 إلغاء
               </button>
-              <button type="submit" className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">
-                حفظ المحور
+              <button type="submit" disabled={savingTopic} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl">
+                {savingTopic ? 'جارٍ الحفظ…' : 'حفظ المحور'}
               </button>
             </div>
           </form>

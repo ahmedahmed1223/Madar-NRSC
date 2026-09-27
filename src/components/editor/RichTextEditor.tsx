@@ -17,6 +17,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { TextSizeControls, useFullscreenField, useTextSize } from '../common/TextSizeControls';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface RichTextEditorProps {
@@ -66,6 +67,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   readOnly = false,
 }) => {
   const [isSource, setIsSource] = useState(false);
+  const text = useTextSize('story-body');
+  const fs = useFullscreenField();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [mediaType, setMediaType] = useState<'IMAGE' | 'VIDEO'>('IMAGE');
@@ -199,7 +202,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const readingTimeStr = `${readMin > 0 ? `${readMin} دقيقة و ` : ''}${readSec} ثانية`;
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs focus-within:border-blue-500 transition-all">
+    <div
+      role={fs.full ? 'dialog' : undefined}
+      aria-modal={fs.full || undefined}
+      aria-label={fs.full ? 'نص الخبر' : undefined}
+      className={`border border-slate-200 overflow-hidden bg-white shadow-xs focus-within:border-blue-500 transition-all ${
+        fs.full ? 'fixed inset-0 z-[70] flex flex-col rounded-none' : 'rounded-xl'
+      }`}
+    >
       {/* Editor Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-slate-50 border-b border-slate-200 text-slate-700">
         <div className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40 pointer-events-none' : ''}`} aria-disabled={readOnly}>
@@ -314,8 +324,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
         </div>
 
-        {/* Source toggle for advanced edits */}
+        {/* Reading size, full screen, and source toggle for advanced edits */}
         <div className="flex items-center gap-2">
+          <TextSizeControls label="نص الخبر" text={text} fullscreen={fs} />
           <button
             type="button"
             onClick={() => setIsSource(!isSource)}
@@ -331,8 +342,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         </div>
       </div>
 
-      {/* Editor Body */}
-      <div className="p-4">
+      {/* Editor Body: scrolls inside itself so long stories keep the toolbar in view */}
+      <div className={`p-4 overflow-y-auto ${fs.full ? 'flex-1' : 'max-h-[75vh] resize-y'}`}>
         {isSource ? (
           <textarea
             value={value}
@@ -377,9 +388,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
             onPaste={handlePaste}
-            style={{ minHeight }}
+            style={{ minHeight, fontSize: text.size }}
             dir="rtl"
-            className="rich-editor text-slate-800 text-base leading-relaxed font-sans focus:outline-hidden"
+            className="rich-editor text-slate-800 leading-relaxed font-sans focus:outline-hidden"
           />
         )}
       </div>

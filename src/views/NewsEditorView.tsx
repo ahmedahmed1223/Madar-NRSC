@@ -1,4 +1,4 @@
-import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
+import { contentDenial, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsStoryDoc } from '../services/documents/builders';
@@ -513,7 +513,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     saveContent(false);
   };
 
+  /** Title/body problem that blocks sending this story onwards (drafts may stay incomplete). */
+  const [contentError, setContentError] = useState<{ field: 'title' | 'content'; message: string } | null>(null);
+  const blockedByContent = (status: NewsStatus) => {
+    const problem = contentDenial({ title, content }, status);
+    setContentError(problem);
+    if (problem) {
+      const target = problem.field === 'title' ? document.getElementById('news-headline-input') : document.getElementById('news-body-editor');
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (problem.field === 'title' ? target : target?.querySelector<HTMLElement>('[contenteditable], textarea'))?.focus();
+    }
+    return !!problem;
+  };
+
   const handleTriggerStatusChange = (status: NewsStatus) => {
+    if (blockedByContent(status)) return;
     if (!newsItem?.id) {
       saveContent(false, { status });
       return;
@@ -763,30 +777,30 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       </div>
 
       {/* Broadcast Timing & Production Tools Banner */}
-      <div className="theme-fixed bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-500/20 text-blue-400 rounded-lg">
+            <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 block">زمن الإلقاء المقدر (130 ك/د):</span>
-              <strong className="text-sm font-mono text-emerald-400">{textStats.timeFormatted} دقيقة</strong>
+              <span className="text-[10px] text-slate-500 block">زمن الإلقاء المقدر (130 ك/د):</span>
+              <strong className="text-sm font-mono text-emerald-700">{textStats.timeFormatted} دقيقة</strong>
             </div>
           </div>
 
-          <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
-            <span className="text-[10px] text-slate-400 block">عدد الكلمات:</span>
-            <span className="font-mono font-bold text-slate-200">{textStats.words} كلمة</span>
+            <span className="text-[10px] text-slate-500 block">عدد الكلمات:</span>
+            <span className="font-mono font-bold text-slate-800">{textStats.words} كلمة</span>
           </div>
 
-          <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
-            <span className="text-[10px] text-slate-400 block">عدد الأحرف:</span>
-            <span className="font-mono text-slate-300">{textStats.chars} حرف</span>
+            <span className="text-[10px] text-slate-500 block">عدد الأحرف:</span>
+            <span className="font-mono text-slate-700">{textStats.chars} حرف</span>
           </div>
         </div>
 
@@ -805,10 +819,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={() => setIsCgModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-300 rounded-xl text-xs font-bold transition-colors border border-slate-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
             title="توليد وسوم شارات الجرافيكس التلفزيوني وعناوين الشاشة"
           >
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
             مولد الشارات (CG Lower Thirds)
           </button>
 
@@ -816,7 +830,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={() => setRequestDraft({ link: { kind: 'news', newsId: newsItem.id, title: newsItem.title }, title: '' })}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-violet-300 rounded-xl text-xs font-bold transition-colors border border-slate-700"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-violet-50 text-violet-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
               title="طلب مونتاج أو جرافيك أو غيرها لهذا الخبر"
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -897,9 +911,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   type="text"
                   required
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (contentError?.field === 'title') setContentError(null);
+                  }}
+                  aria-invalid={contentError?.field === 'title' || undefined}
+                  aria-describedby={contentError?.field === 'title' ? 'news-content-error' : undefined}
                   placeholder="اكتب عنواناً جذاباً ودقيقاً يصف جوهر الحدث..."
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 aria-[invalid=true]:border-rose-500 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
                 {title && (
                   <button
@@ -907,11 +926,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     onClick={() => setTitle('')}
                     className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان"
+                    aria-label="مسح العنوان"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
+              {contentError?.field === 'title' && (
+                <p id="news-content-error" role="alert" className="mt-1.5 text-xs font-bold text-rose-700">
+                  {contentError.message}
+                </p>
+              )}
             </div>
 
             {/* Short Title & Ticker Simulator */}
@@ -961,7 +986,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
               {/* Live Ticker Strap Preview Simulator */}
               {(shortTitle || title) && showTickerPreview && (
-                <div className="mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
+                <div className="theme-fixed mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-black text-[11px] rounded tracking-wide shrink-0 animate-pulse">
                     <Flame className="w-3 h-3" />
                     شريط الأخبار
@@ -1033,15 +1058,25 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label className="block text-xs font-bold text-slate-700">
                 محتوى التقرير الصحفي الكامل *
               </label>
-              <span className="text-[11px] text-slate-400">محرر متقدم يدعم الوسائط والتنسيق المطبوع</span>
+              <span className="text-[11px] text-slate-400">يمكن حفظ مسودة ناقصة؛ العنوان والنص مطلوبان للإرسال للمراجعة والنشر</span>
             </div>
+            {contentError?.field === 'content' && (
+              <p id="news-content-error" role="alert" className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                {contentError.message}
+              </p>
+            )}
+            <div id="news-body-editor">
             <RichTextEditor
               value={content}
-              onChange={(val) => setContent(val)}
+              onChange={(val) => {
+                setContent(val);
+                if (contentError?.field === 'content') setContentError(null);
+              }}
               readOnly={!canEditContent}
               minHeight="400px"
               placeholder="اكتب تفاصيل القصة الإخبارية كاملة، التصريحات، الخلفيات، والتحليلات الميدانية..."
             />
+            </div>
           </div>
 
           {/* Embargo */}

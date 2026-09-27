@@ -2,6 +2,13 @@
 @import "./styles/theme-dark.css";
 
 @layer base {
+  /* Long text everywhere: resizable by height, scrolls inside itself, never taller than the screen. */
+  textarea {
+    resize: vertical;
+    overflow-y: auto;
+    max-height: 75vh;
+  }
+
   :root {
     --font-sans: 'IBM Plex Sans Arabic', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }

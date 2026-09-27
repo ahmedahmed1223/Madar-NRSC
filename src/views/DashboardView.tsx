@@ -115,18 +115,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Welcome & Live Banner */}
-      <div className="theme-fixed bg-gradient-to-l from-slate-900 via-slate-800 to-blue-950 rounded-3xl p-6 text-white shadow-lg border border-slate-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="bg-gradient-to-l from-blue-50 via-white to-white rounded-3xl p-6 text-slate-900 shadow-xs border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold border border-blue-400/30 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse" />
               مركز العمليات الإخبارية والإنتاج المباشر
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
             مرحباً، {currentUser.fullName}
           </h1>
-          <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
+          <p className="text-slate-600 text-xs sm:text-sm max-w-2xl leading-relaxed">
             المنظومة في حالة جاهزية كاملة للبث. تم جدولة {todayEpisodes.length} حلقات اليوم، وهناك {pendingReviewNewsCount} أخبار تنتظر التدقيق والاعتماد النهائي.
           </p>
         </div>
@@ -144,9 +144,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button
             type="button"
             onClick={onCreateEpisode}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all"
           >
-            <Video className="w-4 h-4 text-purple-400" />
+            <Video className="w-4 h-4 text-purple-600" />
             إعداد حلقة جديدة
           </button>
         </div>

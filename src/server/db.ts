@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -265,6 +266,16 @@ export class NewsroomDatabase {
   /** Removes every row of a collection that is no longer part of the product. */
   dropRetiredCollection(collection: string) {
     return this.db.prepare('DELETE FROM entities WHERE collection = ?').run(collection).changes;
+  }
+
+  /** Stable identity of this database file (lets clients detect several copies behind one address). */
+  get dbId(): string {
+    let id = this.getMeta('db_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      this.setMeta('db_id', id);
+    }
+    return id;
   }
 
   getMeta(key: string): string | null {

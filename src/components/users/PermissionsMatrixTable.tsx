@@ -111,20 +111,20 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
             <thead>
-              <tr className="bg-slate-900 text-white text-[11px] font-bold border-b border-slate-800">
-                <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-900 z-10">
+              <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold border-b border-slate-200">
+                <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-100 z-10">
                   الصلاحية ونطاق العملية (RBAC Permission)
                 </th>
                 <th className="p-3.5 text-center min-w-[90px]">مستوى الحساسية</th>
                 {roles.map((role) => (
-                  <th key={role.id} className="p-3 text-center min-w-[130px] border-r border-slate-800">
+                  <th key={role.id} className="p-3 text-center min-w-[130px] border-r border-slate-200">
                     <div className="flex flex-col items-center gap-1">
                       <span className="font-bold">{role.nameAr}</span>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => onEditRole(role)}
-                          className="p-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded-md transition-colors"
+                          className="p-1 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-md transition-colors"
                           title="تعديل هذا الدور"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -133,7 +133,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                           <button
                             type="button"
                             onClick={() => onDeleteRole(role.id)}
-                            className="p-1 hover:bg-red-900/50 text-red-400 hover:text-red-300 rounded-md transition-colors"
+                            className="p-1 hover:bg-red-50 text-red-600 hover:text-red-700 rounded-md transition-colors"
                             title="حذف هذا الدور"
                           >
                             <Trash2 className="w-3 h-3" />

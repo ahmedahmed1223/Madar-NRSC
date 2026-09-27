@@ -22,7 +22,16 @@ interface RowMeta {
 export type DataStoreEvent =
   | { type: 'data-changed'; collections: CollectionName[]; remote: boolean }
   | { type: 'sync-error'; code: string; message: string; collection: CollectionName }
-  | { type: 'sync-status'; pending: number; online: boolean };
+  | { type: 'sync-status'; pending: number; online: boolean }
+  /** The server answered from a different database than before (several copies behind one address). */
+  | { type: 'storage-warning'; message: string };
+
+export interface WriteOutcome {
+  ok: boolean;
+  /** Still waiting for the server when the wait ended (kept and retried in the background). */
+  pending?: boolean;
+  message?: string;
+}
 
 type Listener = (event: DataStoreEvent) => void;
 
@@ -68,6 +77,53 @@ export class DataStore {
   private pullAgain = false;
   private eventSource: EventSource | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Identity of the server database; a change means the deployment serves several copies. */
+  private dbId: string | null = null;
+  /** After a malformed batch, ops are sent one by one so a single bad op cannot sink the rest. */
+  private singleOps = 0;
+  private waiters = new Map<string, ((o: WriteOutcome) => void)[]>();
+  private lastErrorAt = 0;
+
+  /**
+   * Resolves once the server has accepted or refused the pending write of this row, so forms
+   * can report success only when the data is really stored (and keep their input otherwise).
+   */
+  awaitWrite(c: CollectionName, id: string, timeoutMs = 12_000): Promise<WriteOutcome> {
+    const k = keyOf(c, id);
+    if (!this.dirty.has(k) && !this.inFlight.has(k)) return Promise.resolve({ ok: true });
+    return new Promise((resolve) => {
+      const done = (o: WriteOutcome) => {
+        clearTimeout(timer);
+        resolve(o);
+      };
+      const timer = setTimeout(() => {
+        const list = this.waiters.get(k) || [];
+        this.waiters.set(k, list.filter((f) => f !== done));
+        resolve({ ok: false, pending: true, message: 'لم يؤكد الخادم الحفظ بعد؛ سيُعاد الإرسال تلقائياً ولن يُفقد ما كتبته.' });
+      }, timeoutMs);
+      this.waiters.set(k, [...(this.waiters.get(k) || []), done]);
+      this.scheduleFlush(0);
+    });
+  }
+
+  private settleWaiters(k: string, outcome: WriteOutcome) {
+    const list = this.waiters.get(k);
+    if (!list) return;
+    this.waiters.delete(k);
+    list.forEach((f) => f(outcome));
+  }
+
+  private checkDb(dbId: unknown) {
+    if (typeof dbId !== 'string' || !dbId) return;
+    if (this.dbId && this.dbId !== dbId) {
+      this.emit({
+        type: 'storage-warning',
+        message:
+          'الخادم أجاب من قاعدة بيانات مختلفة عن السابقة: هذا النشر يشغّل أكثر من نسخة من النظام بتخزين غير مشترك، فقد تختفي تعديلات. على مدير النظام تشغيل نسخة واحدة بقرص دائم.',
+      });
+    }
+    this.dbId = dbId;
+  }
 
   isReady() {
     return this.ready;
@@ -134,7 +190,17 @@ export class DataStore {
   }
 
   private async bootstrap() {
-    const res = await this.request<{ rev: number; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
+    const res = await this.request<{ rev: number; dbId?: string; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
+    this.checkDb(res.dbId);
+    // Unsent local edits survive a full reload: they are laid back over the server copy.
+    const pendingKeys = [...this.dirty.keys(), ...this.inFlight];
+    const pending = pendingKeys
+      .map((k) => {
+        const [c, id] = k.split('\u0000') as [CollectionName, string];
+        const m = this.meta.get(c)?.get(id);
+        return m ? { c, id, m } : null;
+      })
+      .filter(Boolean) as { c: CollectionName; id: string; m: RowMeta }[];
     this.data.clear();
     this.meta.clear();
     for (const name of COLLECTION_NAMES) {
@@ -150,6 +216,10 @@ export class DataStore {
     }
     this.rev = res.rev;
     this.ready = true;
+    for (const { c, id, m } of pending) {
+      if (!this.meta.has(c)) continue;
+      this.replaceLocal(c, { c, id, v: m.v, p: m.p, d: JSON.parse(m.json) });
+    }
   }
 
   private connectRealtime() {
@@ -293,7 +363,7 @@ export class DataStore {
   /** Sends dirty rows; rows already in flight wait for the next round. */
   async flush(): Promise<void> {
     if (!this.ready || this.inFlight.size > 0) return;
-    const entries = [...this.dirty.entries()].slice(0, BATCH_SIZE);
+    const entries = [...this.dirty.entries()].slice(0, this.singleOps > 0 ? 1 : BATCH_SIZE);
     if (entries.length === 0) return;
 
     const ops = entries.map(([, e]) => this.buildOp(e.c, e.id, e.op));
@@ -303,32 +373,48 @@ export class DataStore {
     });
 
     try {
-      const res = await this.request<{ rev: number; results: SyncOpResult[] }>('/api/v1/data/sync', { method: 'POST', json: { ops } });
+      const res = await this.request<{ rev: number; dbId?: string; results: SyncOpResult[] }>('/api/v1/data/sync', { method: 'POST', json: { ops } });
+      this.checkDb(res.dbId);
       this.retryDelay = 1000;
+      if (this.singleOps > 0) this.singleOps--;
       this.setOnline(true);
       const touched = new Set<CollectionName>();
       res.results.forEach((result, i) => this.handleResult(ops[i], result, touched));
       entries.forEach(([k]) => this.inFlight.delete(k));
       if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
     } catch (err) {
-      const rejected = err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status);
+      const status = err instanceof ApiError ? err.status : 0;
+      // Only a malformed request is final; everything else (404 from a proxy, 5xx, network) is retried.
+      const malformed = status === 400 || status === 413 || status === 422;
       entries.forEach(([k, e]) => {
         this.inFlight.delete(k);
-        if (!rejected && !this.dirty.has(k)) this.dirty.set(k, e);
+        if (!this.dirty.has(k)) this.dirty.set(k, e);
       });
-      if (rejected) {
-        // The batch itself is invalid; retrying would loop forever. Drop it and realign with the server.
-        this.emit({ type: 'sync-error', code: 'INVALID', message: (err as ApiError).message, collection: entries[0][1].c });
-        try {
-          await this.bootstrap();
-          this.emit({ type: 'data-changed', collections: [...COLLECTION_NAMES], remote: true });
-        } catch {
-          // next pull will retry
-        }
+      if (status === 401) return; // shell handles re-login; changes stay pending
+      if (malformed && entries.length > 1) {
+        // Isolate the bad op: resend these one at a time.
+        this.singleOps = entries.length;
+        this.scheduleFlush(0);
         return;
       }
-      if (err instanceof ApiError && err.status === 401) return; // shell handles re-login
+      if (malformed) {
+        const [k, e] = entries[0];
+        this.dirty.delete(k);
+        if (this.singleOps > 0) this.singleOps--;
+        const message = (err as ApiError).message || 'رفض الخادم هذه العملية';
+        this.emit({ type: 'sync-error', code: 'INVALID', message, collection: e.c });
+        this.settleWaiters(k, { ok: false, message });
+        // Realign this row with the server copy.
+        void this.pull();
+        return;
+      }
       this.setOnline(false);
+      // Say it once per streak of failures, with the server's reason, without dropping anything.
+      if (Date.now() - this.lastErrorAt > 60_000 && entries[0]) {
+        this.lastErrorAt = Date.now();
+        const reason = err instanceof ApiError ? err.message : 'تعذر الاتصال بالخادم';
+        this.emit({ type: 'sync-error', code: 'RETRY', message: `${reason} — تعديلاتك محفوظة على هذا الجهاز وستُرسل تلقائياً عند استجابة الخادم.`, collection: entries[0][1].c });
+      }
       this.retryDelay = Math.min(this.retryDelay * 2, 30_000);
       setTimeout(() => this.scheduleFlush(0), this.retryDelay);
     } finally {
@@ -343,6 +429,7 @@ export class DataStore {
     const k = keyOf(op.c, op.id);
     if (result.ok) {
       const { row } = result as Extract<SyncOpResult, { ok: true }>;
+      if (!this.dirty.has(k)) this.settleWaiters(k, { ok: true });
       if (op.op === 'delete' || row.deleted) return;
       const m = metaMap.get(op.id);
       const serverJson = JSON.stringify(row.d);
@@ -362,6 +449,7 @@ export class DataStore {
 
     const failure = result as Extract<SyncOpResult, { ok: false }>;
     this.dirty.delete(k);
+    this.settleWaiters(k, { ok: false, message: failure.message });
     this.emit({ type: 'sync-error', code: failure.code, message: failure.message, collection: op.c });
     if (failure.current) this.replaceLocal(op.c, failure.current);
     else this.removeLocal(op.c, op.id);
@@ -378,7 +466,8 @@ export class DataStore {
     }
     this.pulling = true;
     try {
-      const res = await this.request<{ rev: number; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}`);
+      const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}`);
+      this.checkDb(res.dbId);
       this.setOnline(true);
       if (res.reset) {
         await this.flush();

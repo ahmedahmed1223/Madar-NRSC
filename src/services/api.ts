@@ -110,6 +110,7 @@ import {
   isBreakingLive,
   makeNewsSlug,
   transitionDenial,
+  contentDenial,
 } from '../shared/newsWorkflow';
 
 import { selfHealingService } from './selfHealingService';
@@ -424,7 +425,10 @@ export class ApiService {
     const fromStatus = item.status;
     if (fromStatus === toStatus) return item;
 
-    const denial = transitionDenial((perm) => RbacService.hasPermission(currentUser, perm), currentUser.id, item, toStatus);
+    const denial =
+      transitionDenial((perm) => RbacService.hasPermission(currentUser, perm), currentUser.id, item, toStatus) ||
+      contentDenial(item, toStatus)?.message ||
+      null;
     if (denial) {
       if (/صلاحيات/.test(denial)) {
         this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'WARNING', `محاولة غير مصرح بها لنقل الخبر إلى ${toStatus}: ${currentUser.fullName}`);

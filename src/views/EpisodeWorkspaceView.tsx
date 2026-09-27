@@ -6,6 +6,7 @@ import { episodeReadiness } from '../shared/production';
 import { departmentName } from '../shared/departments';
 import { FormPage } from '../components/common/FormPage';
 import { BookingForm } from '../components/planning/BookingForm';
+import { LongTextField } from '../components/common/TextSizeControls';
 import type { Booking } from '../shared/planning';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
@@ -511,14 +512,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             ))}
           </div>
 
-          <label htmlFor="intro-script-textarea" className="sr-only">اسكريبت مقدمة الحلقة التلفزيونية</label>
-          <textarea
+          <LongTextField
             id="intro-script-textarea"
+            name="مقدمة الحلقة"
+            sizeKey="anchor-script"
+            label="نص مقدمة الحلقة للمذيع"
             rows={10}
             value={introScript}
             onChange={(e) => setIntroScript(e.target.value)}
             placeholder="أهلاً بكم مشاهدينا الكرام في حلقة جديدة ومباشرة من برنامج..."
-            className="w-full p-4 bg-white border border-slate-300 rounded-xl text-sm leading-loose text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="p-4 bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
 
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs text-slate-500">

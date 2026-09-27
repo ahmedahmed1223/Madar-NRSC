@@ -312,18 +312,18 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         </div>
 
         {/* Timing strip */}
-        <div className="theme-fixed grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-900 text-white rounded-xl p-3 font-mono text-center" aria-label="توقيت النشرة">
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 bg-white border border-slate-200 text-slate-900 rounded-xl p-3 font-mono text-center" aria-label="توقيت النشرة">
           {[
             { label: 'البداية', value: clockOf(timing.start) },
             { label: 'النهاية المحددة', value: clockOf(timing.hardOut) },
             { label: 'المخطط', value: mmss(timing.planned) },
             { label: 'المجموع', value: mmss(timing.total) },
-            { label: off > 0 ? 'زيادة' : 'نقص', value: `${off > 0 ? '+' : ''}${mmss(off)}`, tone: Math.abs(off) <= 10 ? 'text-emerald-300' : off > 0 ? 'text-rose-400' : 'text-amber-300' },
-            { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'ON AIR' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-300' : '' },
+            { label: off > 0 ? 'زيادة' : 'نقص', value: `${off > 0 ? '+' : ''}${mmss(off)}`, tone: Math.abs(off) <= 10 ? 'text-emerald-700' : off > 0 ? 'text-rose-600' : 'text-amber-700' },
+            { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'ON AIR' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-700' : '' },
           ].map((c) => (
             <div key={c.label}>
-              <div className="text-[10px] text-slate-400 font-sans">{c.label}</div>
-              <div className={`text-base sm:text-lg font-black ${c.tone || ''}`} dir="ltr">
+              <div className="text-[10px] text-slate-500 font-sans">{c.label}</div>
+              <div className={`text-sm sm:text-lg font-black ${c.tone || ''}`} dir="ltr">
                 {c.value}
               </div>
             </div>

@@ -40,6 +40,8 @@ import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
 export const APP_VERSION = '3.9.0';
+/** Identifies this server process (health checks show when several run behind one address). */
+const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
 const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => fn(req, res, next).catch(next);
@@ -162,7 +164,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', version: APP_VERSION, dbId: db.dbId, instance: INSTANCE_ID, timestamp: new Date().toISOString() });
   });
 
   app.get('/api/ready', (_req, res) => {
@@ -404,14 +406,14 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.get('/api/v1/data', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ success: true, ...sync.bootstrap(req.auth!) });
+    res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
   });
 
   app.get('/api/v1/data/changes', requireAuth, (req, res) => {
     const since = Number(req.query.since);
     if (!Number.isInteger(since) || since < 0) throw new HttpError(400, 'since must be a non-negative integer');
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ success: true, ...sync.changes(req.auth!, since) });
+    res.json({ success: true, dbId: db.dbId, ...sync.changes(req.auth!, since) });
   });
 
   app.post('/api/v1/data/sync', requireAuth, (req, res) => {
@@ -419,7 +421,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!Array.isArray(ops) || ops.length === 0) throw new HttpError(400, 'ops array is required');
     if (ops.length > MAX_OPS_PER_REQUEST) throw new HttpError(413, 'عدد العمليات في الطلب الواحد كبير جداً');
     const results = sync.apply(req.auth!, ops as SyncOp[], req.ip);
-    res.json({ success: true, rev: db.currentRev(), results });
+    res.json({ success: true, rev: db.currentRev(), dbId: db.dbId, results });
   });
 
   /** Server-Sent Events: tells browsers a new revision exists so they pull changes immediately. */

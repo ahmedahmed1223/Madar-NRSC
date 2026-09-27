@@ -198,3 +198,25 @@ describe('demo data removal', () => {
     expect(localDateString()).toBeTruthy();
   });
 });
+
+describe('empty stories never leave the draft stage', () => {
+  it('refuses review, approval and publishing of an empty or placeholder story', async () => {
+    const editor = await loginAgent(server.app, 'admin@akhbar.tv');
+    const make = (id: string, extra: any) => ({ id, title: 'خبر اختبار المحتوى', content: '', status: 'DRAFT', authorId: 'usr-1', keywords: [], workflowLogs: [], createdAt: now, updatedAt: now, ...extra });
+    // A draft may be incomplete.
+    expect((await sync(editor, [put('news', make('nws-empty-1', {}))])).body.results[0].ok).toBe(true);
+    for (const content of ['', '<p><br></p>', '<p>&nbsp; &nbsp;</p>', '<p>كلمتان فقط</p>']) {
+      const r = row('news', 'nws-empty-1');
+      const res = await sync(editor, [put('news', { ...r.d, content, status: 'UNDER_REVIEW' }, r.v)]);
+      expect(res.body.results[0].ok, content).toBe(false);
+    }
+    const r = row('news', 'nws-empty-1');
+    const untitled = await sync(editor, [put('news', { ...r.d, title: 'خبر جديد بدون عنوان', content: '<p>' + 'كلمة '.repeat(12) + '</p>', status: 'UNDER_REVIEW' }, r.v)]);
+    expect(untitled.body.results[0].message).toContain('عنوان');
+    // Straight to approved/published as a new row is refused too.
+    expect((await sync(editor, [put('news', make('nws-empty-2', { status: 'UNDER_REVIEW' }))])).body.results[0].ok).toBe(false);
+    const ok = row('news', 'nws-empty-1');
+    const good = await sync(editor, [put('news', { ...ok.d, content: '<p>' + 'نص حقيقي '.repeat(6) + '</p>', status: 'UNDER_REVIEW' }, ok.v)]);
+    expect(good.body.results[0].ok).toBe(true);
+  });
+});
