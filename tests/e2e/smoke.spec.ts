@@ -28,3 +28,18 @@ test('screens also work in dark mode and on a phone', async ({ browser }) => {
   expect(errors).toEqual([]);
   await close();
 });
+
+test('appearance menu: day, night, or follow the device', async ({ browser }) => {
+  const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
+  await page.getByRole('button', { name: /^المظهر/ }).click();
+  await page.getByRole('menuitemradio', { name: /ليلي/ }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.getByRole('button', { name: /^المظهر/ }).click();
+  await page.getByRole('menuitemradio', { name: /نهاري/ }).click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await page.getByRole('button', { name: /^المظهر/ }).click();
+  await page.getByRole('menuitemradio', { name: /حسب الجهاز/ }).click();
+  expect(await page.evaluate(() => localStorage.getItem('nrcs-theme'))).toBeNull();
+  expect(errors).toEqual([]);
+  await close();
+});

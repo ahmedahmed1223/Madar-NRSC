@@ -1859,6 +1859,7 @@ export class ApiService {
       title: item.title || 'إشعار جديد',
       message: item.message || '',
       type: item.type || 'SYSTEM',
+      category: item.category || (item.type === 'TASK_ASSIGNED' ? 'assignment' : undefined),
       linkUrl: item.linkUrl,
       isRead: false,
       createdAt: new Date().toISOString(),

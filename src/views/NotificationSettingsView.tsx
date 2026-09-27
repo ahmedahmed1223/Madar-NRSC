@@ -280,6 +280,15 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           )}
         </div>
       </section>
+
+      {dirty && (
+        <div role="region" aria-label="حفظ التغييرات" className="sticky bottom-4 z-30 flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 text-white shadow-xl">
+          <span className="text-xs font-bold">لديك تغييرات لم تُحفظ بعد</span>
+          <button type="button" onClick={save} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+            <Save className="w-4 h-4" /> حفظ
+          </button>
+        </div>
+      )}
     </div>
   );
 };

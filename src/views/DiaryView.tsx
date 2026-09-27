@@ -74,7 +74,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             الأحداث المتوقعة وقرار تغطيتها ومن يغطيها؛ يصل المكلفين تنبيه، ويُكتب الخبر من الحدث مباشرة.
-            {undecided > 0 && <span className="text-amber-700 font-bold"> {undecided} حدثاً قادماً بلا قرار تغطية.</span>}
+            {undecided > 0 && <span className="text-amber-700 font-bold"> أحداث قادمة بلا قرار تغطية: {undecided}.</span>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -117,14 +117,16 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
         </label>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
         {days.map((day) => {
           const list = visible.filter((e) => e.date === day);
           return (
             <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
-                  {dayName(day)} <span className="font-normal text-slate-500">{arabicDate(day)}</span>
+                  {dayName(day)}
+                  {day === today && <span className="ms-1 text-[10px] text-blue-700">(اليوم)</span>}
+                  <span className="block font-normal text-[11px] text-slate-500">{arabicDate(day)}</span>
                 </p>
                 {canManage && (
                   <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="p-1 rounded hover:bg-slate-100 text-slate-400">

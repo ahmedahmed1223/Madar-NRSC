@@ -960,6 +960,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onDeleteCategory={handleDeleteCategory}
                 onSaveSource={handleSaveSource}
                 onDeleteSource={handleDeleteSource}
+                onOpenUsers={() => setActiveNav('users')}
               />
             )}
 

@@ -40,6 +40,23 @@ export function setTheme(mode: ThemeMode) {
   apply(mode, true);
 }
 
+export type ThemePreference = ThemeMode | 'system';
+
+/** What the colleague chose on this device ('system' follows the operating system). */
+export function themePreference(): ThemePreference {
+  return savedPreference() ?? 'system';
+}
+
+export function setThemePreference(pref: ThemePreference) {
+  if (pref !== 'system') return setTheme(pref);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage unavailable
+  }
+  apply(systemPrefersDark() ? 'dark' : 'light', true);
+}
+
 export function subscribeTheme(listener: (mode: ThemeMode) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

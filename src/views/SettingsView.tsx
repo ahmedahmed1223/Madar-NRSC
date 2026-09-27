@@ -42,7 +42,49 @@ interface SettingsViewProps {
   onDeleteCategory: (id: string) => void;
   onSaveSource: (source: Partial<NewsSource>) => void;
   onDeleteSource: (id: string) => void;
+  /** Opens «المستخدمون والصلاحيات». */
+  onOpenUsers?: () => void;
 }
+
+type SettingsSection = 'station' | 'categories' | 'sources' | 'data';
+const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
+  { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
+  { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
+  { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات البرقيات', icon: Rss },
+  { id: 'data', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
+];
+const SECTION_KEY = 'nrcs-settings-section';
+
+const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number> }> = ({ section, onChange, counts }) => (
+  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+    {SECTIONS.map((sec) => {
+      const Icon = sec.icon;
+      const active = sec.id === section;
+      return (
+        <button
+          key={sec.id}
+          type="button"
+          aria-current={active ? 'page' : undefined}
+          onClick={() => onChange(sec.id)}
+          className={`text-right p-3 rounded-2xl border transition-colors flex items-start gap-3 ${
+            active ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50/40'
+          }`}
+        >
+          <span className={`p-2 rounded-xl shrink-0 ${active ? 'bg-white/15' : 'bg-slate-100 text-slate-500'}`}>
+            <Icon className="w-4 h-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-xs font-bold">
+              {sec.label}
+              {counts[sec.id] !== undefined && <span className={`ms-1 text-[10px] ${active ? 'text-blue-100' : 'text-slate-400'}`}>({counts[sec.id]})</span>}
+            </span>
+            <span className={`block text-[11px] mt-0.5 leading-snug ${active ? 'text-blue-100' : 'text-slate-500'}`}>{sec.hint}</span>
+          </span>
+        </button>
+      );
+    })}
+  </nav>
+);
 
 const PRESET_COLORS = [
   { name: 'أحمر عاجل / سياسي', hex: '#dc2626' },
@@ -75,7 +117,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteCategory,
   onSaveSource,
   onDeleteSource,
+  onOpenUsers,
 }) => {
+  const [section, setSection] = useState<SettingsSection>(() => {
+    try {
+      const saved = localStorage.getItem(SECTION_KEY) as SettingsSection | null;
+      return saved && SECTIONS.some((x) => x.id === saved) ? saved : 'station';
+    } catch {
+      return 'station';
+    }
+  });
+  const chooseSection = (next: SettingsSection) => {
+    setSection(next);
+    try {
+      localStorage.setItem(SECTION_KEY, next);
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  };
   const initialSettings = useMemo(() => apiService.getSettings(), []);
   const [stationName, setStationName] = useState(initialSettings.organizationName || '');
   const [timezone, setTimezone] = useState(initialSettings.defaultTimezone || 'Asia/Riyadh');
@@ -281,17 +340,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 pb-12">
       {/* Header */}
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
             <Settings className="w-6 h-6" />
           </div>
-          <span>إعدادات النظام والمحطة التلفزيونية</span>
+          <span>الإعدادات</span>
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          إدارة هوية المحطة، تصنيفات الأخبار الديناميكية وترميزها اللوني، مصادر وكالات الأنباء، والنسخ الاحتياطي
+          هوية المؤسسة، الأقسام الصحفية، وكالات الأنباء وخلاصاتها، والبيانات. التغييرات تسري على كل الزملاء فوراً.
         </p>
       </div>
 
@@ -302,7 +361,116 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* DYNAMIC CATEGORY & TAXONOMY MANAGEMENT SECTION */}
+      <SettingsNav section={section} onChange={chooseSection} counts={{ categories: categories.length, sources: sources.length }} />
+
+      {section === 'station' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* General Station Config */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <Tv className="w-4 h-4 text-blue-600" />
+            <span>بيانات المحطة الإخبارية والبث</span>
+          </h3>
+
+          <form onSubmit={handleSaveGeneral} className="space-y-3 text-xs">
+            <div>
+              <label htmlFor="station-name-input" className="block font-bold text-slate-700 mb-1">اسم القناة / المؤسسة الإعلامية</label>
+              <input
+                id="station-name-input"
+                type="text"
+                value={stationName}
+                onChange={(e) => setStationName(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="station-timezone-input" className="block font-bold text-slate-700 mb-1">المنطقة الزمنية </label>
+                <input
+                  id="station-timezone-input"
+                  type="text"
+                  list="broadcast-timezones"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  dir="ltr"
+                  autoCapitalize="none"
+                  spellCheck="false"
+                />
+                <datalist id="broadcast-timezones">
+                  <option value="Asia/Riyadh" />
+                  <option value="Asia/Dubai" />
+                  <option value="Africa/Cairo" />
+                  <option value="Asia/Kuwait" />
+                  <option value="Asia/Amman" />
+                  <option value="Europe/London" />
+                  <option value="UTC" />
+                </datalist>
+              </div>
+
+              <div>
+                <label htmlFor="station-duration-input" className="block font-bold text-slate-700 mb-1">الزمن الافتراضي للفقرة (ثانية)</label>
+                <input
+                  id="station-duration-input"
+                  type="number"
+                  min={10}
+                  max={3600}
+                  step={5}
+                  inputMode="numeric"
+                  value={defaultDuration}
+                  onChange={(e) => setDefaultDuration(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs"
+            >
+              <Save className="w-4 h-4" />
+              <span>حفظ الإعدادات العامة</span>
+            </button>
+            {generalError && <p className="text-rose-600 font-bold">{generalError}</p>}
+          </form>
+        </div>
+
+        {/* Team summary: the full directory lives in «المستخدمون والصلاحيات». */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-600" />
+            <span>الفريق والصلاحيات</span>
+          </h3>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
+              <p className="text-[11px] text-slate-500">حساب نشط</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive === false).length}</p>
+              <p className="text-[11px] text-slate-500">موقوف</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.twoFactorEnabled).length}</p>
+              <p className="text-[11px] text-slate-500">بالتحقق بخطوتين</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {users.slice(0, 10).map((u) => (
+              <Avatar key={u.id} src={u.avatarUrl} name={u.fullName} className="w-8 h-8 rounded-full" />
+            ))}
+          </div>
+          {onOpenUsers && (
+            <button type="button" onClick={onOpenUsers} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700">
+              <Users className="w-3.5 h-3.5" /> إدارة المستخدمين والأدوار
+            </button>
+          )}
+        </div>
+        </div>
+      )}
+
+      {section === 'categories' && (
       <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
@@ -311,7 +479,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span>إدارة التصنيفات والأقسام الصحفية (Dynamic Categories & Colors)</span>
+                <span>الأقسام الصحفية وألوانها</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-mono font-bold">
                   {categories.length} أقسام
                 </span>
@@ -565,7 +733,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Category Cards List */}
-            <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1">
+            <div className="space-y-2.5">
               {filteredCategories.length === 0 ? (
                 <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                   لا توجد أقسام مطابقة للبحث "{categorySearch}".
@@ -669,6 +837,205 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
+
+      )}
+
+      {section === 'sources' && (
+        <div className="max-w-4xl">
+        {/* News Sources Manager */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-blue-600" />
+            <span>وكالات ومصادر الأخبار المعتمدة</span>
+          </h3>
+
+          <form onSubmit={handleAddSource} className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="relative">
+                <input
+                  id="new-source-name-input"
+                  type="text"
+                  required
+                  value={newSourceName}
+                  onChange={(e) => setNewSourceName(e.target.value)}
+                  placeholder="اسم الوكالة / المصدر..."
+                  className="w-full pr-3 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                />
+                {newSourceName && (
+                  <button
+                    type="button"
+                    onClick={() => setNewSourceName('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    aria-label="مسح اسم المصدر"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  id="new-source-type-input"
+                  type="text"
+                  value={newSourceType}
+                  onChange={(e) => setNewSourceType(e.target.value)}
+                  placeholder="نوع المصدر..."
+                  className="w-full pr-3 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                />
+                {newSourceType && (
+                  <button
+                    type="button"
+                    onClick={() => setNewSourceType('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    aria-label="مسح نوع المصدر"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+              >
+                إضافة مصدر
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {['وكالة رويترز', 'وكالة فرانس برس', 'واس السعودية', 'بلومبرغ نيوز', 'مراسل ميداني'].map((srcPreset) => (
+                <button
+                  key={srcPreset}
+                  type="button"
+                  onClick={() => {
+                    setNewSourceName(srcPreset);
+                    setNewSourceType(srcPreset.includes('وكالة') ? 'وكالة أنباء عالمية' : 'مراسل خاص');
+                  }}
+                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
+                >
+                  +{srcPreset}
+                </button>
+              ))}
+            </div>
+          </form>
+
+          <div className="space-y-2">
+            {sources.map((src) => (
+              <div key={src.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <strong className="text-slate-800 block">{src.name}</strong>
+                  <span className="text-[11px] text-slate-400">{src.type}</span>
+                  {src.feedUrl && (
+                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-600' : 'text-slate-400'}`}>
+                      {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFeedEditingId(feedEditingId === src.id ? null : src.id)}
+                    className="text-orange-500 hover:text-orange-700 p-1"
+                    title="ربط خلاصة RSS للبرقيات"
+                    aria-label={`خلاصة RSS للمصدر ${src.name}`}
+                  >
+                    <Rss className="w-4 h-4" />
+                  </button>
+                  <span className="text-[11px] font-mono text-emerald-600 font-bold">
+                    موثوقية {src.reliabilityScore}/5
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const inUse = (newsList || []).filter((n) => n.sourceId === src.id).length;
+                      if (inUse > 0) {
+                        window.alert(`لا يمكن حذف المصدر (${src.name}) لأنه مرتبط بـ ${inUse} مادة إخبارية.`);
+                        return;
+                      }
+                      if (window.confirm(`حذف المصدر (${src.name}) نهائياً؟`)) onDeleteSource(src.id);
+                    }}
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              {feedEditingId === src.id && (
+                <SourceFeedEditor source={src} onSave={onSaveSource} onClose={() => setFeedEditingId(null)} />
+              )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        </div>
+      )}
+
+      {section === 'data' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Production Backup & Disaster Recovery Card */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-emerald-600" />
+            <span>التصدير والاستعادة</span>
+          </h3>
+
+          {backupMsg && (
+            <div
+              className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                backupMsg.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-red-50 text-red-800 border border-red-200'
+              }`}
+            >
+              {backupMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span>{backupMsg.text}</span>
+            </div>
+          )}
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <strong className="text-slate-800 block font-bold text-xs">
+                تصدير نسخة كاملة (ملف JSON)
+              </strong>
+              <p className="text-slate-500 text-[11px]">
+                تنزيل ملف كامل لبيانات غرفة الأخبار، التصنيفات، والتغطيات.
+              </p>
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                تحميل النسخة الاحتياطية (JSON)
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <strong className="text-slate-800 block font-bold text-xs">
+                استعادة من ملف نسخة احتياطية
+              </strong>
+              <p className="text-slate-500 text-[11px]">
+                استيراد ملف نسخة احتياطية واستئناف العمل فوراً.
+              </p>
+              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>اختيار ملف واستعادة</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleImportBackup}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+          <DemoDataCard />
+        </div>
+      )}
 
       {/* MODAL: EDIT CATEGORY */}
       {editingCategory && (
@@ -840,299 +1207,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         />
       )}
 
-      {/* GENERAL STATION CONFIG, SOURCES, RBAC & BACKUP GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* General Station Config */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Tv className="w-4 h-4 text-blue-600" />
-            <span>بيانات المحطة الإخبارية والبث</span>
-          </h3>
-
-          <form onSubmit={handleSaveGeneral} className="space-y-3 text-xs">
-            <div>
-              <label htmlFor="station-name-input" className="block font-bold text-slate-700 mb-1">اسم القناة / المؤسسة الإعلامية</label>
-              <input
-                id="station-name-input"
-                type="text"
-                value={stationName}
-                onChange={(e) => setStationName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="station-timezone-input" className="block font-bold text-slate-700 mb-1">المنطقة الزمنية (Timezone)</label>
-                <input
-                  id="station-timezone-input"
-                  type="text"
-                  list="broadcast-timezones"
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  dir="ltr"
-                  autoCapitalize="none"
-                  spellCheck="false"
-                />
-                <datalist id="broadcast-timezones">
-                  <option value="Asia/Riyadh" />
-                  <option value="Asia/Dubai" />
-                  <option value="Africa/Cairo" />
-                  <option value="Asia/Kuwait" />
-                  <option value="Asia/Amman" />
-                  <option value="Europe/London" />
-                  <option value="UTC" />
-                </datalist>
-              </div>
-
-              <div>
-                <label htmlFor="station-duration-input" className="block font-bold text-slate-700 mb-1">الزمن الافتراضي للفقرة (ثانية)</label>
-                <input
-                  id="station-duration-input"
-                  type="number"
-                  min={10}
-                  max={3600}
-                  step={5}
-                  inputMode="numeric"
-                  value={defaultDuration}
-                  onChange={(e) => setDefaultDuration(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs"
-            >
-              <Save className="w-4 h-4" />
-              <span>حفظ الإعدادات العامة</span>
-            </button>
-            {generalError && <p className="text-rose-600 font-bold">{generalError}</p>}
-          </form>
-        </div>
-
-        {/* News Sources Manager */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-blue-600" />
-            <span>وكالات ومصادر الأخبار المعتمدة</span>
-          </h3>
-
-          <form onSubmit={handleAddSource} className="space-y-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="relative">
-                <input
-                  id="new-source-name-input"
-                  type="text"
-                  required
-                  value={newSourceName}
-                  onChange={(e) => setNewSourceName(e.target.value)}
-                  placeholder="اسم الوكالة / المصدر..."
-                  className="w-full pr-3 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-                {newSourceName && (
-                  <button
-                    type="button"
-                    onClick={() => setNewSourceName('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                    aria-label="مسح اسم المصدر"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <input
-                  id="new-source-type-input"
-                  type="text"
-                  value={newSourceType}
-                  onChange={(e) => setNewSourceType(e.target.value)}
-                  placeholder="نوع المصدر..."
-                  className="w-full pr-3 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-                {newSourceType && (
-                  <button
-                    type="button"
-                    onClick={() => setNewSourceType('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                    aria-label="مسح نوع المصدر"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <button
-                type="submit"
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
-              >
-                إضافة مصدر
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {['وكالة رويترز', 'وكالة فرانس برس', 'واس السعودية', 'بلومبرغ نيوز', 'مراسل ميداني'].map((srcPreset) => (
-                <button
-                  key={srcPreset}
-                  type="button"
-                  onClick={() => {
-                    setNewSourceName(srcPreset);
-                    setNewSourceType(srcPreset.includes('وكالة') ? 'وكالة أنباء عالمية' : 'مراسل خاص');
-                  }}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
-                >
-                  +{srcPreset}
-                </button>
-              ))}
-            </div>
-          </form>
-
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {sources.map((src) => (
-              <div key={src.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-              <div className="flex items-center justify-between">
-                <div>
-                  <strong className="text-slate-800 block">{src.name}</strong>
-                  <span className="text-[11px] text-slate-400">{src.type}</span>
-                  {src.feedUrl && (
-                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-600' : 'text-slate-400'}`}>
-                      {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFeedEditingId(feedEditingId === src.id ? null : src.id)}
-                    className="text-orange-500 hover:text-orange-700 p-1"
-                    title="ربط خلاصة RSS للبرقيات"
-                    aria-label={`خلاصة RSS للمصدر ${src.name}`}
-                  >
-                    <Rss className="w-4 h-4" />
-                  </button>
-                  <span className="text-[11px] font-mono text-emerald-600 font-bold">
-                    موثوقية {src.reliabilityScore}/5
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const inUse = (newsList || []).filter((n) => n.sourceId === src.id).length;
-                      if (inUse > 0) {
-                        window.alert(`لا يمكن حذف المصدر (${src.name}) لأنه مرتبط بـ ${inUse} مادة إخبارية.`);
-                        return;
-                      }
-                      if (window.confirm(`حذف المصدر (${src.name}) نهائياً؟`)) onDeleteSource(src.id);
-                    }}
-                    className="text-red-500 hover:text-red-700 p-1"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              {feedEditingId === src.id && (
-                <SourceFeedEditor source={src} onSave={onSaveSource} onClose={() => setFeedEditingId(null)} />
-              )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Roles & Users Directory Overview */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-600" />
-            <span>حسابات طاقم العمل وصلاحيات الوصول (RBAC)</span>
-          </h3>
-
-          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {users.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar src={u.avatarUrl} name={u.fullName} className="w-8 h-8 rounded-full" />
-                  <div>
-                    <strong className="text-slate-800 block">{u.fullName}</strong>
-                    <span className="text-[10px] text-slate-400 font-mono" dir="ltr">
-                      {u.email}
-                    </span>
-                  </div>
-                </div>
-
-                <Badge variant="primary" size="sm">
-                  {u.role}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <DemoDataCard />
-
-        {/* Production Backup & Disaster Recovery Card */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <HardDrive className="w-4 h-4 text-emerald-600" />
-            <span>النسخ الاحتياطي واستعادة البيانات للإنتاج</span>
-          </h3>
-
-          {backupMsg && (
-            <div
-              className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                backupMsg.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
-              }`}
-            >
-              {backupMsg.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-              )}
-              <span>{backupMsg.text}</span>
-            </div>
-          )}
-
-          <div className="space-y-3 text-xs">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <strong className="text-slate-800 block font-bold text-xs">
-                تصدير نسخة احتياطية كاملة (JSON Export)
-              </strong>
-              <p className="text-slate-500 text-[11px]">
-                تنزيل ملف كامل لبيانات غرفة الأخبار، التصنيفات، والتغطيات.
-              </p>
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-xs"
-              >
-                <Download className="w-3.5 h-3.5" />
-                تحميل النسخة الاحتياطية (JSON)
-              </button>
-            </div>
-
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <strong className="text-slate-800 block font-bold text-xs">
-                استعادة بيانات من ملف خارجي (Restore JSON)
-              </strong>
-              <p className="text-slate-500 text-[11px]">
-                استيراد ملف نسخة احتياطية واستئناف العمل فوراً.
-              </p>
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                <span>اختيار ملف واستعادة</span>
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={handleImportBackup}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
