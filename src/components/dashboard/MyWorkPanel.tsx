@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
+import { CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
@@ -77,7 +77,7 @@ const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; mor
 
 /** Personal work queue: what needs me now, by role and department. */
 export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin }) => {
-  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories']);
+  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources']);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review');
@@ -180,6 +180,34 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       .map((s) => ({ id: s.id, title: s.slug, meta: 'أُعيدت إليك', tone: 'red' as const, onClick: () => openBulletin(s.bulletinId) })),
   ];
 
+  // Coverage assignments from the planning diary (next three days) and my bookings.
+  const in3 = localDate(new Date(now + 3 * DAY));
+  const resName = (id: string) => apiService.getResources().find((r) => r.id === id)?.name || 'مورد';
+  const planRows: Row[] = [
+    ...apiService
+      .getDiary()
+      .filter((e) => e.date >= today && e.date <= in3 && e.coverage !== 'SKIP' && e.assigneeIds.includes(me))
+      .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        meta: `${e.date === today ? 'اليوم' : e.date}${e.startTime ? ` ${e.startTime}` : ''}`,
+        tone: (e.priority === 'HIGH' ? 'red' : e.date === today ? 'amber' : 'slate') as Row['tone'],
+        onClick: () => onNavigate('diary'),
+      })),
+    ...apiService
+      .getBookings()
+      .filter((b) => b.status !== 'CANCELLED' && b.assigneeId === me && Date.parse(b.end) > now && Date.parse(b.start) < now + 2 * DAY)
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map((b) => ({
+        id: b.id,
+        title: `${resName(b.resourceId)} — ${b.title}`,
+        meta: new Date(b.start).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        tone: 'emerald' as const,
+        onClick: () => onNavigate('bookings'),
+      })),
+  ];
+
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
   return (
@@ -209,6 +237,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         {(bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) && (
           <Card testId="my-bulletins" icon={Radio} title="قصص النشرات" rows={bulletinRows} empty="لا قصص نشرات تنتظرك" more={() => onNavigate('bulletins')} />
         )}
+ {planRows.length > 0 && <Card testId="my-plan" icon={CalendarDays} title="تغطياتي وحجوزاتي" rows={planRows} empty="" more={() => onNavigate('diary')} />}
         <Card testId="my-mentions" icon={AtSign} title="إشارات إليّ (7 أيام)" rows={mentions} empty="لم يُشر إليك أحد مؤخراً" />
       </div>
     </div>

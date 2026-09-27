@@ -1,7 +1,7 @@
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useState, useEffect } from 'react';
-import {
+import { BellRing,
   Search,
   Bell,
   Plus,
@@ -290,6 +290,8 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={() => setIsNotifOpen(!isNotifOpen)}
+            aria-label={unreadCount > 0 ? `الإشعارات (${unreadCount} غير مقروء)` : 'الإشعارات'}
+            aria-expanded={isNotifOpen}
             className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors relative"
             title="الإشعارات التحريرية"
           >
@@ -360,6 +362,17 @@ export const Topbar: React.FC<TopbarProps> = ({
                   </span>
                 </div>
                 <div className="py-1 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onNavigate?.('/alerts');
+                    }}
+                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <BellRing className="w-4 h-4 text-slate-500" />
+                    <span>تنبيهاتي (البريد والجوال)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {

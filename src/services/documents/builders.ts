@@ -38,6 +38,7 @@ import {
   sumSeconds,
 } from '../../shared/episodePlan';
 import type { DocBlock, DocSpec, TableRow } from './model';
+import type { AsRunShow } from '../../shared/asrun';
 import { fileNameOf } from './model';
 
 export interface DocContext {
@@ -430,6 +431,47 @@ export function episodesScheduleDoc(episodes: Episode[], label: string, ctx: Doc
         rows: list.map((e) => ({
           cells: [arabicDate(e.broadcastDate), `${e.startTime}–${e.endTime}`, e.programName || '', String(e.episodeNumber), e.title, e.studioName || '', e.presenterName || '', String((e.rundown || []).length), EPISODE_STATUS[e.status] || e.status],
         })),
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// As-Run
+// ---------------------------------------------------------------------------
+
+const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—');
+const signed = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : n < 0 ? '-' : ''}${mmss(Math.abs(n))}`);
+
+/** The day's As-Run log: every show that aired, with real start/end and per-segment timings. */
+export function asRunDoc(shows: AsRunShow[], day: string, ctx: DocContext): DocSpec {
+  const rows: TableRow[] = [];
+  shows.forEach((s) => {
+    rows.push({
+      kind: 'group',
+      cells: [`${clock(s.startedAt)} — ${s.programName ? `${s.programName}: ` : ''}${s.title} · الفعلي ${s.actualSeconds === null ? '—' : mmss(s.actualSeconds)} مقابل ${mmss(s.plannedSeconds)}${s.startDelaySeconds !== null ? ` · بدأ ${signed(s.startDelaySeconds)} عن موعده` : ''}${s.operatorName ? ` · التشغيل: ${s.operatorName}` : ''}`],
+    });
+    s.rows.forEach((r) =>
+      rows.push({
+        kind: r.diffSeconds !== null && Math.abs(r.diffSeconds) >= 30 ? 'strong' : undefined,
+        cells: [clock(r.startedAt), clock(r.endedAt), r.title, r.plannedSeconds === null ? '—' : mmss(r.plannedSeconds), r.actualSeconds === null ? '—' : mmss(r.actualSeconds), signed(r.diffSeconds)],
+      })
+    );
+  });
+  return {
+    title: 'سجل البث الفعلي (As-Run)',
+    subtitle: `${arabicDate(day)} — ${shows.length} بث`,
+    fileName: fileNameOf('As-Run', day),
+    orientation: 'landscape',
+    organization: ctx.organization,
+    footerNote: stamp(ctx),
+    blocks: [
+      {
+        t: 'table',
+        head: ['البداية', 'النهاية', 'الفقرة / القصة', 'المخطط', 'الفعلي', 'الفرق'],
+        widths: [11, 11, 48, 10, 10, 10],
+        mono: [0, 1, 3, 4, 5],
+        rows,
       },
     ],
   };

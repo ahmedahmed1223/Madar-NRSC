@@ -6,6 +6,8 @@ import type { NewsroomDatabase } from './db';
 import type { WireItem } from '../types/index';
 import { changeBus } from './sync';
 import { logger } from './logger';
+import { alertForWires } from './notifications';
+import { isFlashWire } from '../shared/notifications';
 
 export interface WireConfig {
   pollMinutes: number;
@@ -221,7 +223,7 @@ export const wireIdFor = (sourceId: string, guid: string) =>
 /** Stores new items of a parsed feed; returns how many were added. */
 export function ingestFeed(db: NewsroomDatabase, source: { id: string; name: string }, feed: ParsedFeed, cfg: WireConfig, now = Date.now()): number {
   const oldest = now - cfg.retentionDays * 24 * 60 * 60 * 1000;
-  let added = 0;
+  const added: WireItem[] = [];
   db.transaction(() => {
     for (const item of feed.items.slice(0, MAX_ITEMS_PER_FEED)) {
       if (!item.title || !item.guid) continue;
@@ -240,12 +242,15 @@ export function ingestFeed(db: NewsroomDatabase, source: { id: string; name: str
         publishedAt: new Date(publishedMs).toISOString(),
         fetchedAt: new Date(now).toISOString(),
       };
+      if (isFlashWire(wire)) wire.flash = true;
       // Newest first: lower position sorts earlier.
       db.writeRow('wires', id, wire, -Math.floor(publishedMs / 1000), null);
-      added++;
+      added.push(wire);
     }
+    // Urgent wires and watch words reach the colleagues who asked for them.
+    alertForWires(db, added, now);
   });
-  return added;
+  return added.length;
 }
 
 let polling: Promise<FeedStatus[]> | null = null;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppNotification } from '../../types';
-import { Bell, Check, Clock, ExternalLink } from 'lucide-react';
+import { Bell, Check, Clock, ExternalLink, Settings2, Zap } from 'lucide-react';
+import { categoryName } from '../../shared/notifications';
 
 interface NotificationDropdownProps {
   isOpen: boolean;
@@ -69,7 +70,9 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-xs font-bold text-slate-800">{notif.title}</h4>
+                  <h4 className={`text-xs font-bold ${notif.urgent ? 'text-red-700' : 'text-slate-800'}`}>
+                    {notif.urgent && <Zap className="w-3 h-3 inline ms-0.5" />} {notif.title}
+                  </h4>
                   {!notif.isRead && (
                     <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1" />
                   )}
@@ -82,6 +85,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
+                    {notif.category && <span className="ms-1 px-1 rounded bg-slate-100 text-slate-500">{categoryName(notif.category)}</span>}
                   </span>
                   {notif.linkUrl && (
                     <span className="text-blue-600 flex items-center gap-0.5">
@@ -93,6 +97,17 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             ))
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.('/alerts');
+            onClose();
+          }}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 border-t border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          ما يصلني على البريد والجوال
+        </button>
       </div>
     </>
   );

@@ -23,6 +23,8 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
       if (item.status !== 'SCHEDULED' || item.deletedAt || !item.scheduledDate) continue;
       const due = new Date(item.scheduledDate).getTime();
       if (!Number.isFinite(due) || due > now.getTime()) continue;
+      // Never publish ahead of an embargo (it waits for the embargo to lift).
+      if (item.embargoUntil && Date.parse(item.embargoUntil) > now.getTime()) continue;
 
       const updated: NewsItem = {
         ...item,

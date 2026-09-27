@@ -1,3 +1,4 @@
+import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Radio, Square } from 'lucide-react';
@@ -18,7 +19,27 @@ interface OnAirViewProps {
 }
 
 /** Live control of the show, shared in real time with every department. */
-export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, initialShowId }) => {
+/** On-air control and the As-Run log (what actually aired). */
+export const OnAirView: React.FC<OnAirViewProps> = (props) => {
+  const [tab, setTab] = useState<'CONTROL' | 'ASRUN'>('CONTROL');
+  return (
+    <div className="space-y-4">
+      <div role="tablist" className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
+        {([
+          ['CONTROL', 'التحكم بالبث'],
+          ['ASRUN', 'سجل البث الفعلي (As-Run)'],
+        ] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-4 py-2 rounded-xl ${tab === id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'CONTROL' ? <OnAirControl {...props} /> : <AsRunPanel currentUser={props.currentUser} />}
+    </div>
+  );
+};
+
+const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, initialShowId }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media'], 1000);
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
   const today = localDateString();

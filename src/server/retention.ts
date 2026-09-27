@@ -16,7 +16,7 @@ export interface RetentionConfig {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Collections whose soft-deleted rows sit in a trash that users can restore from. */
-const TRASH_COLLECTIONS: CollectionName[] = ['news', 'stories', 'programs', 'episodes', 'guests', 'media'];
+const TRASH_COLLECTIONS: CollectionName[] = ['news', 'stories', 'programs', 'episodes', 'guests', 'media', 'diary', 'resources', 'bookings'];
 
 /**
  * Keeps the synced collections from growing without bound (every browser downloads them):

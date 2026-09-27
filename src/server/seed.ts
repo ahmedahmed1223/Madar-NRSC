@@ -21,6 +21,7 @@ import {
   INITIAL_USERS,
 } from '../services/mockData';
 import { demoBulletin, INITIAL_BULLETIN_FORMATS } from '../services/demoBulletins';
+import { demoBookings, demoDiary, INITIAL_RESOURCES } from '../services/demoPlanning';
 import { localDateString } from '../shared/dates';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
@@ -67,7 +68,9 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
     if (!db.getRow('broadcastState', SINGLETON_ID)) db.writeRow('broadcastState', SINGLETON_ID, { liveLock: false }, 0, null);
   });
 
-  if (config.seedDemoData && db.getMeta('demo_seeded') !== '1') {
+  // Once an administrator removed the demo data it is never seeded again.
+  const demoAllowed = config.seedDemoData && db.getMeta('demo_removed') !== '1';
+  if (demoAllowed && db.getMeta('demo_seeded') !== '1') {
     const demoHash = await hashPassword(config.demoUserPassword);
     db.transaction(() => {
       DEMO_COLLECTIONS.forEach(([c, items]) => seedList(db, c, items));
@@ -88,7 +91,22 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   migrateToDepartments(db);
   ensureSystemRoles(db);
   grantNewPermissions(db);
-  if (config.seedDemoData) seedDemoBulletins(db);
+  if (demoAllowed) {
+    seedDemoBulletins(db);
+    seedDemoPlanning(db);
+  }
+}
+
+/** Demo planning diary, resources and bookings (added once to demo databases). */
+function seedDemoPlanning(db: NewsroomDatabase) {
+  if (db.getMeta('demo_planning') === '1') return;
+  db.transaction(() => {
+    const today = localDateString();
+    seedList(db, 'resources', INITIAL_RESOURCES);
+    seedList(db, 'diary', demoDiary(today));
+    seedList(db, 'bookings', demoBookings(today));
+    db.setMeta('demo_planning', '1');
+  });
 }
 
 /** Demo bulletins arrived after the first demo release: added once to demo databases. */
@@ -114,6 +132,9 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'bulletins.edit': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER'],
   'bulletins.approve': ['SUPER_ADMIN', 'ADMIN', 'EDITOR'],
   'bulletins.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'diary.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'resources.book': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER', 'MEDIA', 'CREW'],
+  'resources.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
 };
 
 /** System roles introduced after a database was created are added once. */
@@ -252,4 +273,69 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
   } else {
     logger.info('initial administrator created', { email });
   }
+}
+
+// ---------- removing demo data ----------
+
+const DEMO_USER_IDS = INITIAL_USERS.map((u) => u.id);
+
+/** Every seeded demo record still in the database (by its fixed id), per collection. */
+export function demoInventory(db: NewsroomDatabase): Partial<Record<CollectionName, string[]>> {
+  const today = localDateString();
+  const planned: [CollectionName, { id: string }[]][] = [
+    ...DEMO_COLLECTIONS,
+    ['resources', INITIAL_RESOURCES],
+    ['diary', demoDiary(today)],
+    ['bookings', demoBookings(today)],
+  ];
+  const out: Partial<Record<CollectionName, string[]>> = {};
+  const add = (c: CollectionName, id: string) => {
+    if (!db.getRow(c, id)) return;
+    (out[c] ||= []).push(id);
+  };
+  for (const [c, items] of planned) items.forEach((it) => it && typeof it.id === 'string' && add(c, it.id));
+  // The demo bulletin and anything generated from the demo formats.
+  const formatIds = new Set(INITIAL_BULLETIN_FORMATS.map((f) => f.id));
+  const bulletinIds = db
+    .listCollection('bulletins')
+    .filter((r) => r.id === 'bul-demo-main' || formatIds.has(r.d?.formatId))
+    .map((r) => r.id);
+  bulletinIds.forEach((id) => add('bulletins', id));
+  const bulletinSet = new Set(bulletinIds);
+  db.listCollection('bulletinStories')
+    .filter((r) => bulletinSet.has(r.d?.bulletinId))
+    .forEach((r) => add('bulletinStories', r.id));
+  return out;
+}
+
+export function demoUsersPresent(db: NewsroomDatabase, exceptUserId?: string): { id: string; fullName: string; email: string }[] {
+  return DEMO_USER_IDS.filter((id) => id !== exceptUserId)
+    .map((id) => db.getRow('users', id)?.d)
+    .filter(Boolean)
+    .map((u: any) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+}
+
+/**
+ * Deletes the seeded demo records (never data people created), optionally the demo accounts
+ * (except the administrator doing it), and stops demo data from ever being seeded again.
+ */
+export function removeDemoData(db: NewsroomDatabase, opts: { includeUsers: boolean; actingUserId: string }) {
+  const inventory = demoInventory(db);
+  const removed: Record<string, number> = {};
+  db.transaction(() => {
+    for (const [c, ids] of Object.entries(inventory) as [CollectionName, string[]][]) {
+      for (const id of ids) if (db.deleteRow(c, id, opts.actingUserId)) removed[c] = (removed[c] || 0) + 1;
+    }
+    if (opts.includeUsers) {
+      for (const u of demoUsersPresent(db, opts.actingUserId)) {
+        db.deleteCredentials(u.id);
+        db.deleteUserSessions(u.id);
+        db.deleteUserPushSubscriptions(u.id);
+        db.deleteRow('notificationPrefs', u.id, opts.actingUserId);
+        if (db.deleteRow('users', u.id, opts.actingUserId)) removed.users = (removed.users || 0) + 1;
+      }
+    }
+    db.setMeta('demo_removed', '1');
+  });
+  return removed;
 }

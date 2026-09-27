@@ -1,3 +1,4 @@
+import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -595,6 +596,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       {/* Title */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-start gap-2">
+                          {isUnderEmbargo(item) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
+                              محظور حتى {embargoLabel(item.embargoUntil)}
+                            </span>
+                          )}
                           {item.isBreaking && (
                             <Badge variant="danger" size="sm" dot className="shrink-0 mt-0.5">
                               عاجل

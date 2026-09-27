@@ -5,10 +5,12 @@ import { apiService } from '../services/api';
 import { episodeReadiness } from '../shared/production';
 import { departmentName } from '../shared/departments';
 import { FormPage } from '../components/common/FormPage';
+import { BookingForm } from '../components/planning/BookingForm';
+import type { Booking } from '../shared/planning';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useRef, useEffect} from 'react';
-import { ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers } from 'lucide-react';
+import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers } from 'lucide-react';
 import { EpisodePlanner } from '../components/episodes/EpisodePlanner';
 import { EpisodeGuestsPanel } from '../components/episodes/EpisodeGuestsPanel';
 import { EpisodeQuestionsPanel } from '../components/episodes/EpisodeQuestionsPanel';
@@ -77,6 +79,19 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   // Status updates
   const readiness = episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
   const [showBlockers, setShowBlockers] = useState(false);
+  const [booking, setBooking] = useState<Partial<Booking> | null>(null);
+  const canBook = RbacService.hasPermission(currentUser, 'resources.book') || RbacService.hasPermission(currentUser, 'resources.manage');
+  const episodeBookings = apiService.getBookings().filter((b) => b.link?.kind === 'episode' && b.link.id === episode.id && b.status !== 'CANCELLED');
+  const bookStudio = () => {
+    const day = (episode.recordingDate || episode.broadcastDate || '').slice(0, 10);
+    const [y, m, d] = (day || new Date().toISOString().slice(0, 10)).split('-').map(Number);
+    const [hh, mm] = (episode.startTime || '09:00').split(':').map(Number);
+    const start = new Date(y, m - 1, d, hh || 9, mm || 0);
+    // Studio time: an hour of preparation before air, and the programme's length after.
+    const from = new Date(start.getTime() - 60 * 60_000);
+    const to = new Date(start.getTime() + Math.max(episode.durationMinutes || 60, 30) * 60_000);
+    setBooking({ title: `${episode.programName} — ${episode.title}`, start: from.toISOString(), end: to.toISOString(), link: { kind: 'episode', id: episode.id, title: `${episode.programName} — ${episode.title}` } });
+  };
 
   const handleUpdateStatus = (newStatus: EpisodeStatus) => {
     if (!canEditEpisode) return;
@@ -220,6 +235,17 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Episode Live Status Controller */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+            {canBook && (
+              <button
+                type="button"
+                onClick={bookStudio}
+                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
+              >
+                <CalendarPlus className="w-4 h-4" />
+                {episodeBookings.length ? `محجوز (${episodeBookings.length})` : 'حجز استوديو'}
+              </button>
+            )}
             <ExportMenu
               items={[
                 { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
@@ -246,6 +272,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             </div>
           </div>
         </div>
+
+        {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
 
         {/* Episode Info Bar */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">

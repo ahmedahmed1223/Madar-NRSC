@@ -88,6 +88,8 @@ import {
   storyStatusError,
 } from '../shared/bulletins';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
+import { defaultPrefs, NotificationPrefs, prefsError } from '../shared/notifications';
+import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
@@ -364,6 +366,7 @@ export class ApiService {
       videoUrl: data.videoUrl,
       storyId: data.storyId,
       wireId: data.wireId,
+      diaryId: data.diaryId,
       mediaIds: data.mediaIds || [],
       sourceId: data.sourceId || '',
       sourceName: data.sourceName || '',
@@ -1580,6 +1583,145 @@ export class ApiService {
   static async testFeed(url: string): Promise<{ title: string; itemCount: number; sample: string[] }> {
     const res = await apiFetch<{ data: { title: string; itemCount: number; sample: string[] } }>('/api/v1/wires/test', { method: 'POST', json: { url } });
     return res.data;
+  }
+
+  // --- NOTIFICATION PREFERENCES & DELIVERY ---
+  static getMyNotificationPrefs(): NotificationPrefs {
+    const me = this.getCurrentUser().id;
+    const own = getStored<NotificationPrefs[]>(COLLECTIONS.notificationPrefs.storageKey, []).find((p) => p.userId === me);
+    return own ? { ...defaultPrefs(me), ...own } : defaultPrefs(me);
+  }
+
+  static saveMyNotificationPrefs(prefs: Partial<NotificationPrefs>): NotificationPrefs {
+    const me = this.getCurrentUser().id;
+    const next: NotificationPrefs = { ...this.getMyNotificationPrefs(), ...prefs, id: me, userId: me };
+    next.watchWords = [...new Set((next.watchWords || []).map((w) => w.trim()).filter(Boolean))];
+    if (!next.quietFrom || !next.quietTo) {
+      delete next.quietFrom;
+      delete next.quietTo;
+    }
+    const err = prefsError(next, me);
+    if (err) throw new Error(err);
+    const all = getStored<NotificationPrefs[]>(COLLECTIONS.notificationPrefs.storageKey, []).filter((p) => p.userId !== me);
+    setStored(COLLECTIONS.notificationPrefs.storageKey, [...all, next]);
+    return next;
+  }
+
+  static async getDeliveryStatus(): Promise<{ email: boolean; emailAddress: string; push: boolean; publicKey: string; devices: { endpoint: string; userAgent?: string; createdAt: string }[] }> {
+    const res = await apiFetch<{ data: any }>('/api/v1/notifications/delivery');
+    return res.data;
+  }
+
+  static async savePushSubscription(subscription: PushSubscriptionJSON): Promise<void> {
+    await apiFetch('/api/v1/notifications/push/subscribe', { method: 'POST', json: { subscription } });
+  }
+
+  static async removePushSubscription(endpoint: string): Promise<void> {
+    await apiFetch('/api/v1/notifications/push/unsubscribe', { method: 'POST', json: { endpoint } });
+  }
+
+  static async sendTestNotification(channel: 'push' | 'email'): Promise<void> {
+    await apiFetch('/api/v1/notifications/test', { method: 'POST', json: { channel } });
+  }
+
+  // --- DEMO DATA ---
+  static async getDemoDataInfo(): Promise<{ counts: Record<string, number>; users: { id: string; fullName: string; email: string }[]; removed: boolean }> {
+    const res = await apiFetch<{ data: any }>('/api/v1/admin/demo-data');
+    return res.data;
+  }
+
+  static async removeDemoData(includeUsers: boolean, confirm: string): Promise<{ removed: Record<string, number>; total: number }> {
+    const res = await apiFetch<{ data: { removed: Record<string, number>; total: number } }>('/api/v1/admin/demo-data/remove', { method: 'POST', json: { includeUsers, confirm } });
+    await dataStore.pull();
+    return res.data;
+  }
+
+  // --- PLANNING DIARY ---
+  static getDiary(): DiaryEntry[] {
+    return getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []).filter((e) => !e.deletedAt);
+  }
+
+  static saveDiaryEntry(data: Partial<DiaryEntry>): DiaryEntry {
+    const all = getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []);
+    const now = new Date().toISOString();
+    const idx = data.id ? all.findIndex((e) => e.id === data.id) : -1;
+    const next = {
+      ...(idx >= 0
+        ? all[idx]
+        : { id: newId('diary'), kind: 'EVENT', coverage: 'UNDECIDED', priority: 'NORMAL', assigneeIds: [], createdAt: now, createdById: this.getCurrentUser().id, createdByName: this.getCurrentUser().fullName }),
+      ...data,
+      updatedAt: now,
+    } as DiaryEntry;
+    const err = diaryError(next);
+    if (err) throw new Error(err);
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.diary.storageKey, all);
+    return next;
+  }
+
+  static deleteDiaryEntry(id: string): void {
+    const all = getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []);
+    setStored(COLLECTIONS.diary.storageKey, all.map((e) => (e.id === id ? { ...e, deletedAt: new Date().toISOString() } : e)));
+  }
+
+  // --- RESOURCES & BOOKINGS ---
+  static getResources(includeInactive = true): Resource[] {
+    return getStored<Resource[]>(COLLECTIONS.resources.storageKey, []).filter((r) => !r.deletedAt && (includeInactive || r.isActive !== false));
+  }
+
+  static saveResource(data: Partial<Resource>): Resource {
+    const all = getStored<Resource[]>(COLLECTIONS.resources.storageKey, []);
+    const now = new Date().toISOString();
+    const idx = data.id ? all.findIndex((r) => r.id === data.id) : -1;
+    const next = { ...(idx >= 0 ? all[idx] : { id: newId('res'), kind: 'STUDIO', isActive: true, createdAt: now }), ...data, updatedAt: now } as Resource;
+    if (!next.name?.trim()) throw new Error('اسم المورد مطلوب');
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.resources.storageKey, all);
+    return next;
+  }
+
+  static deleteResource(id: string): void {
+    if (this.getBookings().some((b) => b.resourceId === id && b.status !== 'CANCELLED' && Date.parse(b.end) > Date.now())) {
+      throw new Error('للمورد حجوزات قادمة؛ ألغها أو عطّل المورد بدلاً من حذفه');
+    }
+    const all = getStored<Resource[]>(COLLECTIONS.resources.storageKey, []);
+    setStored(COLLECTIONS.resources.storageKey, all.map((r) => (r.id === id ? { ...r, deletedAt: new Date().toISOString() } : r)));
+  }
+
+  static getBookings(): Booking[] {
+    return getStored<Booking[]>(COLLECTIONS.bookings.storageKey, []).filter((b) => !b.deletedAt);
+  }
+
+  static saveBooking(data: Partial<Booking>): Booking {
+    const all = getStored<Booking[]>(COLLECTIONS.bookings.storageKey, []);
+    const now = new Date().toISOString();
+    const me = this.getCurrentUser();
+    const idx = data.id ? all.findIndex((b) => b.id === data.id) : -1;
+    const next = {
+      ...(idx >= 0 ? all[idx] : { id: newId('bkg'), status: 'CONFIRMED', createdAt: now, bookedById: me.id, bookedByName: me.fullName }),
+      ...data,
+      updatedAt: now,
+    } as Booking;
+    if (!next.assigneeId) next.assigneeId = next.bookedById;
+    const err = bookingError(next);
+    if (err) throw new Error(err);
+    const clash = bookingConflicts(next, this.getBookings())[0];
+    if (clash) {
+      const res = this.getResources().find((r) => r.id === next.resourceId);
+      const t = (iso: string) => new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false });
+      throw new Error(`${res?.name || 'المورد'} محجوز في هذا الوقت: «${clash.title}» (${t(clash.start)}–${t(clash.end)}) باسم ${clash.bookedByName || 'زميل'}`);
+    }
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(COLLECTIONS.bookings.storageKey, all);
+    return next;
+  }
+
+  static cancelBooking(id: string): void {
+    const b = this.getBookings().find((x) => x.id === id);
+    if (b) this.saveBooking({ ...b, status: 'CANCELLED' });
   }
 
   static getProgramTypes(): ProgramType[] {

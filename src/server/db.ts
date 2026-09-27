@@ -143,7 +143,31 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 4,
+    sql: `
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at TEXT NOT NULL,
+        last_ok_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions (user_id);
+    `,
+  },
 ];
+
+export interface PushSubscriptionRecord {
+  endpoint: string;
+  userId: string;
+  p256dh: string;
+  auth: string;
+  userAgent?: string;
+  createdAt: string;
+}
 
 function formatSize(bytes: number): string {
   if (bytes > 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -330,6 +354,15 @@ export class NewsroomDatabase {
       rows: raws.slice(0, limit).filter((r) => isCollectionName(r.collection)).map(toEntityRow),
       truncated,
     };
+  }
+
+  /** Live rows of one collection written after `sinceRev` (oldest first). */
+  collectionChangesSince(collection: CollectionName, sinceRev: number, limit: number): { rev: number; row: EntityRow }[] {
+    return (
+      this.db
+        .prepare('SELECT * FROM entities WHERE collection = ? AND rev > ? AND deleted = 0 ORDER BY rev ASC LIMIT ?')
+        .all(collection, sinceRev, limit) as RawEntityRow[]
+    ).map((raw) => ({ rev: raw.rev, row: toEntityRow(raw) }));
   }
 
   /** Insert or replace a row, bumping its version. Caller handles concurrency checks. */
@@ -624,6 +657,37 @@ export class NewsroomDatabase {
   deleteUserSessions(userId: string, exceptSessionId?: string) {
     if (exceptSessionId) this.db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(userId, exceptSessionId);
     else this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  }
+
+  // --- Web Push subscriptions ------------------------------------------------
+
+  savePushSubscription(userId: string, sub: { endpoint: string; p256dh: string; auth: string }, userAgent: string | undefined) {
+    this.db
+      .prepare(
+        `INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent`
+      )
+      .run(sub.endpoint, userId, sub.p256dh, sub.auth, (userAgent ?? '').slice(0, 300), new Date().toISOString());
+  }
+
+  listPushSubscriptions(userId: string): PushSubscriptionRecord[] {
+    return (this.db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ? ORDER BY created_at').all(userId) as any[]).map((r) => ({
+      endpoint: r.endpoint,
+      userId: r.user_id,
+      p256dh: r.p256dh,
+      auth: r.auth,
+      userAgent: r.user_agent || undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  deletePushSubscription(endpoint: string, userId?: string) {
+    if (userId) return this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId).changes;
+    return this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint).changes;
+  }
+
+  deleteUserPushSubscriptions(userId: string) {
+    this.db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
   }
 
   purgeExpiredSessions() {

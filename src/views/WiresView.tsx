@@ -1,6 +1,7 @@
 import { matchesQuery } from '../shared/search';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
+import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon, Zap, Eye, BellRing } from 'lucide-react';
+import { isFlashWire, watchWordHits } from '../shared/notifications';
 import type { NewsItem, NewsSource, User, WireItem } from '../types';
 import { apiService, WireStatusInfo } from '../services/api';
 import { RbacService } from '../services/rbacService';
@@ -13,6 +14,10 @@ interface WiresViewProps {
   onConvert: (wire: WireItem) => void;
   onOpenNews: (newsId: string) => void;
   onOpenSettings: () => void;
+  /** Opens «تنبيهاتي» (flash alerts and watch words). */
+  onOpenAlerts?: () => void;
+  /** Wire opened from a notification: shown, expanded and highlighted. */
+  focusWireId?: string | null;
 }
 
 const PAGE = 50;
@@ -28,7 +33,7 @@ function timeAgo(iso: string, now: number): string {
 }
 
 /** Wire desk: agency items pulled by the server from RSS/Atom feeds, turned into drafts by journalists. */
-export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, currentUser, onConvert, onOpenNews, onOpenSettings }) => {
+export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, currentUser, onConvert, onOpenNews, onOpenSettings, onOpenAlerts, focusWireId }) => {
   const can = (p: string) => RbacService.hasPermission(currentUser, p);
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('ALL');
@@ -36,8 +41,20 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
   const [status, setStatus] = useState<WireStatusInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(focusWireId || null);
   const [now, setNow] = useState(Date.now());
+  const [only, setOnly] = useState<'ALL' | 'FLASH' | 'WATCH'>('ALL');
+  const watchWords = useMemo(() => apiService.getMyNotificationPrefs().watchWords, []);
+
+  useEffect(() => {
+    if (!focusWireId) return;
+    setExpanded(focusWireId);
+    setQuery('');
+    setSourceFilter('ALL');
+    setOnly('ALL');
+    const t = setTimeout(() => document.getElementById(`wire-${focusWireId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
+    return () => clearTimeout(t);
+  }, [focusWireId]);
 
   useEffect(() => {
     apiService.getWireStatus().then(setStatus).catch(() => undefined);
@@ -58,8 +75,10 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
     return [...wires]
       .filter((w) => sourceFilter === 'ALL' || w.sourceId === sourceFilter)
       .filter((w) => !q || matchesQuery(q, w.title, w.summary, w.sourceName))
+      .filter((w) => only === 'ALL' || (only === 'FLASH' ? w.flash || isFlashWire(w) : watchWordHits(`${w.title}\n${w.summary}`, watchWords).length > 0))
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-  }, [wires, query, sourceFilter]);
+  }, [wires, query, sourceFilter, only, watchWords]);
+  const flashCount = useMemo(() => wires.filter((w) => w.flash || isFlashWire(w)).length, [wires]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -175,6 +194,36 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
               </option>
             ))}
           </select>
+          <div className="flex gap-1.5" role="group" aria-label="نوع البرقيات">
+            {([
+              ['ALL', 'الكل', null],
+              ['FLASH', `العاجل (${flashCount})`, Zap],
+              ['WATCH', 'كلماتي', Eye],
+            ] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={only === id}
+                disabled={id === 'WATCH' && !watchWords.length}
+                title={id === 'WATCH' && !watchWords.length ? 'أضف كلمات متابعة من «تنبيهاتي»' : undefined}
+                onClick={() => {
+                  setOnly(id);
+                  setLimit(PAGE);
+                }}
+                className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border disabled:opacity-40 ${
+                  only === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {Icon && <Icon className="w-3.5 h-3.5" />}
+                {label}
+              </button>
+            ))}
+            {onOpenAlerts && (
+              <button type="button" onClick={onOpenAlerts} title="تنبيهات العاجل وكلمات المتابعة" aria-label="إعداد تنبيهات البرقيات" className="px-2.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-600">
+                <BellRing className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -187,10 +236,28 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
         {filtered.slice(0, limit).map((w) => {
           const used = usedBy.get(w.id);
           const isOpen = expanded === w.id;
+          const flash = w.flash || isFlashWire(w);
+          const hits = watchWords.length ? watchWordHits(`${w.title}\n${w.summary}`, watchWords) : [];
           return (
-            <article key={w.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <article
+              key={w.id}
+              id={`wire-${w.id}`}
+              className={`bg-white border rounded-2xl p-4 space-y-2 ${flash ? 'border-red-300 border-r-4 border-r-red-600' : 'border-slate-200'} ${
+                focusWireId === w.id ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                {flash && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">
+                    <Zap className="w-3 h-3" /> عاجل
+                  </span>
+                )}
                 <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-bold">{w.sourceName}</span>
+                {hits.map((h) => (
+                  <span key={h} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
+                    <Eye className="w-3 h-3" /> {h}
+                  </span>
+                ))}
                 <time dateTime={w.publishedAt}>{timeAgo(w.publishedAt, now)}</time>
                 {w.categories.slice(0, 3).map((c) => (
                   <span key={c} className="px-1.5 py-0.5 rounded bg-slate-100">

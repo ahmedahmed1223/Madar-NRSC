@@ -12,3 +12,8 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# Browser (E2E) test runs
+tests/e2e/.data/
+test-results/
+playwright-report/

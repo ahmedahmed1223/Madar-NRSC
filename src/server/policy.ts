@@ -1,3 +1,5 @@
+import { prefsError } from '../shared/notifications';
+import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
@@ -7,7 +9,7 @@ import { bulletinError, findShow, formatError, isApprover, storyError, storyStat
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
-import { canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
+import { canEditNewsContent, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -60,6 +62,19 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
   if (after?.status === 'SCHEDULED') {
     if (!after.scheduledDate || !Number.isFinite(new Date(after.scheduledDate).getTime())) return 'حدد موعداً صالحاً للنشر المجدول';
     if (changed(before, after, 'scheduledDate') && !can('news.publish')) return 'صلاحياتك لا تسمح بجدولة النشر';
+  }
+  // The embargo is checked against the stored story as it will be after this write.
+  if (after && !after.deletedAt) {
+    if (after.embargoUntil !== undefined && after.embargoUntil !== null && after.embargoUntil !== '' && !Number.isFinite(Date.parse(after.embargoUntil))) return 'موعد الحظر غير صالح';
+    if (after.status === 'PUBLISHED' && before?.status !== 'PUBLISHED' && isUnderEmbargo(after)) return embargoDenial(after, 'PUBLISHED');
+    if (after.status === 'SCHEDULED') {
+      const denial = embargoDenial(after, 'SCHEDULED');
+      if (denial) return denial;
+    }
+    // Lifting or shortening an embargo that is still running is an editor's call.
+    if (before && isUnderEmbargo(before) && changed(before, after, 'embargoUntil') && !(after.embargoUntil && Date.parse(after.embargoUntil) >= Date.parse(before.embargoUntil)) && !any(auth, 'news.approve', 'news.publish')) {
+      return 'رفع الحظر أو تقديمه لرئيس التحرير';
+    }
   }
 
   // Content edits (anything besides workflow bookkeeping) need edit rights on the story as it was.
@@ -250,6 +265,40 @@ const referencedPolicy = (field: 'categoryId' | 'sourceId', label: string): Poli
   return inUse > 0 ? `لا يمكن حذف ${label} لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة؛ انقل المواد إلى ${label} آخر أولاً` : null;
 };
 
+const notificationPrefsPolicy: Policy = ({ auth, kind, after, before }) => {
+  if (kind === 'delete') return (before?.userId === auth.user.id) ? null : 'يعدّل كل زميل إعدادات تنبيهاته فقط';
+  return prefsError(after, auth.user.id);
+};
+
+/** Diary: planners manage entries; people assigned to an entry may note progress on it. */
+const diaryPolicy: Policy = ({ auth, kind, before, after }) => {
+  if (auth.can('diary.manage')) return kind === 'delete' || !after || after.deletedAt ? null : diaryError(after);
+  const assigned = (before?.assigneeIds || []).includes(auth.user.id);
+  if (kind === 'update' && assigned && after && !after.deletedAt) {
+    const locked = ['title', 'date', 'startTime', 'endTime', 'kind', 'coverage', 'priority', 'assigneeIds', 'location'] as const;
+    if (locked.some((k) => JSON.stringify(before?.[k] ?? null) !== JSON.stringify(after?.[k] ?? null))) return 'يمكنك إضافة ملاحظات وربط الأخبار فقط؛ تعديل الموعد والتكليف لمسؤول الأجندة';
+    return diaryError(after);
+  }
+  return 'صلاحياتك لا تسمح بتعديل أجندة التغطية';
+};
+
+const resourcesPolicy: Policy = ({ auth, kind, after }) => {
+  if (!auth.can('resources.manage')) return 'إدارة الموارد لمسؤول الحجوزات';
+  if (kind === 'delete' || !after || after.deletedAt) return null;
+  if (typeof after.name !== 'string' || !after.name.trim() || after.name.length > 120) return 'اسم المورد مطلوب';
+  if (!RESOURCE_KINDS.some((k) => k.id === after.kind)) return 'نوع المورد غير معروف';
+  return null;
+};
+
+/** Anyone allowed to book may book; only the booker (or a resources manager) changes a booking. */
+const bookingsPolicy: Policy = ({ auth, kind, before, after }) => {
+  const manager = auth.can('resources.manage');
+  if (!manager && !auth.can('resources.book')) return 'صلاحياتك لا تسمح بحجز الموارد';
+  if (before && !manager && before.bookedById !== auth.user.id) return 'يعدّل الحجز أو يلغيه صاحبه أو مسؤول الحجوزات';
+  if (kind === 'delete' || !after || after.deletedAt) return null;
+  return bookingError(after);
+};
+
 /** Logs are append-only: identity fields are stamped by the server, edits are rejected. */
 const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجلات غير قابلة للتعديل أو الحذف');
 
@@ -350,6 +399,10 @@ export const POLICIES: Record<CollectionName, Policy> = {
   },
   activityLogs: logPolicy,
   auditLogs: logPolicy,
+  notificationPrefs: notificationPrefsPolicy,
+  diary: diaryPolicy,
+  resources: resourcesPolicy,
+  bookings: bookingsPolicy,
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
@@ -361,6 +414,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       return auth.can('news.view') || auth.can('news.create');
     case 'notifications':
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
+    case 'notificationPrefs':
+      return data?.userId === auth.user.id;
     default:
       return true;
   }

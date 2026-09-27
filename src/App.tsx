@@ -2,7 +2,7 @@ import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
 import { CueAlertOverlay } from './components/common/CueAlertOverlay';
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import {
   NewsItem, Story,
   Program,
@@ -23,6 +23,7 @@ import { RbacService } from './services/rbacService';
 import { apiService } from './services/api';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
+import { registerServiceWorker } from './services/push';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
@@ -56,6 +57,9 @@ const BulletinRundownView = lazyWithRetry(() => import('./views/BulletinRundownV
 const DatabaseManagerView = lazyWithRetry(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
 const ProgramDetailView = lazyWithRetry(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
 const StoriesView = lazyWithRetry(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
+const DiaryView = lazyWithRetry(() => import('./views/DiaryView').then((m) => ({ default: m.DiaryView })));
+const BookingsView = lazyWithRetry(() => import('./views/BookingsView').then((m) => ({ default: m.BookingsView })));
+const NotificationSettingsView = lazyWithRetry(() => import('./views/NotificationSettingsView').then((m) => ({ default: m.NotificationSettingsView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
@@ -69,6 +73,8 @@ interface AppProps {
 
 export default function App({ onLogout, onChangePassword }: AppProps) {
   const [activeNav, setActiveNav] = useState('dashboard');
+  /** Item opened from a notification link (wire, diary entry, booking). */
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
@@ -330,6 +336,40 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       });
     }
   };
+
+  /** Opens a notification/deep link path ("/tasks", "/episodes/<id>", "/wires/<id>", ...). */
+  const openLink = (nav: string) => {
+    const [view, id] = nav.replace(/^\/+/, '').split(/[/?#]/);
+    setFocusId(id || null);
+    if (view === 'episodes' && id) handleSelectEpisode(id);
+    else if (view === 'bulletins') openBulletin(id || null);
+    else if (view === 'news' && id) handleEditNewsClick(id);
+    else if (view === 'programs' && id) handleSelectProgram(id);
+    else setActiveNav(view || 'dashboard');
+    setIsMobileSidebarOpen(false);
+  };
+  const openLinkRef = useRef(openLink);
+  openLinkRef.current = openLink;
+  useEffect(() => {
+    // Links from e-mails and push notifications arrive as /?open=<path>.
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('open');
+    if (target && target.startsWith('/')) {
+      openLinkRef.current(target);
+      params.delete('open');
+      const rest = params.toString();
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    }
+    registerServiceWorker();
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'open-link' || typeof e.data.url !== 'string') return;
+      const url = new URL(e.data.url, window.location.origin);
+      const path = url.searchParams.get('open');
+      if (path && path.startsWith('/')) openLinkRef.current(path);
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, []);
 
   const handleConvertWire = (wire: WireItem) => {
     const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -602,6 +642,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               setFilterProgramId(null);
             }
             setActiveNav(navId);
+            setFocusId(null);
             setIsMobileSidebarOpen(false);
           }}
           badgeCounts={{
@@ -622,16 +663,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)}
             isLiveLockActive={isLiveLockActive}
             onToggleLiveLock={handleToggleLiveLock}
-            onNavigate={(nav) => {
-              // Notification links are stored as paths ("/tasks", "/episodes/<id>").
-              const [view, id] = nav.replace(/^\/+/, '').split('/');
-              if (view === 'episodes' && id) handleSelectEpisode(id);
-              else if (view === 'bulletins') openBulletin(id || null);
-              else if (view === 'news' && id) handleEditNewsClick(id);
-              else if (view === 'programs' && id) handleSelectProgram(id);
-              else setActiveNav(view || 'dashboard');
-              setIsMobileSidebarOpen(false);
-            }}
+            onNavigate={openLink}
             onToggleMobileMenu={() => setIsMobileSidebarOpen((prev) => !prev)}
             onCreateNews={handleCreateNewNewsClick}
             onCreateProgram={() => {
@@ -726,12 +758,36 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onConvert={handleConvertWire}
                 onOpenNews={handleEditNewsClick}
                 onOpenSettings={() => setActiveNav('settings')}
+                onOpenAlerts={() => setActiveNav('alerts')}
+                focusWireId={focusId}
               />
             )}
 
+            {activeNav === 'diary' && (
+              <DiaryView
+                currentUser={currentUser}
+                users={allUsers}
+                categories={categories}
+                stories={stories}
+                newsList={newsList}
+                focusId={focusId}
+                onCreateNews={(seed) => {
+                  setSelectedNewsItem(null);
+                  setNewNewsStoryId(null);
+                  setNewsSeed(seed);
+                  setActiveNav('news-editor');
+                }}
+                onOpenNews={handleEditNewsClick}
+              />
+            )}
+
+            {activeNav === 'bookings' && <BookingsView currentUser={currentUser} users={allUsers} focusId={focusId} />}
+
+            {activeNav === 'alerts' && <NotificationSettingsView currentUser={currentUser} />}
+
             {activeNav === 'news-editor' && (
               <NewsEditorView
-                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}-${newsSeed?.wireId || ''}`}
+                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}-${newsSeed?.wireId || ''}-${newsSeed?.diaryId || ''}`}
                 newsItem={editorNewsItem}
                 seed={editorNewsItem ? undefined : newsSeed || undefined}
                 defaultStoryId={newNewsStoryId || undefined}

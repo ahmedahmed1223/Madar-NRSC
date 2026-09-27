@@ -45,6 +45,14 @@ export const COLLECTIONS = {
   bulletinStories: { storageKey: 'nrcs_bulletin_stories_v1', kind: 'list' },
   /** Bulletin templates, optionally scheduled on weekdays. */
   bulletinFormats: { storageKey: 'nrcs_bulletin_formats_v1', kind: 'list' },
+  /** Each colleague's notification channels and wire watch words; id = userId (private). */
+  notificationPrefs: { storageKey: 'nrcs_notification_prefs_v1', kind: 'list' },
+  /** Planning diary (news agenda): upcoming events, coverage decisions and assignments. */
+  diary: { storageKey: 'nrcs_diary_v1', kind: 'list' },
+  /** Bookable resources: studios, cameras, SNG/live units, edit suites, crews. */
+  resources: { storageKey: 'nrcs_resources_v1', kind: 'list' },
+  /** Resource bookings (the server rejects overlapping bookings of the same resource). */
+  bookings: { storageKey: 'nrcs_bookings_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;

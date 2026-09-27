@@ -1,3 +1,5 @@
+import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
+import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsStoryDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
@@ -103,6 +105,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [isBreaking, setIsBreaking] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
+  // Embargo as a local datetime-local value ('' = none).
+  const [embargoUntil, setEmbargoUntil] = useState('');
+  const [embargoNote, setEmbargoNote] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
   const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
   const [requestNotice, setRequestNotice] = useState<string | null>(null);
@@ -235,6 +240,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     internalNotes,
     storyId,
     mediaIds,
+    embargoUntil,
+    embargoNote,
   });
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
 
@@ -363,6 +370,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       internalNotes: item.internalNotes || '',
       storyId: item.storyId || '',
       mediaIds: item.mediaIds || [],
+      embargoUntil: item.embargoUntil ? toLocalInputValue(item.embargoUntil) : '',
+      embargoNote: item.embargoNote || '',
     };
     setTitle(fields.title);
     setShortTitle(fields.shortTitle);
@@ -380,6 +389,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setInternalNotes(fields.internalNotes);
     setStoryId(fields.storyId);
     setMediaIds(fields.mediaIds);
+    setEmbargoUntil(fields.embargoUntil);
+    setEmbargoNote(fields.embargoNote);
     loadedSnapshotRef.current = JSON.stringify(fields);
     setBaseUpdatedAt(item.updatedAt);
   };
@@ -406,7 +417,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         internalNotes: '',
         storyId: defaultStoryId || '',
         mediaIds: [] as string[],
+        embargoUntil: '',
+        embargoNote: '',
       };
+      setEmbargoUntil('');
+      setEmbargoNote('');
       setCategoryId(fields.categoryId);
       setSourceId(seed?.sourceId || fields.sourceId);
       setStoryId(fields.storyId);
@@ -417,6 +432,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         setSummary(seed.summary);
         setContent(seed.content);
         setInternalNotes(seed.internalNotes);
+        if (seed.storyId) setStoryId(seed.storyId);
+        if (seed.categoryId) setCategoryId(seed.categoryId);
+        if (seed.locationName) setLocationName(seed.locationName);
       }
     }
     checkForDraft(newsItem?.updatedAt);
@@ -473,6 +491,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       storyId: storyId || undefined,
       mediaIds,
       wireId: newsItem?.wireId ?? seed?.wireId,
+      diaryId: newsItem?.diaryId ?? seed?.diaryId,
+      embargoUntil: embargoUntil ? fromLocalInputValue(embargoUntil) : undefined,
+      embargoNote: embargoUntil ? embargoNote.trim() || undefined : undefined,
       expectedUpdatedAt: newsItem?.id ? baseUpdatedAt : undefined,
     };
   };
@@ -614,6 +635,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 font-semibold flex items-center gap-2">
           <Lock className="w-4 h-4 text-slate-500" />
           للقراءة فقط: {newsItem.status === 'PUBLISHED' || newsItem.status === 'APPROVED' ? 'تعديل خبر معتمد أو منشور يتطلب صلاحية الاعتماد أو النشر.' : 'لا تملك صلاحية تعديل هذا الخبر.'}
+        </div>
+      )}
+
+      {isUnderEmbargo(newsItem) && (
+        <div role="status" className="bg-rose-50 border border-rose-200 p-3 rounded-2xl text-xs text-rose-900 font-semibold flex items-center gap-2">
+          <Lock className="w-4 h-4 text-rose-600" />
+          تحت الحظر حتى {embargoLabel(newsItem!.embargoUntil)} — يمكن تحريره واعتماده، لكن لا يُنشر ولا يُذاع قبل ذلك.
+          {newsItem!.embargoNote ? ` (${newsItem!.embargoNote})` : ''}
         </div>
       )}
 
@@ -1013,6 +1042,37 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               minHeight="400px"
               placeholder="اكتب تفاصيل القصة الإخبارية كاملة، التصريحات، الخلفيات، والتحليلات الميدانية..."
             />
+          </div>
+
+          {/* Embargo */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+            <label htmlFor="news-embargo" className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Lock className="w-4 h-4 text-rose-500" />
+              حظر النشر (Embargo)
+            </label>
+            <p className="text-[11px] text-slate-500">للمواد الواردة تحت حظر زمني: لا يُنشر الخبر ولا يُجدول قبل هذا الموعد، ويظهر تحذير لمحرري النشرات.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id="news-embargo"
+                type="datetime-local"
+                value={embargoUntil}
+                onChange={(e) => setEmbargoUntil(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-xl text-xs"
+              />
+              <input
+                aria-label="مصدر الحظر أو ملاحظته"
+                value={embargoNote}
+                onChange={(e) => setEmbargoNote(e.target.value)}
+                disabled={!embargoUntil}
+                placeholder="مثال: بطلب من الوزارة حتى المؤتمر الصحفي"
+                className="flex-1 min-w-[12rem] px-3 py-2 border border-slate-300 rounded-xl text-xs disabled:bg-slate-50"
+              />
+              {embargoUntil && (
+                <button type="button" onClick={() => { setEmbargoUntil(''); setEmbargoNote(''); }} className="text-[11px] text-rose-600 font-bold hover:underline">
+                  إزالة الحظر
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Internal Notes with Quick Directives */}

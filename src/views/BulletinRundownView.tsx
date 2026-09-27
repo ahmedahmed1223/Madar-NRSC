@@ -1,3 +1,4 @@
+import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import React, { useMemo, useState } from 'react';
 import {
@@ -466,6 +467,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {s.floated && <span className="text-[10px] font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
                       {s.killed && <span className="text-[10px] font-bold text-rose-500">مستبعدة</span>}
                       {changed && <span className="text-[10px] font-bold text-blue-700">تحدّث الخبر</span>}
+                      {isUnderEmbargo(news) && <span className="text-[10px] font-bold text-rose-700">⚠ الخبر محظور حتى {embargoLabel(news!.embargoUntil)}</span>}
                       {lock && <span className="text-[10px] font-bold text-amber-700">يحررها {lock.userName}</span>}
                       {s.clipMediaId && <Film className="w-3 h-3 text-blue-500" aria-label="لقطة" />}
                       {(s.graphics || []).length > 0 && <span className="text-[10px] text-purple-700">CG×{s.graphics!.length}</span>}
@@ -573,6 +575,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                         {source === 'COPY' && `${storyTypeOf(item.type).code} · ${mmss(storyTiming(item).total)}`}
                       </span>
                       {already && <span className="text-[10px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}
+                      {source === 'NEWS' && isUnderEmbargo(item) && <span className="text-[10px] font-bold text-rose-700 mr-2">محظور حتى {embargoLabel(item.embargoUntil)}</span>}
                     </span>
                   </label>
                 </li>

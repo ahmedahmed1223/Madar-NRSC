@@ -30,7 +30,7 @@ import {
   Radio,
   Sparkles,
   UserCog,
-  X, ListVideo } from 'lucide-react';
+  X, ListVideo, CalendarDays, CalendarRange } from 'lucide-react';
 import { User } from '../../types';
 
 export type AppView =
@@ -151,6 +151,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const today = localDateString();
   const myBulletins = bulletinActor ? apiService.getBulletins().filter((b) => b.date >= today && b.status !== 'DONE' && isApprover(b, bulletinActor)).map((b) => b.id) : [];
   const toApprove = myBulletins.length ? apiService.getBulletinStories().filter((s) => s.status === 'READY' && !s.killed && myBulletins.includes(s.bulletinId)).length : 0;
+  // Upcoming diary events assigned to me (today onwards).
+  const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -162,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white animate-pulse' },
         { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800' },
         { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
+        { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: 'bg-sky-100 text-sky-800' },
       ],
     },
     {
@@ -186,6 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
         { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
+        { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
         { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
       ],
     },

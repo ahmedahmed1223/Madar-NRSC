@@ -97,6 +97,11 @@ export interface NewsSource {
 /** Fields prefilled into a new story (e.g. from an agency wire). */
 export interface NewsDraftSeed {
   wireId?: string;
+  /** Planning-diary entry the story is written for. */
+  diaryId?: string;
+  storyId?: string;
+  categoryId?: string;
+  locationName?: string;
   title: string;
   summary: string;
   content: string;
@@ -115,6 +120,8 @@ export interface WireItem {
   categories: string[];
   publishedAt: string;
   fetchedAt: string;
+  /** Marked urgent/flash by the agency (detected at ingest). */
+  flash?: boolean;
 }
 
 // New Type: Story (representing the overarching event or coverage)
@@ -165,6 +172,8 @@ export interface NewsItem {
   sourceName?: string;
   /** Agency wire item this story was written from. */
   wireId?: string;
+  /** Planning-diary entry this story covers. */
+  diaryId?: string;
   /** Library items attached to the story (images, video, audio, documents). */
   mediaIds?: string[];
   categoryId: string;
@@ -185,6 +194,9 @@ export interface NewsItem {
   eventDate: string;
   publishDate?: string;
   scheduledDate?: string;
+  /** Received under embargo: may not be published or aired before this time. */
+  embargoUntil?: string;
+  embargoNote?: string;
   isBreaking: boolean;
   breakingUntil?: string;
   internalNotes?: string;
@@ -498,7 +510,10 @@ export interface AppNotification {
   userId: string;
   title: string;
   message: string;
-  type: 'TASK_ASSIGNED' | 'NEWS_REVIEW' | 'NEWS_APPROVED' | 'NEWS_REJECTED' | 'EPISODE_SCHEDULE' | 'BREAKING_NEWS' | 'SYSTEM';
+  type: 'TASK_ASSIGNED' | 'TASK' | 'NEWS_REVIEW' | 'NEWS_APPROVED' | 'NEWS_REJECTED' | 'EPISODE_SCHEDULE' | 'BREAKING_NEWS' | 'SYSTEM';
+  /** Delivery category (see shared/notifications) — decides e-mail/push per colleague. */
+  category?: string;
+  urgent?: boolean;
   linkUrl?: string;
   isRead: boolean;
   createdAt: string;

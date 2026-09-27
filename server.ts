@@ -10,6 +10,7 @@ import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
+import { deliverPending } from './src/server/delivery';
 
 async function main() {
   const config = loadConfig();
@@ -88,6 +89,13 @@ async function main() {
   };
   timers.push(setInterval(scheduleBulletins, 10 * 60 * 1000));
   scheduleBulletins();
+
+  // E-mail and phone/desktop push for new notifications (per-colleague preferences).
+  if (config.deliverySeconds > 0) {
+    const deliver = () => deliverPending(db, config).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
+    timers.push(setInterval(deliver, config.deliverySeconds * 1000));
+    deliver();
+  }
 
   if (config.backupIntervalHours > 0) {
     timers.push(

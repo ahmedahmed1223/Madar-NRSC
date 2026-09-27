@@ -393,6 +393,33 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     riskLevel: 'HIGH',
   },
   {
+    code: 'diary.manage',
+    nameAr: 'إدارة أجندة التغطية',
+    nameEn: 'Manage Planning Diary',
+    description: 'إضافة أحداث الأجندة وتحديد قرار التغطية وتكليف المحررين والمراسلين بها',
+    category: 'TASKS',
+    categoryNameAr: 'المهام التحريرية',
+    riskLevel: 'MEDIUM',
+  },
+  {
+    code: 'resources.book',
+    nameAr: 'حجز الاستوديوهات والمعدات والطواقم',
+    nameEn: 'Book Resources',
+    description: 'حجز استوديو أو كاميرا أو وحدة بث أو غرفة مونتاج أو طاقم لموعد محدد (يمنع النظام الحجز المتعارض)',
+    category: 'TASKS',
+    categoryNameAr: 'المهام التحريرية',
+    riskLevel: 'LOW',
+  },
+  {
+    code: 'resources.manage',
+    nameAr: 'إدارة الموارد وكل الحجوزات',
+    nameEn: 'Manage Resources',
+    description: 'إضافة الموارد القابلة للحجز وتعطيلها، وتعديل أو إلغاء حجوزات الزملاء',
+    category: 'TASKS',
+    categoryNameAr: 'المهام التحريرية',
+    riskLevel: 'MEDIUM',
+  },
+  {
     code: 'roster.manage',
     nameAr: 'إدارة جدول المناوبات',
     nameEn: 'Manage Duty Roster',
@@ -544,6 +571,9 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'رئيس تحرير',
     isSystemRole: true,
     permissions: [
+      'diary.manage',
+      'resources.book',
+      'resources.manage',
       'bulletins.edit',
       'bulletins.approve',
       'bulletins.manage',
@@ -589,6 +619,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'محرر صحفي',
     isSystemRole: true,
     permissions: [
+      'resources.book',
       'bulletins.edit',
       'news.view',
       'news.create',
@@ -613,6 +644,9 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'منتج برامج',
     isSystemRole: true,
     permissions: [
+      'diary.manage',
+      'resources.book',
+      'resources.manage',
       'bulletins.edit',
       'bulletins.manage',
       'news.view',
@@ -668,6 +702,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'مراسل ميداني',
     isSystemRole: true,
     permissions: [
+      'resources.book',
       'bulletins.edit',
       'news.view',
       'news.create',
@@ -689,6 +724,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'فني وسائط',
     isSystemRole: true,
     permissions: [
+      'resources.book',
       'news.view',
       'rundown.view',
       'media.view',
@@ -708,6 +744,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'طاقم فني',
     isSystemRole: true,
     permissions: [
+      'resources.book',
       'news.view',
       'rundown.view',
       'programs.view',

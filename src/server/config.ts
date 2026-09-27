@@ -64,6 +64,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
     MEDIA_MAX_UPLOAD_MB: int(500, 1),
 
+    // Outgoing e-mail for notifications (leave SMTP_HOST empty to disable e-mail).
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: int(587, 1),
+    SMTP_SECURE: bool(false),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    MAIL_FROM: z.string().optional(),
+    // Web Push (VAPID). Generated and stored in the database when not provided.
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().optional(),
+    // How often queued notifications are delivered by e-mail/push (seconds; 0 disables delivery).
+    NOTIFY_DELIVERY_SECONDS: int(15, 0),
+
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   });
@@ -123,6 +137,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
     mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,
     gemini: { apiKey: geminiKey, model: c.GEMINI_MODEL },
+    mail: c.SMTP_HOST
+      ? {
+          host: c.SMTP_HOST,
+          port: c.SMTP_PORT,
+          secure: c.SMTP_SECURE,
+          user: c.SMTP_USER || undefined,
+          pass: c.SMTP_PASS || undefined,
+          from: c.MAIL_FROM || c.SMTP_USER || `Madar NRCS <no-reply@${c.SMTP_HOST}>`,
+        }
+      : undefined,
+    vapid: {
+      publicKey: c.VAPID_PUBLIC_KEY || undefined,
+      privateKey: c.VAPID_PRIVATE_KEY || undefined,
+      subject: c.VAPID_SUBJECT || (c.MAIL_FROM && /@/.test(c.MAIL_FROM) ? `mailto:${c.MAIL_FROM.replace(/^.*<|>.*$/g, '')}` : c.APP_URL || 'mailto:admin@localhost'),
+    },
+    deliverySeconds: c.NOTIFY_DELIVERY_SECONDS,
   };
 }
 

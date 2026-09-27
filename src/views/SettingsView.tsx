@@ -1,5 +1,6 @@
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
+import { DemoDataCard } from '../components/settings/DemoDataCard';
 import React, { useState, useMemo } from 'react';
 import {
   Settings,
@@ -1066,6 +1067,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             ))}
           </div>
         </div>
+
+        <DemoDataCard />
 
         {/* Production Backup & Disaster Recovery Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">

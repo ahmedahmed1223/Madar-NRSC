@@ -2,7 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
 import type { AuditLog, Episode, User } from '../types/index';
-import { DEMO_COLLECTIONS, seedDatabase } from './seed';
+import { DEMO_COLLECTIONS, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger } from './logger';
@@ -34,6 +34,7 @@ import {
   verifyPassword,
 } from './auth';
 import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
+import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from './delivery';
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
@@ -539,6 +540,71 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     })
   );
 
+  // --- Notification delivery (Web Push + e-mail) ------------------------------
+
+  const notifyTestLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 5,
+    key: (req) => req.auth?.user.id || req.ip || 'unknown',
+    message: 'أُرسل تنبيه تجريبي قبل قليل، حاول بعد دقيقة',
+  });
+
+  app.get('/api/v1/notifications/delivery', requireAuth, (req, res) => {
+    const devices = db.listPushSubscriptions(req.auth!.user.id).map((s) => ({ endpoint: s.endpoint, userAgent: s.userAgent, createdAt: s.createdAt }));
+    res.json({
+      success: true,
+      data: {
+        email: mailEnabled(config),
+        emailAddress: req.auth!.user.email,
+        push: config.deliverySeconds > 0,
+        publicKey: vapidKeys(db, config).publicKey,
+        devices,
+      },
+    });
+  });
+
+  app.post('/api/v1/notifications/push/subscribe', requireAuth, (req, res) => {
+    const sub = req.body?.subscription;
+    const endpoint = typeof sub?.endpoint === 'string' ? sub.endpoint : '';
+    const p256dh = sub?.keys?.p256dh;
+    const authKey = sub?.keys?.auth;
+    if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || typeof p256dh !== 'string' || typeof authKey !== 'string' || p256dh.length > 200 || authKey.length > 100) {
+      throw new HttpError(400, 'اشتراك التنبيهات غير صالح');
+    }
+    if (db.listPushSubscriptions(req.auth!.user.id).length >= 10) throw new HttpError(400, 'سجّلت عشرة أجهزة؛ احذف جهازاً قديماً أولاً');
+    db.savePushSubscription(req.auth!.user.id, { endpoint, p256dh, auth: authKey }, req.get('user-agent'));
+    res.json({ success: true });
+  });
+
+  app.post('/api/v1/notifications/push/unsubscribe', requireAuth, (req, res) => {
+    const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : '';
+    db.deletePushSubscription(endpoint, req.auth!.user.id);
+    res.json({ success: true });
+  });
+
+  app.post(
+    '/api/v1/notifications/test',
+    requireAuth,
+    notifyTestLimiter,
+    wrap(async (req, res) => {
+      const user = req.auth!.user;
+      const channel = req.body?.channel === 'email' ? 'email' : 'push';
+      if (channel === 'push') {
+        const sent = await sendPush(db, config, user.id, { title: 'تنبيه تجريبي من مدار', body: 'وصلت التنبيهات إلى هذا الجهاز بنجاح.', url: '/', tag: 'test' });
+        if (!sent) throw new HttpError(422, 'لم يصل التنبيه: لا يوجد جهاز مسجّل أو رفضه متصفحك', 'PUSH_FAILED');
+        res.json({ success: true, data: { sent } });
+        return;
+      }
+      if (!mailEnabled(config)) throw new HttpError(422, 'البريد غير مهيأ على الخادم (SMTP_HOST)', 'MAIL_DISABLED');
+      try {
+        await sendEmail(config, user.email, notificationEmail({ title: 'رسالة تجريبية', message: 'وصل بريد التنبيهات إليك بنجاح.', category: 'system' }, config));
+      } catch (err: any) {
+        throw new HttpError(502, `تعذر إرسال البريد: ${String(err?.message || err).slice(0, 200)}`, 'MAIL_FAILED');
+      }
+      res.json({ success: true, data: { sent: 1 } });
+    })
+  );
+
   // --- AI co-pilot ----------------------------------------------------------
 
   app.get('/api/v1/ai/status', requireAuth, (_req, res) => {
@@ -620,10 +686,38 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       await db.createBackup('prerestore', config.backupRetention);
       db.deleteCollections(DEMO_COLLECTIONS.map(([c]) => c) as CollectionName[]);
       db.setMeta('demo_seeded', '0');
+      db.setMeta('demo_removed', '0');
       await seedDatabase(db, config);
       audit(req.auth!.user, 'DB_RESET', 'DATABASE', 'newsroom', 'SECURITY', 'إعادة تهيئة بيانات المحتوى', req.ip);
       changeBus.emit('rev', db.currentRev());
       res.json({ success: true, message: 'تمت إعادة تهيئة قاعدة البيانات بنجاح', data: db.stats() });
+    })
+  );
+
+  // Demo data: what is left of it, and removing it for good.
+  app.get('/api/v1/admin/demo-data', requirePermission('system.settings'), (req, res) => {
+    const inventory = demoInventory(db);
+    res.json({
+      success: true,
+      data: {
+        counts: Object.fromEntries(Object.entries(inventory).map(([c, ids]) => [c, ids!.length])),
+        users: demoUsersPresent(db, req.auth!.user.id),
+        removed: db.getMeta('demo_removed') === '1',
+      },
+    });
+  });
+
+  app.post(
+    '/api/v1/admin/demo-data/remove',
+    requirePermission('system.settings'),
+    wrap(async (req, res) => {
+      if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
+      await db.createBackup('prerestore', config.backupRetention);
+      const removed = removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
+      const total = Object.values(removed).reduce((a, b) => a + b, 0);
+      audit(req.auth!.user, 'DEMO_DATA_REMOVED', 'DATABASE', 'newsroom', 'SECURITY', `حذف البيانات التجريبية (${total} سجلاً)`, req.ip);
+      changeBus.emit('rev', db.currentRev());
+      res.json({ success: true, data: { removed, total } });
     })
   );
 

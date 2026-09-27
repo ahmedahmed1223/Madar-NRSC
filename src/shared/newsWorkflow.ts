@@ -54,10 +54,41 @@ export function canEditNewsContent(can: Can, userId: string, item: Partial<NewsI
   return true;
 }
 
+/** Is the story still under embargo at `now`? */
+export function isUnderEmbargo(item: Pick<NewsItem, 'embargoUntil'> | null | undefined, now = Date.now()): boolean {
+  const until = item?.embargoUntil ? Date.parse(item.embargoUntil) : NaN;
+  return Number.isFinite(until) && until > now;
+}
+
+/** "27 سبتمبر 2026 الساعة 14:30" — reads correctly inside Arabic sentences. */
+export const embargoLabel = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const date = d.toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${date} الساعة ${time}`;
+};
+
+/**
+ * Embargoed stories may be written, reviewed and approved, but not published before the
+ * embargo lifts; a scheduled time must fall after it.
+ */
+export function embargoDenial(item: Partial<NewsItem> | null | undefined, to: NewsStatus, now = Date.now()): string | null {
+  if (!isUnderEmbargo(item as NewsItem, now)) return null;
+  if (to === 'PUBLISHED') return `الخبر تحت الحظر حتى ${embargoLabel(item!.embargoUntil)} ولا يُنشر قبل ذلك`;
+  if (to === 'SCHEDULED' && item?.scheduledDate && Date.parse(item.scheduledDate) < Date.parse(item.embargoUntil!)) {
+    return `موعد النشر المجدول قبل انتهاء الحظر (${embargoLabel(item.embargoUntil)})`;
+  }
+  return null;
+}
+
 /** Reason the user may not move a story to `to`, or null when allowed. */
 export function transitionDenial(can: Can, userId: string, item: Partial<NewsItem> | null | undefined, to: NewsStatus): string | null {
   const from = item?.id ? (item.status as NewsStatus) : undefined;
   if (from === to) return null;
+  const embargo = embargoDenial(item, to);
+  if (embargo) return embargo;
   if (!canTransition(from, to)) {
     return `لا يمكن نقل الخبر من «${from ? NEWS_STATUS_LABELS[from] : 'جديد'}» إلى «${NEWS_STATUS_LABELS[to]}» مباشرة`;
   }

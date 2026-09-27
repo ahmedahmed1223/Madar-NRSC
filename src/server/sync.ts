@@ -27,6 +27,9 @@ import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
 import { findShow, isApprover, storyContentChanged } from '../shared/bulletins';
+import { localStamp, writeNotification } from './notifications';
+import type { NotificationCategory } from '../shared/notifications';
+import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -241,15 +244,8 @@ export class SyncService {
     return row.deleted ? true : canRead(auth, row.c, row.d);
   }
 
-  private notify(userId: string, title: string, message: string, linkUrl: string) {
-    const id = newId('notif');
-    this.db.writeRow(
-      'notifications',
-      id,
-      { id, userId, title, message, type: 'TASK', linkUrl, isRead: false, createdAt: new Date().toISOString() },
-      this.db.positionBounds('notifications').min - 1,
-      null
-    );
+  private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false) {
+    writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
   }
 
   /** The bulletin editor hears when a story is ready; the writer hears when it comes back. */
@@ -259,10 +255,10 @@ export class SyncService {
     if (!bulletin) return;
     const link = `/bulletins/${bulletin.id}`;
     if (after.status === 'READY' && bulletin.editorId && bulletin.editorId !== auth.user.id) {
-      this.notify(bulletin.editorId, `قصة جاهزة للاعتماد: ${after.slug}`, `${bulletin.title} — ${after.writerName || auth.user.fullName}`, link);
+      this.notify(bulletin.editorId, `قصة جاهزة للاعتماد: ${after.slug}`, `${bulletin.title} — ${after.writerName || auth.user.fullName}`, link, 'bulletin');
     }
     if (after.status === 'DRAFT' && before?.status && after.writerId && after.writerId !== auth.user.id) {
-      this.notify(after.writerId, `أُعيدت قصة للتعديل: ${after.slug}`, `${bulletin.title}${after.returnNote ? ` — ${after.returnNote}` : ''}`, link);
+      this.notify(after.writerId, `أُعيدت قصة للتعديل: ${after.slug}`, `${bulletin.title}${after.returnNote ? ` — ${after.returnNote}` : ''}`, link, 'bulletin');
     }
   }
 
@@ -277,14 +273,7 @@ export class SyncService {
     recipients.delete(auth.user.id);
     const now = new Date().toISOString();
     for (const [userId, title] of recipients) {
-      const id = newId('notif');
-      this.db.writeRow(
-        'notifications',
-        id,
-        { id, userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, type: 'SYSTEM', linkUrl: commentLink(c.target), isRead: false, createdAt: now },
-        this.db.positionBounds('notifications').min - 1,
-        null
-      );
+      writeNotification(this.db, { userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, linkUrl: commentLink(c.target), category: 'mention', type: 'SYSTEM' });
     }
   }
 
@@ -313,24 +302,75 @@ export class SyncService {
     recipients.delete(auth.user.id);
     const now = new Date().toISOString();
     for (const userId of recipients) {
-      const id = newId('notif');
-      this.db.writeRow(
-        'notifications',
-        id,
-        {
-          id,
-          userId,
-          title,
-          message: `${after.title} — ${after.requesterName}${after.link?.title ? ` (${after.link.title})` : ''}`,
-          type: 'TASK',
-          linkUrl: '/requests',
-          isRead: false,
-          createdAt: now,
-        },
-        this.db.positionBounds('notifications').min - 1,
-        null
-      );
+      writeNotification(this.db, {
+        userId,
+        title,
+        message: `${after.title} — ${after.requesterName}${after.link?.title ? ` (${after.link.title})` : ''}`,
+        linkUrl: '/requests',
+        category: after.addressedToId && !before ? 'assignment' : 'request',
+        urgent: after.priority === 'URGENT',
+        type: 'TASK',
+      });
     }
+  }
+
+  /** The writer hears when an editor sends a story back, approves, publishes or rejects it. */
+  private notifyNewsWorkflow(before: any, after: any, auth: AuthContext) {
+    if (!before || before.status === after.status || !after.authorId || after.authorId === auth.user.id) return;
+    const note = [...(after.workflowLogs || [])].reverse().find((l: any) => l.toStatus === after.status)?.comment;
+    const titles: Record<string, string> = {
+      NEEDS_REVISION: 'أُعيد خبرك للتعديل',
+      APPROVED: 'اعتُمد خبرك',
+      PUBLISHED: 'نُشر خبرك',
+      SCHEDULED: 'جُدول نشر خبرك',
+      REJECTED: 'رُفض خبرك',
+    };
+    const title = titles[after.status];
+    if (!title) return;
+    writeNotification(this.db, {
+      userId: after.authorId,
+      title: `${title} — ${auth.user.fullName}`,
+      message: `«${after.title}»${note ? `: ${String(note).slice(0, 200)}` : ''}`,
+      linkUrl: `/news/${after.id}`,
+      category: 'news',
+      type: after.status === 'NEEDS_REVISION' || after.status === 'REJECTED' ? 'NEWS_REJECTED' : 'NEWS_APPROVED',
+    });
+  }
+
+  /** Newly assigned colleagues hear about a diary entry; everyone assigned hears when its time moves. */
+  private notifyDiary(before: any, after: any, auth: AuthContext) {
+    const prev = new Set<string>(before?.assigneeIds || []);
+    const moved = before && (before.date !== after.date || before.startTime !== after.startTime);
+    for (const userId of after.assigneeIds || []) {
+      if (userId === auth.user.id) continue;
+      const isNew = !prev.has(userId);
+      if (!isNew && !moved) continue;
+      writeNotification(this.db, {
+        userId,
+        title: isNew ? `تكليف بتغطية: ${after.title}` : `تغيّر موعد: ${after.title}`,
+        message: `${after.date}${after.startTime ? ` ${after.startTime}` : ''}${after.location ? ` — ${after.location}` : ''} (${auth.user.fullName})`,
+        linkUrl: `/diary/${after.id}`,
+        category: 'diary',
+        urgent: after.priority === 'HIGH',
+      });
+    }
+  }
+
+  /** The person using a booked resource hears about it (unless they booked it themselves). */
+  private notifyBooking(before: any, after: Booking, auth: AuthContext) {
+    const who = after.assigneeId;
+    if (!who || who === auth.user.id) return;
+    const changed = !before || before.assigneeId !== who || before.start !== after.start || before.end !== after.end || before.status !== after.status;
+    if (!changed) return;
+    const resource = this.db.getRow('resources', after.resourceId)?.d;
+    const when = `${localStamp(after.start)}–${localStamp(after.end, false)}`;
+    writeNotification(this.db, {
+      userId: who,
+      title: after.status === 'CANCELLED' ? `أُلغي حجز: ${resource?.name || ''}` : `${before ? 'تعديل حجز' : 'حجز باسمك'}: ${resource?.name || resourceKindName(resource?.kind)}`,
+      message: `${after.title} — ${when} (${auth.user.fullName})`,
+      linkUrl: `/bookings/${after.id}`,
+      category: 'booking',
+    });
   }
 
   bootstrap(auth: AuthContext) {
@@ -417,6 +457,7 @@ export class SyncService {
           if (collection === 'users') {
             this.db.deleteCredentials(id);
             this.db.deleteUserSessions(id);
+            this.db.deleteUserPushSubscriptions(id);
           }
           const uploadId = collection === 'media' ? uploadIdFromMedia(before) : null;
           if (uploadId) removeUpload(this.db, this.dataDir, uploadId);
@@ -495,6 +536,17 @@ export class SyncService {
           after = { ...after, ownerId: owner.id, ownerName: owner.name, uploadedById: owner.id, uploadedByName: owner.name };
         }
 
+        if (collection === 'diary' || collection === 'resources' || collection === 'bookings') {
+          const now = new Date().toISOString();
+          after = { ...after, createdAt: before?.createdAt ?? now, updatedAt: now };
+          if (collection === 'diary') after = { ...after, createdById: before?.createdById ?? auth.user.id, createdByName: before?.createdByName ?? auth.user.fullName };
+          if (collection === 'bookings') {
+            after = { ...after, bookedById: before?.bookedById ?? auth.user.id, bookedByName: before?.bookedByName ?? auth.user.fullName };
+            if (!after.assigneeId) after.assigneeId = after.bookedById;
+          }
+        }
+        if (collection === 'notificationPrefs') after = { ...after, updatedAt: new Date().toISOString() };
+
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
@@ -518,12 +570,30 @@ export class SyncService {
         if (current && HISTORY_COLLECTIONS.has(collection)) {
           this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
         }
+        if (collection === 'bookings' && !after.deletedAt) {
+          // Checked inside the write transaction so two desks cannot book the same slot at once.
+          const resource = this.db.getRow('resources', String(after.resourceId))?.d;
+          if (!resource || resource.deletedAt) throw new SyncReject('INVALID', 'المورد غير موجود');
+          if (resource.isActive === false && (!before || before.resourceId !== after.resourceId)) throw new SyncReject('INVALID', `${resource.name} خارج الخدمة حالياً`);
+          const clash = bookingConflicts(after, this.listData('bookings') as Booking[])[0];
+          if (clash) {
+            throw new SyncReject('INVALID', `${resource.name} محجوز في هذا الوقت: «${clash.title}» (${localStamp(clash.start)}–${localStamp(clash.end, false)}) باسم ${clash.bookedByName || 'زميل'}`);
+          }
+        }
+        if (collection === 'diary' && !after.deletedAt && (after.assigneeIds || []).length) {
+          const known = new Set(this.listData('users').filter((u: any) => u.isActive !== false).map((u: any) => u.id));
+          if ((after.assigneeIds as string[]).some((uid) => !known.has(uid))) throw new SyncReject('INVALID', 'أحد المكلفين غير موجود أو موقوف');
+        }
+
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
+        if (collection === 'news' && !after.deletedAt) this.notifyNewsWorkflow(before, after, auth);
+        if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
+        if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);
         if (collection === 'bulletins' && !after.deletedAt && after.editorId && after.editorId !== before?.editorId && after.editorId !== auth.user.id) {
-          this.notify(after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, '/bulletins');
+          this.notify(after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, `/bulletins/${after.id}`, 'bulletin');
         }
         if (collection === 'onAir') {
           // The episode (or bulletin) follows the live state: on air while live, broadcast once ended.
@@ -561,7 +631,10 @@ export class SyncService {
 
         if (collection === 'users') {
           if (before && before.email !== after.email) this.db.updateCredentialEmail(id, String(after.email).toLowerCase());
-          if (after.isActive === false || after.deletedAt) this.db.deleteUserSessions(id);
+          if (after.isActive === false || after.deletedAt) {
+            this.db.deleteUserSessions(id);
+            this.db.deleteUserPushSubscriptions(id);
+          }
         }
         return { ok: true, row } as SyncOpResult;
       });
