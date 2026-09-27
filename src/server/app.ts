@@ -1,3 +1,4 @@
+import { sanitizeDateSettings } from '../shared/dateFormat';
 import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
@@ -39,7 +40,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.12.0';
+export const APP_VERSION = '3.13.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -244,6 +245,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.get('/api/v1/auth/demo-accounts', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, data: config.seedDemoData ? { password: config.demoUserPassword, accounts: demoAccounts(db) } : { accounts: [] } });
+  });
+
+  /** Public: the station's name, time zone and date/time conventions (clock on the sign-in screen). */
+  app.get('/api/v1/auth/station', (_req, res) => {
+    const settings = (db.getRow('settings', 'singleton')?.d as any) || {};
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json({
+      success: true,
+      data: {
+        organizationName: typeof settings.organizationName === 'string' ? settings.organizationName : '',
+        defaultTimezone: typeof settings.defaultTimezone === 'string' ? settings.defaultTimezone : '',
+        dateTime: sanitizeDateSettings(settings.dateTime),
+      },
+    });
   });
 
   app.get('/api/v1/auth/me', requireAuth, (req, res) => {

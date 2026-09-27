@@ -1,3 +1,5 @@
+import { StationDateTimeSettings } from '../components/common/DateTimePrefs';
+import { RbacService } from '../services/rbacService';
 import { confirmDialog } from '../services/dialogs';
 import { notify } from '../services/notify';
 import { FormPage } from '../components/common/FormPage';
@@ -8,6 +10,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Settings,
   Tv,
+  CalendarClock,
   Globe,
   Rss,
   Users,
@@ -49,9 +52,10 @@ interface SettingsViewProps {
   onOpenUsers?: () => void;
 }
 
-type SettingsSection = 'station' | 'categories' | 'sources' | 'data';
+type SettingsSection = 'station' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
+  { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
   { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات البرقيات', icon: Rss },
   { id: 'data', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
@@ -59,7 +63,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
 const SECTION_KEY = 'nrcs-settings-section';
 
 const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number> }> = ({ section, onChange, counts }) => (
-  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-5 gap-2">
     {SECTIONS.map((sec) => {
       const Icon = sec.icon;
       const active = sec.id === section;
@@ -974,6 +978,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         </div>
+      )}
+
+      {section === 'datetime' && (
+        <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <CalendarClock className="w-4 h-4 text-blue-600" />
+            <span>التاريخ والوقت للمحطة</span>
+          </h3>
+          <StationDateTimeSettings canEdit={RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings')} />
+        </section>
       )}
 
       {section === 'data' && (

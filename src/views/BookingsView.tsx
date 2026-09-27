@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, ChevronLeft, ChevronRight, Pencil, Plus, Power, Settings2, Trash2, X } from 'lucide-react';
@@ -12,7 +13,7 @@ import { arabicDate, localDateString } from '../shared/dates';
 import { Booking, bookingsOnDay, bookingStatusOf, Resource, RESOURCE_KINDS, resourceKindName, shiftDay } from '../shared/planning';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
 
 interface BookingsViewProps {
   currentUser: User;

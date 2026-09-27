@@ -1,3 +1,5 @@
+import { StationClock } from '../common/StationClock';
+import { configureDateFormat } from '../../shared/dateFormat';
 import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
 import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useEffect, useState } from 'react';
@@ -28,6 +30,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
       .catch(() => undefined)
       .finally(() => clearTimeout(timer));
     return () => ctrl.abort();
+  }, []);
+
+  // The station's clock and date (its zone and conventions) before anyone signs in.
+  useEffect(() => {
+    fetch('/api/v1/auth/station', { headers: { 'X-NRCS-Client': 'web' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.data && configureDateFormat(j.data))
+      .catch(() => undefined);
   }, []);
 
   const submit = async (mail: string, pass: string) => {
@@ -84,7 +94,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   return (
     <div className="relative min-h-screen bg-[#0f172a] flex items-center justify-center p-4 font-sans" dir="rtl">
       <ThemeToggle className="absolute top-4 left-4 text-slate-400 hover:text-white hover:bg-white/10" />
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+      <div className="w-full max-w-sm flex flex-col gap-5">
+      <StationClock variant="hero" onDark />
+      <div className="w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center">
             <Radio className="w-6 h-6 text-white" />
@@ -219,6 +231,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             <p className="mt-2 text-[10px] text-slate-400">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

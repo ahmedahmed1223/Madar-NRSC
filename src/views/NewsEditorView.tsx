@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { ProofreadButton } from '../components/editor/WritingAids';
@@ -540,6 +541,24 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setShowCommentModal(true);
   };
 
+  // Keyboard: Ctrl+S saves and stays in the editor; Ctrl+Enter sends a new story for review.
+  const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  shortcutRef.current = (e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || showCommentModal || document.querySelector('[role=alertdialog]')) return;
+    if (e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
+      e.preventDefault();
+      if (canEditContent && lock.status !== 'acquiring') saveContent(true);
+    } else if (e.key === 'Enter' && canCreateForReview) {
+      e.preventDefault();
+      handleTriggerStatusChange('UNDER_REVIEW');
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => shortcutRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
   const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || new Date(scheduleAt).getTime() < Date.now());
 
@@ -667,7 +686,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       {newsItem?.status === 'SCHEDULED' && newsItem.scheduledDate && (
         <div className="bg-sky-50 border border-sky-200 p-3 rounded-2xl text-xs text-sky-900 font-semibold flex items-center gap-2">
           <Clock className="w-4 h-4 text-sky-600" />
-          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-EG-u-nu-latn')}
+          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString(appLocale(), zoneOptions())}
         </div>
       )}
 
@@ -717,7 +736,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 ) : lastSaved && isDirty ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
-                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-EG-u-nu-latn')})
+                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
                   </>
                 ) : null}
               </div>
@@ -743,6 +762,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               type="button"
               onClick={handleSaveDraft}
               disabled={lock.status === 'acquiring'}
+              title="حفظ (Ctrl+S للحفظ مع البقاء في المحرر)"
+              aria-keyshortcuts="Control+S"
               className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
@@ -754,6 +775,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
+              title="Ctrl+Enter"
+              aria-keyshortcuts="Control+Enter"
               className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <Send className="w-4 h-4" />
@@ -1372,7 +1395,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       <div className="flex items-center justify-between">
                         <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(log.timestamp).toLocaleString('ar-EG-u-nu-latn', {
+                          {new Date(log.timestamp).toLocaleString(appLocale(), { ...zoneOptions(),
                             hour: '2-digit',
                             minute: '2-digit',
                             month: 'short',

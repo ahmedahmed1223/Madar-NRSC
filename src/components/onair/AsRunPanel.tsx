@@ -1,19 +1,17 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, History } from 'lucide-react';
 import type { User } from '../../types';
 import { apiService } from '../../services/api';
 import { useLiveData } from '../../hooks/useLiveData';
 import { asRunForDay } from '../../shared/asrun';
-import { arabicDate, localDateString } from '../../shared/dates';
+import { arabicDate, addDaysIso, localDateString } from '../../shared/dates';
 import { mmss } from '../../shared/bulletins';
 import { ExportMenu, docContext } from '../common/ExportMenu';
 import { asRunDoc } from '../../services/documents/builders';
 
-const addDays = (date: string, days: number) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return localDateString(new Date(y, m - 1, d + days));
-};
-const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—');
+const addDays = addDaysIso;
+const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
 const signed = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : n < 0 ? '-' : ''}${mmss(Math.abs(n))}`);
 const tone = (n: number | null) => (n === null || Math.abs(n) < 30 ? 'text-slate-600' : n > 0 ? 'text-rose-700' : 'text-amber-700');
 

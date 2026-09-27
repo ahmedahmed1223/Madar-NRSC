@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
 import React, { useState } from 'react';
@@ -370,7 +371,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                   .reverse()
                   .map((c: any, i: number) => (
                     <p key={i} className="text-[11px] text-slate-600">
-                      <span className="text-slate-400">{new Date(c.at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
+                      <span className="text-slate-400">{new Date(c.at).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
                     </p>
                   ))}
                 {canEditEpisode && (

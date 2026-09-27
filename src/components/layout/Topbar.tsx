@@ -1,3 +1,5 @@
+import { longToday } from '../common/StationClock';
+import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../shared/dateFormat';
 import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
@@ -82,20 +84,26 @@ export const Topbar: React.FC<TopbarProps> = ({
   const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
   const [stationTime, setStationTime] = useState('');
   const [zoneMismatch, setZoneMismatch] = useState(false);
+  const [dateSettings, setDateSettings] = useState(getDateSettings);
+  useEffect(() => onDateFormat(() => setDateSettings(getDateSettings())), []);
+  const [clockLabel, setClockLabel] = useState('');
   useEffect(() => {
-    // The clock shows this device's time: the same clock every date/time field uses.
-    const fmt = (timeZone?: string) =>
-      new Date().toLocaleTimeString('ar-EG-u-nu-latn', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    // Unified station time: the clock shows the station's time on every device. Otherwise it
+    // shows this device's time (the clock every date/time field uses), flagging a different zone.
+    const unified = basisZone(dateSettings);
+    const fmt = (timeZone: string | undefined, seconds: boolean) =>
+      new Date().toLocaleTimeString(appLocale(dateSettings), { timeZone, hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}) });
     const updateTime = () => {
-      setTimeStr(fmt());
-      const differs = deviceDiffersFromStation(stationTz);
+      setTimeStr(fmt(unified, dateSettings.clockSeconds));
+      setClockLabel(unified ? 'بتوقيت المحطة' : '');
+      const differs = !unified && deviceDiffersFromStation(stationTz);
       setZoneMismatch(differs);
-      setStationTime(differs && stationTz ? fmt(stationTz).slice(0, 5) : '');
+      setStationTime(differs && stationTz ? fmt(stationTz, false) : '');
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
-  }, [stationTz]);
+  }, [stationTz, dateSettings]);
 
   useEffect(
     () =>
@@ -187,9 +195,11 @@ export const Topbar: React.FC<TopbarProps> = ({
             <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
           </button>
           <span className="text-slate-300 hidden lg:inline">|</span>
-          <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800">
+          <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
             <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span>{timeStr || '00:00:00'}</span>
+            <span className="tabular-nums">{timeStr || '00:00'}</span>
+            <span className="hidden lg:inline font-sans text-[11px] font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
+            {clockLabel && <span className="font-sans text-[10px] text-slate-500">{clockLabel}</span>}
           </div>
           {zoneMismatch && (
             <span

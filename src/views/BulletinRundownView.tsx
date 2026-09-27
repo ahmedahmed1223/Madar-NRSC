@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -54,6 +55,8 @@ import {
   rankBetween,
   STORY_TYPES,
   storyStatusName,
+  STORY_STATUSES,
+  storyStatusError,
   storyTiming,
   storyTypeOf,
   StoryType,
@@ -372,6 +375,41 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               </button>
             ))}
           </div>
+          {(() => {
+            // One click for the routine moves: approve everything ready, or send my drafts for approval.
+            const free = all.filter((s) => !s.killed && !lockOf(s.id));
+            const approvable = free.filter((s) => s.status === 'READY' && !storyStatusError(s, { ...s, status: 'APPROVED' }, bulletin, actor));
+            const mine = free.filter(
+              (s) => s.status === 'DRAFT' && (s.writerId === currentUser.id || !s.writerId) && (s.script || '').trim() && !storyStatusError(s, { ...s, status: 'READY' }, bulletin, actor)
+            );
+            const bulk = (list: BulletinStory[], to: BulletinStory['status'], done: string) =>
+              attempt(() => list.forEach((s) => apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, status: to })), done);
+            return (
+              <>
+                {approvable.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () =>
+                      (await confirmDialog({ title: 'اعتماد القصص الجاهزة', message: `اعتماد ${approvable.length} قصة جاهزة: ${approvable.map((s) => s.slug).slice(0, 6).join('، ')}${approvable.length > 6 ? '…' : ''}`, confirmLabel: 'اعتماد' })) &&
+                      bulk(approvable, 'APPROVED', `سُجّل اعتمادك لـ${approvable.length} قصة`)
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> اعتماد الجاهزة ({approvable.length})
+                  </button>
+                )}
+                {mine.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => bulk(mine, 'READY', `أُرسلت ${mine.length} قصة للاعتماد`)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold"
+                  >
+                    إرسال مسوداتي للاعتماد ({mine.length})
+                  </button>
+                )}
+              </>
+            );
+          })()}
           <label className="flex items-center gap-1 text-slate-600 mr-auto">
             <input type="checkbox" checked={showKilled} onChange={(e) => setShowKilled(e.target.checked)} /> إظهار المستبعدة ({all.filter((s) => s.killed).length})
           </label>
@@ -501,7 +539,45 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   </td>
                   <td className="p-2 hidden lg:table-cell">{s.anchorName || bulletin.anchors[0] || ''}</td>
                   <td className="p-2 text-center">
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>
+                    {(() => {
+                      // Change the status straight from the rundown: only moves this colleague may make.
+                      const options = STORY_STATUSES.filter(
+                        (o) => o.id === s.status || (!lock && !s.killed && !storyStatusError(s, { ...s, status: o.id }, bulletin, actor))
+                      );
+                      if (options.length < 2) {
+                        return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>;
+                      }
+                      return (
+                        <select
+                          value={s.status}
+                          aria-label={`حالة «${s.slug}»`}
+                          title="تغيير حالة القصة"
+                          data-compact
+                          onChange={(e) => {
+                            const to = e.target.value as BulletinStory['status'];
+                            const pr = approvalProgress(bulletin, s);
+                            toggle(
+                              s,
+                              { status: to },
+                              to === 'APPROVED'
+                                ? pr.total - pr.done > 1
+                                  ? `سُجّل اعتمادك لـ«${s.slug}»؛ بانتظار الخطوة التالية`
+                                  : `اعتُمدت «${s.slug}» للهواء`
+                                : to === 'READY'
+                                  ? `«${s.slug}» جاهزة للاعتماد`
+                                  : `أُعيدت «${s.slug}» مسودة`
+                            );
+                          }}
+                          className={`text-[10px] font-bold ps-1.5 pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
+                        >
+                          {options.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                     {(() => {
                       const pr = approvalProgress(bulletin, s);
                       return pr.total > 1 && s.status !== 'DRAFT' ? (
@@ -670,7 +746,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       <span className="font-bold text-slate-800 block">{source === 'COPY' ? item.slug : item.title}</span>
                       <span className="text-[10px] text-slate-500">
                         {source === 'NEWS' && `${NEWS_STATUS[item.status] || item.status} · ${item.authorName || ''}`}
-                        {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}`}
+                        {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}`}
                         {source === 'COPY' && `${storyTypeOf(item.type).code} · ${mmss(storyTiming(item).total)}`}
                       </span>
                       {already && <span className="text-[10px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}

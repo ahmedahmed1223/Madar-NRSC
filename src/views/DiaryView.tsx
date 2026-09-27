@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -19,7 +20,7 @@ const dayName = (day: string) => {
   const [y, m, d] = day.split('-').map(Number);
   return DAY_NAMES[new Date(y, m - 1, d).getDay()];
 };
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
 
 interface DiaryViewProps {
   currentUser: User;

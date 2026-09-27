@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
 import { notify } from '../services/notify';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -264,7 +265,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <button
                 type="button"
                 onClick={bookStudio}
-                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
+                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
               >
                 <CalendarPlus className="w-4 h-4" />

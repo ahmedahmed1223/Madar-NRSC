@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { matchesQuery } from '../shared/search';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon, Zap, Eye, BellRing } from 'lucide-react';
@@ -29,7 +30,7 @@ function timeAgo(iso: string, now: number): string {
   if (min < 60) return `منذ ${min} دقيقة`;
   const h = Math.floor(min / 60);
   if (h < 24) return `منذ ${h} ساعة`;
-  return new Date(iso).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'medium', timeStyle: 'short' });
 }
 
 /** Wire desk: agency items pulled by the server from RSS/Atom feeds, turned into drafts by journalists. */

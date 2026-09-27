@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React from 'react';
 import { AppNotification } from '../../types';
 import { Bell, Check, Clock, ExternalLink, Settings2, Zap } from 'lucide-react';
@@ -81,7 +82,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(notif.createdAt).toLocaleTimeString('ar-EG-u-nu-latn', {
+                    {new Date(notif.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(),
                       hour: '2-digit',
                       minute: '2-digit',
                     })}

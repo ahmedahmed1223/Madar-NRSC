@@ -1,3 +1,5 @@
+import { StationClock } from '../components/common/StationClock';
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { arabicDate, localDateString } from '../shared/dates';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
@@ -123,11 +125,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Welcome & Live Banner */}
       <div className="bg-gradient-to-l from-blue-50 via-white to-white rounded-3xl p-6 text-slate-900 shadow-xs border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 flex items-center gap-1.5">
               <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse" />
               مركز العمليات الإخبارية والإنتاج المباشر
             </span>
+            <StationClock className="px-2.5 py-1 rounded-full bg-white border border-slate-200" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
             مرحباً، {currentUser.fullName}
@@ -493,7 +496,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>•</span>
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
-                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       </div>
 

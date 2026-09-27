@@ -1,6 +1,6 @@
 import { matchesQuery } from '../shared/search';
 import { findStudioConflicts } from '../shared/schedule';
-import { localDateString } from '../shared/dates';
+import { addDaysIso, localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import {
   Calendar as CalendarIcon,
@@ -50,27 +50,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Generate week dates based on weekOffset
   const currentWeekDays = useMemo(() => {
-    const baseDate = new Date();
-    baseDate.setDate(baseDate.getDate() + weekOffset * 7);
-    
-    // Find current week Saturday (start of week in AR)
-    const dayOfWeek = baseDate.getDay(); // 0 is Sunday, 6 is Saturday
-    const diff = (dayOfWeek + 1) % 7; // distance from Saturday
-    const saturday = new Date(baseDate);
-    saturday.setDate(baseDate.getDate() - diff);
+    // The week around today (the station's today under unified time), Saturday first.
+    const todayStr = localDateString();
+    const base = addDaysIso(todayStr, weekOffset * 7);
+    const [by, bm, bd] = base.split('-').map(Number);
+    const dayOfWeek = new Date(Date.UTC(by, bm - 1, bd)).getUTCDay(); // 0 is Sunday, 6 is Saturday
+    const saturdayIso = addDaysIso(base, -((dayOfWeek + 1) % 7));
 
     const arabicDays = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
     const days = [];
-    const todayStr = localDateString();
-
     for (let i = 0; i < 7; i++) {
-      const d = new Date(saturday);
-      d.setDate(saturday.getDate() + i);
-      const isoStr = localDateString(d);
+      const isoStr = addDaysIso(saturdayIso, i);
+      const [, mm, dd] = isoStr.split('-').map(Number);
       days.push({
         name: arabicDays[i],
         date: isoStr,
-        displayDate: `${d.getDate()} / ${d.getMonth() + 1}`,
+        displayDate: `${dd} / ${mm}`,
         isToday: isoStr === todayStr,
       });
     }

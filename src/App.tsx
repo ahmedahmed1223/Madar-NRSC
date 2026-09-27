@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from './shared/dateFormat';
 import { confirmSaved } from './services/confirmSave';
 import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
@@ -68,6 +69,7 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
 import { routeChanged } from './services/uiEvents';
+import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 
 interface AppProps {
   onLogout: () => void;
@@ -168,6 +170,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
   // Load all initial data from apiService
   const refreshData = () => {
+    // Station-wide date/time conventions follow the shared settings (redraws when they change).
+    configureDateFormat(apiService.getSettings());
     setCurrentUser(apiService.getCurrentUser());
     setIsLiveLockActive(apiService.getBroadcastState().liveLock);
     setProgramTypes(apiService.getProgramTypes());
@@ -257,7 +261,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       id: n.id,
       newsId: n.id,
       title: n.title,
-      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
+      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }) : 'الآن',
     }));
 
   // --- NEWS ACTIONS ---
@@ -407,7 +411,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       summary: (wire.summary || '').slice(0, 400),
       content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
       sourceId: known?.id,
-      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString('ar-EG-u-nu-latn')})${wire.link ? `\n${wire.link}` : ''}`,
+      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
     });
     setActiveNav('news-editor');
   };
@@ -651,6 +655,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
+  // Every date and time on screen is formatted during render: redraw when the conventions change.
+  const [, setDateFormatTick] = useState(0);
+  useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
   const routeStarted = useRef(false);
   useEffect(() => {
     // The first render is still the dashboard; a start-up deep link is being opened instead.

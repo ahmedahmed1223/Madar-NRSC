@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import {
   NewsItem,
   Story,
@@ -65,7 +66,7 @@ export interface WireStatusInfo {
   retentionDays: number;
   feeds: WireFeedStatus[];
 }
-import { localDateString } from '../shared/dates';
+import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { departmentIdOf } from '../shared/departments';
@@ -461,7 +462,7 @@ export class ApiService {
           comment:
             comment ||
             (scheduledDate
-              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-EG-u-nu-latn')}`
+              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString(appLocale(), zoneOptions())}`
               : `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`),
           timestamp: now,
         },
@@ -887,10 +888,7 @@ export class ApiService {
   /** Copies every entry of the 7 days starting `fromWeekStart` one week later (existing entries are kept). */
   static copyRosterWeek(fromWeekStart: string): number {
     if (!RbacService.hasPermission(this.getCurrentUser(), 'roster.manage')) throw new Error('صلاحياتك لا تسمح بتعديل جدول المناوبات');
-    const shift = (date: string, days: number) => {
-      const [y, m, d] = date.split('-').map(Number);
-      return localDateString(new Date(y, m - 1, d + days));
-    };
+    const shift = addDaysIso;
     const end = shift(fromWeekStart, 7);
     const all = getStored<RosterEntry[]>(COLLECTIONS.roster.storageKey, []);
     const existing = new Set(all.map((e) => e.id));
@@ -1722,7 +1720,7 @@ export class ApiService {
     const clash = bookingConflicts(next, this.getBookings())[0];
     if (clash) {
       const res = this.getResources().find((r) => r.id === next.resourceId);
-      const t = (iso: string) => new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const t = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
       throw new Error(`${res?.name || 'المورد'} محجوز في هذا الوقت: «${clash.title}» (${t(clash.start)}–${t(clash.end)}) باسم ${clash.bookedByName || 'زميل'}`);
     }
     if (idx >= 0) all[idx] = next;

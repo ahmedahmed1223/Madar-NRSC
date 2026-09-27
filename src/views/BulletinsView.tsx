@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
@@ -10,7 +11,7 @@ import { RbacService } from '../services/rbacService';
 import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
 import { moveInArray, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
-import { localDateString } from '../shared/dates';
+import { addDaysIso, localDateString } from '../shared/dates';
 import { departmentIdOf } from '../shared/departments';
 import {
   Bulletin,
@@ -31,10 +32,7 @@ interface Props {
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
-const addDays = (date: string, days: number) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return localDateString(new Date(y, m - 1, d + days));
-};
+const addDays = addDaysIso;
 
 const dayLabel = (date: string) => {
   const today = localDateString();
@@ -42,7 +40,7 @@ const dayLabel = (date: string) => {
   if (date === addDays(today, 1)) return 'غداً';
   if (date === addDays(today, -1)) return 'أمس';
   const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date(y, m - 1, d).toLocaleDateString(appLocale(), { ...zoneOptions(), weekday: 'long', day: 'numeric', month: 'long' });
 };
 
 interface NewForm {

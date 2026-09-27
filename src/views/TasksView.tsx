@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
@@ -332,7 +333,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-400'}`}>
                           <OverdueBadge task={t} />
                           <Clock className="w-3 h-3" />
-                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' }) : ''}</span>
+                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''}</span>
                         </div>
                       </div>
 
@@ -402,7 +403,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   <td className="py-3 px-3 font-semibold text-slate-700">{assigneeOf(t)}</td>
                   <td className="py-3 px-3 tabular-nums text-slate-600">
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={overdueDays(t) ? 'text-red-600 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
+                      <span className={overdueDays(t) ? 'text-red-600 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
                       <OverdueBadge task={t} />
                     </div>
                   </td>

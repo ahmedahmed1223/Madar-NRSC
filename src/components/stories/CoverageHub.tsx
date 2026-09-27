@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React from 'react';
 import { ExternalLink, FileText, Film, ListVideo, Plus, ArrowLeftRight } from 'lucide-react';
 import type { NewsItem, Story, User } from '../../types';
@@ -81,7 +82,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
                 <div className="min-w-0">
                   <span className="block text-xs font-bold text-slate-800 truncate">{n.title}</span>
                   <span className="text-[10px] text-slate-500">
-                    {NEWS_STATUS_LABELS[n.status] || n.status} · {n.authorName || ''} · {new Date(n.updatedAt || n.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}
+                    {NEWS_STATUS_LABELS[n.status] || n.status} · {n.authorName || ''} · {new Date(n.updatedAt || n.createdAt).toLocaleDateString(appLocale(), zoneOptions())}
                   </span>
                 </div>
                 {onOpenNews && (

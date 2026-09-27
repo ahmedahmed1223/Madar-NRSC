@@ -170,6 +170,18 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             e.preventDefault();
             save();
           }}
+          onKeyDown={(e) => {
+            // Ctrl+S saves; Ctrl+Enter saves and sends a draft for approval.
+            if (!(e.ctrlKey || e.metaKey) || lockedByOther || document.querySelector('[role=alertdialog]')) return;
+            if (e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
+              e.preventDefault();
+              save();
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              save(canEdit && status === 'DRAFT' && script.trim() ? 'READY' : undefined);
+            }
+          }}
+          aria-keyshortcuts="Control+S Control+Enter"
           className="space-y-4"
           data-testid="story-editor"
         >

@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import type { User } from '../../types';
@@ -7,7 +8,7 @@ import { FormPage } from '../common/FormPage';
 import { fromLocalInputValue, toLocalInputValue } from '../../shared/dates';
 import { Booking, BookingLink, bookingConflicts, BOOKING_STATUSES, RESOURCE_KINDS, resourceKindName } from '../../shared/planning';
 
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
 
 interface BookingFormProps {
   isOpen: boolean;

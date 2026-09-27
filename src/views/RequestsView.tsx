@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
@@ -27,7 +28,7 @@ const STATUS_STYLE: Record<string, string> = {
   CANCELLED: 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
-const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const when = (iso?: string) => (iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
 /** Requests between departments: what my department has to do, and what I asked others for. */
 export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenNews, onOpenEpisode }) => {

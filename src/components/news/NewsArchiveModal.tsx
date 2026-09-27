@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React, { useEffect, useState } from 'react';
 import { Search, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
 import { Modal } from '../common/Modal';
@@ -20,7 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: 'مرفوض',
 };
 
-const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { dateStyle: 'medium' }) : '—');
+const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString(appLocale(), { ...zoneOptions(), dateStyle: 'medium' }) : '—');
 
 /** Search of finished news that is no longer synced to browsers (older than NEWS_ACTIVE_DAYS). */
 export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onClose, canReactivate, onReactivated }) => {

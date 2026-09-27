@@ -7,7 +7,7 @@ import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
 import { onDutyAt, SHIFTS, ShiftId, RosterEntry } from '../shared/roster';
-import { localDateString } from '../shared/dates';
+import { addDaysIso, localDateString } from '../shared/dates';
 
 interface RosterViewProps {
   users: User[];
@@ -16,10 +16,7 @@ interface RosterViewProps {
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
-const addDays = (date: string, days: number) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return localDateString(new Date(y, m - 1, d + days));
-};
+const addDays = addDaysIso;
 
 /** Weeks start on Saturday. */
 const weekStartOf = (date: string) => {

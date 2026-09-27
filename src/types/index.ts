@@ -561,6 +561,8 @@ export interface SystemSettings {
   allowGuestProposals: boolean;
   enableAuditLog: boolean;
   defaultSegmentDurationSeconds?: number;
+  /** Station-wide date/time conventions (see shared/dateFormat). */
+  dateTime?: Partial<import('../shared/dateFormat').DateTimeSettings>;
 }
 
 export interface DbTableInfo {

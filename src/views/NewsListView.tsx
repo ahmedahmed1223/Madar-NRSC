@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { notify } from '../services/notify';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
@@ -553,14 +554,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               {item.authorName && <span>{item.authorName}</span>}
                               {item.updatedAt && (
                                 <span className="md:hidden tabular-nums">
-                                  {new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               )}
                             </span>
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
                               <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
-                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
+                                ينشر في {new Date(item.scheduledDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
@@ -622,8 +623,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Last update */}
-                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn') : ''}>
-                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
 
                       {/* Actions */}
@@ -799,7 +800,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 </span>
               </div>
               <div className="text-xs text-slate-500 font-mono">
-                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString('ar-EG-u-nu-latn')}
+                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString(appLocale(), zoneOptions())}
               </div>
             </div>
 
@@ -847,7 +848,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(log.timestamp).toLocaleString('ar-EG-u-nu-latn')}
+                      {new Date(log.timestamp).toLocaleString(appLocale(), zoneOptions())}
                     </span>
                   </div>
                 ))}

@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { DEPARTMENTS, departmentIdOf } from '../../shared/departments';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -197,7 +198,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                     <span className="font-bold text-white">{msg.userName}</span>
                   </div>
                   <span className="font-mono text-slate-500">
-                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : '...'}
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }) : '...'}
                   </span>
                 </div>
 

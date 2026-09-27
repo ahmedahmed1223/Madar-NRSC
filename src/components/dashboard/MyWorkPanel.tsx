@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React from 'react';
 import { CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
@@ -124,7 +125,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       return {
         id: t.id,
         title: t.title,
-        meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' })) : undefined,
+        meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' })) : undefined,
         tone: overdue ? ('red' as const) : ('slate' as const),
         onClick: () => onNavigate('tasks'),
       };
@@ -141,7 +142,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       const mine = r.blockers.filter((b) => b.departmentId === myDept).length;
       return {
         id: e.id,
-        title: `${(e.broadcastDate || '').slice(0, 10) === days[0] ? 'اليوم' : new Date(e.broadcastDate).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long' })} · ${e.programName ? e.programName + ' — ' : ''}${e.title}`,
+        title: `${(e.broadcastDate || '').slice(0, 10) === days[0] ? 'اليوم' : new Date(e.broadcastDate).toLocaleDateString(appLocale(), { ...zoneOptions(), weekday: 'long' })} · ${e.programName ? e.programName + ' — ' : ''}${e.title}`,
         meta: r.ready ? 'جاهزة' : mine ? `${mine} نواقص على قسمك` : `${r.readySegments}/${r.total} جاهزة`,
         tone: r.ready ? ('emerald' as const) : mine ? ('red' as const) : ('amber' as const),
         onClick: () => onOpenEpisode(e.id),
@@ -202,7 +203,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       .map((b) => ({
         id: b.id,
         title: `${resName(b.resourceId)} — ${b.title}`,
-        meta: new Date(b.start).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        meta: new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }),
         tone: 'emerald' as const,
         onClick: () => onNavigate('bookings'),
       })),

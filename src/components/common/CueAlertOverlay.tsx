@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React, { useEffect, useRef } from 'react';
 import { Megaphone } from 'lucide-react';
 import type { User } from '../../types';
@@ -57,7 +58,7 @@ export const CueAlertOverlay: React.FC<{ currentUser: User }> = ({ currentUser }
           <Megaphone className="w-6 h-6 shrink-0" />
           <div className="flex-1 min-w-0">
             <strong className="block text-base leading-snug">{c.message}</strong>
-            <span className="text-[11px] opacity-80">من {c.fromName} · {new Date(c.createdAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="text-[11px] opacity-80">من {c.fromName} · {new Date(c.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           <button type="button" onClick={() => apiService.ackCue(c.id)} className="px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-xs font-black shrink-0">
             تم الاستلام

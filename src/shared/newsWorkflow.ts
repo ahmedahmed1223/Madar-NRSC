@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from './dateFormat';
 import type { NewsItem, NewsStatus } from '../types/index';
 
 /**
@@ -65,7 +66,7 @@ export const embargoLabel = (iso?: string) => {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const date = d.toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+  const date = d.toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'long', year: 'numeric' });
   const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return `${date} الساعة ${time}`;
 };

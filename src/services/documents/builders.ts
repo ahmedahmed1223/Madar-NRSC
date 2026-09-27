@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 /**
  * The standard documents a newsroom prints or files: the story sheet, the news list,
  * the bulletin rundown / anchor scripts / graphics list, and for programmes the full
@@ -48,12 +49,12 @@ export interface DocContext {
 }
 
 const stamp = (ctx: DocContext) => {
-  const when = (ctx.now || new Date()).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+  const when = (ctx.now || new Date()).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'medium', timeStyle: 'short' });
   return ctx.user ? `طُبع بواسطة ${ctx.user.fullName} — ${when}` : when;
 };
 
-const dt = (iso?: string) => (iso ? new Date(iso).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const d = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { dateStyle: 'medium' }) : '—');
+const dt = (iso?: string) => (iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const d = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(appLocale(), { ...zoneOptions(), dateStyle: 'medium' }) : '—');
 const mmssOf = (secs: number) => formatSecondsToTime(secs || 0).slice(3);
 
 const PRIORITY: Record<string, string> = { CRITICAL: 'حرجة', URGENT: 'عاجلة', HIGH: 'عالية', MEDIUM: 'متوسطة', NORMAL: 'عادية', LOW: 'منخفضة' };
@@ -440,7 +441,7 @@ export function episodesScheduleDoc(episodes: Episode[], label: string, ctx: Doc
 // As-Run
 // ---------------------------------------------------------------------------
 
-const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—');
+const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
 const signed = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : n < 0 ? '-' : ''}${mmss(Math.abs(n))}`);
 
 /** The day's As-Run log: every show that aired, with real start/end and per-segment timings. */

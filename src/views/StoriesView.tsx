@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
@@ -318,7 +319,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                  بدأت: {new Date(story.startedAt).toLocaleDateString('ar-EG-u-nu-latn')}
+                  بدأت: {new Date(story.startedAt).toLocaleDateString(appLocale(), zoneOptions())}
                 </span>
 
                 <button

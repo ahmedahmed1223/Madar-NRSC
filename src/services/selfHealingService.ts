@@ -1,3 +1,4 @@
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { NewsItem, Program, Episode, RundownSegment, Guest, EpisodeGuest, EditorialTask, MediaFile, AuditLog, SystemSettings } from '../types';
 import { dataStore } from './dataStore';
 import { COLLECTIONS } from '../shared/collections';
@@ -343,7 +344,7 @@ class SelfHealingEngine {
   }
 
   private logRepair(msg: string) {
-    const timestamp = new Date().toLocaleTimeString('ar-EG-u-nu-latn', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString(appLocale(), { ...zoneOptions(),});
     this.autoRepairLogs.unshift(`[${timestamp}] ${msg}`);
     if (this.autoRepairLogs.length > 40) this.autoRepairLogs.pop();
   }
