@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
@@ -22,6 +23,8 @@ import {
 } from 'lucide-react';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 import { Badge } from '../components/common/Badge';
+import { SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
+import { notify } from '../services/notify';
 import { Modal } from '../components/common/Modal';
 
 interface TasksViewProps {
@@ -119,9 +122,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const filteredTasks = (tasks || []).filter((t) => {
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const person = (t.assignedToName || t.assigneeName || '').toLowerCase();
-      return t.title.toLowerCase().includes(q) || person.includes(q);
+      return matchesQuery(searchQuery, t.title, t.description, t.assignedToName, t.assigneeName, t.relatedEntityTitle);
     }
     return true;
   });
@@ -214,22 +215,31 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
       {/* KANBAN VIEW */}
       {activeTab === 'KANBAN' ? (
+        <SortableScope
+          onDrop={({ id, from, to }) => {
+            if (from === to) return;
+            const task = tasks.find((x) => x.id === id);
+            const status = to.slice(4) as TaskStatus;
+            const previous = task?.status;
+            handleQuickStatusChange(id, status);
+            const label = columns.find((c) => c.status === status)?.label || status;
+            notify({
+              type: 'success',
+              message: `نُقلت «${task?.title || ''}» إلى ${label}`,
+              action: previous ? { label: 'تراجع', run: () => handleQuickStatusChange(id, previous) } : undefined,
+            });
+          }}
+        >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {columns.map((col) => {
             const colTasks = filteredTasks.filter((t) => t.status === col.status);
 
             return (
-              <div
+              <SortableList
                 key={col.status}
+                id={`col:${col.status}`}
+                aria-label={col.label}
                 className="bg-slate-50/80 rounded-2xl p-3 border border-slate-200 flex flex-col min-h-[450px]"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const taskId = e.dataTransfer.getData('text/plain');
-                  if (taskId) {
-                    handleQuickStatusChange(taskId, col.status as TaskStatus);
-                  }
-                }}
               >
                 <div className={`flex items-center justify-between pb-3 mb-3 border-b-2 ${col.color}`}>
                   <h3 className="text-xs font-bold text-slate-700">{col.label}</h3>
@@ -240,13 +250,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                 <div className="space-y-3 flex-1 overflow-y-auto">
                   {colTasks.map((t) => (
-                    <div
+                    <SortableItem
                       key={t.id}
-                      draggable
-                      onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
-                      className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 cursor-grab active:cursor-grabbing"
+                      id={t.id}
+                      container={`col:${col.status}`}
+                      label={t.title}
+                      className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5"
                     >
+                      {({ handle }) => (
+                      <>
                       <div className="flex items-start justify-between gap-2">
+                        {handle}
                         <Badge
                           variant={
                             t.priority === 'URGENT'
@@ -328,13 +342,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           </button>
                         )}
                       </div>
-                    </div>
+                      </>
+                      )}
+                    </SortableItem>
                   ))}
                 </div>
-              </div>
+              </SortableList>
             );
           })}
         </div>
+        </SortableScope>
       ) : (
         /* LIST VIEW */
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">

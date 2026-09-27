@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
@@ -138,11 +139,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
     if (story.status !== activeTab) return false;
     if (selectedCategory !== 'ALL' && story.categoryId !== selectedCategory) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = story.title.toLowerCase().includes(q);
-      const matchDesc = story.description?.toLowerCase().includes(q);
-      const matchLoc = story.locationName?.toLowerCase().includes(q);
-      if (!matchTitle && !matchDesc && !matchLoc) return false;
+      if (!matchesQuery(searchQuery, story.title, story.description, story.locationName, story.categoryName)) return false;
     }
     return true;
   });

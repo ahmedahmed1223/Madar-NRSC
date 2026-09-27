@@ -1,3 +1,8 @@
+import { matchesQuery } from '../shared/search';
+import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
+
+const USER_SORT_KEYS = ['name', 'role', 'department', 'status', 'lastLogin'] as const;
+type UserSortKey = (typeof USER_SORT_KEYS)[number];
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
@@ -61,6 +66,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [twoFactorFilter, setTwoFactorFilter] = useState<'ALL' | 'ON' | 'OFF'>('ALL');
+  const [sort, toggleSort] = usePersistentSort<UserSortKey>('nrcs_sort_users', { key: 'name', dir: 'asc' }, USER_SORT_KEYS);
+  const filtersActive = !!searchQuery.trim() || selectedRoleFilter !== 'ALL' || selectedDepartmentFilter !== 'ALL' || selectedStatusFilter !== 'ALL' || twoFactorFilter !== 'ALL';
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedRoleFilter('ALL');
+    setSelectedDepartmentFilter('ALL');
+    setSelectedStatusFilter('ALL');
+    setTwoFactorFilter('ALL');
+  };
 
   // Modals
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -241,14 +256,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   };
 
   // Filtering Logic
-  const filteredUsers = users.filter((u) => {
-    const matchesSearch =
-      u.fullName.includes(searchQuery) ||
-      (u.fullNameEn && u.fullNameEn.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (u.staffId && u.staffId.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      u.jobTitle.includes(searchQuery) ||
-      u.department.includes(searchQuery);
+  const filteredUsers = sortList(users.filter((u) => {
+    const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone);
 
     const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
@@ -259,8 +268,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         ? u.isActive
         : !u.isActive;
 
-    return matchesSearch && matchesRole && matchesDept && matchesStatus;
-  });
+    const matches2fa = twoFactorFilter === 'ALL' || (twoFactorFilter === 'ON' ? !!u.twoFactorEnabled : !u.twoFactorEnabled);
+    return matchesSearch && matchesRole && matchesDept && matchesStatus && matches2fa;
+  }), sort, (u, key) =>
+    key === 'name' ? u.fullName : key === 'role' ? u.role : key === 'department' ? departmentName(departmentIdOf(u)) : key === 'status' ? (u.isActive ? 0 : 1) : u.lastLogin || ''
+  );
 
   const departmentsList = Array.from(new Set(users.map((u) => departmentIdOf(u))));
 
@@ -455,6 +467,35 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 <option value="ACTIVE">نشط ومصرح فقط</option>
                 <option value="INACTIVE">مجمد وموقوف فقط</option>
               </select>
+
+              <select
+                aria-label="التحقق بخطوتين"
+                value={twoFactorFilter}
+                onChange={(e) => setTwoFactorFilter(e.target.value as any)}
+                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+              >
+                <option value="ALL">التحقق بخطوتين: الكل</option>
+                <option value="ON">مفعّل</option>
+                <option value="OFF">غير مفعّل</option>
+              </select>
+
+              <select
+                aria-label="ترتيب المستخدمين"
+                value={`${sort.key}:${sort.dir}`}
+                onChange={(e) => {
+                  const [key, dir] = e.target.value.split(':') as [UserSortKey, 'asc' | 'desc'];
+                  if (key !== sort.key) toggleSort(key, dir);
+                  else if (dir !== sort.dir) toggleSort(key);
+                }}
+                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+              >
+                <option value="name:asc">الاسم (أ-ي)</option>
+                <option value="name:desc">الاسم (ي-أ)</option>
+                <option value="department:asc">القسم</option>
+                <option value="role:asc">الدور</option>
+                <option value="status:asc">النشطون أولاً</option>
+                <option value="lastLogin:desc">آخر دخول (الأحدث)</option>
+              </select>
             </div>
 
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -486,15 +527,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
             <span>
               عرض <strong className="text-slate-800">{filteredUsers.length}</strong> من إجمالي {users.length} مستخدم
             </span>
-            {(searchQuery || selectedRoleFilter !== 'ALL' || selectedDepartmentFilter !== 'ALL' || selectedStatusFilter !== 'ALL') && (
+            {filtersActive && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedRoleFilter('ALL');
-                  setSelectedDepartmentFilter('ALL');
-                  setSelectedStatusFilter('ALL');
-                }}
+                onClick={clearFilters}
                 className="text-blue-600 hover:underline font-bold"
               >
                 إعادة ضبط الفلاتر
@@ -666,10 +702,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 <table className="w-full text-right border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 border-b border-slate-200">
-                      <th className="p-3.5">المستخدم والبيانات</th>
-                      <th className="p-3.5">الدور والصلاحية</th>
-                      <th className="p-3.5">القسم</th>
-                      <th className="p-3.5 text-center">الحالة</th>
+                      <SortTh className="p-3.5" label="المستخدم والبيانات" sortKey="name" sort={sort} onSort={toggleSort} />
+                      <SortTh className="p-3.5" label="الدور والصلاحية" sortKey="role" sort={sort} onSort={toggleSort} />
+                      <SortTh className="p-3.5" label="القسم" sortKey="department" sort={sort} onSort={toggleSort} />
+                      <SortTh className="p-3.5 text-center" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
                       <th className="p-3.5 text-center">إجراءات</th>
                     </tr>
                   </thead>

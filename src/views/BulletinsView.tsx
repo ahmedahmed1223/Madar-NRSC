@@ -5,6 +5,7 @@ import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
+import { moveInArray, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { localDateString } from '../shared/dates';
 import { departmentIdOf } from '../shared/departments';
 import {
@@ -175,14 +176,6 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
 
   const setDraftStory = (i: number, patch: Partial<FormatDraft['stories'][number]>) =>
     formatDraft && setFormatDraft({ ...formatDraft, stories: formatDraft.stories.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
-  const moveDraftStory = (i: number, dir: -1 | 1) => {
-    if (!formatDraft) return;
-    const j = i + dir;
-    if (j < 0 || j >= formatDraft.stories.length) return;
-    const next = [...formatDraft.stories];
-    [next[i], next[j]] = [next[j], next[i]];
-    setFormatDraft({ ...formatDraft, stories: next });
-  };
 
   const onAirIds = new Set(apiService.getOnAirStates().filter((s) => s.status === 'LIVE').map((s) => s.episodeId));
 
@@ -551,8 +544,18 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
             </fieldset>
             <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
               <legend className="px-1 text-xs font-bold text-slate-700">القصص الثابتة ({formatDraft.stories.length})</legend>
+              <SortableScope
+                onDrop={({ id, index }) => {
+                  const from = Number(id.slice(3));
+                  setFormatDraft({ ...formatDraft, stories: moveInArray(formatDraft.stories, from, index) });
+                }}
+              >
+              <SortableList id="format-stories" className="space-y-2">
               {formatDraft.stories.map((s, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2">
+                <SortableItem key={i} id={`fs-${i}`} container="format-stories" label={s.slug || `قصة ${i + 1}`} className="flex flex-wrap items-center gap-2">
+                  {({ handle }) => (
+                  <>
+                  {handle}
                   <span className="text-[11px] font-mono text-slate-400 w-5">{i + 1}</span>
                   <input aria-label={`عنوان القصة ${i + 1}`} value={s.slug} onChange={(e) => setDraftStory(i, { slug: e.target.value })} className="flex-1 min-w-[8rem] px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
                   <select aria-label={`نوع القصة ${i + 1}`} value={s.type} onChange={(e) => setDraftStory(i, { type: e.target.value as StoryType })} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
@@ -573,17 +576,15 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                       className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-xs"
                     />
                   )}
-                  <button type="button" onClick={() => moveDraftStory(i, -1)} aria-label="تقديم" className="p-1 text-slate-400">
-                    <ArrowUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button type="button" onClick={() => moveDraftStory(i, 1)} aria-label="تأخير" className="p-1 text-slate-400">
-                    <ArrowDown className="w-3.5 h-3.5" />
-                  </button>
                   <button type="button" onClick={() => setFormatDraft({ ...formatDraft, stories: formatDraft.stories.filter((_, j) => j !== i) })} aria-label="حذف" className="p-1 text-rose-500">
                     <X className="w-3.5 h-3.5" />
                   </button>
-                </div>
+                  </>
+                  )}
+                </SortableItem>
               ))}
+              </SortableList>
+              </SortableScope>
               <button type="button" onClick={() => setFormatDraft({ ...formatDraft, stories: [...formatDraft.stories, { slug: '', type: 'READER' }] })} className="text-xs font-bold text-blue-700 hover:underline">
                 + قصة
               </button>

@@ -6,6 +6,8 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'warning' | 'info';
   title?: string;
   message: string;
+  action?: { label: string; run: () => void };
+  duration?: number;
 }
 
 interface ToastContainerProps {
@@ -30,9 +32,9 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss(toast.id);
-    }, 4500);
+    }, toast.duration ?? (toast.action ? 8000 : 4500));
     return () => clearTimeout(timer);
-  }, [toast.id, onDismiss]);
+  }, [toast.id, toast.duration, toast.action, onDismiss]);
 
   const styles = {
     success: {
@@ -59,7 +61,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
 
   return (
     <div
-      role="alert"
+      role={toast.type === 'error' ? 'alert' : 'status'}
       className={`pointer-events-auto relative overflow-hidden backdrop-blur-md border rounded-xl p-3.5 shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${styles.bg}`}
     >
       <div className="flex items-start gap-3">
@@ -68,6 +70,18 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
           {toast.title && <div className="font-bold mb-0.5">{toast.title}</div>}
           <div className="leading-relaxed text-slate-200">{toast.message}</div>
         </div>
+        {toast.action && (
+          <button
+            type="button"
+            onClick={() => {
+              toast.action!.run();
+              onDismiss(toast.id);
+            }}
+            className="shrink-0 px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+          >
+            {toast.action.label}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}

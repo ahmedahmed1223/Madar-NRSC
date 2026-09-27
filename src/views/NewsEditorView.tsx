@@ -238,6 +238,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   });
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
 
+  // Closing or reloading the tab with unsaved text asks first (the local recovery copy stays as a safety net).
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isDirty]);
+
   const clearDraft = () => {
     try {
       localStorage.removeItem(draftKey);

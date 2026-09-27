@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
@@ -117,13 +118,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const filteredGuests = guests.filter((g) => {
     if (selectedSpecialty !== 'ALL' && g.specialty !== selectedSpecialty) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        g.fullName.toLowerCase().includes(q) ||
-        g.organization.toLowerCase().includes(q) ||
-        g.jobTitle.toLowerCase().includes(q) ||
-        g.specialty.toLowerCase().includes(q)
-      );
+      return matchesQuery(searchQuery, g.fullName, g.organization, g.jobTitle, g.specialty, g.email, g.phone);
     }
     return true;
   });

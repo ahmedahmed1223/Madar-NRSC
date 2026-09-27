@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import React, { useState } from 'react';
 import {
   Shield,
@@ -31,8 +32,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const filteredLogs = (logs || []).filter((log) => {
     if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return [log.userName, log.details, entityOf(log), actionOf(log)].some((v) => String(v ?? '').toLowerCase().includes(q));
+      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), actionOf(log));
     }
     return true;
   });

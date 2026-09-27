@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
@@ -24,6 +25,23 @@ import {
 } from 'lucide-react';
 import { Episode, Program, EpisodeStatus, User } from '../types';
 import { newId } from '../shared/ids';
+import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
+
+const EPISODE_SORT_KEYS = ['date', 'title', 'number', 'presenter', 'segments', 'status'] as const;
+type EpisodeSortKey = (typeof EPISODE_SORT_KEYS)[number];
+const EPISODE_STATUS_RANK: Record<string, number> = { PLANNING: 0, IN_PREPARATION: 1, PREPARING: 1, READY: 2, RECORDING: 3, RECORDED: 4, EDITING: 5, READY_FOR_BROADCAST: 6, ON_AIR: 7, BROADCASTED: 8, ARCHIVED: 9, CANCELLED: 10 };
+const episodeSortValue = (e: Episode, key: EpisodeSortKey): unknown =>
+  key === 'title'
+    ? e.title
+    : key === 'number'
+    ? (Number(e.seasonNumber) || 0) * 10000 + (Number(e.episodeNumber) || 0)
+    : key === 'presenter'
+    ? e.presenterName
+    : key === 'segments'
+    ? (e.rundown || []).length
+    : key === 'status'
+    ? EPISODE_STATUS_RANK[e.status] ?? 0
+    : `${e.broadcastDate} ${e.startTime}`;
 import { structureFromTemplate, templateFromEpisode } from '../shared/episodePlan';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -201,15 +219,15 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     setIsAddModalOpen(false);
   };
 
-  const filteredEpisodes = (episodes || []).filter((ep) => {
+  const [sort, toggleSort] = usePersistentSort<EpisodeSortKey>('nrcs_sort_episodes', { key: 'date', dir: 'desc' }, EPISODE_SORT_KEYS);
+  const filteredEpisodes = sortList((episodes || []).filter((ep) => {
     if (selectedProgId !== 'ALL' && ep.programId !== selectedProgId) return false;
     if (selectedStatus !== 'ALL' && ep.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return ep.title.toLowerCase().includes(q) || ep.programName.toLowerCase().includes(q);
+      return matchesQuery(searchQuery, ep.title, ep.programName, ep.presenterName, ep.producerName, ep.studioName, String(ep.episodeNumber));
     }
     return true;
-  });
+  }), sort, episodeSortValue);
 
   return (
     <div className="space-y-6">
@@ -316,13 +334,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <th className="py-3.5 px-4">عنوان الحلقة والبرنامج</th>
-                <th className="py-3.5 px-3">رقم الحلقة / الموسم</th>
-                <th className="py-3.5 px-3">تاريخ وموعد البث</th>
-                <th className="py-3.5 px-3">المقدم / المنتج</th>
-                <th className="py-3.5 px-3 text-center">فقرات الرانداون</th>
+                <SortTh className="py-3.5 px-4" label="عنوان الحلقة والبرنامج" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="رقم الحلقة / الموسم" sortKey="number" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="تاريخ وموعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="py-3.5 px-3" label="المقدم / المنتج" sortKey="presenter" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 text-center" label="فقرات الرانداون" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <th className="py-3.5 px-3 text-center">الضيوف</th>
-                <th className="py-3.5 px-3">حالة الحلقة</th>
+                <SortTh className="py-3.5 px-3" label="حالة الحلقة" sortKey="status" sort={sort} onSort={toggleSort} />
                 <th className="py-3.5 px-4 text-center w-36">إدارة الحلقة</th>
               </tr>
             </thead>

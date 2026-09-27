@@ -22,6 +22,8 @@ import {
 } from '../../shared/episodePlan';
 import { FormPage } from '../common/FormPage';
 import { SegmentModal } from '../rundown/SegmentModal';
+import { DropEvent, moveInArray, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
+import { notify } from '../../services/notify';
 import { RbacService } from '../../services/rbacService';
 import { templateFromEpisode } from '../../shared/episodePlan';
 
@@ -115,12 +117,46 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     setTopicForm(null);
   };
 
-  const moveTopic = (idx: number, dir: -1 | 1) => {
-    const j = idx + dir;
-    if (j < 0 || j >= topics.length) return;
-    const next = [...topics];
-    [next[idx], next[j]] = [next[j], next[idx]];
-    saveTopics(next, arrangeByTopics(rundown, next));
+  /**
+   * Drag to arrange: topics among topics (their segments follow in the rundown), and segments
+   * within a topic or into another topic. Every move can be undone from the toast.
+   */
+  const onPlanDrop = (e: DropEvent) => {
+    const prevTopics = topics;
+    const prevRundown = rundown;
+    const undo = { label: 'تراجع', run: () => saveTopics(prevTopics, prevRundown) };
+    if (e.to === 'topics') {
+      const from = topics.findIndex((t) => t.id === e.id);
+      if (from === -1) return;
+      const next = moveInArray(topics, from, e.index);
+      saveTopics(next, arrangeByTopics(rundown, next));
+      notify({ type: 'success', message: `نُقل المحور «${topics[from].title}» إلى الموضع ${e.index + 1}`, action: undo });
+      return;
+    }
+    const moved = rundown.find((x) => x.id === e.id);
+    if (!moved) return;
+    const known = new Set(topics.map((t) => t.id));
+    const toTopic = e.to === 'seg:loose' ? undefined : e.to.slice(4);
+    const inGroup = (x: RundownSegment) => (toTopic ? x.topicId === toTopic : !x.topicId || !known.has(x.topicId));
+    const rest = rundown.filter((x) => x.id !== e.id);
+    const group = rest.filter(inGroup);
+    const next = { ...moved, topicId: toTopic };
+    let at: number;
+    if (group[e.index]) at = rest.findIndex((x) => x.id === group[e.index].id);
+    else if (group[e.index - 1]) at = rest.findIndex((x) => x.id === group[e.index - 1].id) + 1;
+    else {
+      // An empty topic: place it before the first segment of any later topic.
+      const later = new Set(topics.slice(topics.findIndex((t) => t.id === toTopic) + 1).map((t) => t.id));
+      const firstLater = rest.findIndex((x) => x.topicId && later.has(x.topicId));
+      at = firstLater === -1 ? insertIntoTopic(rest, next).indexOf(next) : firstLater;
+    }
+    onUpdateRundown([...rest.slice(0, at), next, ...rest.slice(at)]);
+    const where = toTopic ? `المحور «${topics.find((t) => t.id === toTopic)?.title}»` : 'خارج المحاور';
+    notify({
+      type: 'success',
+      message: moved.topicId === toTopic ? `نُقلت «${moved.title}» إلى الموضع ${e.index + 1}` : `نُقلت «${moved.title}» إلى ${where}`,
+      action: { label: 'تراجع', run: () => onUpdateRundown(prevRundown) },
+    });
   };
 
   const removeTopic = (topic: EpisodeTopic) => {
@@ -191,8 +227,19 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     const qCount = segmentQuestions(episode, seg).length;
     const report = seg.segmentType === 'REPORT' ? reportLine(seg) : null;
     return (
-      <li key={seg.id} className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-colors">
+      <SortableItem
+        as="li"
+        key={seg.id}
+        id={seg.id}
+        type="segment"
+        container={`seg:${seg.topicId && topics.some((t) => t.id === seg.topicId) ? seg.topicId : 'loose'}`}
+        label={seg.title}
+        disabled={!canEditRundown}
+        className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-colors"
+      >
+        {({ handle }) => (
         <div className="flex items-start gap-2.5">
+          {handle}
           <span className={`p-1.5 rounded-lg shrink-0 ${meta.tone}`} title={meta.label}>
             <Icon className="w-4 h-4" />
           </span>
@@ -242,7 +289,8 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
             </button>
           )}
         </div>
-      </li>
+        )}
+      </SortableItem>
     );
   };
 
@@ -363,6 +411,8 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
         </div>
       )}
 
+      <SortableScope onDrop={onPlanDrop} disabled={!canEditRundown}>
+      <SortableList id="topics" accept="topic" className="space-y-4">
       {groups.map(({ topic, segments }) => {
         const idx = topic ? topics.findIndex((t) => t.id === topic.id) : -1;
         const actual = sumSeconds(segments);
@@ -370,13 +420,23 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
         const over = target > 0 && actual > target;
         const linked = (topic?.newsIds || []).map((id) => allNews.find((n) => n.id === id)).filter(Boolean) as NewsItem[];
         return (
-          <section
+          <SortableItem
+            as="section"
             key={topic?.id || 'loose'}
+            id={topic?.id || 'loose'}
+            type="topic"
+            container="topics"
+            label={topic ? topic.title : 'خارج المحاور'}
+            disabled={!topic || !canEditEpisode}
             aria-label={topic ? `المحور ${idx + 1}: ${topic.title}` : 'فقرات خارج المحاور'}
             className={`rounded-2xl border p-4 space-y-3 ${topic ? 'bg-indigo-50/30 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}
           >
+            {({ handle }) => (
+            <>
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
+              <div className="min-w-0 flex items-start gap-1.5">
+                {topic && canEditEpisode && handle}
+                <div className="min-w-0">
                 <h4 className="text-sm font-black text-slate-800">
                   {topic ? `المحور ${idx + 1}: ${topic.title}` : 'خارج المحاور (المقدمة، الفواصل، الختام)'}
                 </h4>
@@ -394,6 +454,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                     <div className={`h-full ${over ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, (actual / target) * 100)}%` }} />
                   </div>
                 )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-1">
                 {canEditRundown &&
@@ -409,12 +470,6 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                   ))}
                 {topic && canEditEpisode && (
                   <>
-                    <button type="button" onClick={() => moveTopic(idx, -1)} disabled={idx === 0} aria-label="تقديم المحور" className="p-1.5 text-slate-500 hover:bg-white rounded-lg disabled:opacity-30">
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <button type="button" onClick={() => moveTopic(idx, 1)} disabled={idx === topics.length - 1} aria-label="تأخير المحور" className="p-1.5 text-slate-500 hover:bg-white rounded-lg disabled:opacity-30">
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
                     <button
                       type="button"
                       onClick={() => setTopicForm({ ...topic, minutes: topic.targetSeconds ? String(Math.round(topic.targetSeconds / 6) / 10) : '' })}
@@ -449,14 +504,22 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               </div>
             )}
 
-            {segments.length === 0 ? (
-              <p className="text-[11px] text-slate-500">لا فقرات بعد — أضف تقريراً أو مقابلة أو نقاشاً لهذا المحور.</p>
-            ) : (
-              <ul className="space-y-1.5">{segments.map(segmentRow)}</ul>
+            <SortableList as="ul" id={`seg:${topic?.id || 'loose'}`} accept="segment" className="space-y-1.5 min-h-[2.5rem] rounded-xl">
+              {segments.length === 0 ? (
+                <li className="text-[11px] text-slate-500 p-2 border border-dashed border-slate-300 rounded-xl">
+                  لا فقرات بعد — أضف تقريراً أو مقابلة أو نقاشاً، أو اسحب فقرة إلى هنا.
+                </li>
+              ) : (
+                segments.map(segmentRow)
+              )}
+            </SortableList>
+            </>
             )}
-          </section>
+          </SortableItem>
         );
       })}
+      </SortableList>
+      </SortableScope>
 
       {/* Topic form */}
       <FormPage isOpen={!!topicForm} onClose={() => setTopicForm(null)} title={topicForm && topics.some((t) => t.id === topicForm.id) ? 'تعديل المحور' : 'محور جديد'} maxWidth="lg">

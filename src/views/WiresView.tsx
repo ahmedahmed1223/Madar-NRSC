@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
 import type { NewsItem, NewsSource, User, WireItem } from '../types';
@@ -56,7 +57,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
     const q = query.trim().toLowerCase();
     return [...wires]
       .filter((w) => sourceFilter === 'ALL' || w.sourceId === sourceFilter)
-      .filter((w) => !q || w.title.toLowerCase().includes(q) || w.summary.toLowerCase().includes(q))
+      .filter((w) => !q || matchesQuery(q, w.title, w.summary, w.sourceName))
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
   }, [wires, query, sourceFilter]);
 

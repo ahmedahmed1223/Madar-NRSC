@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import React, { useMemo, useState } from 'react';
 import {
   ArrowDown,
@@ -28,6 +29,8 @@ import { FormPage } from '../components/common/FormPage';
 import { TeleprompterModal } from '../components/rundown/TeleprompterModal';
 import { StoryEditor, anchorCopyFromNews } from '../components/bulletins/StoryEditor';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { DropEvent, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
+import { notify } from '../services/notify';
 import { anchorScriptsDoc, bulletinGraphicsDoc, bulletinRundownDoc } from '../services/documents/builders';
 import { canControlOnAir } from '../shared/onair';
 import { departmentIdOf } from '../shared/departments';
@@ -74,6 +77,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const bulletin = apiService.getBulletins().find((b) => b.id === bulletinId);
   const all = apiService.getBulletinStories(bulletinId);
   const [showKilled, setShowKilled] = useState(false);
+  const [rowQuery, setRowQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'READY' | 'APPROVED'>('ALL');
   const [editing, setEditing] = useState<Partial<BulletinStory> | null>(null);
   const [addMenu, setAddMenu] = useState(false);
   const [source, setSource] = useState<'NEWS' | 'WIRES' | 'COPY' | null>(null);
@@ -116,7 +121,9 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     );
   }
 
-  const visible = all.filter((s) => showKilled || !s.killed);
+  const visible = all.filter(
+    (s) => (showKilled || !s.killed) && (statusFilter === 'ALL' || s.status === statusFilter) && matchesQuery(rowQuery, s.slug, s.script, s.anchorName, s.writerName)
+  );
   const air = all.filter((s) => !s.floated && !s.killed);
   const approvedCount = air.filter((s) => s.status === 'APPROVED').length;
   const readyCount = air.filter((s) => s.status === 'READY').length;
@@ -134,6 +141,23 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     setEditing({ bulletinId: bulletin.id, type, slug: '', script: '', status: 'DRAFT', anchorName: '' });
   };
 
+  /** Dropping a story rewrites only its rank (between its new neighbours); the move can be undone. */
+  const dropStory = ({ id, index }: DropEvent) => {
+    const story = all.find((x) => x.id === id);
+    if (!story) return;
+    const others = visible.filter((x) => x.id !== id);
+    const before = others[index - 1];
+    const after = others[index];
+    const rank = rankBetween(before?.rank, after?.rank);
+    const previous = story.rank;
+    attempt(() => apiService.saveBulletinStory({ id, bulletinId: story.bulletinId, rank }));
+    notify({
+      type: 'success',
+      message: `نُقلت «${story.slug}» إلى الموضع ${index + 1}`,
+      action: { label: 'تراجع', run: () => attempt(() => apiService.saveBulletinStory({ id, bulletinId: story.bulletinId, rank: previous })) },
+    });
+  };
+
   const toggle = (s: BulletinStory, patch: Partial<BulletinStory>, text: string) => attempt(() => apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, ...patch }), text);
 
   const makeHeadlines = () =>
@@ -149,12 +173,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const news = apiService
     .getNews()
     .filter((n) => PULLABLE.includes(n.status) && !(n as any).deletedAt)
-    .filter((n) => !query.trim() || n.title.includes(query.trim()))
+    .filter((n) => matchesQuery(query, n.title, n.shortTitle, n.summary, n.keywords || []))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 40);
   const wires = apiService
     .getWires()
-    .filter((w) => !query.trim() || w.title.includes(query.trim()))
+    .filter((w) => matchesQuery(query, w.title, w.summary, w.sourceName))
     .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
     .slice(0, 40);
   const others = apiService
@@ -310,6 +334,32 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           <span className="text-emerald-700 font-bold">{approvedCount} معتمدة</span>
           {readyCount > 0 && <span className="text-amber-700 font-bold">{readyCount} بانتظار اعتماد {approver ? 'ك' : 'المحرر'}</span>}
           <span className="text-slate-500">{air.length - approvedCount - readyCount} مسودة</span>
+          <input
+            type="search"
+            aria-label="بحث في قصص النشرة"
+            value={rowQuery}
+            onChange={(e) => setRowQuery(e.target.value)}
+            placeholder="بحث في القصص…"
+            className="px-2.5 py-1 border border-slate-200 rounded-lg text-[11px] bg-white w-40"
+          />
+          <div role="group" aria-label="تصفية حسب الحالة" className="flex gap-1">
+            {([
+              ['ALL', 'الكل'],
+              ['READY', 'بانتظار الاعتماد'],
+              ['DRAFT', 'مسودات'],
+              ['APPROVED', 'معتمدة'],
+            ] as const).map(([id, name]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={statusFilter === id}
+                onClick={() => setStatusFilter(id)}
+                className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${statusFilter === id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
           <label className="flex items-center gap-1 text-slate-600 mr-auto">
             <input type="checkbox" checked={showKilled} onChange={(e) => setShowKilled(e.target.checked)} /> إظهار المستبعدة ({all.filter((s) => s.killed).length})
           </label>
@@ -353,6 +403,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       )}
 
       {/* Rundown */}
+      <SortableScope onDrop={dropStory} disabled={!canEdit}>
       <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
         <table className="w-full text-xs min-w-[900px]" aria-label="رانداون النشرة">
           <thead className="bg-slate-50 text-slate-500 text-[11px]">
@@ -370,7 +421,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               <th className="p-2 text-center">إجراءات</th>
             </tr>
           </thead>
-          <tbody>
+          <SortableList id="bulletin" as="tbody">
             {visible.length === 0 && (
               <tr>
                 <td colSpan={11} className="p-8 text-center text-slate-400">
@@ -389,11 +440,23 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               const isLive = liveId === s.id;
               const idx = all.findIndex((x) => x.id === s.id);
               return (
-                <tr
+                <SortableItem
+                  as="tr"
+                  id={s.id}
+                  container="bulletin"
+                  label={s.slug}
+                  disabled={!!lock}
                   key={s.id}
                   className={`border-t border-slate-100 ${isLive ? 'bg-red-50' : s.killed ? 'bg-slate-50 line-through text-slate-400' : s.floated ? 'bg-slate-50/70 text-slate-400' : 'hover:bg-blue-50/30'}`}
                 >
-                  <td className="p-2 font-mono text-slate-400">{s.floated || s.killed ? '—' : n + 1}</td>
+                  {({ handle }) => (
+                  <>
+                  <td className="p-1 font-mono text-slate-400">
+                    <span className="flex items-center gap-0.5">
+                      {canEdit && handle}
+                      {s.floated || s.killed ? '—' : n + 1}
+                    </span>
+                  </td>
                   <td className="p-2">
                     <button type="button" onClick={() => setEditing(s)} className="text-right font-bold text-slate-800 hover:text-blue-700">
                       {isLive && <span className="text-red-600 ml-1">●</span>}
@@ -458,12 +521,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       )}
                     </div>
                   </td>
-                </tr>
+                  </>
+                  )}
+                </SortableItem>
               );
             })}
-          </tbody>
+          </SortableList>
         </table>
       </div>
+      </SortableScope>
 
       <StoryEditor bulletin={bulletin} story={editing} currentUser={currentUser} onClose={() => setEditing(null)} onSaved={(t) => flash(true, t)} />
 

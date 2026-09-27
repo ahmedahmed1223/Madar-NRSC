@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { findStudioConflicts } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
@@ -84,12 +85,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       if (selectedProgram !== 'ALL' && ep.programId !== selectedProgram) return false;
       if (selectedStudio !== 'ALL' && ep.studioName !== selectedStudio) return false;
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchTitle = ep.title?.toLowerCase().includes(q);
-        const matchProgram = ep.programName?.toLowerCase().includes(q);
-        const matchPresenter = ep.presenterName?.toLowerCase().includes(q);
-        const matchStudio = ep.studioName?.toLowerCase().includes(q);
-        if (!matchTitle && !matchProgram && !matchPresenter && !matchStudio) return false;
+        if (!matchesQuery(searchQuery, ep.title, ep.programName, ep.presenterName, ep.studioName)) return false;
       }
       return true;
     });

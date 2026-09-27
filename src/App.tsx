@@ -1,5 +1,8 @@
+import { onNotify } from './services/notify';
+import { lazyWithRetry } from './services/lazyWithRetry';
+import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
 import { CueAlertOverlay } from './components/common/CueAlertOverlay';
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import {
   NewsItem, Story,
   Program,
@@ -26,33 +29,33 @@ import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
 import { CommandPalette } from './components/layout/CommandPalette';
 
 // Views are code-split so the first load only ships what is on screen.
-const DashboardView = lazy(() => import('./views/DashboardView').then((m) => ({ default: m.DashboardView })));
-const WiresView = lazy(() => import('./views/WiresView').then((m) => ({ default: m.WiresView })));
-const NewsListView = lazy(() => import('./views/NewsListView').then((m) => ({ default: m.NewsListView })));
-const NewsEditorView = lazy(() => import('./views/NewsEditorView').then((m) => ({ default: m.NewsEditorView })));
-const ProgramsView = lazy(() => import('./views/ProgramsView').then((m) => ({ default: m.ProgramsView })));
-const EpisodesView = lazy(() => import('./views/EpisodesView').then((m) => ({ default: m.EpisodesView })));
-const EpisodeWorkspaceView = lazy(() => import('./views/EpisodeWorkspaceView').then((m) => ({ default: m.EpisodeWorkspaceView })));
-const GuestsView = lazy(() => import('./views/GuestsView').then((m) => ({ default: m.GuestsView })));
-const TasksView = lazy(() => import('./views/TasksView').then((m) => ({ default: m.TasksView })));
-const CalendarView = lazy(() => import('./views/CalendarView').then((m) => ({ default: m.CalendarView })));
-const MediaLibraryView = lazy(() => import('./views/MediaLibraryView').then((m) => ({ default: m.MediaLibraryView })));
-const ReportsView = lazy(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
-const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
-const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
-const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
-const TestingView = lazy(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
-const OnAirView = lazy(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
-const StudioScreenView = lazy(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
-const HelpView = lazy(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
-const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
-const RequestsView = lazy(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
-const RosterView = lazy(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
-const BulletinsView = lazy(() => import('./views/BulletinsView').then((m) => ({ default: m.BulletinsView })));
-const BulletinRundownView = lazy(() => import('./views/BulletinRundownView').then((m) => ({ default: m.BulletinRundownView })));
-const DatabaseManagerView = lazy(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
-const ProgramDetailView = lazy(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
-const StoriesView = lazy(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
+const DashboardView = lazyWithRetry(() => import('./views/DashboardView').then((m) => ({ default: m.DashboardView })));
+const WiresView = lazyWithRetry(() => import('./views/WiresView').then((m) => ({ default: m.WiresView })));
+const NewsListView = lazyWithRetry(() => import('./views/NewsListView').then((m) => ({ default: m.NewsListView })));
+const NewsEditorView = lazyWithRetry(() => import('./views/NewsEditorView').then((m) => ({ default: m.NewsEditorView })));
+const ProgramsView = lazyWithRetry(() => import('./views/ProgramsView').then((m) => ({ default: m.ProgramsView })));
+const EpisodesView = lazyWithRetry(() => import('./views/EpisodesView').then((m) => ({ default: m.EpisodesView })));
+const EpisodeWorkspaceView = lazyWithRetry(() => import('./views/EpisodeWorkspaceView').then((m) => ({ default: m.EpisodeWorkspaceView })));
+const GuestsView = lazyWithRetry(() => import('./views/GuestsView').then((m) => ({ default: m.GuestsView })));
+const TasksView = lazyWithRetry(() => import('./views/TasksView').then((m) => ({ default: m.TasksView })));
+const CalendarView = lazyWithRetry(() => import('./views/CalendarView').then((m) => ({ default: m.CalendarView })));
+const MediaLibraryView = lazyWithRetry(() => import('./views/MediaLibraryView').then((m) => ({ default: m.MediaLibraryView })));
+const ReportsView = lazyWithRetry(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
+const AuditLogsView = lazyWithRetry(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
+const UsersView = lazyWithRetry(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
+const SettingsView = lazyWithRetry(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
+const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
+const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
+const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
+const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
+const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
+const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
+const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
+const BulletinsView = lazyWithRetry(() => import('./views/BulletinsView').then((m) => ({ default: m.BulletinsView })));
+const BulletinRundownView = lazyWithRetry(() => import('./views/BulletinRundownView').then((m) => ({ default: m.BulletinRundownView })));
+const DatabaseManagerView = lazyWithRetry(() => import('./views/DatabaseManagerView').then((m) => ({ default: m.DatabaseManagerView })));
+const ProgramDetailView = lazyWithRetry(() => import('./views/ProgramDetailView').then((m) => ({ default: m.ProgramDetailView })));
+const StoriesView = lazyWithRetry(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
@@ -111,6 +114,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       return false;
     }
   };
+
+  // Toasts raised from anywhere in the app (drag-and-drop undo, background actions).
+  useEffect(() => onNotify((n) => addToast(n)), []);
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -641,6 +647,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
           {/* Dynamic Page Views */}
           <main id="app-main" className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
+            <ViewErrorBoundary key={`${activeNav}:${activeBulletinId || ''}:${selectedEpisodeId || ''}`} onHome={() => setActiveNav('dashboard')}>
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
             >
@@ -948,6 +955,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
             )}
             </Suspense>
+            </ViewErrorBoundary>
           </main>
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-24 w-full empty:hidden" />
         </div>

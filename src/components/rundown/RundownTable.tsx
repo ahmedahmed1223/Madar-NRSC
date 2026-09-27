@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
+import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
+import { notify } from '../../services/notify';
 import { ExportMenu, docContext } from '../common/ExportMenu';
 import { episodeRundownDoc, presenterSheetDoc } from '../../services/documents/builders';
 import { insertIntoTopic, EpisodeTopic, segmentGuests } from '../../shared/episodePlan';
@@ -70,7 +72,6 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   const [isSyncingDb, setIsSyncingDb] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [isPrompterOpen, setIsPrompterOpen] = useState(false);
-  const [draggedSegmentIdx, setDraggedSegmentIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL');
 
@@ -178,11 +179,19 @@ export const RundownTable: React.FC<RundownTableProps> = ({
     onUpdateRundown(updated);
   };
 
-  const handleDragReorder = (sourceIdx: number, destinationIdx: number) => {
-    if (!canEdit || sourceIdx === destinationIdx) return;
-    const source = displayedSegments[sourceIdx];
-    const target = displayedSegments[destinationIdx];
-    if (source && target) moveById(source.id, target.id);
+  /** Drops a segment among the visible ones (filters may hide others); the move can be undone. */
+  const dropSegment = ({ id, index }: DropEvent) => {
+    if (!canEdit) return;
+    const moved = segments.find((x) => x.id === id);
+    if (!moved) return;
+    const others = displayedSegments.filter((x) => x.id !== id);
+    const rest = segments.filter((x) => x.id !== id);
+    const before = others[index];
+    const after = others[index - 1];
+    const at = before ? rest.findIndex((x) => x.id === before.id) : after ? rest.findIndex((x) => x.id === after.id) + 1 : rest.length;
+    const previous = segments;
+    onUpdateRundown([...rest.slice(0, at), moved, ...rest.slice(at)]);
+    notify({ type: 'success', message: `نُقلت «${moved.title}» إلى الموضع ${at + 1}`, action: { label: 'تراجع', run: () => onUpdateRundown(previous) } });
   };
 
   const typeBadges: Record<RundownSegmentType, { label: string; variant: 'primary' | 'success' | 'danger' | 'purple' | 'info' | 'warning' | 'default' }> = {
@@ -388,6 +397,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
       )}
 
       {/* Rundown Table */}
+      <SortableScope onDrop={dropSegment} disabled={!canEdit}>
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
@@ -406,7 +416,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                 {canEdit && <th className="py-3 px-3 text-center w-28">إجراءات</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800">
+            <SortableList id="rundown" as="tbody" className="divide-y divide-slate-100 text-slate-800">
               {segments.length === 0 ? (
                 <tr>
                   <td colSpan={canEdit ? 11 : 10} className="py-12 text-center text-slate-400">
@@ -437,34 +447,24 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                   const durationStr = `${durationMins.toString().padStart(2, '0')}:${durationSecs.toString().padStart(2, '0')}`;
 
                   return (
-                    <tr
+                    <SortableItem
+                      as="tr"
+                      id={seg.id}
+                      container="rundown"
+                      label={seg.title}
                       key={seg.id}
-                      draggable={canEdit}
-                      onDragStart={() => setDraggedSegmentIdx(idx)}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (canEdit && draggedSegmentIdx !== null && draggedSegmentIdx !== idx) {
-                          e.currentTarget.classList.add('border-t-2', 'border-blue-500');
-                        }
-                      }}
-                      onDragLeave={(e) => {
-                        e.currentTarget.classList.remove('border-t-2', 'border-blue-500');
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove('border-t-2', 'border-blue-500');
-                        if (draggedSegmentIdx !== null) {
-                          handleDragReorder(draggedSegmentIdx, idx);
-                          setDraggedSegmentIdx(null);
-                        }
-                      }}
-                      className={`hover:bg-slate-50/70 transition-colors ${canEdit ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                      className={`hover:bg-slate-50/70 transition-colors ${
                         seg.isCompleted ? 'bg-emerald-50/30 line-through opacity-70' : ''
                       }`}
                     >
+                      {({ handle }) => (
+                      <>
                       {/* Order */}
-                      <td className="py-3.5 px-3 text-center font-bold text-slate-500">
-                        {idx + 1}
+                      <td className="py-3.5 px-2 text-center font-bold text-slate-500">
+                        <span className="inline-flex items-center gap-0.5">
+                          {canEdit && handle}
+                          {idx + 1}
+                        </span>
                       </td>
 
                       {/* Completed toggle */}
@@ -639,14 +639,17 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                           </div>
                         </td>
                       )}
-                    </tr>
+                      </>
+                      )}
+                    </SortableItem>
                   );
                 })
               )}
-            </tbody>
+            </SortableList>
           </table>
         </div>
       </div>
+      </SortableScope>
 
       {/* Add / Edit Segment Modal */}
       <RequestFormPage isOpen={!!requestDraft} onClose={() => setRequestDraft(null)} draft={requestDraft || undefined} onCreated={(t) => { setSyncStatusMsg(t); setTimeout(() => setSyncStatusMsg(null), 4000); }} />

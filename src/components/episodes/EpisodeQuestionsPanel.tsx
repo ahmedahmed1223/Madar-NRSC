@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, CheckSquare, CornerDownLeft, Edit2, Plus, Square, T
 import type { Episode, EpisodeQuestion } from '../../types';
 import { newId } from '../../shared/ids';
 import { FormPage } from '../common/FormPage';
+import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
+import { notify } from '../../services/notify';
 import { episodeGuestList, guestKey, QUESTION_KINDS, QuestionKind, questionKindName, segmentGuests, segmentQuestions, TALK_SEGMENT_TYPES } from '../../shared/episodePlan';
 
 interface Props {
@@ -82,6 +84,36 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
     save(next);
   };
 
+  /** Drag a question within its segment or to another segment's list; the move can be undone. */
+  const dropQuestion = ({ id, to, index }: DropEvent) => {
+    const q = questions.find((x) => x.id === id);
+    if (!q) return;
+    const targetSeg = to === 'q:none' ? undefined : to.slice(2);
+    const seg = segments.find((x) => x.id === targetSeg);
+    const group = (seg ? (segmentQuestions(episode, seg) as EpisodeQuestion[]) : loose).filter((x) => x.id !== id);
+    const rest = questions.filter((x) => x.id !== id);
+    const segGuestIds = seg ? segmentGuests(seg).map((g) => g.guestId) : [];
+    const topic = (episode.topics || []).find((t) => t.id === seg?.topicId);
+    const moved: EpisodeQuestion = {
+      ...q,
+      segmentId: targetSeg,
+      // A question aimed at a guest who is not in the new segment is re-aimed at all its guests.
+      guestId: q.guestId && (!seg || segGuestIds.includes(q.guestId)) ? q.guestId : undefined,
+      topicName: topic?.title || seg?.title || q.topicName,
+      parentId: q.segmentId === targetSeg ? q.parentId : undefined,
+    };
+    let at = rest.length;
+    if (group[index]) at = rest.findIndex((x) => x.id === group[index].id);
+    else if (group[index - 1]) at = rest.findIndex((x) => x.id === group[index - 1].id) + 1;
+    const previous = questions;
+    save([...rest.slice(0, at), moved, ...rest.slice(at)]);
+    notify({
+      type: 'success',
+      message: q.segmentId === targetSeg ? 'أُعيد ترتيب السؤال' : `نُقل السؤال إلى «${seg?.title || 'أسئلة غير مرتبطة'}»`,
+      action: { label: 'تراجع', run: () => save(previous) },
+    });
+  };
+
   const toggle = (id: string) => save(questions.map((q) => (q.id === id ? { ...q, isAsked: !q.isAsked } : q)));
   const remove = (id: string) => {
     if (!window.confirm('حذف السؤال؟')) return;
@@ -93,11 +125,23 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
   const shown = segments.filter((s) => !onlyTalk || TALK_SEGMENT_TYPES.has(s.segmentType) || segmentQuestions(episode, s).length);
 
   const renderList = (list: EpisodeQuestion[], segmentId: string) => (
-    <ol className="space-y-1.5">
+    <SortableList as="ol" id={`q:${segmentId || 'none'}`} className="space-y-1.5 min-h-[2.25rem] rounded-xl">
+      {list.length === 0 && <li className="text-[11px] text-rose-600 p-2 border border-dashed border-rose-200 rounded-xl">لا أسئلة محضّرة لهذه الفقرة — أضف سؤالاً أو اسحب سؤالاً إلى هنا.</li>}
       {list.map((q, i) => {
         const guest = guests.find((g) => guestKey(g) === q.guestId);
         return (
-          <li key={q.id} className={`p-2.5 rounded-xl border flex items-start gap-2 ${q.parentId ? 'mr-6' : ''} ${q.isAsked ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+          <SortableItem
+            as="li"
+            key={q.id}
+            id={q.id}
+            container={`q:${segmentId || 'none'}`}
+            label={q.questionText.slice(0, 60)}
+            disabled={!canEdit}
+            className={`p-2.5 rounded-xl border flex items-start gap-2 ${q.parentId ? 'mr-6' : ''} ${q.isAsked ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}
+          >
+            {({ handle }) => (
+            <>
+            {canEdit && handle}
             <button type="button" onClick={() => canEdit && toggle(q.id)} disabled={!canEdit} aria-label={q.isAsked ? 'إلغاء «طُرح»' : 'تعليم كمطروح'} className={q.isAsked ? 'text-emerald-600' : 'text-slate-300 hover:text-slate-500'}>
               {q.isAsked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
             </button>
@@ -112,12 +156,6 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
             </div>
             {canEdit && (
               <div className="flex items-center shrink-0">
-                <button type="button" onClick={() => move(list, q, -1)} disabled={i === 0} aria-label="تقديم السؤال" className="p-1 text-slate-400 disabled:opacity-30">
-                  <ArrowUp className="w-3.5 h-3.5" />
-                </button>
-                <button type="button" onClick={() => move(list, q, 1)} disabled={i === list.length - 1} aria-label="تأخير السؤال" className="p-1 text-slate-400 disabled:opacity-30">
-                  <ArrowDown className="w-3.5 h-3.5" />
-                </button>
                 <button type="button" onClick={() => open(segmentId, q)} aria-label="تعديل السؤال" className="p-1 text-blue-600">
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
@@ -126,10 +164,12 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
                 </button>
               </div>
             )}
-          </li>
+            </>
+            )}
+          </SortableItem>
         );
       })}
-    </ol>
+    </SortableList>
   );
 
   const draftSeg = segments.find((s) => s.id === draft?.segmentId);
@@ -137,6 +177,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
   const parents = draftSeg ? segmentQuestions(episode, draftSeg).filter((q) => !q.parentId && q.id !== draft?.id) : [];
 
   return (
+    <SortableScope onDrop={dropQuestion} disabled={!canEdit}>
     <div className="space-y-4" data-testid="episode-questions">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
         <div>
@@ -170,7 +211,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
                 </button>
               )}
             </div>
-            {list.length ? renderList(list, seg.id) : <p className="text-[11px] text-rose-600">لا أسئلة محضّرة لهذه الفقرة.</p>}
+            {renderList(list, seg.id)}
           </section>
         );
       })}
@@ -253,5 +294,6 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
         )}
       </FormPage>
     </div>
+    </SortableScope>
   );
 };

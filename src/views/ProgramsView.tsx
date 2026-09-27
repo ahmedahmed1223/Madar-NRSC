@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
@@ -153,12 +154,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const filteredPrograms = (programs || []).filter((p) => {
     if (selectedType !== 'ALL' && p.typeId !== selectedType) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.presenterName.toLowerCase().includes(q) ||
-        p.producerName.toLowerCase().includes(q)
-      );
+      return matchesQuery(searchQuery, p.name, p.shortName, p.presenterName, p.producerName, p.channelName, p.studioName);
     }
     return true;
   });

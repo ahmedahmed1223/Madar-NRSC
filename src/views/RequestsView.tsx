@@ -1,3 +1,5 @@
+import { matchesQuery } from '../shared/search';
+import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, CheckCircle2, Inbox, Link2, Plus, Send, X } from 'lucide-react';
 import type { User } from '../types';
@@ -34,6 +36,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [tab, setTab] = useState<'INBOX' | 'SENT' | 'ALL'>('INBOX');
   const [dept, setDept] = useState<string>(myDept);
   const [showClosed, setShowClosed] = useState(false);
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
   const [formOpen, setFormOpen] = useState(false);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -60,8 +64,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
     return requests
       .filter((r) => (tab === 'INBOX' ? r.departmentId === dept : tab === 'SENT' ? r.requesterId === currentUser.id : true))
       .filter((r) => showClosed || !isRequestClosed(r.status))
+      .filter((r) => typeFilter === 'ALL' || r.type === typeFilter)
+      .filter((r) => matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []))
       .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
-  }, [requests, tab, dept, showClosed, currentUser.id]);
+  }, [requests, tab, dept, showClosed, currentUser.id, query, typeFilter]);
 
   const inboxCount = requests.filter((r) => r.departmentId === myDept && !isRequestClosed(r.status)).length;
 
@@ -120,6 +126,22 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             ))}
           </select>
         )}
+        <input
+          type="search"
+          aria-label="بحث في الطلبات"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="بحث بالعنوان أو الشخص أو الخبر…"
+          className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white w-56 max-w-full"
+        />
+        <select aria-label="نوع الطلب" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
+          <option value="ALL">كل الأنواع</option>
+          {REQUEST_TYPES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-1.5 text-xs text-slate-600 mr-auto">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
           عرض المنجز والمغلق

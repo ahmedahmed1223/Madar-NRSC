@@ -1,3 +1,4 @@
+import { matchesQuery } from '../shared/search';
 import { apiService } from '../services/api';
 import { VIDEO_STATUSES, isVideoReady, videoStatusName } from '../shared/production';
 import { FormPage } from '../components/common/FormPage';
@@ -169,12 +170,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const filteredAssets = (mediaAssets || []).filter((a) => {
     if (selectedType !== 'ALL' && a.mediaType !== selectedType) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = a.title?.toLowerCase().includes(q);
-      const matchName = a.fileName?.toLowerCase().includes(q);
-      const matchDesc = a.description?.toLowerCase().includes(q);
-      const matchTags = (a.tags || []).some((t) => t.toLowerCase().includes(q));
-      return matchTitle || matchName || matchDesc || matchTags;
+      return matchesQuery(searchQuery, a.title, a.fileName, (a as any).originalName, a.description, a.tags || []);
     }
     return true;
   });

@@ -1,3 +1,5 @@
+import { matchesQuery } from '../shared/search';
+import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsListDoc } from '../services/documents/builders';
 import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
@@ -55,6 +57,13 @@ interface NewsListViewProps {
 }
 
 type ListTab = 'ALL' | NewsStatus | 'BREAKING' | 'TRASH';
+
+const NEWS_SORT_KEYS = ['updatedAt', 'title', 'category', 'priority', 'author', 'status'] as const;
+type NewsSortKey = (typeof NEWS_SORT_KEYS)[number];
+const PRIORITY_RANK: Record<string, number> = { LOW: 0, NORMAL: 1, MEDIUM: 1, HIGH: 2, URGENT: 3, CRITICAL: 4 };
+const STATUS_RANK: Record<string, number> = { DRAFT: 0, IN_PROGRESS: 1, NEEDS_REVISION: 2, UNDER_REVIEW: 3, APPROVED: 4, SCHEDULED: 5, PUBLISHED: 6, UNPUBLISHED: 7, REJECTED: 8, ARCHIVED: 9 };
+const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
+  key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
 const PAGE_SIZE = 50;
 
@@ -116,19 +125,18 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
   // Filter logic
   const sourceList = activeTab === 'TRASH' ? deletedNews : newsList || [];
-  const filteredNews = sourceList.filter((item) => {
+  const [sort, toggleSort] = usePersistentSort<NewsSortKey>('nrcs_sort_news', { key: 'updatedAt', dir: 'desc' }, NEWS_SORT_KEYS);
+  const filteredNews = sortList(sourceList.filter((item) => {
     if (activeTab === 'BREAKING') {
       if (!isBreakingLive(item)) return false;
     } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
     if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const fields = [item.title, item.summary, item.authorName, ...(item.keywords || [])];
-      if (!fields.some((f) => String(f ?? '').toLowerCase().includes(q))) return false;
+      if (!matchesQuery(searchQuery, item.title, item.shortTitle, item.summary, item.authorName, item.categoryName, item.sourceName, item.locationName, item.keywords || [])) return false;
     }
     return true;
-  });
+  }), sort, newsSortValue);
 
   const pageCount = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -539,12 +547,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     )}
                   </button>
                 </th>
-                <th className="py-3.5 px-4">عنوان الخبر والموضوع</th>
-                <th className="py-3.5 px-3">القسم</th>
-                <th className="py-3.5 px-3">الأولوية</th>
-                <th className="py-3.5 px-3">المصدر / المحرر</th>
-                <th className="py-3.5 px-3">الحالة التحريرية</th>
-                <th className="py-3.5 px-3 text-center">آخر تحديث</th>
+                <SortTh className="py-3.5 px-4" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="py-3.5 px-3" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 text-center" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <th className="py-3.5 px-4 text-center w-36">إجراءات تحريرية</th>
               </tr>
             </thead>
