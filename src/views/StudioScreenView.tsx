@@ -1,3 +1,4 @@
+import { guestKey, guestRoleName, questionKindName, segmentGuests, segmentQuestions } from '../shared/episodePlan';
 import React, { useRef, useState } from 'react';
 import { Maximize2 } from 'lucide-react';
 import type { User } from '../types';
@@ -21,13 +22,22 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
   const state = effectiveId ? apiService.getOnAir(effectiveId) : null;
   const timing = liveTiming(state, episode);
   const seg = timing?.current;
-  const guests = seg?.guestId ? (episode?.guests || []).filter((g: any) => (g.guestId || g.id) === seg.guestId) : [];
+  const guests = seg ? segmentGuests(seg) : [];
+  const guestNames = new Set(guests.map((g) => ((episode?.guests || []) as any[]).find((x) => guestKey(x) === g.guestId)?.cgName || g.guestName));
   const lowerThirds = seg
     ? apiService
         .getRequests()
-        .filter((r) => r.type === 'GRAPHICS' && r.link?.segmentId === seg.id && r.status !== 'CANCELLED' && r.status !== 'REJECTED')
+        .filter(
+          (r) =>
+            r.type === 'GRAPHICS' &&
+            r.status !== 'CANCELLED' &&
+            r.status !== 'REJECTED' &&
+            // Segment graphics, plus the guests' name straps requested for the episode.
+            (r.link?.segmentId === seg.id || (r.link?.episodeId === effectiveId && !r.link?.segmentId && guestNames.has(r.lines?.[0] || '')))
+        )
         .flatMap((r) => r.lines || [])
     : [];
+  const questions = seg && episode ? segmentQuestions(episode, seg).filter((q: any) => !q.isAsked).slice(0, 4) : [];
   const cue = apiService
     .getCues()
     .filter((c) => Date.now() - new Date(c.createdAt).getTime() < CUE_ACTIVE_MS && (!c.episodeId || c.episodeId === effectiveId))
@@ -73,7 +83,11 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
               {formatClock(timing.remaining)}
             </span>
           )}
-          {guests.length > 0 && <p className="text-xl sm:text-2xl text-slate-300">الضيف: {guests.map((g: any) => g.guestName || g.fullName).join('، ')}</p>}
+          {guests.length > 0 && (
+            <p className="text-xl sm:text-2xl text-slate-300">
+              {guests.map((g) => `${g.guestName}${g.role === 'MAIN' ? '' : ` (${guestRoleName(g.role)})`}`).join('، ')}
+            </p>
+          )}
           {lowerThirds.length > 0 && (
             <div className="space-y-1">
               {lowerThirds.map((l, i) => (
@@ -82,6 +96,16 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             </div>
           )}
         </div>
+        {questions.length > 0 && (
+          <div className="border-t border-slate-800 pt-4 space-y-2" aria-label="أسئلة الفقرة">
+            {questions.map((q: any) => (
+              <p key={q.id} className="text-lg sm:text-2xl text-slate-200 leading-relaxed">
+                <span className={`text-sm font-bold ml-2 ${q.kind === 'BACKUP' ? 'text-slate-500' : 'text-amber-300'}`}>{questionKindName(q.kind)}</span>
+                {q.questionText}
+              </p>
+            ))}
+          </div>
+        )}
         {timing?.next && (
           <div className="border-t border-slate-800 pt-4 text-lg sm:text-2xl text-slate-300">
             التالي: <strong className="text-white">{timing.next.title}</strong> <span className="font-mono text-slate-500" dir="ltr">({formatClock(timing.next.durationSeconds || 0)})</span>

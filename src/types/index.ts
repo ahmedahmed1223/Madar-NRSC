@@ -2,6 +2,8 @@
  * Types & Data Models for Broadcast Newsroom & Program Production System
  */
 
+import type { BookingStatus, ContactLogEntry, EpisodeBrief, EpisodeTopic, ProgramTemplate, QuestionKind, ReportBrief, SegmentGuest } from '../shared/episodePlan';
+
 export type UserRole =
   | 'SUPER_ADMIN'
   | 'ADMIN'
@@ -254,6 +256,8 @@ export interface Program {
   status: 'ACTIVE' | 'HIATUS' | 'ARCHIVED';
   notes?: string;
   episodesCount?: number;
+  /** Fixed structure new episodes can start from. */
+  template?: ProgramTemplate;
   createdAt: string;
   deletedAt?: string | null;
 }
@@ -304,6 +308,12 @@ export interface RundownSegment {
   newsTitle?: string;
   notes?: string;
   isCompleted?: boolean;
+  /** The episode topic (محور) this segment belongs to. */
+  topicId?: string;
+  /** Everyone speaking in the segment; guestId/guestName mirror the main guest. */
+  guests?: SegmentGuest[];
+  /** Brief for a filmed report: who films it, where, what is needed. */
+  report?: ReportBrief;
 }
 
 export interface EpisodeQuestion {
@@ -315,6 +325,11 @@ export interface EpisodeQuestion {
   assignedToName?: string;
   notes?: string;
   isAsked: boolean;
+  segmentId?: string;
+  guestId?: string;
+  kind?: QuestionKind;
+  /** For follow-up questions: the question they follow. */
+  parentId?: string;
 }
 
 export interface EpisodeGuest {
@@ -332,6 +347,16 @@ export interface EpisodeGuest {
   arrivalStatus: 'CONFIRMED' | 'PENDING' | 'ARRIVED';
   orderIndex?: number;
   notes?: string;
+  bookingStatus?: BookingStatus;
+  backupGuestId?: string;
+  backupGuestName?: string;
+  contactLog?: ContactLogEntry[];
+  /** Lower-third lines for the graphics desk. */
+  cgName?: string;
+  cgTitle?: string;
+  /** What the producer wants to get from this guest. */
+  briefPoints?: string;
+  phone?: string;
 }
 
 export interface Episode {
@@ -366,6 +391,8 @@ export interface Episode {
   rundownSegments?: RundownSegment[];
   linkedNewsIds?: string[];
   attachments?: MediaFile[];
+  brief?: EpisodeBrief;
+  topics?: EpisodeTopic[];
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string | null;

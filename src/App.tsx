@@ -797,6 +797,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onUpdateRundown={(segments) => handleUpdateRundown(activeEpisode.id, segments)}
                 onSaveEpisode={handleSaveEpisode}
                 onBack={() => setActiveNav('episodes')}
+                onOpenNews={(id) => handleEditNewsClick(id)}
               />
             )}
 

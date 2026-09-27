@@ -2,6 +2,7 @@
  * Shared production rules: video states, requests between departments and on-air readiness.
  * Used by the browser (UI) and the server (policies), so both always agree.
  */
+import { bookingStatusOf, guestKey, isBooked, segmentGuests, segmentQuestions, TALK_SEGMENT_TYPES } from './episodePlan';
 import type { DepartmentId } from './departments';
 
 // ---------------------------------------------------------------------------
@@ -74,6 +75,9 @@ export interface DeptRequest {
   requesterDepartmentId?: string;
   assigneeId?: string;
   assigneeName?: string;
+  /** Sent to one named colleague in the department rather than to whoever is on duty. */
+  addressedToId?: string;
+  addressedToName?: string;
   link?: RequestLink;
   /** e.g. lower-third lines for the graphics desk. */
   lines?: string[];
@@ -118,7 +122,7 @@ export function requestChangeError(before: DeptRequest | null, after: DeptReques
     const from = before.status;
     const to = after.status;
     const ok =
-      (to === 'ACCEPTED' && from === 'OPEN' && isHandler) ||
+      (to === 'ACCEPTED' && from === 'OPEN' && isHandler && (!before.addressedToId || before.addressedToId === actor.id || actor.canManage)) ||
       (to === 'OPEN' && from === 'ACCEPTED' && (isHandler || isRequester)) ||
       (to === 'DONE' && (from === 'OPEN' || from === 'ACCEPTED') && isHandler) ||
       (to === 'REJECTED' && (from === 'OPEN' || from === 'ACCEPTED') && isHandler) ||
@@ -189,15 +193,39 @@ export function segmentReadiness(segment: any, episode: any, ctx: ReadinessConte
     });
   }
 
-  if (segment.guestId) {
-    const g = (episode?.guests || []).find((x: any) => (x.guestId || x.id) === segment.guestId);
-    const confirmed = g && (g.arrivalStatus === 'CONFIRMED' || g.arrivalStatus === 'ARRIVED');
+  const guests = segmentGuests(segment);
+  if (guests.length) {
+    const booked = (episode?.guests || []) as any[];
+    const states = guests.map((sg) => {
+      const g = booked.find((x) => guestKey(x) === sg.guestId);
+      return { name: sg.guestName, status: g ? bookingStatusOf(g) : 'CANDIDATE' };
+    });
+    const declined = states.filter((x) => x.status === 'DECLINED');
+    const waiting = states.filter((x) => !isBooked(x.status) && x.status !== 'DECLINED');
+    const arrived = states.every((x) => x.status === 'ARRIVED');
     items.push({
       key: 'guest',
-      label: 'الضيف',
+      label: guests.length > 1 ? 'الضيوف' : 'الضيف',
       departmentId: 'production',
-      state: confirmed ? 'ready' : 'pending',
-      detail: confirmed ? (g.arrivalStatus === 'ARRIVED' ? 'الضيف وصل' : 'الضيف مؤكد') : 'لم يُؤكد حضور الضيف',
+      state: declined.length ? 'missing' : waiting.length ? 'pending' : 'ready',
+      detail: declined.length
+        ? `${declined.map((x) => x.name).join('، ')} اعتذر — يلزم بديل`
+        : waiting.length
+        ? `لم يُؤكد: ${waiting.map((x) => x.name).join('، ')}`
+        : arrived
+        ? guests.length > 1 ? 'الضيوف وصلوا' : 'الضيف وصل'
+        : guests.length > 1 ? 'الضيوف مؤكدون' : 'الضيف مؤكد',
+    });
+  }
+
+  if (TALK_SEGMENT_TYPES.has(segment.segmentType) && guests.length) {
+    const count = segmentQuestions(episode, segment).filter((q) => (q.kind || 'MAIN') === 'MAIN').length;
+    items.push({
+      key: 'questions',
+      label: 'الأسئلة',
+      departmentId: 'production',
+      state: count ? 'ready' : 'missing',
+      detail: count ? `${count} سؤال أساسي` : 'لا أسئلة محضّرة للحوار',
     });
   }
 

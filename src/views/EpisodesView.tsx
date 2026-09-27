@@ -21,6 +21,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Episode, Program, EpisodeStatus, User } from '../types';
+import { newId } from '../shared/ids';
+import { structureFromTemplate, templateFromEpisode } from '../shared/episodePlan';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 
@@ -71,6 +73,9 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     const prog = programs.find((p) => p.id === progId);
     setProgramId(progId);
     setEpisodeNumber(nextEpisodeNumber(progId));
+    const prev = episodes.filter((e) => e.programId === progId && (e.rundown || []).length > 0).sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''));
+    setCopyFromId(prev[0]?.id || '');
+    setStartMode(prog?.template?.segments.length ? 'TEMPLATE' : 'BLANK');
     if (prog) {
       setStudioName(prog.studioName || '');
       setPresenterName(prog.presenterName || currentUser.fullName);
@@ -79,6 +84,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     }
   };
   const [description, setDescription] = useState('');
+  // How the new episode's structure starts: the program template, a copy of an earlier episode, or blank.
+  const [startMode, setStartMode] = useState<'TEMPLATE' | 'COPY' | 'BLANK'>('BLANK');
+  const [copyFromId, setCopyFromId] = useState('');
+  const programTemplate = programs.find((p) => p.id === programId)?.template;
+  const previousEpisodes = episodes
+    .filter((e) => e.programId === programId && (e.rundown || []).length > 0)
+    .sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''));
 
 
   const DURATION_PRESETS = [30, 45, 50, 60, 90];
@@ -155,7 +167,17 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       return;
     }
 
+    const id = newId('ep');
+    const source =
+      startMode === 'TEMPLATE' && programTemplate
+        ? programTemplate
+        : startMode === 'COPY' && previousEpisodes.find((e) => e.id === copyFromId)
+        ? templateFromEpisode(previousEpisodes.find((e) => e.id === copyFromId))
+        : null;
+    const structure = source ? structureFromTemplate(source, id, newId, presenterName || selProg?.presenterName) : { topics: [], rundown: [] };
+
     onSaveEpisode({
+      id,
       programId,
       programName: selProg?.name || '',
       title: title || `الحلقة ${episodeNumber}`,
@@ -170,7 +192,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       studioName: studioName || selProg?.studioName,
       description,
       status: 'PLANNING',
-      rundown: [],
+      topics: structure.topics,
+      rundown: structure.rundown,
     });
 
     setIsAddModalOpen(false);
@@ -559,6 +582,39 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
           </div>
+
+          <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
+            <legend className="px-1 text-xs font-bold text-slate-700">بنية الحلقة</legend>
+            <div role="radiogroup" aria-label="بنية الحلقة" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { id: 'TEMPLATE' as const, name: 'من قالب البرنامج', hint: programTemplate ? `${programTemplate.topics.length} محور · ${programTemplate.segments.length} فقرة` : 'لا يوجد قالب محفوظ لهذا البرنامج', disabled: !programTemplate?.segments.length },
+                { id: 'COPY' as const, name: 'نسخ بنية حلقة سابقة', hint: previousEpisodes.length ? 'المحاور والفقرات والمدد بدون الضيوف والأسئلة' : 'لا حلقات سابقة لها رانداون', disabled: previousEpisodes.length === 0 },
+                { id: 'BLANK' as const, name: 'حلقة فارغة', hint: 'تبني المحاور والفقرات بنفسك', disabled: false },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={startMode === o.id}
+                  disabled={o.disabled}
+                  onClick={() => setStartMode(o.id)}
+                  className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${startMode === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <span className="block text-xs font-bold">{o.name}</span>
+                  <span className={`block text-[10px] ${startMode === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                </button>
+              ))}
+            </div>
+            {startMode === 'COPY' && (
+              <select aria-label="الحلقة المصدر" value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+                {previousEpisodes.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    #{e.episodeNumber} — {e.title} ({e.broadcastDate})
+                  </option>
+                ))}
+              </select>
+            )}
+          </fieldset>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button

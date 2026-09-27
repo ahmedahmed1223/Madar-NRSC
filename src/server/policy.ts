@@ -1,4 +1,5 @@
 import { commentError } from '../shared/comments';
+import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, isDepartmentId } from '../shared/departments';
 import { canControlOnAir } from '../shared/onair';
@@ -158,6 +159,10 @@ const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
 };
 
 const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  if (after && !after.deletedAt) {
+    const err = episodePlanError(after);
+    if (err) return err;
+  }
   // An episode is only declared ready for air when every department has delivered.
   if (after?.status === 'READY_FOR_BROADCAST' && before?.status !== 'READY_FOR_BROADCAST' && !after?.deletedAt) {
     const readiness = episodeReadiness(after, { requests: list?.('requests') || [], media: list?.('media') || [] });

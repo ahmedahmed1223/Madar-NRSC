@@ -76,6 +76,8 @@ function stampRequest(before: any, after: any, auth: AuthContext) {
     history: before.history || [],
     assigneeId: before.assigneeId,
     assigneeName: before.assigneeName,
+    addressedToId: before.addressedToId,
+    addressedToName: before.addressedToName,
   };
   if (after.status !== before.status) {
     next.history = [...next.history, { status: after.status, ...by, note: after.status === 'REJECTED' ? after.resolution : undefined }];
@@ -230,7 +232,10 @@ export class SyncService {
     const type = requestTypeOf(after.type);
     const recipients = new Set<string>();
     let title = '';
-    if (!before) {
+    if (!before && after.addressedToId) {
+      recipients.add(after.addressedToId);
+      title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}تكليف ${type?.name || ''} باسمك`;
+    } else if (!before) {
       const onDuty = onDutyAt(this.listData('roster') as RosterEntry[], Date.now(), after.departmentId).map((e) => e.userId);
       const members = this.listData('users')
         .filter((u: any) => u.isActive !== false && departmentIdOf(u) === after.departmentId)
@@ -379,7 +384,17 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
-        if (collection === 'requests' && !after.deletedAt) after = stampRequest(before, after, auth);
+        if (collection === 'requests' && !after.deletedAt) {
+          after = stampRequest(before, after, auth);
+          if (!before && after.addressedToId) {
+            // A named colleague must be a real, active member of the receiving department.
+            const member = this.db.getRow('users', String(after.addressedToId))?.d;
+            if (!member || member.isActive === false || departmentIdOf(member) !== after.departmentId) {
+              throw new SyncReject('INVALID', 'الزميل المختار ليس من القسم المنفذ للطلب');
+            }
+            after = { ...after, addressedToName: member.fullName };
+          }
+        }
         if (collection === 'onAir') after = stampOnAir(before, after, auth, this.db.getRow('episodes', String(after.episodeId))?.d);
         if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'comments' && !before && !after.deletedAt) {

@@ -1,3 +1,4 @@
+import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Radio, Square } from 'lucide-react';
 import type { Episode, User } from '../types';
@@ -161,7 +162,7 @@ export const OnAirView: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioS
                   <h2 className="text-2xl sm:text-3xl font-black leading-tight">{timing.current.title}</h2>
                   <p className="text-xs text-slate-400">
                     {timing.current.presenterName || ''}
-                    {timing.current.guestName ? ` · الضيف: ${timing.current.guestName}` : ''}
+                    {segmentGuests(timing.current).length ? ` · ${segmentGuests(timing.current).map((g) => g.guestName).join('، ')}` : ''}
                   </p>
                 </div>
                 <div className="text-center">

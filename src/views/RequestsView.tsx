@@ -161,6 +161,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   من: {r.requesterName}
                   {r.requesterDepartmentId ? ` (${departmentName(r.requesterDepartmentId)})` : ''}
                 </span>
+                {r.addressedToName && !r.assigneeName && <span className="font-bold text-purple-700">موجّه إلى: {r.addressedToName}</span>}
                 {r.assigneeName && <span>المنفذ: {r.assigneeName}</span>}
                 {r.dueAt && <span>مطلوب قبل: {when(r.dueAt)}</span>}
                 {r.link && (
@@ -177,7 +178,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
               {r.resolution && <p className="text-[11px] text-rose-700">السبب: {r.resolution}</p>}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {isHandler && r.status === 'OPEN' && (
+                {isHandler && r.status === 'OPEN' && (!r.addressedToId || r.addressedToId === currentUser.id || canManage) && (
                   <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'استلمت الطلب')} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
                     استلام الطلب
                   </button>

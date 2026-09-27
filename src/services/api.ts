@@ -621,7 +621,8 @@ export class ApiService {
     }
 
     const newEp: Episode = {
-      id: newId('ep'),
+      ...(episodeData.topics ? { topics: episodeData.topics } : {}),
+      id: episodeData.id || newId('ep'),
       programId: episodeData.programId || '',
       programName: episodeData.programName || '',
       seasonNumber: episodeData.seasonNumber || 1,
@@ -644,7 +645,7 @@ export class ApiService {
       status: episodeData.status || 'PLANNING',
       guests: episodeData.guests || [],
       questions: episodeData.questions || [],
-      rundown: episodeData.rundown || [],
+      rundown: recalculateRundown(episodeData.rundown || []),
       linkedNewsIds: episodeData.linkedNewsIds || [],
       attachments: episodeData.attachments || [],
       createdAt: now,
@@ -1164,6 +1165,7 @@ export class ApiService {
       link: data.link,
       lines: data.lines?.filter((l) => l.trim()),
       dueAt: data.dueAt,
+      ...(data.addressedToId ? { addressedToId: data.addressedToId, addressedToName: data.addressedToName } : {}),
       createdAt: now,
       updatedAt: now,
     };

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
+import { insertIntoTopic, EpisodeTopic, segmentGuests } from '../../shared/episodePlan';
 import { RequestFormPage, RequestDraft } from '../requests/RequestFormPage';
 import { RbacService } from '../../services/rbacService';
 import { segmentReadiness } from '../../shared/production';
@@ -44,6 +45,7 @@ interface RundownTableProps {
   defaultPresenter?: string;
   canEdit?: boolean;
   episodeId?: string;
+  topics?: EpisodeTopic[];
 }
 
 export const RundownTable: React.FC<RundownTableProps> = ({
@@ -55,6 +57,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   defaultPresenter = '',
   canEdit = true,
   episodeId,
+  topics = [],
 }) => {
   const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
   const canRequest = !!episodeId && RbacService.hasPermission(apiService.getCurrentUser(), 'requests.create');
@@ -142,7 +145,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
       setEditingSegment(null);
     } else {
       const newSeg: RundownSegment = {
-        id: newId('seg'),
+        ...(segmentData as RundownSegment),
+        id: segmentData.id || newId('seg'),
         episodeId: episodeId || segments[0]?.episodeId || 'ep-temp',
         orderIndex: segments.length + 1,
         title: segmentData.title || 'فقرة جديدة',
@@ -160,7 +164,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         notes: segmentData.notes || '',
         isCompleted: false,
       };
-      onUpdateRundown([...segments, newSeg]);
+      onUpdateRundown(insertIntoTopic(segments, newSeg));
     }
   };
 
@@ -468,6 +472,11 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
                       {/* Title & Script excerpt */}
                       <td className="py-3.5 px-4">
+                        {seg.topicId && topics.some((t) => t.id === seg.topicId) && (
+                          <div className="text-[10px] font-bold text-indigo-700">
+                            محور {topics.findIndex((t) => t.id === seg.topicId) + 1}: {topics.find((t) => t.id === seg.topicId)?.title}
+                          </div>
+                        )}
                         <div className="font-bold text-slate-800 text-sm">{seg.title}</div>
                         {seg.scriptText && (
                           <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
@@ -507,12 +516,12 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                               <span>{seg.presenterName}</span>
                             </div>
                           )}
-                          {seg.guestName && (
-                            <div className="flex items-center gap-1 text-purple-700 font-medium">
+                          {segmentGuests(seg).map((g) => (
+                            <div key={g.guestId} className="flex items-center gap-1 text-purple-700 font-medium">
                               <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                              <span>الضيف: {seg.guestName}</span>
+                              <span>{g.role === 'MAIN' ? 'الضيف' : g.role === 'CALLER' ? 'مداخلة' : 'معقّب'}: {g.guestName}</span>
                             </div>
-                          )}
+                          ))}
                         </div>
                       </td>
 
@@ -642,6 +651,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         guests={guests}
         newsList={newsList}
         defaultPresenter={defaultPresenter}
+        episodeId={episodeId}
+        topics={topics}
       />
 
       {/* Broadcast Teleprompter Modal */}

@@ -82,3 +82,34 @@ describe('on-air readiness gate', () => {
     expect(ok.body.results[0].ok).toBe(true);
   });
 });
+
+describe('requests addressed to a named colleague', () => {
+  it('reaches only that person, who alone (or a desk chief) can take it', async () => {
+    const producer = await loginAgent(server.app, 'producer@akhbar.tv');
+    const bad = await sync(producer, [put({ id: 'req-a0', type: 'FIELD', title: 'تقرير', addressedToId: 'usr-7' })]); // usr-7 is montage
+    expect(bad.body.results[0].ok).toBe(false);
+
+    const res = await sync(producer, [put({ id: 'req-a1', type: 'FIELD', title: 'تقرير ميداني', addressedToId: 'usr-6', addressedToName: 'مزيف' })]);
+    expect(res.body.results[0].ok).toBe(true);
+    const r = row('req-a1').d;
+    expect(r.addressedToId).toBe('usr-6');
+    expect(r.addressedToName).not.toBe('مزيف');
+    const notes = server.db.listCollection('notifications').filter((n) => n.d.title.includes('باسمك'));
+    expect(notes.map((n) => n.d.userId)).toEqual(['usr-6']);
+
+    const reporter = await loginAgent(server.app, 'reporter@akhbar.tv'); // usr-6
+    const ok = await sync(reporter, [put({ ...r, status: 'ACCEPTED' }, row('req-a1').v)]);
+    expect(ok.body.results[0].ok).toBe(true);
+    expect(row('req-a1').d.assigneeId).toBe('usr-6');
+  });
+});
+
+describe('episode plan validation', () => {
+  it('refuses a report assigned to nobody', async () => {
+    const producer = await loginAgent(server.app, 'producer@akhbar.tv');
+    const ep = server.db.getRow('episodes', 'ep-101')!;
+    const rundown = ep.d.rundown.map((s: any, i: number) => (i === 1 ? { ...s, report: { source: 'ASSIGNED' } } : s));
+    const res = await sync(producer, [{ c: 'episodes', op: 'upsert', id: 'ep-101', d: { ...ep.d, rundown }, baseV: ep.v }]);
+    expect(res.body.results[0].ok).toBe(false);
+  });
+});
