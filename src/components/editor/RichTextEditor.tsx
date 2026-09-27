@@ -213,13 +213,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     >
       {/* Editor Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-slate-50 border-b border-slate-200 text-slate-700">
-        <div className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40 pointer-events-none' : ''}`} aria-disabled={readOnly}>
+        <div role="toolbar" aria-label="تنسيق النص" className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40 pointer-events-none' : ''}`} aria-disabled={readOnly}>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleH2}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors text-slate-700 font-bold"
-            title="عنوان رئيسي (H2)"
+            title="عنوان رئيسي (H2)" aria-label="عنوان رئيسي (H2)"
           >
             <Heading2 className="w-4 h-4" />
           </button>
@@ -228,7 +228,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleH3}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors text-slate-700 font-semibold"
-            title="عنوان فرعي (H3)"
+            title="عنوان فرعي (H3)" aria-label="عنوان فرعي (H3)"
           >
             <Heading3 className="w-4 h-4" />
           </button>
@@ -240,7 +240,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleBold}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="نص عريض (Bold)"
+            title="نص عريض (Bold)" aria-label="نص عريض (Bold)"
           >
             <Bold className="w-4 h-4" />
           </button>
@@ -249,7 +249,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleItalic}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="نص مائل (Italic)"
+            title="نص مائل (Italic)" aria-label="نص مائل (Italic)"
           >
             <Italic className="w-4 h-4" />
           </button>
@@ -261,7 +261,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleBulletList}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="قائمة نقطية"
+            title="قائمة نقطية" aria-label="قائمة نقطية"
           >
             <List className="w-4 h-4" />
           </button>
@@ -270,7 +270,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleNumberedList}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="قائمة رقمية"
+            title="قائمة رقمية" aria-label="قائمة رقمية"
           >
             <ListOrdered className="w-4 h-4" />
           </button>
@@ -279,7 +279,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleQuote}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="اقتباس أو تصريح"
+            title="اقتباس أو تصريح" aria-label="اقتباس أو تصريح"
           >
             <Quote className="w-4 h-4" />
           </button>
@@ -291,7 +291,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => openModal(() => setIsLinkModalOpen(true))}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="إدراج رابط"
+            title="إدراج رابط" aria-label="إدراج رابط"
           >
             <LinkIcon className="w-4 h-4" />
           </button>
@@ -305,7 +305,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
               })
             }
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="إدراج صورة"
+            title="إدراج صورة" aria-label="إدراج صورة"
           >
             <ImageIcon className="w-4 h-4" />
           </button>
@@ -319,7 +319,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
               })
             }
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="إدراج فيديو"
+            title="إدراج فيديو" aria-label="إدراج فيديو"
           >
             <Video className="w-4 h-4" />
           </button>
@@ -336,7 +336,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
               isSource ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
             }`}
-            title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}
+            title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'} aria-label={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}
           >
             {isSource ? <Edit3 className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
             {isSource ? 'المحرر المرئي' : 'HTML'}

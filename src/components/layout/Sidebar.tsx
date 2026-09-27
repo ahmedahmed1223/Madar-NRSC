@@ -1,3 +1,4 @@
+import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
 import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSeen';
 import { departmentIdOf } from '../../shared/departments';
 import { isApprover } from '../../shared/bulletins';
@@ -188,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'wires', label: 'البرقيات', icon: Rss, badge: null },
         { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800' },
-        { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white animate-pulse' },
+        { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white' },
         { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800' },
         { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
         { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: 'bg-sky-100 text-sky-800' },
@@ -206,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الهواء والاستديو',
       items: [
-        { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white animate-pulse' },
+        { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white' },
         { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
       ],
     },
@@ -269,10 +270,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="truncate">
                 <span className="font-extrabold text-white text-sm block leading-tight tracking-tight">
-                  منظومة الأخبار NRCS
+                  {APP_NAME}
                 </span>
                 <span className="text-[10px] text-slate-400 block leading-tight">
-                  غرفة الأخبار وإعداد البرامج
+                  {APP_TAGLINE}
                 </span>
               </div>
             </div>
@@ -291,6 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={toggleCollapse}
               className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden md:block"
               title={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
+              aria-label={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
             >
               {isCollapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
@@ -339,6 +341,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
               }`}
               title={isCollapsed ? item.label : undefined}
+              aria-label={isCollapsed ? (item.badge ? `${item.label} (${item.badge})` : item.label) : undefined}
             >
               <Icon
                 className={`w-4 h-4 shrink-0 ${
@@ -363,7 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Indicator dot if collapsed and has badge */}
               {isCollapsed && item.badge && (
-                <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500" />
               )}
             </button>
           );

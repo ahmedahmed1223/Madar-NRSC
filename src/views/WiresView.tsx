@@ -29,7 +29,7 @@ function timeAgo(iso: string, now: number): string {
   if (min < 60) return `منذ ${min} دقيقة`;
   const h = Math.floor(min / 60);
   if (h < 24) return `منذ ${h} ساعة`;
-  return new Date(iso).toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(iso).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 /** Wire desk: agency items pulled by the server from RSS/Atom feeds, turned into drafts by journalists. */

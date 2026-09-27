@@ -139,7 +139,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
             filtered.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors"
+                className="flex flex-wrap items-center justify-between gap-2 p-3.5 hover:bg-slate-50/80 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <span
@@ -152,7 +152,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
                   <span className="text-xs text-slate-700 font-medium">{item.description}</span>
                 </div>
 
-                <div className="flex items-center gap-1 font-mono">
+                <div className="flex flex-wrap items-center gap-1 font-mono" dir="ltr">
                   {item.keys.map((k, kIdx) => (
                     <React.Fragment key={kIdx}>
                       <kbd className="min-w-[28px] text-center px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-[11px] font-bold text-slate-800 shadow-2xs">

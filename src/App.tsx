@@ -67,6 +67,7 @@ import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDraw
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
+import { routeChanged } from './services/uiEvents';
 
 interface AppProps {
   onLogout: () => void;
@@ -256,7 +257,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       id: n.id,
       newsId: n.id,
       title: n.title,
-      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
+      time: n.publishDate ? new Date(n.publishDate).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : 'الآن',
     }));
 
   // --- NEWS ACTIONS ---
@@ -267,11 +268,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       refreshData();
       setSelectedNewsItem(saved);
       if (!opts.stay) setActiveNav('news');
-      addToast({
-        type: 'success',
-        title: 'تم الحفظ بنجاح',
-        message: `تم حفظ الخبر: "${saved.title?.slice(0, 40)}..."`,
-      });
+      // «تم الحفظ» only once the server has stored it (the sync layer reports refusals).
+      void confirmSaved('news', saved.id, `تم حفظ الخبر: «${saved.title?.slice(0, 40)}»`);
       return saved;
     } catch (err: any) {
       addToast({
@@ -287,11 +285,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
       refreshData();
-      addToast({
-        type: 'success',
-        title: 'تحديث الحالة',
-        message: `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`,
-      });
+      void confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
     } catch (err: any) {
       addToast({
         type: 'error',
@@ -413,7 +407,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       summary: (wire.summary || '').slice(0, 400),
       content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
       sourceId: known?.id,
-      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString('ar-EG')})${wire.link ? `\n${wire.link}` : ''}`,
+      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString('ar-EG-u-nu-latn')})${wire.link ? `\n${wire.link}` : ''}`,
     });
     setActiveNav('news-editor');
   };
@@ -656,6 +650,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   });
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
+  useEffect(() => routeChanged.emit(routePath), [routePath]);
   const routeStarted = useRef(false);
   useEffect(() => {
     // The first render is still the dashboard; a start-up deep link is being opened instead.
@@ -722,6 +717,18 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans" dir="rtl">
+      <a
+        href="#app-main"
+        onClick={(e) => {
+          e.preventDefault();
+          const main = document.getElementById('app-main');
+          main?.setAttribute('tabindex', '-1');
+          main?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:right-2 focus:z-[200] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-blue-600 focus:text-white focus:text-sm focus:font-bold"
+      >
+        تخطٍّ إلى المحتوى
+      </a>
       {/* Network Connectivity & Offline Resilience Banner */}
       <NetworkStatusBanner />
 
@@ -785,7 +792,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               تحذير تخزين: {storageWarning}
             </div>
           )}
-          <main id="app-main" className="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 max-w-7xl w-full mx-auto">
+          <main id="app-main" className="flex-1 p-4 sm:p-6 pb-12 max-w-7xl w-full mx-auto">
             <ViewErrorBoundary key={`${activeNav}:${activeBulletinId || ''}:${selectedEpisodeId || ''}`} onHome={() => setActiveNav('dashboard')}>
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
@@ -1124,7 +1131,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             </Suspense>
             </ViewErrorBoundary>
           </main>
-          <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-24 w-full empty:hidden" />
+          <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-12 w-full empty:hidden" />
         </div>
       </div>
 

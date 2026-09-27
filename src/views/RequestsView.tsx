@@ -1,4 +1,5 @@
 import { confirmDialog, promptDialog } from '../services/dialogs';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -26,7 +27,7 @@ const STATUS_STYLE: Record<string, string> = {
   CANCELLED: 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
-const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
 /** Requests between departments: what my department has to do, and what I asked others for. */
 export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenNews, onOpenEpisode }) => {
@@ -100,24 +101,16 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {[
-          { id: 'INBOX' as const, label: `الوارد لقسمي${inboxCount ? ` (${inboxCount})` : ''}`, icon: Inbox, show: true },
-          { id: 'SENT' as const, label: 'طلباتي', icon: Send, show: canCreate },
-          { id: 'ALL' as const, label: 'كل الطلبات', icon: ArrowLeftRight, show: canManage },
-        ]
-          .filter((t) => t.show)
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-pressed={tab === t.id}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border ${tab === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-            >
-              <t.icon className="w-3.5 h-3.5" />
-              {t.label}
-            </button>
-          ))}
+        <FilterTabs<"ALL" | "INBOX" | "SENT">
+          label="الطلبات"
+          active={tab}
+          onChange={setTab}
+          tabs={[
+            { id: 'INBOX' as const, label: 'الوارد لقسمي', count: inboxCount, tone: 'violet' as const },
+            ...(canCreate ? [{ id: 'SENT' as const, label: 'طلباتي', tone: 'blue' as const }] : []),
+            ...(canManage ? [{ id: 'ALL' as const, label: 'كل الطلبات', tone: 'slate' as const }] : []),
+          ]}
+        />
         {tab === 'INBOX' && canManage && (
           <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="القسم" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
             {DEPARTMENTS.map((d) => (

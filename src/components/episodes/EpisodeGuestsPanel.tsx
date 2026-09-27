@@ -370,7 +370,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                   .reverse()
                   .map((c: any, i: number) => (
                     <p key={i} className="text-[11px] text-slate-600">
-                      <span className="text-slate-400">{new Date(c.at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
+                      <span className="text-slate-400">{new Date(c.at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
                     </p>
                   ))}
                 {canEditEpisode && (

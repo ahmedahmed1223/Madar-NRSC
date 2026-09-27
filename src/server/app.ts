@@ -39,7 +39,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.11.0';
+export const APP_VERSION = '3.12.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 

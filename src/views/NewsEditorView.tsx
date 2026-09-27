@@ -213,7 +213,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   // Broadcast Speech Calculations
   const textStats = useMemo(() => {
     const cleanContent = content.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-    const fullText = `${title} ${summary} ${cleanContent}`;
+    // Count what was typed: no joining spaces, editor line breaks or repeated blanks.
+    const fullText = [title, summary, cleanContent].map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ');
     const words = (fullText.match(/\S+/g) || []).length;
     const chars = fullText.length;
     
@@ -666,7 +667,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       {newsItem?.status === 'SCHEDULED' && newsItem.scheduledDate && (
         <div className="bg-sky-50 border border-sky-200 p-3 rounded-2xl text-xs text-sky-900 font-semibold flex items-center gap-2">
           <Clock className="w-4 h-4 text-sky-600" />
-          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-EG')}
+          مجدول للنشر تلقائياً في {new Date(newsItem.scheduledDate).toLocaleString('ar-EG-u-nu-latn')}
         </div>
       )}
 
@@ -716,7 +717,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 ) : lastSaved && isDirty ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
-                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-EG')})
+                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString('ar-EG-u-nu-latn')})
                   </>
                 ) : null}
               </div>
@@ -990,7 +991,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Live Ticker Strap Preview Simulator */}
               {(shortTitle || title) && showTickerPreview && (
                 <div className="theme-fixed mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-black text-[11px] rounded tracking-wide shrink-0 animate-pulse">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-black text-[11px] rounded tracking-wide shrink-0">
                     <Flame className="w-3 h-3" />
                     شريط الأخبار
                   </div>
@@ -1371,7 +1372,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       <div className="flex items-center justify-between">
                         <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(log.timestamp).toLocaleString('ar-EG', {
+                          {new Date(log.timestamp).toLocaleString('ar-EG-u-nu-latn', {
                             hour: '2-digit',
                             minute: '2-digit',
                             month: 'short',
@@ -1504,6 +1505,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <input
                 id="news-video-url-input"
                 type="text"
+                inputMode="url"
+                pattern="(https?://|/).+"
+                title="رابط كامل يبدأ بـ https:// أو ملف مرفوع إلى مكتبة الوسائط"
                 autoCapitalize="none"
                 spellCheck="false"
                 value={videoUrl}

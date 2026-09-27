@@ -461,7 +461,7 @@ export class ApiService {
           comment:
             comment ||
             (scheduledDate
-              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-EG')}`
+              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString('ar-EG-u-nu-latn')}`
               : `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`),
           timestamp: now,
         },

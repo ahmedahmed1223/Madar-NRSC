@@ -4,6 +4,9 @@ import AppShell from './AppShell.tsx';
 import { ErrorBoundary } from './components/common/ErrorBoundary.tsx';
 import { DialogHost } from './components/common/DialogHost.tsx';
 import './index.css';
+import { installArabicValidation } from './services/formValidation';
+
+installArabicValidation();
 
 // Pictures that fail to load (dead links, offline hosts) are hidden instead of showing a broken icon.
 document.addEventListener(

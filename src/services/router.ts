@@ -1,3 +1,5 @@
+import { APP_NAME } from '../shared/brand';
+
 /**
  * Screen ⇄ URL mapping for the browser History API: every screen has its own address
  * (/news/<id>, /episodes/<id>, /bulletins/<id>, /settings …), so Back/Forward, reloads,
@@ -86,7 +88,7 @@ const TITLES: Record<string, string> = {
   'whats-new': 'ما الجديد',
 };
 
-export const APP_TITLE = 'مدار';
+export const APP_TITLE = APP_NAME;
 
 /** Browser tab title: the item's name when known, then the screen, then the app. */
 export function screenTitle(nav: string, itemTitle?: string | null): string {

@@ -1,4 +1,5 @@
 import { GlossaryDatalist } from '../components/editor/WritingAids';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
@@ -176,29 +177,17 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
 
       {/* Tabs & Search Filter */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
-          {(['ACTIVE', 'RESOLVED', 'ARCHIVED'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl transition-all shrink-0 text-xs font-bold ${
-                activeTab === tab
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {tab === 'ACTIVE' ? 'التغطيات النشطة' : tab === 'RESOLVED' ? 'منتهية/مغلقة' : 'الأرشيف'}
-              <span
-                className={`mr-2 px-1.5 py-0.5 rounded-md text-[10px] ${
-                  activeTab === tab ? 'bg-white/30 text-white' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {stories.filter((s) => s.status === tab).length}
-              </span>
-            </button>
-          ))}
-        </div>
+        <FilterTabs<"ARCHIVED" | "ACTIVE" | "RESOLVED">
+          label="تصفية التغطيات"
+          className="shrink-0"
+          active={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { id: 'ACTIVE', label: 'التغطيات النشطة', count: stories.filter((s) => s.status === 'ACTIVE').length, tone: 'blue' },
+            { id: 'RESOLVED', label: 'منتهية/مغلقة', count: stories.filter((s) => s.status === 'RESOLVED').length, tone: 'emerald' },
+            { id: 'ARCHIVED', label: 'الأرشيف', count: stories.filter((s) => s.status === 'ARCHIVED').length, tone: 'slate', secondary: true },
+          ]}
+        />
 
         <div className="flex items-center gap-3">
           {categories.length > 0 && (
@@ -329,7 +318,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                  بدأت: {new Date(story.startedAt).toLocaleDateString('ar-EG')}
+                  بدأت: {new Date(story.startedAt).toLocaleDateString('ar-EG-u-nu-latn')}
                 </span>
 
                 <button

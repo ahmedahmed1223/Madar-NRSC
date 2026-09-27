@@ -82,7 +82,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                       <span className="text-[10px] font-semibold text-slate-500">({STATUS_LABELS[rev.data.status] || rev.data.status})</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1">
-                      {new Date(rev.changedAt).toLocaleString('ar-EG')} — عدّلها بعد ذلك: {rev.changedByName || 'النظام'}
+                      {new Date(rev.changedAt).toLocaleString('ar-EG-u-nu-latn')} — عدّلها بعد ذلك: {rev.changedByName || 'النظام'}
                     </div>
                     <div className="text-[11px] text-slate-700 mt-1 truncate">{rev.data.title}</div>
                   </button>

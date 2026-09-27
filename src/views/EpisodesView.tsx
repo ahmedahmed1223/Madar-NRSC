@@ -4,7 +4,7 @@ import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
 import { studioConflictsFor } from '../shared/schedule';
-import { localDateString } from '../shared/dates';
+import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
 import {
@@ -392,8 +392,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
                       {/* Air date & time */}
                       <td className="py-3.5 px-3">
-                        <div className="font-mono text-slate-700">
-                          <div>{ep.broadcastDate}</div>
+                        <div className="text-slate-700 tabular-nums">
+                          <div className="whitespace-nowrap">{arabicDate(ep.broadcastDate)}</div>
                           <div className="text-[11px] text-slate-400">
                             {ep.startTime} - {ep.endTime}
                           </div>

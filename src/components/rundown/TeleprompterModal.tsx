@@ -164,7 +164,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
       {/* Studio Prompter Top Bar */}
       <div className="h-16 px-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <span className="px-2.5 py-1 bg-red-600 text-white font-mono text-xs font-bold rounded-md animate-pulse">
+          <span className="px-2.5 py-1 bg-red-600 text-white font-mono text-xs font-bold rounded-md">
             PROMPTER LIVE
           </span>
           <div className="truncate">

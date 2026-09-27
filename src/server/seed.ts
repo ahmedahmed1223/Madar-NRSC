@@ -53,6 +53,34 @@ export const DEMO_COLLECTIONS: [CollectionName, any[]][] = [
   ['bulletinFormats', INITIAL_BULLETIN_FORMATS],
 ];
 
+/** The demo data was written around this day; it is moved so it sits around the day it is seeded. */
+const DEMO_ANCHOR_DAY = '2026-09-14';
+const ISO_DAY = /^(\d{4}-\d{2}-\d{2})(T.*)?$/;
+
+/** Moves every ISO date/time in the demo records by the days between the anchor and today. */
+export function shiftDemoDates<T>(value: T, days: number): T {
+  if (!days) return value;
+  const walk = (v: any): any => {
+    if (typeof v === 'string') {
+      const m = ISO_DAY.exec(v);
+      if (!m) return v;
+      const d = new Date(`${m[1]}T00:00:00Z`);
+      if (Number.isNaN(d.getTime())) return v;
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10) + (m[2] || '');
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  return walk(value);
+}
+
+function demoDayShift(): number {
+  const today = new Date(`${localDateString()}T00:00:00Z`).getTime();
+  return Math.round((today - new Date(`${DEMO_ANCHOR_DAY}T00:00:00Z`).getTime()) / 86_400_000);
+}
+
 function seedList(db: NewsroomDatabase, collection: CollectionName, items: any[]) {
   if (db.countCollection(collection) > 0) return;
   items.forEach((item, idx) => {
@@ -73,7 +101,9 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   if (demoAllowed && db.getMeta('demo_seeded') !== '1') {
     const demoHash = await hashPassword(config.demoUserPassword);
     db.transaction(() => {
-      DEMO_COLLECTIONS.forEach(([c, items]) => seedList(db, c, items));
+      // Demo episodes, tasks and stories land around today instead of weeks in the past.
+      const shift = demoDayShift();
+      DEMO_COLLECTIONS.forEach(([c, items]) => seedList(db, c, shiftDemoDates(items, shift)));
       if (db.countCollection('users') === 0) {
         INITIAL_USERS.forEach((u, idx) => {
           db.writeRow('users', u.id, u, idx, null);

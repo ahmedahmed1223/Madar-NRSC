@@ -41,6 +41,29 @@ interface PersistedPending {
 }
 
 const PENDING_KEY = 'nrcs_pending_sync_v3';
+const JOURNAL_KEY = 'nrcs_recent_writes_v1';
+/** Writes the server confirmed recently, kept to resend if it later answers from older data. */
+const JOURNAL_MS = 30 * 60_000;
+const JOURNAL_MAX = 300;
+
+interface JournalEntry {
+  c: CollectionName;
+  id: string;
+  op: 'upsert' | 'delete';
+  d?: any;
+  p?: number;
+  /** Row version the server gave this write. */
+  v: number;
+  at: number;
+}
+
+interface PersistedJournal {
+  userId: string;
+  /** Database and revision the entries were confirmed by. */
+  dbId: string | null;
+  rev: number;
+  entries: JournalEntry[];
+}
 const BATCH_SIZE = 200;
 const POLL_FALLBACK_MS = 30_000;
 
@@ -83,6 +106,11 @@ export class DataStore {
   private singleOps = 0;
   private waiters = new Map<string, ((o: WriteOutcome) => void)[]>();
   private lastErrorAt = 0;
+  /** Set when a response came from another database: the next pull reloads everything. */
+  private dbSwitched = false;
+  private journal = new Map<string, JournalEntry>();
+  private journalDbId: string | null = null;
+  private journalRev = 0;
 
   /**
    * Resolves once the server has accepted or refused the pending write of this row, so forms
@@ -116,6 +144,8 @@ export class DataStore {
   private checkDb(dbId: unknown) {
     if (typeof dbId !== 'string' || !dbId) return;
     if (this.dbId && this.dbId !== dbId) {
+      this.dbSwitched = true;
+      void this.pull();
       this.emit({
         type: 'storage-warning',
         message:
@@ -162,6 +192,7 @@ export class DataStore {
     if (this.userId && this.userId !== userId) this.stop();
     this.userId = userId;
     this.starting = (async () => {
+      this.loadJournal();
       await this.bootstrap();
       this.replayPersistedPending();
       this.connectRealtime();
@@ -216,6 +247,7 @@ export class DataStore {
     }
     this.rev = res.rev;
     this.ready = true;
+    this.recoverRecentWrites(res.rev, res.dbId ?? null);
     for (const { c, id, m } of pending) {
       if (!this.meta.has(c)) continue;
       this.replaceLocal(c, { c, id, v: m.v, p: m.p, d: JSON.parse(m.json) });
@@ -380,6 +412,7 @@ export class DataStore {
       this.setOnline(true);
       const touched = new Set<CollectionName>();
       res.results.forEach((result, i) => this.handleResult(ops[i], result, touched));
+      this.recordJournal(ops, res.results, res.rev, res.dbId ?? null);
       entries.forEach(([k]) => this.inFlight.delete(k));
       if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
     } catch (err) {
@@ -469,7 +502,8 @@ export class DataStore {
       const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}`);
       this.checkDb(res.dbId);
       this.setOnline(true);
-      if (res.reset) {
+      if (res.reset || this.dbSwitched) {
+        this.dbSwitched = false;
         await this.flush();
         await this.bootstrap();
         this.emit({ type: 'data-changed', collections: [...COLLECTION_NAMES], remote: true });
@@ -534,6 +568,98 @@ export class DataStore {
       c,
       list.filter((it) => it.id !== id)
     );
+  }
+
+  // --- Recent-writes journal -------------------------------------------------
+
+  private recordJournal(ops: SyncOp[], results: SyncOpResult[], rev: number, dbId: string | null) {
+    const now = Date.now();
+    results.forEach((result, i) => {
+      if (!result.ok) return;
+      const op = ops[i];
+      const { row } = result as Extract<SyncOpResult, { ok: true }>;
+      this.journal.set(keyOf(op.c, op.id), { c: op.c, id: op.id, op: op.op, d: op.op === 'delete' ? undefined : row?.d ?? op.d, p: row?.p ?? op.p, v: row?.v ?? 0, at: now });
+    });
+    if (dbId && dbId !== this.journalDbId) {
+      // Confirmed by another database than the older entries: those were already recovered.
+      this.journalDbId = dbId;
+      this.journalRev = rev;
+    } else this.journalRev = Math.max(this.journalRev, rev);
+    this.persistJournal();
+  }
+
+  private pruneJournal() {
+    const cutoff = Date.now() - JOURNAL_MS;
+    for (const [k, e] of this.journal) if (e.at < cutoff) this.journal.delete(k);
+    if (this.journal.size > JOURNAL_MAX) {
+      const oldest = [...this.journal.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, this.journal.size - JOURNAL_MAX);
+      oldest.forEach(([k]) => this.journal.delete(k));
+    }
+  }
+
+  private persistJournal() {
+    if (typeof localStorage === 'undefined' || !this.userId) return;
+    this.pruneJournal();
+    try {
+      const payload: PersistedJournal = { userId: this.userId, dbId: this.journalDbId, rev: this.journalRev, entries: [...this.journal.values()] };
+      localStorage.setItem(JOURNAL_KEY, JSON.stringify(payload));
+    } catch {
+      // Storage full or disabled: the journal still protects this tab.
+    }
+  }
+
+  private loadJournal() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const saved: PersistedJournal | null = JSON.parse(localStorage.getItem(JOURNAL_KEY) || 'null');
+      if (!saved || saved.userId !== this.userId || !Array.isArray(saved.entries)) return;
+      this.journal = new Map(saved.entries.map((e) => [keyOf(e.c, e.id), e]));
+      this.journalDbId = saved.dbId;
+      this.journalRev = saved.rev || 0;
+      this.pruneJournal();
+    } catch {
+      // unreadable: start a new journal
+    }
+  }
+
+  /**
+   * The server answered from another database, or from an older copy of the same one (a
+   * restarted instance, a second instance with its own disk, a restored backup). Writes it
+   * confirmed in the last half hour that this copy lacks are sent again instead of vanishing.
+   */
+  private recoverRecentWrites(serverRev: number, serverDbId: string | null) {
+    this.pruneJournal();
+    if (this.journal.size === 0 || !this.journalDbId) return;
+    const rewound = (serverDbId && serverDbId !== this.journalDbId) || serverRev < this.journalRev;
+    if (!rewound) return;
+    let resent = 0;
+    for (const e of this.journal.values()) {
+      if (!this.meta.has(e.c)) continue;
+      const k = keyOf(e.c, e.id);
+      if (this.dirty.has(k) || this.inFlight.has(k)) continue;
+      const known = this.meta.get(e.c)!.get(e.id);
+      if (e.op === 'delete') {
+        if (!known || known.v >= e.v) continue;
+        this.removeLocal(e.c, e.id);
+        this.markDirty(e.c, e.id, 'delete');
+      } else {
+        if (known && known.v >= e.v) continue;
+        // Based on this copy's version (or new here), so the server accepts it as the latest edit.
+        this.replaceLocal(e.c, { c: e.c, id: e.id, v: known?.v ?? 0, p: e.p ?? known?.p ?? 0, d: e.d });
+        this.markDirty(e.c, e.id, 'upsert');
+      }
+      resent++;
+    }
+    this.journalDbId = serverDbId;
+    this.journalRev = serverRev;
+    this.persistJournal();
+    if (resent > 0) {
+      this.emit({
+        type: 'storage-warning',
+        message: `أجاب الخادم من نسخة بيانات أقدم لا تحتوي ${resent} من تعديلاتك الأخيرة، فأُعيد إرسالها تلقائياً. إن تكرر هذا فالنشر يشغّل أكثر من نسخة بتخزين غير دائم؛ على مدير النظام ضبط نسخة واحدة بقرص دائم.`,
+      });
+      this.scheduleFlush(0);
+    }
   }
 
   // --- Durability across reloads -------------------------------------------

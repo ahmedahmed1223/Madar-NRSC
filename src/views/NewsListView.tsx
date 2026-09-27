@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { apiService } from '../services/api';
@@ -195,6 +196,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     }
   };
 
+  const countBy = (status: NewsStatus) => (newsList || []).filter((n) => n.status === status).length;
+
   const statusBadgeInfo: Record<NewsStatus, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'default' }> = {
     DRAFT: { label: 'مسودة', variant: 'default' },
     IN_PROGRESS: { label: 'قيد التحرير', variant: 'info' },
@@ -223,10 +226,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            غرفة الأخبار والتقارير الصحفية
+            {initialTab === 'BREAKING' ? 'العاجل' : 'الأخبار'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            إدارة وصياغة وتدقيق المواد الصحفية وسير عمل الاعتماد والنشر
+            {initialTab === 'BREAKING'
+              ? 'الأخبار العاجلة المفعّلة على شريط البث، وما يُحضَّر منها'
+              : 'إدارة وصياغة وتدقيق المواد الصحفية وسير عمل الاعتماد والنشر'}
           </p>
         </div>
 
@@ -266,113 +271,24 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 text-xs font-semibold">
-        <button
-          type="button"
-          onClick={() => setActiveTab('ALL')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'ALL'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          الكل ({newsList.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('DRAFT')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'DRAFT'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          مسودات ({(newsList || []).filter((n) => n.status === 'DRAFT').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('UNDER_REVIEW')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'UNDER_REVIEW'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          قيد المراجعة ({(newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('APPROVED')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'APPROVED'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          معتمد للنشر ({(newsList || []).filter((n) => n.status === 'APPROVED').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('PUBLISHED')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'PUBLISHED'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          منشور ({(newsList || []).filter((n) => n.status === 'PUBLISHED').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('ARCHIVED')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'ARCHIVED'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          أرشيف ({(newsList || []).filter((n) => n.status === 'ARCHIVED').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('NEEDS_REVISION')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'NEEDS_REVISION' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          مُعاد للتعديل ({(newsList || []).filter((n) => n.status === 'NEEDS_REVISION').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('SCHEDULED')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'SCHEDULED' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          مجدول ({(newsList || []).filter((n) => n.status === 'SCHEDULED').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('BREAKING')}
-          className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-            activeTab === 'BREAKING' ? 'bg-red-600 text-white shadow-xs' : 'text-red-600 hover:bg-red-50'
-          }`}
-        >
-          عاجل على الهواء ({(newsList || []).filter((n) => isBreakingLive(n)).length})
-        </button>
-        {canDelete && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('TRASH')}
-            className={`px-4 py-2 rounded-xl transition-colors shrink-0 ${
-              activeTab === 'TRASH' ? 'bg-slate-800 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            سلة المحذوفات ({deletedNews.length})
-          </button>
-        )}
-      </div>
+      {/* Status tabs, in workflow order; archive and trash after a divider. */}
+      <FilterTabs<ListTab>
+        label="تصفية الأخبار حسب الحالة"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: 'ALL', label: 'الكل', count: newsList.length, tone: 'blue' },
+          { id: 'DRAFT', label: 'مسودات', count: countBy('DRAFT'), tone: 'slate' },
+          { id: 'UNDER_REVIEW', label: 'قيد المراجعة', count: countBy('UNDER_REVIEW'), tone: 'amber' },
+          { id: 'NEEDS_REVISION', label: 'مُعاد للتعديل', count: countBy('NEEDS_REVISION'), tone: 'rose' },
+          { id: 'APPROVED', label: 'معتمد للنشر', count: countBy('APPROVED'), tone: 'violet' },
+          { id: 'SCHEDULED', label: 'مجدول', count: countBy('SCHEDULED'), tone: 'sky' },
+          { id: 'PUBLISHED', label: 'منشور', count: countBy('PUBLISHED'), tone: 'emerald' },
+          { id: 'BREAKING', label: 'عاجل على الهواء', count: (newsList || []).filter((n) => isBreakingLive(n)).length, tone: 'red', secondary: true },
+          { id: 'ARCHIVED', label: 'أرشيف', count: countBy('ARCHIVED'), tone: 'slate', secondary: true },
+          ...(canDelete ? [{ id: 'TRASH' as ListTab, label: 'سلة المحذوفات', count: deletedNews.length, tone: 'slate' as const, secondary: true }] : []),
+        ]}
+      />
 
       {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
@@ -552,13 +468,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     )}
                   </button>
                 </th>
-                <SortTh className="py-3.5 px-4" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />
-                <SortTh className="py-3.5 px-3" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 text-center" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />
-                <th className="py-3.5 px-4 text-center w-36">إجراءات تحريرية</th>
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36">إجراءات تحريرية</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -601,7 +517,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Title */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-3 sm:px-4">
                         <div className="flex items-start gap-2">
                           {isUnderEmbargo(item) && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
@@ -623,10 +539,28 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <span className="text-[11px] text-slate-400 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
+                            {/* Below 1024px the category, priority, author and time columns fold in here. */}
+                            <span className="lg:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-slate-500">
+                              <span className="sm:hidden">
+                                <Badge variant={sInfo.variant} size="sm">
+                                  {sInfo.label}
+                                </Badge>
+                              </span>
+                              <span className="font-semibold text-slate-600">{item.categoryName}</span>
+                              <Badge variant={pInfo.variant} size="sm">
+                                {pInfo.label}
+                              </Badge>
+                              {item.authorName && <span>{item.authorName}</span>}
+                              {item.updatedAt && (
+                                <span className="md:hidden tabular-nums">
+                                  {new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </span>
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
                               <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
-                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                                ينشر في {new Date(item.scheduledDate).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
@@ -640,7 +574,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Category */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3 hidden lg:table-cell">
                         {(() => {
                           const catObj = (categories || []).find(
                             (c) => c.nameAr === item.categoryName || c.id === item.categoryId
@@ -666,14 +600,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Priority */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3 hidden lg:table-cell">
                         <Badge variant={pInfo.variant} size="sm">
                           {pInfo.label}
                         </Badge>
                       </td>
 
                       {/* Source / Author */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3 hidden lg:table-cell">
                         <div className="text-[11px]">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
                           <span className="text-slate-400 block">{item.authorName}</span>
@@ -681,20 +615,20 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Status */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3 hidden sm:table-cell">
                         <Badge variant={sInfo.variant} size="sm">
                           {sInfo.label}
                         </Badge>
                       </td>
 
                       {/* Last update */}
-                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG') : ''}>
-                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn') : ''}>
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-3.5 px-2 sm:px-4 text-center">
+                        <div className="flex flex-wrap items-center justify-center gap-1">
                           {/* Quick Preview */}
                           <button
                             type="button"
@@ -865,7 +799,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 </span>
               </div>
               <div className="text-xs text-slate-500 font-mono">
-                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString('ar-EG')}
+                تاريخ الإنشاء: {new Date(previewNews.createdAt).toLocaleString('ar-EG-u-nu-latn')}
               </div>
             </div>
 
@@ -913,7 +847,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(log.timestamp).toLocaleString('ar-EG')}
+                      {new Date(log.timestamp).toLocaleString('ar-EG-u-nu-latn')}
                     </span>
                   </div>
                 ))}

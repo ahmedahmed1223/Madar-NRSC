@@ -316,7 +316,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             <span
                               className={`font-mono font-black px-2 py-0.5 rounded ${
                                 isLive
-                                  ? 'bg-red-600 text-white animate-pulse'
+                                  ? 'bg-red-600 text-white'
                                   : 'bg-blue-50 text-blue-700'
                               }`}
                             >

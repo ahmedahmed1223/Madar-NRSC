@@ -50,7 +50,7 @@ export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
             <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
               <span className="font-mono font-black text-slate-800" dir="ltr">{clock(s.startedAt)}</span>
               <strong className="text-slate-800">{s.programName ? `${s.programName}: ` : ''}{s.title}</strong>
-              {s.status === 'LIVE' && <span className="px-2 py-0.5 rounded bg-red-600 text-white text-[10px] font-bold animate-pulse">على الهواء</span>}
+              {s.status === 'LIVE' && <span className="px-2 py-0.5 rounded bg-red-600 text-white text-[10px] font-bold">على الهواء</span>}
               <span className="text-slate-500">
                 الفعلي <b className="font-mono" dir="ltr">{s.actualSeconds === null ? '—' : mmss(s.actualSeconds)}</b> مقابل <b className="font-mono" dir="ltr">{mmss(s.plannedSeconds)}</b>
               </span>

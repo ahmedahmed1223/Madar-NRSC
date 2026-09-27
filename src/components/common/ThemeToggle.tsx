@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { Check, Monitor, Moon, Sun, Waves } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
-import type { ThemePreference } from '../../services/theme';
+import { reducedMotion, setReducedMotion, type ThemePreference } from '../../services/theme';
 
 const OPTIONS: { id: ThemePreference; label: string; hint: string; icon: typeof Sun }[] = [
   { id: 'light', label: 'نهاري', hint: 'خلفية فاتحة', icon: Sun },
@@ -13,6 +13,7 @@ const OPTIONS: { id: ThemePreference; label: string; hint: string; icon: typeof 
 export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }) => {
   const { mode, preference, setPreference } = useTheme();
   const [open, setOpen] = useState(false);
+  const [calm, setCalm] = useState(reducedMotion);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,6 +69,25 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
               </button>
             );
           })}
+          <div className="border-t border-slate-100 mt-1 pt-1">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={calm}
+              onClick={() => {
+                setReducedMotion(!calm);
+                setCalm(!calm);
+              }}
+              className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-right ${calm ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+            >
+              <Waves className={`w-4 h-4 shrink-0 ${calm ? 'text-blue-600' : 'text-slate-500'}`} />
+              <span className="flex-1 min-w-0">
+                <span className={`block text-xs font-bold ${calm ? 'text-blue-700' : 'text-slate-700'}`}>تقليل الحركة</span>
+                <span className="block text-[11px] text-slate-500">إيقاف الوميض والنبض والانتقالات المتحركة</span>
+              </span>
+              {calm && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+            </button>
+          </div>
         </div>
       )}
     </div>

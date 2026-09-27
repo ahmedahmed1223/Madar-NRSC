@@ -32,7 +32,7 @@ export const WhatsNewView: React.FC<{ currentUser: User }> = ({ currentUser }) =
             {idx === 0 && <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold">الإصدار الحالي</span>}
             <h2 className="text-sm font-bold text-slate-900">{r.title}</h2>
             <time className="text-[11px] text-slate-400 mr-auto" dateTime={r.date}>
-              {new Date(`${r.date}T12:00:00`).toLocaleDateString('ar-EG', { dateStyle: 'long' })}
+              {new Date(`${r.date}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { dateStyle: 'long' })}
             </time>
           </header>
           <ul className="space-y-2">

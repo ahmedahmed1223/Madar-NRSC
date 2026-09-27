@@ -15,6 +15,7 @@ import {
 import { User as UserType } from '../../types';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
+import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
 import type { ChatMessage } from '../../shared/collections';
 
 type Channel = string;
@@ -84,6 +85,30 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
   const unreadCount = messages.filter((m) => m.userId !== currentUser?.id && (m.timestamp || '') > lastSeen).length;
 
+  // Opened from the top bar; closes on Esc and when the screen changes; focus goes in and back.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useEffect(
+    () =>
+      intercomCommand.on((cmd) => setIsOpen((open) => (cmd === 'toggle' ? !open : cmd === 'open'))),
+    []
+  );
+  useEffect(() => routeChanged.on(() => setIsOpen(false)), []);
+  useEffect(() => intercomState.emit({ open: isOpen, unread: unreadCount }), [isOpen, unreadCount]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const t = window.setTimeout(() => drawerRef.current?.querySelector<HTMLElement>('textarea, input, button')?.focus(), 30);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('[role=alertdialog]')) setIsOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+  }, [isOpen]);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -103,28 +128,9 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
   return (
     <>
-      {/* Floating Trigger Button on Bottom-Left */}
-      <div className="theme-fixed fixed bottom-5 left-5 z-40">
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-4 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-xl border border-slate-700 font-bold text-xs transition-all hover:scale-105"
-        >
-          <div className="relative">
-            <Radio className="w-4 h-4 text-emerald-400" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-2 -right-2 min-w-4 h-4 px-1 bg-red-600 rounded-full border-2 border-slate-900 text-[9px] leading-3 text-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </div>
-          <span>المحادثة الداخلية</span>
-        </button>
-      </div>
-
       {/* Slide-out Drawer */}
       {isOpen && (
-        <div className="theme-fixed fixed inset-y-0 left-0 z-50 w-full max-w-sm sm:max-w-md bg-slate-950 text-white shadow-2xl border-r border-slate-800 flex flex-col animate-in slide-in-from-left duration-200" dir="rtl">
+        <div ref={drawerRef} role="dialog" aria-modal="false" aria-label="المحادثة الداخلية بين الأقسام" className="theme-fixed fixed inset-y-0 left-0 z-50 w-full max-w-sm sm:max-w-md bg-slate-950 text-white shadow-2xl border-r border-slate-800 flex flex-col animate-in slide-in-from-left duration-200" dir="rtl">
           {/* Drawer Header */}
           <div className="h-16 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -140,6 +146,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
             <button
               type="button"
               onClick={() => setIsOpen(false)}
+              aria-label="إغلاق المحادثة"
               className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
@@ -183,14 +190,14 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <div className="flex items-center justify-between text-[10px]">
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
-                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[9px] animate-pulse">
+                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[9px]">
                         عاجل
                       </span>
                     )}
                     <span className="font-bold text-white">{msg.userName}</span>
                   </div>
                   <span className="font-mono text-slate-500">
-                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '...'}
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : '...'}
                   </span>
                 </div>
 

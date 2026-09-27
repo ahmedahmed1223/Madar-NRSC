@@ -24,9 +24,11 @@ import { BellRing,
   Keyboard,
   KeyRound,
   LogOut,
+  MessageSquare,
 } from 'lucide-react';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
+import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
 import { TwoFactorModal } from '../auth/TwoFactorModal';
 import { NotificationDropdown } from './NotificationDropdown';
 import { PWAInstallButton } from '../common/PWAInstallButton';
@@ -106,6 +108,26 @@ export const Topbar: React.FC<TopbarProps> = ({
 
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
 
+  // Floating menus close on Esc and whenever the screen changes.
+  const [chat, setChat] = useState(intercomState.last || { open: false, unread: 0 });
+  useEffect(() => intercomState.on(setChat), []);
+  useEffect(() => {
+    const closeAll = () => {
+      setIsNotifOpen(false);
+      setIsUserMenuOpen(false);
+      setIsCreateMenuOpen(false);
+    };
+    const offRoute = routeChanged.on(closeAll);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('[role=alertdialog]')) closeAll();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      offRoute();
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
   useEffect(() => {
     setNotifications(ApiService.getMyNotifications());
   }, [isNotifOpen, isUserMenuOpen]);
@@ -157,6 +179,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 ? 'قفل البث المباشر مفعّل لكل المستخدمين (Ctrl+Alt+L لرفعه)'
                 : 'تفعيل قفل البث المباشر: يمنع حذف البرامج والحلقات أثناء الهواء (Ctrl+Alt+L)'
             }
+            aria-label={isLiveLockActive ? 'قفل البث المباشر مفعّل' : 'قفل البث المباشر غير مفعّل'}
+            aria-pressed={isLiveLockActive}
             className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
@@ -170,7 +194,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           {zoneMismatch && (
             <span
               role="status"
-              className="font-sans text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
+              className="hidden sm:inline font-sans text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
               title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
             >
               المحطة {stationTime}
@@ -300,11 +324,34 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>
 
+        {/* Team chat (was a floating button covering content) */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsNotifOpen(false);
+            intercomCommand.emit('toggle');
+          }}
+          aria-label={chat.unread > 0 ? `المحادثة الداخلية (${chat.unread} رسالة جديدة)` : 'المحادثة الداخلية'}
+          aria-expanded={chat.open}
+          title="المحادثة الداخلية بين الأقسام"
+          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          {chat.unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[9px] leading-4 text-center font-bold">
+              {chat.unread > 9 ? '9+' : chat.unread}
+            </span>
+          )}
+        </button>
+
         {/* Notifications Button */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => setIsNotifOpen(!isNotifOpen)}
+            onClick={() => {
+              if (!isNotifOpen) intercomCommand.emit('close');
+              setIsNotifOpen(!isNotifOpen);
+            }}
             aria-label={unreadCount > 0 ? `الإشعارات (${unreadCount} غير مقروء)` : 'الإشعارات'}
             aria-expanded={isNotifOpen}
             className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors relative"
@@ -349,7 +396,10 @@ export const Topbar: React.FC<TopbarProps> = ({
             type="button"
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2.5 p-1.5 pr-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-all"
-            title="حساب المستخدم"
+            title="حسابي: كلمة المرور والتحقق بخطوتين وتسجيل الخروج"
+            aria-label={`حساب ${currentUser.fullName}: كلمة المرور وتسجيل الخروج`}
+            aria-haspopup="menu"
+            aria-expanded={isUserMenuOpen}
           >
             <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" />
             <div className="text-right hidden xl:block max-w-[9rem] min-w-0">

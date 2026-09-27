@@ -1,3 +1,4 @@
+import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
 import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useEffect, useState } from 'react';
 import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
@@ -89,7 +90,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             <Radio className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900 leading-tight">نظام غرفة الأخبار</h1>
+            <h1 className="text-lg font-extrabold text-slate-900 leading-tight">{APP_NAME} · {APP_TAGLINE}</h1>
             <p className="text-xs text-slate-500">سجّل الدخول بحسابك المؤسسي</p>
           </div>
         </div>

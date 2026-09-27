@@ -68,3 +68,26 @@ if (typeof window !== 'undefined' && window.matchMedia) {
     if (!savedPreference()) apply(systemPrefersDark() ? 'dark' : 'light', true);
   });
 }
+
+// --- Reduced motion -----------------------------------------------------------
+
+const MOTION_KEY = 'nrcs-reduce-motion';
+
+/** «تقليل الحركة»: no pulsing or animated transitions on this device. */
+export function reducedMotion(): boolean {
+  try {
+    return localStorage.getItem(MOTION_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setReducedMotion(on: boolean) {
+  try {
+    if (on) localStorage.setItem(MOTION_KEY, '1');
+    else localStorage.removeItem(MOTION_KEY);
+  } catch {
+    // storage unavailable: lasts for this page only
+  }
+  document.documentElement.classList.toggle('reduce-motion', on);
+}

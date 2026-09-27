@@ -275,7 +275,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(bulletin.kind)}</span>
-                {onAir?.status === 'LIVE' && <span className="font-bold px-2 py-0.5 rounded bg-red-600 text-white animate-pulse">على الهواء</span>}
+                {onAir?.status === 'LIVE' && <span className="font-bold px-2 py-0.5 rounded bg-red-600 text-white">على الهواء</span>}
                 {bulletin.status === 'DONE' && <span className="font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">أُذيعت</span>}
               </div>
               <h1 className="text-lg sm:text-xl font-black text-slate-800 mt-1">{bulletin.title}</h1>
@@ -670,7 +670,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       <span className="font-bold text-slate-800 block">{source === 'COPY' ? item.slug : item.title}</span>
                       <span className="text-[10px] text-slate-500">
                         {source === 'NEWS' && `${NEWS_STATUS[item.status] || item.status} · ${item.authorName || ''}`}
-                        {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}`}
+                        {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}`}
                         {source === 'COPY' && `${storyTypeOf(item.type).code} · ${mmss(storyTiming(item).total)}`}
                       </span>
                       {already && <span className="text-[10px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}

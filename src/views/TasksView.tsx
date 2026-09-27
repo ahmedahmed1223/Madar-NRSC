@@ -23,6 +23,23 @@ import {
   Check,
 } from 'lucide-react';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
+
+/** Whole days a task is past its due time (0 when not overdue or already done). */
+function overdueDays(t: EditorialTask): number {
+  if (!t.dueDate || ['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(t.status))) return 0;
+  const late = Date.now() - new Date(t.dueDate).getTime();
+  return late > 0 ? Math.max(1, Math.floor(late / 86_400_000)) : 0;
+}
+
+const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
+  const days = overdueDays(task);
+  if (!days) return null;
+  return (
+    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold whitespace-nowrap">
+      متأخرة {days === 1 ? 'يوماً' : days === 2 ? 'يومين' : `${days} أيام`}
+    </span>
+  );
+};
 import { Badge } from '../components/common/Badge';
 import { SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { notify } from '../services/notify';
@@ -312,9 +329,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <UserIcon className="w-3 h-3 text-slate-400" />
                           <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
                         </div>
-                        <div className="flex items-center gap-1 font-mono text-slate-400">
+                        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-400'}`}>
+                          <OverdueBadge task={t} />
                           <Clock className="w-3 h-3" />
-                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' }) : ''}</span>
+                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' }) : ''}</span>
                         </div>
                       </div>
 
@@ -382,7 +400,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     </Badge>
                   </td>
                   <td className="py-3 px-3 font-semibold text-slate-700">{assigneeOf(t)}</td>
-                  <td className="py-3 px-3 font-mono text-slate-600">{t.dueDate ? new Date(t.dueDate).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                  <td className="py-3 px-3 tabular-nums text-slate-600">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className={overdueDays(t) ? 'text-red-600 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
+                      <OverdueBadge task={t} />
+                    </div>
+                  </td>
                   <td className="py-3 px-3">
                     <Badge
                       variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : 'warning'}

@@ -1,4 +1,5 @@
 import { confirmDialog } from '../services/dialogs';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
 import React, { useState } from 'react';
@@ -41,7 +42,7 @@ const dayLabel = (date: string) => {
   if (date === addDays(today, 1)) return 'غداً';
   if (date === addDays(today, -1)) return 'أمس';
   const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date(y, m - 1, d).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
 interface NewForm {
@@ -210,23 +211,15 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
         )}
       </div>
 
-      <div className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold" role="tablist">
-        {[
-          { id: 'DAY' as const, label: 'نشرات اليوم', icon: CalendarDays },
-          { id: 'FORMATS' as const, label: `القوالب والجدولة (${formats.length})`, icon: LayoutTemplate },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            <t.icon className="w-4 h-4" /> {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs<"DAY" | "FORMATS">
+        label="أقسام النشرات"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'DAY', label: 'نشرات اليوم', tone: 'blue' },
+          { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'violet' },
+        ]}
+      />
 
       {message && (
         <p role="status" className={`text-xs font-bold rounded-xl p-2.5 border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>

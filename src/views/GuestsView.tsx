@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
@@ -238,7 +239,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   </Badge>
                 ) : <span />}
                 <span className="text-[11px] text-slate-500">
-                  {guest.lastAppearanceDate ? `آخر ظهور: ${guest.lastAppearanceDate}` : 'لم يظهر بعد'}
+                  {guest.lastAppearanceDate ? `آخر ظهور: ${arabicDate(guest.lastAppearanceDate)}` : 'لم يظهر بعد'}
                 </span>
               </div>
 

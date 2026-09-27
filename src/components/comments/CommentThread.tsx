@@ -90,7 +90,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ target, currentUse
             <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
               <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500">
                 <strong className="text-slate-800 text-[11px]">{c.authorName}</strong>
-                <span>{new Date(c.createdAt).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                <span>{new Date(c.createdAt).toLocaleString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed mt-0.5">{render(c.text)}</p>
             </div>

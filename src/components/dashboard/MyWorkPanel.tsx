@@ -124,7 +124,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       return {
         id: t.id,
         title: t.title,
-        meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' })) : undefined,
+        meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' })) : undefined,
         tone: overdue ? ('red' as const) : ('slate' as const),
         onClick: () => onNavigate('tasks'),
       };
@@ -141,7 +141,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       const mine = r.blockers.filter((b) => b.departmentId === myDept).length;
       return {
         id: e.id,
-        title: `${(e.broadcastDate || '').slice(0, 10) === days[0] ? 'اليوم' : new Date(e.broadcastDate).toLocaleDateString('ar-EG', { weekday: 'long' })} · ${e.programName ? e.programName + ' — ' : ''}${e.title}`,
+        title: `${(e.broadcastDate || '').slice(0, 10) === days[0] ? 'اليوم' : new Date(e.broadcastDate).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long' })} · ${e.programName ? e.programName + ' — ' : ''}${e.title}`,
         meta: r.ready ? 'جاهزة' : mine ? `${mine} نواقص على قسمك` : `${r.readySegments}/${r.total} جاهزة`,
         tone: r.ready ? ('emerald' as const) : mine ? ('red' as const) : ('amber' as const),
         onClick: () => onOpenEpisode(e.id),

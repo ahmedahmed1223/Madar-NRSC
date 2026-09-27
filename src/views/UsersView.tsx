@@ -567,7 +567,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
                         <div className="flex items-center gap-1.5">
                           {isCurrentActive && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white animate-pulse">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
                               حسابك النشط
                             </span>
                           )}

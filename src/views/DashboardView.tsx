@@ -174,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 shadow-sm animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start md:items-center gap-3">
             <div className="p-2 bg-red-600 rounded-full text-white shadow-sm shrink-0">
-              <AlertTriangle className="w-5 h-5 animate-pulse" />
+              <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-red-900 font-bold text-sm">تنبيه أحداث خطيرة / أخبار عاجلة ({criticalNews.length})</h3>
@@ -232,7 +232,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-black text-slate-800">{activeBreakingCount}</span>
-            <span className="text-xs text-red-600 font-semibold animate-pulse">على شريط البث</span>
+            <span className="text-xs text-red-600 font-semibold">على شريط البث</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
             <span>من إجمالي {breakingNews.length} خبراً عاجلاً مسجلاً</span>
@@ -493,7 +493,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>•</span>
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
-                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       </div>
 

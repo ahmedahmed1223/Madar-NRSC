@@ -172,7 +172,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
           <section className="theme-fixed bg-slate-950 text-white rounded-2xl p-5 space-y-4 border border-slate-800" aria-live="polite">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600 animate-pulse' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
                   {live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'لم يبدأ'}
                 </span>
                 <span className="text-sm font-bold">
