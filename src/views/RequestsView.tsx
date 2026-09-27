@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -223,8 +224,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                 {isHandler && !isRequestClosed(r.status) && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const reason = window.prompt('سبب الرفض:');
+                    onClick={async () => {
+                      const reason = await promptDialog({ title: 'رفض الطلب', label: 'سبب الرفض', required: true, multiline: true });
                       if (reason && reason.trim()) act(() => apiService.updateRequest(r.id, { status: 'REJECTED', resolution: reason.trim() }), 'رُفض الطلب');
                     }}
                     className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 text-xs font-bold"
@@ -233,7 +234,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   </button>
                 )}
                 {(isRequester || canManage) && !isRequestClosed(r.status) && (
-                  <button type="button" onClick={() => window.confirm('إلغاء هذا الطلب؟') && act(() => apiService.updateRequest(r.id, { status: 'CANCELLED' }), 'أُلغي الطلب')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={async () => (await confirmDialog('إلغاء هذا الطلب؟')) && act(() => apiService.updateRequest(r.id, { status: 'CANCELLED' }), 'أُلغي الطلب')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إلغاء الطلب
                   </button>
                 )}

@@ -1,3 +1,5 @@
+import { confirmDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
 import React, { useState, useEffect } from 'react';
 import {
   Database,
@@ -120,7 +122,7 @@ export const DatabaseManagerView: React.FC = () => {
   };
 
   const handleReset = async () => {
-    if (!window.confirm('هل أنت متأكد من رغبتك في إعادة تهيئة قاعدة البيانات SQLite وتعبئتها بالبيانات القياسية الأولية؟')) {
+    if (!(await confirmDialog('هل أنت متأكد من رغبتك في إعادة تهيئة قاعدة البيانات SQLite وتعبئتها بالبيانات القياسية الأولية؟'))) {
       return;
     }
     setIsResetting(true);
@@ -132,7 +134,7 @@ export const DatabaseManagerView: React.FC = () => {
       if (consoleEnabled) handleRunQuery(QUERY_PRESETS[0].sql);
       loadBackups();
     } catch (err: any) {
-      alert('فشلت إعادة التهيئة: ' + err.message);
+      notify({ type: 'warning', message: 'فشلت إعادة التهيئة: ' + err.message });
     } finally {
       setIsResetting(false);
     }
@@ -148,14 +150,14 @@ export const DatabaseManagerView: React.FC = () => {
         await loadBackups();
       }
     } catch (err: any) {
-      alert('فشل إنشاء النسخة الاحتياطية: ' + err.message);
+      notify({ type: 'warning', message: 'فشل إنشاء النسخة الاحتياطية: ' + err.message });
     } finally {
       setIsCreatingBackup(false);
     }
   };
 
   const handleRestoreBackup = async (fileName: string) => {
-    if (!window.confirm(`هل أنت متأكد من استعادة قاعدة البيانات من النسخة: ${fileName}؟ سيتم استبدال البيانات الحالية.`)) {
+    if (!(await confirmDialog(`هل أنت متأكد من استعادة قاعدة البيانات من النسخة: ${fileName}؟ سيتم استبدال البيانات الحالية.`))) {
       return;
     }
     setIsRestoringBackup(true);
@@ -166,7 +168,7 @@ export const DatabaseManagerView: React.FC = () => {
       setTimeout(() => setFeedbackMessage(null), 5000);
       if (consoleEnabled) handleRunQuery(QUERY_PRESETS[0].sql);
     } catch (err: any) {
-      alert('فشلت استعادة النسخة الاحتياطية: ' + err.message);
+      notify({ type: 'warning', message: 'فشلت استعادة النسخة الاحتياطية: ' + err.message });
     } finally {
       setIsRestoringBackup(false);
     }

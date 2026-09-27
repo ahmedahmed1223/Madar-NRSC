@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { ProofreadButton } from '../components/editor/WritingAids';
 import { contentDenial, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -636,8 +637,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           {can('news.edit_any') && (
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الخبر؟`)) void lock.takeOver();
+              onClick={async () => {
+                if ((await confirmDialog(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الخبر؟`))) void lock.takeOver();
               }}
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
             >

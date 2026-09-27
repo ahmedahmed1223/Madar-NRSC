@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../services/dialogs';
 import React, { useState } from 'react';
 import { ArrowDown, ArrowUp, CheckSquare, CornerDownLeft, Edit2, Plus, Square, Trash2 } from 'lucide-react';
 import type { Episode, EpisodeQuestion } from '../../types';
@@ -115,8 +116,8 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
   };
 
   const toggle = (id: string) => save(questions.map((q) => (q.id === id ? { ...q, isAsked: !q.isAsked } : q)));
-  const remove = (id: string) => {
-    if (!window.confirm('حذف السؤال؟')) return;
+  const remove = async (id: string) => {
+    if (!(await confirmDialog('حذف السؤال؟'))) return;
     save(questions.filter((q) => q.id !== id && q.parentId !== id));
   };
 

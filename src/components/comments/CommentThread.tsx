@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../services/dialogs';
 import React, { useMemo, useRef, useState } from 'react';
 import { AtSign, MessageSquareText, Send, Trash2 } from 'lucide-react';
 import type { User } from '../../types';
@@ -94,7 +95,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ target, currentUse
               <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed mt-0.5">{render(c.text)}</p>
             </div>
             {c.authorId === currentUser.id && (
-              <button type="button" onClick={() => window.confirm('حذف التعليق؟') && apiService.deleteComment(c.id)} aria-label="حذف التعليق" className="self-start p-1 text-slate-300 hover:text-rose-600">
+              <button type="button" onClick={async () => (await confirmDialog('حذف التعليق؟')) && apiService.deleteComment(c.id)} aria-label="حذف التعليق" className="self-start p-1 text-slate-300 hover:text-rose-600">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}

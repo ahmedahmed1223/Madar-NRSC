@@ -1,3 +1,4 @@
+import { notify } from '../../services/notify';
 import { LongTextField } from '../common/TextSizeControls';
 import { AttachmentsPanel } from '../media/AttachmentsPanel';
 import { FormPage } from '../common/FormPage';
@@ -264,7 +265,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
           addressedToName: brief.reporterName,
         });
       } catch (err: any) {
-        window.alert(`حُفظت الفقرة، لكن تعذر إرسال الطلب: ${err?.message || ''}`);
+        notify({ type: 'warning', message: `حُفظت الفقرة، لكن تعذر إرسال الطلب: ${err?.message || ''}` });
       }
     }
     onClose();

@@ -1,3 +1,4 @@
+import { alertDialog } from '../dialogs';
 import type { DocSpec } from './model';
 import { renderHtml } from './renderHtml';
 
@@ -7,7 +8,7 @@ export type ExportFormat = 'print' | 'pdf' | 'word';
 function openPrintable(doc: DocSpec, pdf: boolean) {
   const w = window.open('', '_blank');
   if (!w) {
-    window.alert('اسمح للمتصفح بفتح النوافذ المنبثقة لهذا الموقع لإتمام الطباعة أو حفظ PDF');
+    void alertDialog('اسمح للمتصفح بفتح النوافذ المنبثقة لهذا الموقع لإتمام الطباعة أو حفظ PDF');
     return;
   }
   w.document.open();

@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
 import React, { useState } from 'react';
@@ -350,7 +351,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                       </button>
                       <button
                         type="button"
-                        onClick={() => window.confirm(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`) && apiService.deleteBulletinFormat(f.id)}
+                        onClick={async () => (await confirmDialog(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`)) && apiService.deleteBulletinFormat(f.id)}
                         aria-label={`حذف ${f.name}`}
                         className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
                       >

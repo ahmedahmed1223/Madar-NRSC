@@ -1,3 +1,5 @@
+import { confirmDialog, promptDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
 import { matchesQuery } from '../shared/search';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 
@@ -94,7 +96,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   /** Super-admin accounts are only managed by a super admin. */
   const canTouch = (u: User) => u.role !== 'SUPER_ADMIN' || isSuper;
   const denyRoles = () => {
-    alert('صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات');
+    notify({ type: 'warning', message: 'صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات' });
     return false;
   };
 
@@ -131,7 +133,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       }
       showToast(`تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
     } catch (e: any) {
-      alert(e.message || 'تعذر حفظ المستخدم');
+      notify({ type: 'warning', message: e.message || 'تعذر حفظ المستخدم' });
     }
   };
 
@@ -143,46 +145,46 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         showToast(`تم ${updated.isActive ? 'تنشيط' : 'تجميد'} حساب ${updated.fullName}`);
       }
     } catch (e: any) {
-      alert(e.message || 'حدث خطأ');
+      notify({ type: 'warning', message: e.message || 'حدث خطأ' });
     }
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     const target = users.find((u) => u.id === userId);
     if (!target) return;
 
-    if (window.confirm(`هل أنت متأكد من حذف حساب المستخدم: ${target.fullName}؟`)) {
+    if ((await confirmDialog(`هل أنت متأكد من حذف حساب المستخدم: ${target.fullName}؟`))) {
       try {
         ApiService.deleteUser(userId);
         loadData();
         showToast(`تم حذف حساب ${target.fullName}`);
       } catch (e: any) {
-        alert(e.message || 'فشل في حذف المستخدم');
+        notify({ type: 'warning', message: e.message || 'فشل في حذف المستخدم' });
       }
     }
   };
 
   const handleResetTwoFactor = async (user: User) => {
-    if (!window.confirm(`إلغاء التحقق بخطوتين للمستخدم ${user.fullName}؟ استخدم ذلك فقط إذا فقد جهاز المصادقة.`)) return;
+    if (!(await confirmDialog(`إلغاء التحقق بخطوتين للمستخدم ${user.fullName}؟ استخدم ذلك فقط إذا فقد جهاز المصادقة.`))) return;
     try {
       await authClient.resetUserTwoFactor(user.id);
       showToast(`تم إلغاء التحقق بخطوتين للمستخدم ${user.fullName}`);
     } catch (e: any) {
-      alert(e.message || 'تعذر إلغاء التحقق بخطوتين');
+      notify({ type: 'warning', message: e.message || 'تعذر إلغاء التحقق بخطوتين' });
     }
   };
 
   /** Issues a random temporary password; the user must replace it at next sign-in. */
   const handleResetPassword = async (user: User) => {
-    if (!window.confirm(`إصدار كلمة مرور مؤقتة جديدة للمستخدم ${user.fullName}؟ سيتم إنهاء جلساته الحالية.`)) return;
+    if (!(await confirmDialog(`إصدار كلمة مرور مؤقتة جديدة للمستخدم ${user.fullName}؟ سيتم إنهاء جلساته الحالية.`))) return;
     const bytes = new Uint8Array(9);
     crypto.getRandomValues(bytes);
     const temp = `${btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '')}7a`;
     try {
       await authClient.setUserPassword(user.id, temp);
-      window.prompt('كلمة المرور المؤقتة (انسخها وسلّمها للمستخدم بشكل آمن):', temp);
+      await promptDialog({ title: 'كلمة المرور المؤقتة', message: `انسخها وسلّمها إلى ${user.fullName} بشكل آمن؛ سيُطلب منه تغييرها عند الدخول.`, defaultValue: temp, copyOnly: true });
     } catch (e: any) {
-      alert(e.message || 'تعذر إعادة تعيين كلمة المرور');
+      notify({ type: 'warning', message: e.message || 'تعذر إعادة تعيين كلمة المرور' });
     }
   };
 
@@ -204,7 +206,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     }
     const res = RbacService.deleteRole(roleId);
     if (!res.success) {
-      alert(res.error || 'تعذر حذف الدور');
+      notify({ type: 'warning', message: res.error || 'تعذر حذف الدور' });
     } else {
       setRoles(res.roles);
       showToast('تم حذف الدور المخصص بنجاح');
@@ -231,12 +233,12 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     loadData();
   };
 
-  const handleResetDefaults = () => {
+  const handleResetDefaults = async () => {
     if (!canManageRoles) {
       denyRoles();
       return;
     }
-    if (window.confirm('هل تريد استعادة مصفوفة الصلاحيات الافتراضية لكافة الأدوار الأساسية؟')) {
+    if ((await confirmDialog('هل تريد استعادة مصفوفة الصلاحيات الافتراضية لكافة الأدوار الأساسية؟'))) {
       const reset = RbacService.resetToDefaults();
       setRoles(reset);
       showToast('تمت استعادة إعدادات الصلاحيات القياسية للمنظومة');

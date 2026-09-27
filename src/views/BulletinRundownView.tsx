@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
@@ -239,10 +240,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     }, 'حُفظت بيانات النشرة');
   };
 
-  const saveAsFormat = () =>
+  const saveAsFormat = async () => {
+    const name = (await promptDialog({ title: 'حفظ النشرة قالباً', label: 'اسم القالب', defaultValue: bulletin.title.split(' — ')[0], required: true }))?.trim();
+    if (!name) return;
     attempt(() => {
-      const name = window.prompt('اسم القالب', bulletin.title.split(' — ')[0]);
-      if (!name) return;
       apiService.saveBulletinFormat({
         name,
         kind: bulletin.kind,
@@ -256,6 +257,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         stories: air.sort(byRank).map((s) => ({ slug: s.slug, type: s.type, manualSeconds: storyTypeOf(s.type).manual ? s.manualSeconds : undefined })),
       });
     }, 'حُفظت بنية النشرة كقالب؛ حدد أيام جدولته من «القوالب والجدولة»');
+  };
 
   const users = apiService.getUsers().filter((u) => u.isActive !== false);
   const show = bulletinAsShow(bulletin, all);
@@ -548,7 +550,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       {canEdit && (approver || s.writerId === currentUser.id || can('bulletins.manage')) && (
-                        <button type="button" onClick={() => window.confirm(`حذف «${s.slug}» نهائياً من النشرة؟`) && attempt(() => apiService.deleteBulletinStory(s.id), 'حُذفت القصة')} aria-label={`حذف ${s.slug}`} className="p-1 text-slate-300 hover:text-rose-600">
+                        <button type="button" onClick={async () => (await confirmDialog(`حذف «${s.slug}» نهائياً من النشرة؟`)) && attempt(() => apiService.deleteBulletinStory(s.id), 'حُذفت القصة')} aria-label={`حذف ${s.slug}`} className="p-1 text-slate-300 hover:text-rose-600">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -770,8 +772,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               {can('bulletins.manage') ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!window.confirm(`حذف «${bulletin.title}»؟`)) return;
+                  onClick={async () => {
+                    if (!(await confirmDialog(`حذف «${bulletin.title}»؟`))) return;
                     attempt(() => apiService.deleteBulletin(bulletin.id));
                     setMeta(null);
                     onBack();

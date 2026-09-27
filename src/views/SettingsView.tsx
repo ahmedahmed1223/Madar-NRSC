@@ -1,3 +1,5 @@
+import { confirmDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { DemoDataCard } from '../components/settings/DemoDataCard';
@@ -253,10 +255,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (content) {
-        if (!window.confirm('سيتم إضافة السجلات غير الموجودة فقط من الملف، دون تعديل أي بيانات أو حسابات حالية. متابعة؟')) return;
+        if (!(await confirmDialog('سيتم إضافة السجلات غير الموجودة فقط من الملف، دون تعديل أي بيانات أو حسابات حالية. متابعة؟'))) return;
         try {
           const { added, skipped } = apiService.restoreClientBackup(content);
           setBackupMsg({
@@ -822,7 +824,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             onClick={() => {
                               const inUse = (newsList || []).filter((n) => n.categoryId === cat.id).length;
                               if (inUse > 0) {
-                                window.alert(`لا يمكن حذف قسم (${cat.nameAr}) لأنه مرتبط بـ ${inUse} مادة إخبارية. انقل المواد إلى قسم آخر أولاً.`);
+                                notify({ type: 'warning', message: `لا يمكن حذف قسم (${cat.nameAr}) لأنه مرتبط بـ ${inUse} مادة إخبارية. انقل المواد إلى قسم آخر أولاً.` });
                                 return;
                               }
                               setCategoryToDelete(cat);
@@ -949,13 +951,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const inUse = (newsList || []).filter((n) => n.sourceId === src.id).length;
                       if (inUse > 0) {
-                        window.alert(`لا يمكن حذف المصدر (${src.name}) لأنه مرتبط بـ ${inUse} مادة إخبارية.`);
+                        notify({ type: 'warning', message: `لا يمكن حذف المصدر (${src.name}) لأنه مرتبط بـ ${inUse} مادة إخبارية.` });
                         return;
                       }
-                      if (window.confirm(`حذف المصدر (${src.name}) نهائياً؟`)) onDeleteSource(src.id);
+                      if ((await confirmDialog(`حذف المصدر (${src.name}) نهائياً؟`))) onDeleteSource(src.id);
                     }}
                     className="text-red-500 hover:text-red-700 p-1"
                   >

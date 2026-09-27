@@ -1,3 +1,5 @@
+import { alertDialog, confirmDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
@@ -100,16 +102,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     setBooking({ title: `${episode.programName} — ${episode.title}`, start: from.toISOString(), end: to.toISOString(), link: { kind: 'episode', id: episode.id, title: `${episode.programName} — ${episode.title}` } });
   };
 
-  const handleUpdateStatus = (newStatus: EpisodeStatus) => {
+  const handleUpdateStatus = async (newStatus: EpisodeStatus) => {
     if (!canEditEpisode) return;
     if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !readiness.ready) {
       setShowBlockers(true);
-      window.alert(
+      void alertDialog({ title: 'الحلقة غير جاهزة للبث', message:
         readiness.total === 0
           ? 'لا يمكن اعتماد حلقة بلا فقرات للبث.'
           : `لا يمكن اعتماد الحلقة للبث بعد: ${readiness.blockers.length} عنصر غير جاهز.\n\n` +
               readiness.blockers.slice(0, 6).map((b) => `• ${b.segmentTitle}: ${b.detail} (${departmentName(b.departmentId)})`).join('\n')
-      );
+       });
       return;
     }
     if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !timingOk) {
@@ -117,7 +119,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         timingGap < 0
           ? `الرانداون أقصر من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة (المخطط ${mmssOf(plannedSeconds)} من ${mmssOf(slotSeconds)}).`
           : `الرانداون أطول من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة.`;
-      if (!window.confirm(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`)) return;
+      if (!(await confirmDialog(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`))) return;
     }
     onSaveEpisode({ id: episode.id, status: newStatus });
   };
@@ -170,8 +172,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           {can('rundown.lock_override') && (
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الحلقة؟`)) void lock.takeOver();
+              onClick={async () => {
+                if ((await confirmDialog(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الحلقة؟`))) void lock.takeOver();
               }}
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
             >

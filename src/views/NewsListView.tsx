@@ -1,3 +1,4 @@
+import { notify } from '../services/notify';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
@@ -154,7 +155,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       apiService.restoreNews(id);
       setDeletedNews(apiService.getDeletedNews());
     } catch (err: any) {
-      alert(err.message);
+      notify({ type: 'warning', message: err.message });
     }
   };
 

@@ -1,3 +1,5 @@
+import { confirmDialog } from '../../services/dialogs';
+import { notify } from '../../services/notify';
 import React, { useState } from 'react';
 import { AlertTriangle, Phone, Plus, Replace, Send, Trash2, UserPlus } from 'lucide-react';
 import type { Episode, EpisodeGuest, Guest, RundownSegment, User } from '../../types';
@@ -96,18 +98,18 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
     setNewGuestId('');
   };
 
-  const removeGuest = (key: string, name: string) => {
+  const removeGuest = async (key: string, name: string) => {
     const inSegments = guestSegments(episode, key).length;
-    if (!window.confirm(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments} فقرة؟` : `إزالة ${name} من الحلقة؟`)) return;
+    if (!(await confirmDialog(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments} فقرة؟` : `إزالة ${name} من الحلقة؟`))) return;
     if (inSegments) onUpdateRundown(rundown.map((s) => (segmentGuests(s).some((g) => g.guestId === key) ? withSegmentGuests(s, segmentGuests(s).filter((g) => g.guestId !== key)) : s)));
     saveList(list.filter((g) => guestKey(g) !== key));
   };
 
   /** Puts the backup guest in place of one who declined, in every segment. */
-  const swapToBackup = (g: any) => {
+  const swapToBackup = async (g: any) => {
     const backup = bankOf(g.backupGuestId);
     if (!backup) return;
-    if (!window.confirm(`استبدال ${g.guestName} بالبديل ${backup.fullName} في كل فقراته؟`)) return;
+    if (!(await confirmDialog(`استبدال ${g.guestName} بالبديل ${backup.fullName} في كل فقراته؟`))) return;
     onUpdateRundown(
       rundown.map((s) =>
         segmentGuests(s).some((x) => x.guestId === guestKey(g))
@@ -154,7 +156,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
       });
       flash('أُرسلت الشارة إلى قسم الجرافيك');
     } catch (err: any) {
-      window.alert(err?.message || 'تعذر إرسال الطلب');
+      notify({ type: 'warning', message: err?.message || 'تعذر إرسال الطلب' });
     }
   };
 

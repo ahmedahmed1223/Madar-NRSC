@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, ChevronLeft, ChevronRight, Copy, Crown, Plus, UserCheck, X } from 'lucide-react';
 import type { User } from '../types';
@@ -97,8 +98,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
           {canManage && (
             <button
               type="button"
-              onClick={() => {
-                if (!window.confirm('نسخ مناوبات هذا الأسبوع (كل الأقسام) إلى الأسبوع التالي؟')) return;
+              onClick={async () => {
+                if (!(await confirmDialog('نسخ مناوبات هذا الأسبوع (كل الأقسام) إلى الأسبوع التالي؟'))) return;
                 let n = 0;
                 run(() => {
                   n = apiService.copyRosterWeek(weekStart);

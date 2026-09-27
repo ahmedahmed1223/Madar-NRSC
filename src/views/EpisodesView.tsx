@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
@@ -179,7 +180,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openNewRequest]);
 
-  const handleCreateEpisode = (e: React.FormEvent) => {
+  const handleCreateEpisode = async (e: React.FormEvent) => {
     e.preventDefault();
     const selProg = programs.find((p) => p.id === programId);
     const clashes = studioConflictsFor(
@@ -188,11 +189,11 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     );
     if (
       clashes.length > 0 &&
-      !window.confirm(
+      !(await confirmDialog(
         `تنبيه تعارض استوديو: الموعد يتداخل مع ${clashes
           .map((c) => `«${c.programName} – ${c.title}» (${c.startTime}–${c.endTime})`)
           .join('، ')}. هل تريد الحفظ رغم ذلك؟`
-      )
+      ))
     ) {
       return;
     }
@@ -443,8 +444,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                           {onDeleteEpisode && canDelete && (
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm(`هل أنت متأكد من حذف الحلقة: "${ep.title}"؟`)) {
+                              onClick={async () => {
+                                if ((await confirmDialog(`هل أنت متأكد من حذف الحلقة: "${ep.title}"؟`))) {
                                   onDeleteEpisode(ep.id);
                                 }
                               }}

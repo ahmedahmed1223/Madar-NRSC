@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
 import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
@@ -165,9 +166,9 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     });
   };
 
-  const removeTopic = (topic: EpisodeTopic) => {
+  const removeTopic = async (topic: EpisodeTopic) => {
     const count = rundown.filter((s) => s.topicId === topic.id).length;
-    if (!window.confirm(count ? `حذف المحور «${topic.title}»؟ ستبقى فقراته (${count}) في الرانداون بدون محور.` : `حذف المحور «${topic.title}»؟`)) return;
+    if (!(await confirmDialog(count ? `حذف المحور «${topic.title}»؟ ستبقى فقراته (${count}) في الرانداون بدون محور.` : `حذف المحور «${topic.title}»؟`))) return;
     saveTopics(
       topics.filter((t) => t.id !== topic.id),
       rundown.map((s) => (s.topicId === topic.id ? { ...s, topicId: undefined } : s))
@@ -303,10 +304,10 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const program = apiService.getPrograms().find((p) => p.id === episode.programId);
   const canSaveTemplate = !!program && RbacService.hasPermission(currentUser, 'programs.manage') && rundown.length > 0;
   const [notice, setNotice] = useState<string | null>(null);
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     if (!program) return;
     const template = templateFromEpisode(episode);
-    if (program.template && !window.confirm(`استبدال قالب «${program.name}» الحالي (${program.template.segments.length} فقرة) ببنية هذه الحلقة؟`)) return;
+    if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${program.template.segments.length} فقرة) ببنية هذه الحلقة؟`))) return;
     try {
       apiService.saveProgram({ id: program.id, template: { ...template, updatedAt: new Date().toISOString(), updatedByName: currentUser.fullName } });
       setNotice(`حُفظت البنية (${template.topics.length} محور، ${template.segments.length} فقرة) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);

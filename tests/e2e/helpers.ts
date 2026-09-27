@@ -8,7 +8,11 @@ export async function signIn(browser: Browser, email: string, opts: { viewport?:
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('dialog', (d) => d.accept());
+  // Every confirmation is an in-app dialog now; a native one is a regression.
+  page.on('dialog', (d) => {
+    errors.push(`native ${d.type()} dialog: ${d.message()}`);
+    void d.dismiss();
+  });
   await page.goto('/');
   await page.fill('#login-email', email);
   await page.fill('#login-password', DEMO_PASSWORD);

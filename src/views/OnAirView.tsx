@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -116,9 +117,9 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const start = () => {
+  const start = async () => {
     if (!episode || !rundown.length) return;
-    if (readiness && !readiness.ready && !window.confirm(isBulletin ? `${readiness.blockers.length} قصة غير معتمدة في النشرة. بدء البث رغم ذلك؟` : `الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`)) return;
+    if (readiness && !readiness.ready && !(await confirmDialog(isBulletin ? `${readiness.blockers.length} قصة غير معتمدة في النشرة. بدء البث رغم ذلك؟` : `الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
 
@@ -234,7 +235,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.confirm('إنهاء البث؟ ستُسجَّل الحلقة كمذاعة.') && run(() => apiService.setOnAir(episode.id, 'ENDED', state!.currentSegmentId))}
+                      onClick={async () => (await confirmDialog('إنهاء البث؟ ستُسجَّل الحلقة كمذاعة.')) && run(() => apiService.setOnAir(episode.id, 'ENDED', state!.currentSegmentId))}
                       className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-600 hover:bg-slate-800 text-white font-bold text-sm mr-auto"
                     >
                       <Square className="w-4 h-4" />
@@ -271,7 +272,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         {actual !== null && <span className={actual > (seg.durationSeconds || 0) ? ' text-red-600' : ' text-emerald-600'}> / {formatClock(actual)}</span>}
                       </span>
                       {canControl && live && !isCurrent && (
-                        <button type="button" onClick={() => window.confirm(`الانتقال إلى «${seg.title}»؟`) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold hover:bg-slate-50">
+                        <button type="button" onClick={async () => (await confirmDialog(`الانتقال إلى «${seg.title}»؟`)) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold hover:bg-slate-50">
                           انتقال
                         </button>
                       )}

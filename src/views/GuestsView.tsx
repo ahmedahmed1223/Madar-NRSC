@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
@@ -215,8 +216,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   {canManage && onDeleteGuest && (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm(`هل أنت متأكد من حذف الضيف: "${guest.fullName}"؟`)) {
+                      onClick={async () => {
+                        if ((await confirmDialog(`هل أنت متأكد من حذف الضيف: "${guest.fullName}"؟`))) {
                           onDeleteGuest(guest.id);
                         }
                       }}

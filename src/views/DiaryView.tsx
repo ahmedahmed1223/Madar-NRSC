@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, FilePlus2, Flag, MapPin, Plus, Search, Trash2, Users as UsersIcon } from 'lucide-react';
@@ -433,8 +434,8 @@ const DiaryEntryPage: React.FC<{
             {canManage && entry.id && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm('حذف الحدث من الأجندة؟') && tryAction('حذف الحدث', () => apiService.deleteDiaryEntry(entry.id!), 'حُذف الحدث')) onClose();
+                onClick={async () => {
+                  if ((await confirmDialog('حذف الحدث من الأجندة؟')) && tryAction('حذف الحدث', () => apiService.deleteDiaryEntry(entry.id!), 'حُذف الحدث')) onClose();
                 }}
                 className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50"
               >

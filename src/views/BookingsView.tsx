@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, ChevronLeft, ChevronRight, Pencil, Plus, Power, Settings2, Trash2, X } from 'lucide-react';
 import type { User } from '../types';
@@ -246,8 +247,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!window.confirm('إلغاء هذا الحجز؟')) return;
+                  onClick={async () => {
+                    if (!(await confirmDialog('إلغاء هذا الحجز؟'))) return;
                     if (tryAction('إلغاء الحجز', () => apiService.cancelBooking(viewing.id), 'أُلغي الحجز')) setViewing(null);
                   }}
                   className="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50"
@@ -339,8 +340,8 @@ const ResourcesManager: React.FC<{ onClose: () => void; resources: Resource[] }>
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm(`حذف ${r.name}؟`)) tryAction('حذف المورد', () => apiService.deleteResource(r.id), 'حُذف المورد');
+                onClick={async () => {
+                  if ((await confirmDialog(`حذف ${r.name}؟`))) tryAction('حذف المورد', () => apiService.deleteResource(r.id), 'حُذف المورد');
                 }}
                 aria-label={`حذف ${r.name}`}
                 className="p-1.5 rounded hover:bg-rose-50 text-rose-600"

@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { apiService } from '../services/api';
 import { VIDEO_STATUSES, isVideoReady, videoStatusName } from '../shared/production';
@@ -390,8 +391,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   {canDeleteAsset(asset) && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`حذف المادة «${asset.title || asset.fileName}» نهائياً مع ملفها؟`)) onDeleteMedia(asset.id);
+                    onClick={async () => {
+                      if ((await confirmDialog(`حذف المادة «${asset.title || asset.fileName}» نهائياً مع ملفها؟`))) onDeleteMedia(asset.id);
                     }}
                     className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                     title="حذف من الأرشيف"

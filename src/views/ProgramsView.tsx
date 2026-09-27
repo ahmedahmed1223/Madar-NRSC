@@ -1,3 +1,4 @@
+import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
@@ -323,8 +324,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     {onDeleteProgram && canManage && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm(`هل أنت متأكد من حذف البرنامج: "${prog.name}"؟`)) {
+                        onClick={async () => {
+                          if ((await confirmDialog(`هل أنت متأكد من حذف البرنامج: "${prog.name}"؟`))) {
                             onDeleteProgram(prog.id);
                           }
                         }}

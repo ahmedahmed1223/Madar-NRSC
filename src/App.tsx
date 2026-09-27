@@ -66,6 +66,7 @@ import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
+import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
 
 interface AppProps {
   onLogout: () => void;
@@ -352,15 +353,20 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   /** Opens a notification/deep link path ("/tasks", "/episodes/<id>", "/wires/<id>", ...). */
   const openLink = (nav: string) => {
-    const [view, id] = nav.replace(/^\/+/, '').split(/[/?#]/);
-    setFocusId(id || null);
+    const { view, id } = parsePath(nav);
+    setFocusId(id);
     if (view === 'episodes' && id) handleSelectEpisode(id);
-    else if (view === 'bulletins') openBulletin(id || null);
+    else if (view === 'bulletins') openBulletin(id);
+    else if (view === 'news' && id === 'new') handleCreateNewNewsClick();
     else if (view === 'news' && id) handleEditNewsClick(id);
     else if (view === 'programs' && id) handleSelectProgram(id);
-    else setActiveNav(view || 'dashboard');
+    else setActiveNav(isKnownScreen(view) ? view : 'dashboard');
     setIsMobileSidebarOpen(false);
   };
+  /** The next address change replaces the entry (start-up deep link) instead of adding one. */
+  const replaceNextRoute = useRef(false);
+  /** Address to push once a closing form page has left its history entry. */
+  const pendingRoute = useRef<string | null>(null);
   const openLinkRef = useRef(openLink);
   openLinkRef.current = openLink;
   useEffect(() => {
@@ -368,10 +374,21 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     const params = new URLSearchParams(window.location.search);
     const target = params.get('open');
     if (target && target.startsWith('/')) {
-      openLinkRef.current(target);
       params.delete('open');
       const rest = params.toString();
-      window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+      window.history.replaceState(window.history.state, '', `${target.split('?')[0]}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    }
+    // Deep link (address typed, bookmarked, reloaded or from a notification): open that screen.
+    const deep = window.location.pathname;
+    if (deep !== '/') {
+      replaceNextRoute.current = true;
+      openLinkRef.current(deep);
+      // A link to something gone or not allowed stays on the current screen: fix the address.
+      window.setTimeout(() => {
+        if (!replaceNextRoute.current) return;
+        replaceNextRoute.current = false;
+        if (window.location.pathname !== routePathRef.current) window.history.replaceState(window.history.state, '', routePathRef.current + window.location.search);
+      }, 300);
     }
     registerServiceWorker();
     const onMessage = (e: MessageEvent) => {
@@ -409,7 +426,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleEditNewsClick = (itemOrId: NewsItem | string) => {
-    const found = typeof itemOrId === 'string' ? newsList.find((n) => n.id === itemOrId) : itemOrId;
+    // The list may not be in state yet when a deep link opens the story at start-up.
+    const found = typeof itemOrId === 'string' ? newsList.find((n) => n.id === itemOrId) || apiService.getNews().find((n) => n.id === itemOrId) : itemOrId;
     if (!found) {
       addToast({ type: 'warning', title: 'الخبر غير متاح', message: 'ربما حُذف الخبر أو لا تملك صلاحية الوصول إليه' });
       return;
@@ -626,6 +644,80 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Resolve current active episode and active program
   // Never fall back to another record: if the open one was deleted, say so instead of editing a different one.
   const activeEpisode = selectedEpisodeId ? episodes.find((e) => e.id === selectedEpisodeId) : undefined;
+
+  // --- Browser history: the address follows the screen; Back/Forward move between screens. ---
+  const routePath = routeToPath({
+    nav: activeNav,
+    newsId: selectedNewsItem?.id,
+    episodeId: selectedEpisodeId,
+    programId: selectedProgramId,
+    bulletinId: activeBulletinId,
+    focusId,
+  });
+  const routePathRef = useRef(routePath);
+  routePathRef.current = routePath;
+  const routeStarted = useRef(false);
+  useEffect(() => {
+    // The first render is still the dashboard; a start-up deep link is being opened instead.
+    if (!routeStarted.current) {
+      routeStarted.current = true;
+      return;
+    }
+    if (window.location.pathname === routePath) {
+      replaceNextRoute.current = false;
+      return;
+    }
+    const write = (replace: boolean) => {
+      try {
+        if (replace) window.history.replaceState(window.history.state, '', routePath + window.location.search);
+        else window.history.pushState({ nrcsRoute: routePath }, '', routePath);
+      } catch {
+        // history unavailable (sandboxed frame)
+      }
+    };
+    if (replaceNextRoute.current) {
+      replaceNextRoute.current = false;
+      write(true);
+    } else if (window.history.state?.nrcsFormPage) {
+      // A form page that just closed is stepping back off its history entry; push after it lands.
+      pendingRoute.current = routePath;
+      const t = window.setTimeout(() => {
+        if (pendingRoute.current === routePath) {
+          pendingRoute.current = null;
+          write(false);
+        }
+      }, 400);
+      return () => window.clearTimeout(t);
+    } else write(false);
+  }, [routePath]);
+  useEffect(() => {
+    const onPop = () => {
+      if (pendingRoute.current) {
+        const path = pendingRoute.current;
+        pendingRoute.current = null;
+        window.history.pushState({ nrcsRoute: path }, '', path);
+        return;
+      }
+      // Entries a form page added share the screen's address; the form handles those itself.
+      if (window.history.state?.nrcsFormPage || window.location.pathname === routePathRef.current) return;
+      openLinkRef.current(window.location.pathname);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const routeItemTitle =
+    activeNav === 'news-editor'
+      ? selectedNewsItem?.title || 'خبر جديد'
+      : activeNav === 'episode-workspace'
+        ? activeEpisode?.title
+        : activeNav === 'program-detail'
+          ? programs.find((p) => p.id === selectedProgramId)?.name
+          : activeNav === 'bulletins' && activeBulletinId
+            ? apiService.getBulletins().find((b) => b.id === activeBulletinId)?.title
+            : null;
+  useEffect(() => {
+    document.title = screenTitle(activeNav, routeItemTitle);
+  }, [activeNav, routeItemTitle]);
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
