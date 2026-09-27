@@ -1,3 +1,4 @@
+import { GlossaryDatalist } from '../components/editor/WritingAids';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, FilePlus2, Flag, MapPin, Plus, Search, Trash2, Users as UsersIcon } from 'lucide-react';
 import type { Category, NewsDraftSeed, NewsItem, Story, User } from '../types';
@@ -300,7 +301,8 @@ const DiaryEntryPage: React.FC<{
           </label>
           <label className="block text-xs font-bold text-slate-700">
             المكان
-            <input value={draft.location || ''} onChange={(e) => set({ location: e.target.value })} maxLength={200} disabled={readOnly} className={field} />
+            <input list="newsroom-glossary" value={draft.location || ''} onChange={(e) => set({ location: e.target.value })} maxLength={200} disabled={readOnly} className={field} />
+            <GlossaryDatalist id="newsroom-glossary" />
           </label>
           <label className="block text-xs font-bold text-slate-700">
             قرار التغطية

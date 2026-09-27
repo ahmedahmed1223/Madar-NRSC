@@ -1,3 +1,4 @@
+import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
@@ -445,11 +446,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               </div>
               <input id="stories-view-field-5"
                 type="text"
-                value={locationName}
+                list="newsroom-glossary"
+                    value={locationName}
                 onChange={(e) => setLocationName(e.target.value)}
                 placeholder="مثال: الرياض، واشنطن..."
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500"
               />
+                  <GlossaryDatalist id="newsroom-glossary" />
               <div className="mt-1 flex flex-wrap gap-1">
                 {LOCATION_PRESETS.map((loc) => (
                   <button

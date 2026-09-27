@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { TextSizeControls, useFullscreenField, useTextSize } from '../common/TextSizeControls';
+import { ProofreadButton } from './WritingAids';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface RichTextEditorProps {
@@ -326,6 +327,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
         {/* Reading size, full screen, and source toggle for advanced edits */}
         <div className="flex items-center gap-2">
+          {!readOnly && <ProofreadButton value={value} html onFix={(next) => onChange(next)} />}
           <TextSizeControls label="نص الخبر" text={text} fullscreen={fs} />
           <button
             type="button"
@@ -389,6 +391,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseUp={saveSelection}
             onPaste={handlePaste}
             style={{ minHeight, fontSize: text.size }}
+            lang="ar"
+            spellCheck
             dir="rtl"
             className="rich-editor text-slate-800 leading-relaxed font-sans focus:outline-hidden"
           />

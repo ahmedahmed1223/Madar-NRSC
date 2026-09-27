@@ -1,3 +1,5 @@
+import { GlossaryDatalist } from '../components/editor/WritingAids';
+import { ProofreadButton } from '../components/editor/WritingAids';
 import { contentDenial, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -1024,9 +1026,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </div>
               </div>
 
+              {canEditContent && (
+                <div className="flex justify-end mb-1">
+                  <ProofreadButton value={`${title}\n${summary}`} onFix={(next) => {
+                    const [t, ...rest] = next.split('\n');
+                    setTitle(t);
+                    setSummary(rest.join('\n'));
+                  }} />
+                </div>
+              )}
               <textarea
                 id="news-summary-textarea"
                 rows={3}
+                lang="ar"
+                spellCheck
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder="يجيب عن الأسئلة الصحفية الستة (من، ماذا، أين، متى، لماذا، كيف)..."
@@ -1271,11 +1284,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <input
                     id="news-location-input"
                     type="text"
+                    list="newsroom-glossary"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
                     placeholder="مثال: الرياض، القاهرة، جنيف..."
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   />
+                  <GlossaryDatalist id="newsroom-glossary" />
                 </div>
                 {/* Location Quick Presets */}
                 <div className="mt-1.5 flex flex-wrap gap-1">

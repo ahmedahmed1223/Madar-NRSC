@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AutocompleteBar, ProofreadButton, useAutocomplete } from '../editor/WritingAids';
 import { AArrowDown, AArrowUp, Maximize2, Minimize2 } from 'lucide-react';
 
 /** Reading sizes for long text (scripts, story bodies), in pixels. */
@@ -106,6 +107,12 @@ export const LongTextField: React.FC<
 > = ({ id, label, name, sizeKey, aside, footer, className = '', style, rows = 8, ...rest }) => {
   const text = useTextSize(sizeKey);
   const fs = useFullscreenField();
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const value = String(rest.value ?? '');
+  // Fixes and completions go through the field's own onChange, like typing does.
+  const setValue = (next: string) => rest.onChange?.({ target: { value: next }, currentTarget: { value: next } } as React.ChangeEvent<HTMLTextAreaElement>);
+  const auto = useAutocomplete(ref, value, setValue);
+  const editable = !rest.readOnly && !rest.disabled;
   return (
     <div className={fullscreenClass(fs.full)} role={fs.full ? 'dialog' : undefined} aria-modal={fs.full || undefined} aria-label={fs.full ? name : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -114,16 +121,32 @@ export const LongTextField: React.FC<
         </label>
         <div className="flex flex-wrap items-center gap-2">
           {aside}
+          {editable && <ProofreadButton value={value} onFix={setValue} />}
           <TextSizeControls label={name} text={text} fullscreen={fs} />
         </div>
       </div>
       <textarea
         id={id}
+        ref={ref}
         rows={rows}
+        lang="ar"
+        dir="rtl"
+        spellCheck
         {...rest}
+        onKeyDown={(e) => {
+          auto.bind.onKeyDown(e);
+          rest.onKeyDown?.(e);
+        }}
+        onKeyUp={auto.bind.onKeyUp}
+        onClick={auto.bind.onClick}
+        onBlur={(e) => {
+          auto.bind.onBlur();
+          rest.onBlur?.(e);
+        }}
         style={{ ...style, fontSize: text.size, lineHeight: 1.9 }}
         className={`w-full resize-y overflow-y-auto ${fs.full ? 'flex-1 max-h-none' : 'max-h-[70vh]'} ${className}`}
       />
+      {editable && <AutocompleteBar suggestions={auto.suggestions} onPick={auto.accept} />}
       {footer}
     </div>
   );
