@@ -165,7 +165,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     }));
 
   // Bulletin stories: waiting for my approval, and my own stories sent back or still in draft.
-  const bulletinActor = { id: me, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit') };
+  const bulletinActor = { id: me, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit'), role: currentUser.role };
   const today = localDate(new Date());
   const upcoming = apiService.getBulletins().filter((b) => b.date >= today && b.status !== 'DONE');
   const byId = new Map(upcoming.map((b) => [b.id, b]));
@@ -173,7 +173,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const openBulletin = (id: string) => (onOpenBulletin ? onOpenBulletin(id) : onNavigate('bulletins'));
   const bulletinRows: Row[] = [
     ...bulletinStories
-      .filter((s) => s.status === 'READY' && isApprover(byId.get(s.bulletinId), bulletinActor))
+      .filter((s) => s.status === 'READY' && isApprover(byId.get(s.bulletinId), bulletinActor, s))
       .map((s) => ({ id: s.id, title: s.slug, meta: `اعتماد · ${byId.get(s.bulletinId)!.startTime}`, tone: 'amber' as const, onClick: () => openBulletin(s.bulletinId) })),
     ...bulletinStories
       .filter((s) => s.writerId === me && s.status === 'DRAFT' && s.returnNote)

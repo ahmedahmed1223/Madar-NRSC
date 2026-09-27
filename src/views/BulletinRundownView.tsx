@@ -1,3 +1,4 @@
+import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import React, { useMemo, useState } from 'react';
@@ -21,6 +22,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Copy,
 } from 'lucide-react';
 import type { NewsItem, RundownSegment, User } from '../types';
 import { apiService } from '../services/api';
@@ -54,6 +56,9 @@ import {
   storyTiming,
   storyTypeOf,
   StoryType,
+  approvalProgress,
+  approvalStepName,
+  approvalStepsOf,
 } from '../shared/bulletins';
 
 interface Props {
@@ -83,6 +88,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [editing, setEditing] = useState<Partial<BulletinStory> | null>(null);
   const [addMenu, setAddMenu] = useState(false);
   const [source, setSource] = useState<'NEWS' | 'WIRES' | 'COPY' | null>(null);
+  /** Sending copies of this bulletin's stories to another bulletin. */
+  const [sendTo, setSendTo] = useState<{ target: string; ids: string[] } | null>(null);
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [copyFrom, setCopyFrom] = useState('');
@@ -104,7 +111,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   };
 
   const can = (p: string) => RbacService.hasPermission(currentUser, p);
-  const actor = { id: currentUser.id, canApprove: can('bulletins.approve'), canEdit: can('bulletins.edit') };
+  const actor = { id: currentUser.id, canApprove: can('bulletins.approve'), canEdit: can('bulletins.edit'), role: currentUser.role };
   const approver = isApprover(bulletin, actor);
   const canEdit = actor.canEdit || approver;
   const canManage = can('bulletins.manage') || (!!bulletin?.editorId && bulletin.editorId === currentUser.id);
@@ -128,6 +135,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const air = all.filter((s) => !s.floated && !s.killed);
   const approvedCount = air.filter((s) => s.status === 'APPROVED').length;
   const readyCount = air.filter((s) => s.status === 'READY').length;
+  const myApprovals = air.filter((s) => s.status === 'READY' && isApprover(bulletin, actor, s)).length;
   const onAir = apiService.getOnAir(bulletin.id);
   const liveId = onAir?.status === 'LIVE' ? onAir.currentSegmentId : null;
   const now = new Date();
@@ -333,7 +341,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         <div className="flex flex-wrap items-center gap-3 text-[11px]">
           <span className="font-bold text-slate-700">{air.length} قصة على الهواء</span>
           <span className="text-emerald-700 font-bold">{approvedCount} معتمدة</span>
-          {readyCount > 0 && <span className="text-amber-700 font-bold">{readyCount} بانتظار اعتماد {approver ? 'ك' : 'المحرر'}</span>}
+          {readyCount > 0 && <span className="text-amber-700 font-bold">{readyCount} بانتظار الاعتماد{myApprovals > 0 ? ` (${myApprovals} بانتظارك)` : ''}</span>}
+          <span className="text-slate-500">مسار الاعتماد: {approvalStepsOf(bulletin).map((st) => approvalStepName(st, bulletin)).join(' ← ')}</span>
           <span className="text-slate-500">{air.length - approvedCount - readyCount} مسودة</span>
           <input
             type="search"
@@ -396,6 +405,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           </button>
           <button type="button" onClick={() => setSource('COPY')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
             <ListChecks className="w-4 h-4" /> من نشرة أخرى
+          </button>
+          <button
+            type="button"
+            onClick={() => setSendTo({ target: '', ids: all.filter((x) => !x.killed).map((x) => x.id) })}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50"
+          >
+            <Copy className="w-4 h-4" /> نسخ إلى نشرة أخرى
           </button>
           <button type="button" onClick={makeHeadlines} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
             <Sparkles className="w-4 h-4" /> توليد العناوين
@@ -484,6 +500,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   <td className="p-2">{s.anchorName || bulletin.anchors[0] || ''}</td>
                   <td className="p-2 text-center">
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>
+                    {(() => {
+                      const pr = approvalProgress(bulletin, s);
+                      return pr.total > 1 && s.status !== 'DRAFT' ? (
+                        <span className="block text-[9px] text-slate-500 mt-0.5" title={pr.next ? `بانتظار: ${pr.nextName}` : 'اكتمل الاعتماد'}>
+                          {pr.done}/{pr.total}
+                          {pr.next && s.status === 'READY' ? ` · ${pr.nextName}` : ''}
+                        </span>
+                      ) : null;
+                    })()}
                   </td>
                   <td className="p-2 text-center font-mono" dir="ltr">{mmss(st.read)}</td>
                   <td className="p-2 text-center font-mono" dir="ltr">{st.clip || st.manual ? mmss(st.clip + st.manual) : '—'}</td>
@@ -508,8 +533,14 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                           </button>
                         </>
                       )}
-                      {approver && s.status !== 'APPROVED' && !s.killed && !lock && (
-                        <button type="button" onClick={() => toggle(s, { status: 'APPROVED' }, `اعتُمدت «${s.slug}»`)} aria-label={`اعتماد ${s.slug}`} title="اعتماد" className="p-1 text-emerald-600 hover:text-emerald-800">
+                      {isApprover(bulletin, actor, s) && s.status !== 'APPROVED' && !s.killed && !lock && (
+                        <button
+                          type="button"
+                          onClick={() => toggle(s, { status: 'APPROVED' }, approvalProgress(bulletin, s).total - approvalProgress(bulletin, s).done > 1 ? `سُجّل اعتمادك لـ«${s.slug}»؛ بانتظار الخطوة التالية` : `اعتُمدت «${s.slug}» للهواء`)}
+                          aria-label={`اعتماد ${s.slug} (${approvalProgress(bulletin, s).nextName})`}
+                          title={`اعتماد: ${approvalProgress(bulletin, s).nextName}`}
+                          className="p-1 text-emerald-600 hover:text-emerald-800"
+                        >
                           <CheckCircle2 className="w-4 h-4" />
                         </button>
                       )}
@@ -536,6 +567,72 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       <StoryEditor bulletin={bulletin} story={editing} currentUser={currentUser} onClose={() => setEditing(null)} onSaved={(t) => flash(true, t)} />
 
       {/* Source picker */}
+      <FormPage isOpen={!!sendTo} onClose={() => setSendTo(null)} title="نسخ قصص إلى نشرة أخرى" subtitle="تصل كمسودات في آخر النشرة الهدف، ويُعاد اعتمادها هناك" maxWidth="2xl">
+        {sendTo && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const target = others.find((b) => b.id === sendTo.target);
+              if (!target || !sendTo.ids.length) return;
+              attempt(() => {
+                const n = apiService.copyStoriesToBulletin(sendTo.ids, target.id);
+                setSendTo(null);
+                notify({ type: 'success', message: `نُسخت ${n} قصة إلى «${target.title}»` });
+              });
+            }}
+          >
+            <label className="block text-xs font-bold text-slate-700">
+              النشرة الهدف
+              <select required value={sendTo.target} onChange={(e) => setSendTo({ ...sendTo, target: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm bg-white">
+                <option value="">اختر النشرة…</option>
+                {others
+                  .filter((b) => b.status !== 'DONE')
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.title} — {b.startTime}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-700">القصص ({sendTo.ids.length} من {all.length})</span>
+              <span className="flex gap-2">
+                <button type="button" onClick={() => setSendTo({ ...sendTo, ids: all.map((x) => x.id) })} className="text-blue-700 font-bold">
+                  تحديد الكل
+                </button>
+                <button type="button" onClick={() => setSendTo({ ...sendTo, ids: [] })} className="text-slate-500 font-bold">
+                  إلغاء التحديد
+                </button>
+              </span>
+            </div>
+            <ul className="max-h-80 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+              {all.map((x) => (
+                <li key={x.id}>
+                  <label className="flex items-center gap-2 p-2 text-xs cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={sendTo.ids.includes(x.id)}
+                      onChange={(e) => setSendTo({ ...sendTo, ids: e.target.checked ? [...sendTo.ids, x.id] : sendTo.ids.filter((i) => i !== x.id) })}
+                    />
+                    <span className="font-bold text-slate-800">{x.slug}</span>
+                    <span className="text-slate-500">{storyStatusName(x.status)}</span>
+                    {x.killed && <span className="text-rose-600">مستبعدة</span>}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setSendTo(null)} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                إلغاء
+              </button>
+              <button type="submit" disabled={!sendTo.target || !sendTo.ids.length} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold">
+                نسخ {sendTo.ids.length} قصة
+              </button>
+            </div>
+          </form>
+        )}
+      </FormPage>
       <FormPage
         isOpen={!!source}
         onClose={() => {
@@ -662,6 +759,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               الاستوديو
               <input value={meta.studioName || ''} onChange={(e) => setMeta({ ...meta, studioName: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
             </label>
+            <ApprovalChainEditor
+              value={meta.approvalSteps}
+              onChange={(approvalSteps) => setMeta({ ...meta, approvalSteps })}
+              disabled={!can('bulletins.manage')}
+              editorName={users.find((u) => u.id === meta.editorId)?.fullName}
+            />
+            {!can('bulletins.manage') && <p className="text-[11px] text-slate-500">تغيير مسار الاعتماد لمسؤولي النشرات.</p>}
             <div className="flex flex-wrap justify-between gap-2 pt-3 border-t border-slate-100">
               {can('bulletins.manage') ? (
                 <button

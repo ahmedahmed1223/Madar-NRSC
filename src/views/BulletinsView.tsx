@@ -1,3 +1,4 @@
+import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
 import React, { useState } from 'react';
 import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, LayoutTemplate, Plus, Radio, Trash2, Edit2, ArrowUp, ArrowDown, X } from 'lucide-react';
@@ -527,6 +528,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 <input list="bulletin-presenters" value={formatDraft.anchorsText} onChange={(e) => setFormatDraft({ ...formatDraft, anchorsText: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
               </label>
             </div>
+            <ApprovalChainEditor value={formatDraft.approvalSteps} onChange={(approvalSteps) => setFormatDraft({ ...formatDraft, approvalSteps })} editorName={formatDraft.editorName} />
             <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
               <legend className="px-1 text-xs font-bold text-slate-700">الجدولة (اختيارية)</legend>
               <div className="flex flex-wrap gap-1.5">

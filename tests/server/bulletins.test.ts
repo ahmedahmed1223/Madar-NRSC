@@ -44,7 +44,7 @@ describe('bulletins', () => {
 
     const ready = await sync(journalist, [put('bulletinStories', { ...row('bulletinStories', 'bst-1').d, status: 'READY' }, row('bulletinStories', 'bst-1').v)]);
     expect(ready.body.results[0].ok).toBe(true);
-    expect(server.db.listCollection('notifications').some((n) => n.d.userId === 'usr-2' && n.d.title.includes('جاهزة للاعتماد'))).toBe(true);
+    expect(server.db.listCollection('notifications').some((n) => n.d.userId === 'usr-2' && n.d.title.includes('بانتظار اعتمادك'))).toBe(true);
 
     const selfApprove = await sync(journalist, [put('bulletinStories', { ...row('bulletinStories', 'bst-1').d, status: 'APPROVED' }, row('bulletinStories', 'bst-1').v)]);
     expect(selfApprove.body.results[0].code).toBe('FORBIDDEN');
@@ -116,5 +116,61 @@ describe('bulletins', () => {
     expect(created).toContain(scheduledBulletinId('fmt-main', today));
     expect(server.db.listCollection('bulletinStories').filter((r) => r.d.bulletinId === scheduledBulletinId('fmt-main', today)).length).toBe(8);
     expect(createScheduledBulletins(server.db)).toEqual([]);
+  });
+});
+
+describe('bulletin approval chain', () => {
+  it('needs every sign-off in order; editing the copy restarts the chain', async () => {
+    const producer = await loginAgent(server.app, 'producer@akhbar.tv'); // bulletins.manage
+    const chain = [
+      { id: 'editor', kind: 'BULLETIN_EDITOR' },
+      { id: 'chief', kind: 'CHIEF' },
+    ];
+    expect((await sync(producer, [put('bulletins', bulletin('bul-chain', { approvalSteps: chain }))])).body.results[0].ok).toBe(true);
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    await sync(journalist, [put('bulletinStories', story('bst-chain', { bulletinId: 'bul-chain' }))]);
+    const r0 = row('bulletinStories', 'bst-chain');
+    await sync(journalist, [put('bulletinStories', { ...r0.d, status: 'READY' }, r0.v)]);
+
+    // The bulletin editor (usr-2, also a chief editor) gives the first sign-off only.
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const r1 = row('bulletinStories', 'bst-chain');
+    expect((await sync(editor, [put('bulletinStories', { ...r1.d, status: 'APPROVED' }, r1.v)])).body.results[0].ok).toBe(true);
+    expect(row('bulletinStories', 'bst-chain').d).toMatchObject({ status: 'READY' });
+    expect(row('bulletinStories', 'bst-chain').d.approvals).toHaveLength(1);
+
+    // A writer cannot give the managing editor's sign-off.
+    const r2 = row('bulletinStories', 'bst-chain');
+    const refused = await sync(journalist, [put('bulletinStories', { ...r2.d, status: 'APPROVED' }, r2.v)]);
+    expect(refused.body.results[0].ok).toBe(false);
+    expect(refused.body.results[0].message).toContain('مدير التحرير');
+
+    // Editing the copy restarts the chain.
+    const r3 = row('bulletinStories', 'bst-chain');
+    await sync(journalist, [put('bulletinStories', { ...r3.d, script: 'نص جديد تماماً' }, r3.v)]);
+    expect(row('bulletinStories', 'bst-chain').d.approvals).toEqual([]);
+
+    // Two sign-offs complete the chain (the admin holds bulletins.approve).
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    for (const who of [editor, admin]) {
+      const r = row('bulletinStories', 'bst-chain');
+      expect((await sync(who, [put('bulletinStories', { ...r.d, status: 'APPROVED' }, r.v)])).body.results[0].ok).toBe(true);
+    }
+    expect(row('bulletinStories', 'bst-chain').d.status).toBe('APPROVED');
+    expect(row('bulletinStories', 'bst-chain').d.approvals.map((a: any) => a.stepId)).toEqual(['editor', 'chief']);
+  });
+
+  it('a named approver step and only managers change the chain', async () => {
+    const producer = await loginAgent(server.app, 'producer@akhbar.tv');
+    await sync(producer, [put('bulletins', bulletin('bul-user', { editorId: 'usr-3', approvalSteps: [{ id: 'p', kind: 'USER', userId: 'usr-5', userName: 'فيصل العتيبي' }] }))]);
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    // The bulletin's own editor (without bulletins.manage) may not remove the named step.
+    const b = row('bulletins', 'bul-user');
+    expect((await sync(journalist, [put('bulletins', { ...b.d, approvalSteps: [] }, b.v)])).body.results[0].code).toBe('FORBIDDEN');
+    await sync(journalist, [put('bulletinStories', story('bst-user', { bulletinId: 'bul-user', status: 'READY' }))]);
+    expect(server.db.listCollection('notifications').some((n) => n.d.userId === 'usr-5' && n.d.title.includes('بانتظار اعتمادك'))).toBe(true);
+    const r = row('bulletinStories', 'bst-user');
+    expect((await sync(editor, [put('bulletinStories', { ...r.d, status: 'APPROVED' }, r.v)])).body.results[0].ok).toBe(false);
   });
 });

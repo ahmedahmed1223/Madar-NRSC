@@ -22,6 +22,7 @@ import {
   storyTiming,
   storyTypeOf,
   StoryType,
+  approvalProgress,
 } from '../../shared/bulletins';
 
 interface Props {
@@ -49,8 +50,11 @@ export const anchorCopyFromNews = (n: { summary?: string; content?: string }) =>
 export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onClose, onSaved }) => {
   const isOpen = !!story;
   const isNew = !story?.id;
-  const actor = { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit') };
+  const actor = { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit'), role: currentUser.role };
   const approver = isApprover(bulletin, actor);
+  /** May give the story's next sign-off now. */
+  const approverNow = isApprover(bulletin, actor, story?.id ? story : { approvals: [] });
+  const progress = story?.id ? approvalProgress(bulletin, story as BulletinStory) : null;
   const mayEdit = actor.canEdit || approver;
   const lock = useEditLock('bulletinStories', story?.id, isOpen && !isNew && mayEdit);
   const lockedByOther = lock.status === 'locked';
@@ -368,10 +372,18 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   <Send className="w-4 h-4" /> حفظ وإرسال للاعتماد
                 </button>
               )}
-              {approver && !lockedByOther && status !== 'APPROVED' && (
+              {approverNow && !lockedByOther && status !== 'APPROVED' && (
                 <button type="button" onClick={() => save('APPROVED')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4" /> حفظ واعتماد للهواء
+                  <CheckCircle2 className="w-4 h-4" />
+                  {progress && progress.total - progress.done > 1 ? `اعتمادي (${progress.nextName})` : 'حفظ واعتماد للهواء'}
                 </button>
+              )}
+              {progress && progress.total > 1 && status !== 'DRAFT' && (
+                <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1" aria-label="تقدم الاعتماد">
+                  الاعتماد {progress.done}/{progress.total}
+                  {progress.next ? ` — بانتظار: ${progress.nextName}` : ''}
+                  {(story?.approvals || []).length > 0 && ` (${(story!.approvals || []).map((a) => a.byName).join('، ')})`}
+                </span>
               )}
               {approver && !lockedByOther && !isNew && status !== 'DRAFT' && (
                 <span className="flex items-center gap-1.5">

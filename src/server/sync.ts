@@ -26,7 +26,8 @@ import { departmentIdOf } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
-import { findShow, isApprover, storyContentChanged } from '../shared/bulletins';
+import { approvalStepName, approvalStepsOf, canActOnStep, findShow, isApprover, nextApprovalStep, storyContentChanged, type ApprovalStep, type StoryApproval } from '../shared/bulletins';
+import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
 import { localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
@@ -143,32 +144,52 @@ function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
  */
 function stampBulletinStory(before: any, after: any, auth: AuthContext, bulletin: any) {
   const now = new Date().toISOString();
-  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit') };
+  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit'), role: auth.user.role };
+  const steps = approvalStepsOf(bulletin);
+  // Sign-offs are the server's record: the client never sets them directly.
+  let approvals: StoryApproval[] = [...(before?.approvals || [])].filter((a: StoryApproval) => steps.some((s) => s.id === a.stepId));
+  let status: string = before ? after.status : after.status === 'APPROVED' ? 'DRAFT' : after.status || 'DRAFT';
+
+  // Changing the copy (by anyone but whoever gives the next sign-off) restarts the chain.
+  if (before && storyContentChanged(before, after) && !isApprover(bulletin, actor, before)) {
+    approvals = [];
+    if (status === 'APPROVED') status = 'READY';
+  }
+  if (status === 'DRAFT') approvals = [];
+
+  if (status === 'APPROVED' && before?.status !== 'APPROVED') {
+    const next = nextApprovalStep(bulletin, { approvals });
+    if (next && canActOnStep(next, bulletin, actor)) {
+      approvals = [...approvals, { stepId: next.id, byId: auth.user.id, byName: auth.user.fullName, at: now }];
+      // More sign-offs to come: the story waits (ready) for the next approver.
+      if (nextApprovalStep(bulletin, { approvals })) status = 'READY';
+    }
+    // Otherwise it stays «APPROVED» here so the policy refuses it, naming the pending step.
+  }
+
   const next: any = {
     ...after,
+    status,
+    approvals,
     writerId: before?.writerId ?? auth.user.id,
     writerName: before?.writerName ?? auth.user.fullName,
     createdAt: before?.createdAt ?? now,
     updatedAt: now,
-    status: before ? after.status : after.status === 'APPROVED' && !isApprover(bulletin, actor) ? 'DRAFT' : after.status || 'DRAFT',
     approvedById: before?.approvedById,
     approvedByName: before?.approvedByName,
     approvedAt: before?.approvedAt,
   };
-  if (before?.status === 'APPROVED' && next.status === 'APPROVED' && storyContentChanged(before, after) && !isApprover(bulletin, actor)) {
-    next.status = 'READY';
-  }
-  if (next.status === 'APPROVED' && before?.status !== 'APPROVED') {
+  if (status === 'APPROVED' && before?.status !== 'APPROVED') {
     next.approvedById = auth.user.id;
     next.approvedByName = auth.user.fullName;
     next.approvedAt = now;
   }
-  if (next.status !== 'APPROVED') {
+  if (status !== 'APPROVED') {
     next.approvedById = undefined;
     next.approvedByName = undefined;
     next.approvedAt = undefined;
   }
-  if (next.status !== 'DRAFT') next.returnNote = undefined;
+  if (status !== 'DRAFT') next.returnNote = undefined;
   return next;
 }
 
@@ -248,17 +269,40 @@ export class SyncService {
     writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
   }
 
-  /** The bulletin editor hears when a story is ready; the writer hears when it comes back. */
+  /** Who can give this sign-off (for notifications). */
+  private approversFor(step: ApprovalStep, bulletin: any): string[] {
+    if (step.kind === 'USER') return step.userId ? [step.userId] : [];
+    if (step.kind === 'BULLETIN_EDITOR' && bulletin.editorId) return [bulletin.editorId];
+    const roles = this.listData('roles') as RoleDefinition[];
+    return this.listData('users')
+      .filter((u: any) => u.isActive !== false && !u.deletedAt)
+      .filter((u: any) => (step.kind === 'ROLE' ? u.role === step.roleCode : evaluatePermission(u, 'bulletins.approve', roles)))
+      .map((u: any) => u.id)
+      .slice(0, 20);
+  }
+
+  /** Whoever gives the next sign-off hears when a story waits for them; the writer hears when it comes back. */
   private notifyBulletinStory(before: any, after: any, auth: AuthContext) {
-    if (before?.status === after.status) return;
     const bulletin = this.db.getRow('bulletins', String(after.bulletinId))?.d;
     if (!bulletin) return;
     const link = `/bulletins/${bulletin.id}`;
-    if (after.status === 'READY' && bulletin.editorId && bulletin.editorId !== auth.user.id) {
-      this.notify(bulletin.editorId, `قصة جاهزة للاعتماد: ${after.slug}`, `${bulletin.title} — ${after.writerName || auth.user.fullName}`, link, 'bulletin');
+    const approvalsGrew = (after.approvals?.length || 0) > (before?.approvals?.length || 0);
+    if (after.status === 'READY' && (before?.status !== 'READY' || approvalsGrew)) {
+      const next = nextApprovalStep(bulletin, after);
+      if (next) {
+        const progress = approvalsGrew ? ` (اعتمدها ${auth.user.fullName}، بانتظارك الآن)` : '';
+        for (const userId of this.approversFor(next, bulletin)) {
+          if (userId === auth.user.id) continue;
+          this.notify(userId, `قصة بانتظار اعتمادك: ${after.slug}`, `${bulletin.title} — ${approvalStepName(next, bulletin)}${progress}`, link, 'bulletin');
+        }
+      }
     }
+    if (before?.status === after.status) return;
     if (after.status === 'DRAFT' && before?.status && after.writerId && after.writerId !== auth.user.id) {
       this.notify(after.writerId, `أُعيدت قصة للتعديل: ${after.slug}`, `${bulletin.title}${after.returnNote ? ` — ${after.returnNote}` : ''}`, link, 'bulletin');
+    }
+    if (after.status === 'APPROVED' && after.writerId && after.writerId !== auth.user.id) {
+      this.notify(after.writerId, `اعتُمدت قصتك: ${after.slug}`, bulletin.title, link, 'bulletin');
     }
   }
 

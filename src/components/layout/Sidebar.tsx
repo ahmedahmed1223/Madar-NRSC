@@ -146,11 +146,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const liveCount = apiService.getOnAirStates().filter((s) => s.status === 'LIVE').length;
   // Bulletin stories waiting for my approval (as the bulletin's editor or a chief editor).
   const bulletinActor = currentUser
-    ? { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit') }
+    ? { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit'), role: currentUser.role }
     : null;
   const today = localDateString();
   const myBulletins = bulletinActor ? apiService.getBulletins().filter((b) => b.date >= today && b.status !== 'DONE' && isApprover(b, bulletinActor)).map((b) => b.id) : [];
-  const toApprove = myBulletins.length ? apiService.getBulletinStories().filter((s) => s.status === 'READY' && !s.killed && myBulletins.includes(s.bulletinId)).length : 0;
+  const bulletinById = new Map(apiService.getBulletins().map((b) => [b.id, b]));
+  const toApprove = myBulletins.length
+    ? apiService.getBulletinStories().filter((s) => s.status === 'READY' && !s.killed && myBulletins.includes(s.bulletinId) && isApprover(bulletinById.get(s.bulletinId), bulletinActor!, s)).length
+    : 0;
   // Upcoming diary events assigned to me (today onwards).
   const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;

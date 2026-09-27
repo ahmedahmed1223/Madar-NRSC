@@ -84,6 +84,8 @@ export interface Bulletin {
   status: BulletinStatus;
   notes?: string;
   formatId?: string;
+  /** Ordered sign-offs a story needs before air; empty = the bulletin editor alone. */
+  approvalSteps?: ApprovalStep[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -117,6 +119,8 @@ export interface BulletinStory {
   approvedById?: string;
   approvedByName?: string;
   approvedAt?: string;
+  /** Sign-offs collected so far, in chain order (server-stamped). */
+  approvals?: StoryApproval[];
   returnNote?: string;
   createdAt: string;
   updatedAt: string;
@@ -138,6 +142,7 @@ export interface BulletinFormat {
   editorName?: string;
   anchors?: string[];
   studioName?: string;
+  approvalSteps?: ApprovalStep[];
   stories: { slug: string; type: StoryType; manualSeconds?: number; script?: string }[];
   createdAt?: string;
   updatedAt?: string;
@@ -239,14 +244,120 @@ export const storyContentChanged = (before: any, after: any) => CONTENT_FIELDS.s
 
 export interface BulletinActor {
   id: string;
-  /** Holds bulletins.approve (chief editors). */
+  /** Holds bulletins.approve (managing / chief editors). */
   canApprove: boolean;
   canEdit: boolean;
+  /** Role code (e.g. EDITOR) for role-based approval steps. */
+  role?: string;
 }
 
-/** The bulletin's responsible editor or a chief editor approves its stories. */
-export const isApprover = (bulletin: Pick<Bulletin, 'editorId'> | null | undefined, actor: BulletinActor) =>
-  actor.canApprove || (!!bulletin?.editorId && bulletin.editorId === actor.id);
+// ---------------------------------------------------------------------------
+// Approval chain
+// ---------------------------------------------------------------------------
+
+export type ApprovalStepKind = 'BULLETIN_EDITOR' | 'CHIEF' | 'ROLE' | 'USER';
+
+export interface ApprovalStep {
+  id: string;
+  kind: ApprovalStepKind;
+  /** Optional display name, e.g. «مدير التحرير». */
+  label?: string;
+  roleCode?: string;
+  roleName?: string;
+  userId?: string;
+  userName?: string;
+}
+
+export interface StoryApproval {
+  stepId: string;
+  byId: string;
+  byName: string;
+  at: string;
+}
+
+export const APPROVAL_STEP_KINDS: { id: ApprovalStepKind; name: string; hint: string }[] = [
+  { id: 'BULLETIN_EDITOR', name: 'محرر النشرة المسؤول', hint: 'المحرر المعيّن لهذه النشرة' },
+  { id: 'CHIEF', name: 'مدير التحرير', hint: 'أي زميل يملك صلاحية «اعتماد قصص كل النشرات»' },
+  { id: 'ROLE', name: 'دور محدد', hint: 'أي زميل بهذا الدور' },
+  { id: 'USER', name: 'شخص محدد', hint: 'زميل بعينه' },
+];
+
+/** Ready-made chains; anything else is built step by step. */
+export const APPROVAL_PRESETS: { id: string; name: string; steps: ApprovalStep[] }[] = [
+  { id: 'EDITOR', name: 'محرر النشرة فقط', steps: [{ id: 'editor', kind: 'BULLETIN_EDITOR' }] },
+  { id: 'EDITOR_CHIEF', name: 'محرر النشرة ثم مدير التحرير', steps: [{ id: 'editor', kind: 'BULLETIN_EDITOR' }, { id: 'chief', kind: 'CHIEF' }] },
+  { id: 'CHIEF', name: 'مدير التحرير فقط', steps: [{ id: 'chief', kind: 'CHIEF' }] },
+];
+
+export const DEFAULT_APPROVAL_STEPS: ApprovalStep[] = APPROVAL_PRESETS[0].steps;
+
+export const approvalStepsOf = (bulletin: Pick<Bulletin, 'approvalSteps'> | null | undefined): ApprovalStep[] =>
+  bulletin?.approvalSteps?.length ? bulletin.approvalSteps : DEFAULT_APPROVAL_STEPS;
+
+export function approvalStepName(step: ApprovalStep, bulletin?: Pick<Bulletin, 'editorName'> | null): string {
+  if (step.label) return step.label;
+  if (step.kind === 'BULLETIN_EDITOR') return bulletin?.editorName ? `محرر النشرة (${bulletin.editorName})` : 'محرر النشرة';
+  if (step.kind === 'CHIEF') return 'مدير التحرير';
+  if (step.kind === 'ROLE') return step.roleName || step.roleCode || 'دور';
+  return step.userName || 'زميل محدد';
+}
+
+/** Can this person give this sign-off? (A chief may stand in for the bulletin editor.) */
+export function canActOnStep(step: ApprovalStep, bulletin: Pick<Bulletin, 'editorId'> | null | undefined, actor: BulletinActor): boolean {
+  switch (step.kind) {
+    case 'BULLETIN_EDITOR':
+      return (!!bulletin?.editorId && bulletin.editorId === actor.id) || actor.canApprove;
+    case 'CHIEF':
+      return actor.canApprove;
+    case 'ROLE':
+      return !!step.roleCode && actor.role === step.roleCode;
+    case 'USER':
+      return !!step.userId && step.userId === actor.id;
+    default:
+      return false;
+  }
+}
+
+/** The sign-off a story is waiting for (null when fully approved). */
+export function nextApprovalStep(bulletin: Pick<Bulletin, 'approvalSteps'> | null | undefined, story: Pick<BulletinStory, 'approvals'> | null | undefined): ApprovalStep | null {
+  const done = new Set((story?.approvals || []).map((a) => a.stepId));
+  return approvalStepsOf(bulletin).find((s) => !done.has(s.id)) || null;
+}
+
+/** May this person approve this story now (its next step), or — without a story — any step? */
+export function isApprover(
+  bulletin: (Pick<Bulletin, 'editorId'> & Pick<Bulletin, 'approvalSteps'>) | null | undefined,
+  actor: BulletinActor,
+  story?: Pick<BulletinStory, 'approvals'> | null
+): boolean {
+  if (story !== undefined) {
+    const next = nextApprovalStep(bulletin, story);
+    return !!next && canActOnStep(next, bulletin, actor);
+  }
+  return approvalStepsOf(bulletin).some((s) => canActOnStep(s, bulletin, actor));
+}
+
+/** "2/3 — بانتظار: مدير التحرير" */
+export function approvalProgress(bulletin: (Pick<Bulletin, 'approvalSteps'> & Pick<Bulletin, 'editorName'>) | null | undefined, story: Pick<BulletinStory, 'approvals' | 'status'>) {
+  const steps = approvalStepsOf(bulletin);
+  const done = Math.min(story.approvals?.length || 0, steps.length);
+  const next = story.status === 'APPROVED' ? null : nextApprovalStep(bulletin, story);
+  return { total: steps.length, done: story.status === 'APPROVED' ? steps.length : done, next, nextName: next ? approvalStepName(next, bulletin) : '' };
+}
+
+export function approvalStepsError(steps: any): string | null {
+  if (steps === undefined || steps === null) return null;
+  if (!Array.isArray(steps) || steps.length > 6) return 'مسار الاعتماد من خطوة إلى ست خطوات';
+  const ids = new Set<string>();
+  for (const s of steps) {
+    if (!s || typeof s.id !== 'string' || !s.id || ids.has(s.id)) return 'خطوات الاعتماد غير صالحة';
+    ids.add(s.id);
+    if (!APPROVAL_STEP_KINDS.some((k) => k.id === s.kind)) return 'نوع خطوة الاعتماد غير معروف';
+    if (s.kind === 'ROLE' && !s.roleCode) return 'اختر الدور لخطوة الاعتماد';
+    if (s.kind === 'USER' && !s.userId) return 'اختر الزميل لخطوة الاعتماد';
+  }
+  return null;
+}
 
 export function storyError(s: any): string | null {
   if (!s || typeof s.bulletinId !== 'string' || !s.bulletinId) return 'القصة غير مرتبطة بنشرة';
@@ -268,8 +379,12 @@ export function storyStatusError(before: any, after: any, bulletin: any, actor: 
   const from = before?.status || 'DRAFT';
   const to = after.status;
   if (from === to) return null;
-  if (to === 'APPROVED') return isApprover(bulletin, actor) ? null : 'اعتماد القصة لمحرر النشرة المسؤول';
-  if (from === 'APPROVED') return isApprover(bulletin, actor) || storyContentChanged(before, after) ? null : 'إلغاء الاعتماد لمحرر النشرة';
+  if (to === 'APPROVED') {
+    const next = nextApprovalStep(bulletin, before);
+    if (!next) return null;
+    return canActOnStep(next, bulletin, actor) ? null : `القصة بانتظار اعتماد: ${approvalStepName(next, bulletin)}`;
+  }
+  if (from === 'APPROVED') return isApprover(bulletin, actor) || storyContentChanged(before, after) ? null : 'إلغاء الاعتماد لمن يعتمد قصص النشرة';
   return actor.canEdit ? null : 'صلاحياتك لا تسمح بتعديل قصص النشرة';
 }
 
@@ -281,7 +396,7 @@ export function bulletinError(b: any): string | null {
   if (!BULLETIN_KINDS.some((k) => k.id === b.kind)) return 'نوع النشرة غير معروف';
   if (!BULLETIN_STATUSES.some((k) => k.id === b.status)) return 'حالة النشرة غير معروفة';
   if (!Array.isArray(b.anchors)) return 'المذيعون غير صالحين';
-  return null;
+  return approvalStepsError(b.approvalSteps);
 }
 
 export function formatError(f: any): string | null {
@@ -290,7 +405,7 @@ export function formatError(f: any): string | null {
   if (!(Number(f.plannedSeconds) > 0)) return 'مدة القالب غير صالحة';
   if (!Array.isArray(f.days) || f.days.some((d: any) => !Number.isInteger(d) || d < 0 || d > 6)) return 'أيام الجدولة غير صالحة';
   if (!Array.isArray(f.stories) || f.stories.length > 80 || f.stories.some((s: any) => !s?.slug || !STORY_TYPES.some((t) => t.id === s.type))) return 'قصص القالب غير صالحة';
-  return null;
+  return approvalStepsError(f.approvalSteps);
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +440,7 @@ export function bulletinFromFormat(
     studioName: f.studioName,
     status: 'PLANNING',
     formatId: f.id,
+    ...(f.approvalSteps?.length ? { approvalSteps: f.approvalSteps } : {}),
     createdAt: now,
     updatedAt: now,
   };

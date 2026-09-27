@@ -216,13 +216,16 @@ const bulletinsPolicy: Policy = ({ auth, kind, before, after }) => {
   const isEditor = !!before?.editorId && before.editorId === auth.user.id;
   if (!auth.can('bulletins.manage') && !isEditor) return 'تعديل بيانات النشرة لمحررها المسؤول';
   if (!auth.can('bulletins.manage') && after?.editorId !== before?.editorId) return 'تغيير محرر النشرة لمسؤولي النشرات';
+  if (!auth.can('bulletins.manage') && JSON.stringify(after?.approvalSteps || null) !== JSON.stringify(before?.approvalSteps || null)) {
+    return 'تغيير مسار الاعتماد لمسؤولي النشرات';
+  }
   return after?.deletedAt ? null : bulletinError(after);
 };
 
 const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   const record = after || before;
   const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === record?.bulletinId);
-  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit') };
+  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit'), role: auth.user.role };
   const approver = isApprover(bulletin, actor);
   if (kind === 'delete' || isSoftDelete(before, after)) {
     return approver || auth.can('bulletins.manage') || (actor.canEdit && before?.writerId === auth.user.id) ? null : 'حذف القصة لكاتبها أو لمحرر النشرة';

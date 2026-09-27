@@ -80,6 +80,7 @@ import {
   byRank,
   formatError,
   isApprover,
+  nextApprovalStep,
   isScheduledOn,
   rankBetween,
   scheduledBulletinId,
@@ -1182,7 +1183,7 @@ export class ApiService {
 
   private static bulletinActor() {
     const me = this.getCurrentUser();
-    return { id: me.id, canApprove: RbacService.hasPermission(me, 'bulletins.approve'), canEdit: RbacService.hasPermission(me, 'bulletins.edit') };
+    return { id: me.id, canApprove: RbacService.hasPermission(me, 'bulletins.approve'), canEdit: RbacService.hasPermission(me, 'bulletins.edit'), role: me.role };
   }
 
   static saveBulletin(data: Partial<Bulletin>): Bulletin {
@@ -1233,13 +1234,23 @@ export class ApiService {
       ...data,
       updatedAt: now,
     } as BulletinStory;
-    if (before?.status === 'APPROVED' && next.status === 'APPROVED' && storyContentChanged(before, next) && !isApprover(bulletin, actor)) {
-      next.status = 'READY';
-    }
-    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
-    if (next.status !== 'APPROVED') Object.assign(next, { approvedById: undefined, approvedByName: undefined, approvedAt: undefined });
+    // Same approval chain as the server: one sign-off per step, in order.
     const err = storyError(next) || storyStatusError(before, next, bulletin, actor) || (!actor.canEdit && !isApprover(bulletin, actor) ? 'صلاحياتك لا تسمح بتعديل قصص النشرة' : null);
     if (err) throw new Error(err);
+    let approvals = [...(before?.approvals || [])];
+    if (before && storyContentChanged(before, next) && !isApprover(bulletin, actor, before)) {
+      approvals = [];
+      if (next.status === 'APPROVED') next.status = 'READY';
+    }
+    if (next.status === 'DRAFT') approvals = [];
+    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') {
+      const step = nextApprovalStep(bulletin, { approvals });
+      if (step) approvals = [...approvals, { stepId: step.id, byId: me.id, byName: me.fullName, at: now }];
+      if (nextApprovalStep(bulletin, { approvals })) next.status = 'READY';
+    }
+    next.approvals = approvals;
+    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
+    if (next.status !== 'APPROVED') Object.assign(next, { approvedById: undefined, approvedByName: undefined, approvedAt: undefined });
     if (idx >= 0) all[idx] = next;
     else all.push(next);
     setStored(COLLECTIONS.bulletinStories.storageKey, all);
@@ -1267,7 +1278,7 @@ export class ApiService {
   static copyStoriesToBulletin(storyIds: string[], bulletinId: string): number {
     const source = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).filter((x) => storyIds.includes(x.id));
     source.sort(byRank).forEach((x) => {
-      const { id: _id, rank: _r, status: _s, approvedById: _a, approvedByName: _n, approvedAt: _t, writerId: _w, writerName: _wn, createdAt: _c, floated: _f, killed: _k, ...rest } = x;
+      const { id: _id, rank: _r, status: _s, approvedById: _a, approvedByName: _n, approvedAt: _t, writerId: _w, writerName: _wn, createdAt: _c, floated: _f, killed: _k, approvals: _ap, returnNote: _rn, deletedAt: _d, ...rest } = x;
       this.saveBulletinStory({ ...rest, bulletinId, status: 'DRAFT' });
     });
     return source.length;
