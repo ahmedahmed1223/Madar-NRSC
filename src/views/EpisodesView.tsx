@@ -1,3 +1,5 @@
+import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
 import { studioConflictsFor } from '../shared/schedule';
 import { localDateString } from '../shared/dates';
@@ -222,6 +224,17 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <ExportMenu
+          items={[
+            {
+              id: 'schedule',
+              label: 'جدول بث الحلقات المعروضة',
+              hint: `${filteredEpisodes.length} حلقة حسب البرنامج والحالة والبحث`,
+              build: () => episodesScheduleDoc(filteredEpisodes, selectedProgId === 'ALL' ? 'كل البرامج' : programs.find((p) => p.id === selectedProgId)?.name || '', docContext()),
+            },
+          ]}
+        />
         {canCreate && (
         <button
           type="button"
@@ -232,6 +245,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           إعداد حلقة جديدة
         </button>
         )}
+        </div>
       </div>
 
       {/* Filter Bar */}

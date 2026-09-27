@@ -1,3 +1,5 @@
+import { arabicDate } from './dates';
+
 /**
  * News bulletins, modelled on how newsroom systems (Octopus, iNEWS) run a newscast:
  * a rundown of stories with professional story types, read time from the anchor script
@@ -312,7 +314,7 @@ export function bulletinFromFormat(
 ): { bulletin: Bulletin; stories: BulletinStory[] } {
   const bulletin: Bulletin = {
     id,
-    title: `${f.name} — ${date}`,
+    title: `${f.name} — ${arabicDate(date)}`,
     kind: f.kind,
     date,
     startTime: f.startTime,

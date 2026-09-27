@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
+import { ExportMenu, docContext } from '../common/ExportMenu';
+import { episodeRundownDoc, presenterSheetDoc } from '../../services/documents/builders';
 import { insertIntoTopic, EpisodeTopic, segmentGuests } from '../../shared/episodePlan';
 import { RequestFormPage, RequestDraft } from '../requests/RequestFormPage';
 import { RbacService } from '../../services/rbacService';
@@ -291,15 +293,24 @@ export const RundownTable: React.FC<RundownTableProps> = ({
             <span>شاشة الملقن (Prompter)</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-            title="طباعة نسخة ورقية لاستوديو البث وغرفة المخرج"
-          >
-            <Printer className="w-4 h-4" />
-            طباعة الرانداون
-          </button>
+          {episodeRecord ? (
+            <ExportMenu
+              items={[
+                { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episodeRecord, docContext()) },
+                { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episodeRecord, docContext()) },
+              ]}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              title="طباعة نسخة ورقية لاستوديو البث وغرفة المخرج"
+            >
+              <Printer className="w-4 h-4" />
+              طباعة الرانداون
+            </button>
+          )}
           {canEdit && (
             <button
               type="button"

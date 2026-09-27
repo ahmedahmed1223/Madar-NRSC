@@ -1,7 +1,7 @@
 {
   "name": "madar-nrcs",
   "private": true,
-  "version": "3.6.0",
+  "version": "3.7.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -36,6 +36,7 @@
     "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
+    "docx": "^9.7.2",
     "dompurify": "^3.4.16",
     "esbuild": "^0.25.0",
     "lucide-react": "^0.546.0",

@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import type { Bulletin, BulletinFormat, BulletinStory } from '../shared/bulletins';
 
 /** Demo bulletin formats: an evening main bulletin (not auto-created) and an hourly brief template. */
@@ -48,7 +49,7 @@ export function demoBulletin(today: string, now = new Date().toISOString()): { b
   const id = 'bul-demo-main';
   const bulletin: Bulletin = {
     id,
-    title: `نشرة الثامنة — ${today}`,
+    title: `نشرة الثامنة — ${arabicDate(today)}`,
     kind: 'MAIN',
     date: today,
     startTime: '20:00',

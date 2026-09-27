@@ -23,3 +23,13 @@ export function fromLocalInputValue(value: string): string {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
+
+/**
+ * "2026-09-27" → "27 سبتمبر 2026". ISO dates read backwards inside Arabic text, so titles
+ * and printed documents use this form (with Western digits, as newsrooms do).
+ */
+export function arabicDate(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date || '');
+  if (!m) return date || '';
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+}

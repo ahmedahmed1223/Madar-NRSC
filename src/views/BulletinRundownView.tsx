@@ -12,7 +12,6 @@ import {
   Film,
   ListChecks,
   Plus,
-  Printer,
   Radio,
   Rss,
   Save,
@@ -28,7 +27,8 @@ import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
 import { TeleprompterModal } from '../components/rundown/TeleprompterModal';
 import { StoryEditor, anchorCopyFromNews } from '../components/bulletins/StoryEditor';
-import { printBulletin } from '../components/bulletins/printBulletin';
+import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { anchorScriptsDoc, bulletinGraphicsDoc, bulletinRundownDoc } from '../services/documents/builders';
 import { canControlOnAir } from '../shared/onair';
 import { departmentIdOf } from '../shared/departments';
 import {
@@ -263,9 +263,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <button type="button" onClick={() => setPrompter(true)} className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
               <Type className="w-4 h-4" /> الملقن
             </button>
-            <button type="button" onClick={() => printBulletin(bulletin, all)} className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              <Printer className="w-4 h-4" /> طباعة
-            </button>
+            <ExportMenu
+              items={[
+                { id: 'rundown', label: 'رانداون النشرة', hint: 'البداية وBack والمدد والشارات — للمخرج والكنترول', build: () => bulletinRundownDoc(bulletin, all, docContext()) },
+                { id: 'scripts', label: 'نصوص المذيع', hint: 'قصة في كل صفحة بخط كبير', build: () => anchorScriptsDoc(bulletin, all, docContext()) },
+                { id: 'cg', label: 'قائمة الشارات', hint: 'لقسم الجرافيك بترتيب البث', build: () => bulletinGraphicsDoc(bulletin, all, docContext()) },
+              ]}
+            />
             <a href={`/api/v1/bulletins/${encodeURIComponent(bulletin.id)}/mos`} download className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
               <Download className="w-4 h-4" /> MOS
             </a>

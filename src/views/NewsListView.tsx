@@ -1,3 +1,6 @@
+import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { newsListDoc } from '../services/documents/builders';
+import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -446,6 +449,16 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           <div className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
             {filteredNews.length} نتيجة
           </div>
+          <ExportMenu
+            items={[
+              {
+                id: 'list',
+                label: 'قائمة الأخبار المعروضة',
+                hint: `${filteredNews.length} خبر حسب البحث والفلاتر الحالية`,
+                build: () => newsListDoc(filteredNews, activeTab === 'ALL' ? 'كل الأخبار' : activeTab === 'BREAKING' ? 'العاجل' : activeTab === 'TRASH' ? 'سلة المحذوفات' : NEWS_STATUS_LABELS[activeTab as NewsStatus] || '', docContext()),
+              },
+            ]}
+          />
         </div>
       </div>
 

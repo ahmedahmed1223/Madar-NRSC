@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Printer, Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
+import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
 import { apiService, formatSecondsToTime } from '../../services/api';
 import { newId } from '../../shared/ids';
@@ -23,7 +23,6 @@ import {
 import { FormPage } from '../common/FormPage';
 import { SegmentModal } from '../rundown/SegmentModal';
 import { RbacService } from '../../services/rbacService';
-import { printEpisodeFile } from './printEpisodeFile';
 import { templateFromEpisode } from '../../shared/episodePlan';
 
 interface EpisodePlannerProps {
@@ -262,10 +261,6 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     }
     setTimeout(() => setNotice(null), 6000);
   };
-  const printFile = () => {
-    const phones = Object.fromEntries(allGuests.map((g) => [g.id, g.phone || '']));
-    printEpisodeFile(episode, phones);
-  };
 
   const newsOptions = allNews
     .filter((n) => !n.deletedAt && (!newsFilter.trim() || n.title.includes(newsFilter.trim())))
@@ -279,9 +274,6 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
             <Save className="w-4 h-4" /> حفظ البنية كقالب للبرنامج
           </button>
         )}
-        <button type="button" onClick={printFile} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
-          <Printer className="w-4 h-4" /> طباعة ملف الحلقة
-        </button>
       </div>
       {notice && (
         <p role="status" className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">

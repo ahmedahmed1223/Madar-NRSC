@@ -1,3 +1,5 @@
+import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { newsStoryDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
@@ -780,6 +782,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <ArrowLeftRight className="w-3.5 h-3.5" />
               طلب من قسم
             </button>
+          )}
+
+          {newsItem?.id && (
+            <ExportMenu
+              label="تصدير الخبر"
+              items={[
+                {
+                  id: 'story',
+                  label: 'نسخة الخبر',
+                  hint: 'البيانات والموجز والنص ومسار الاعتماد (بالنص الحالي في المحرر)',
+                  build: () => newsStoryDoc({ ...newsItem, title, shortTitle, summary, content, priority, locationName, keywords }, docContext()),
+                },
+              ]}
+            />
           )}
 
           <button

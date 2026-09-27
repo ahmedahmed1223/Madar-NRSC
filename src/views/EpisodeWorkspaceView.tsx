@@ -1,3 +1,5 @@
+import { ExportMenu, docContext } from '../components/common/ExportMenu';
+import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { episodeReadiness } from '../shared/production';
@@ -218,6 +220,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Episode Live Status Controller */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+            <ExportMenu
+              items={[
+                { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
+                { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episode, docContext()) },
+                { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episode, docContext()) },
+                { id: 'guests', label: 'ورقة الضيوف والشارات', hint: 'الحجز والهواتف ونصوص الشارات', build: () => guestSheetDoc(episode, allGuests, docContext()) },
+              ]}
+            />
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-slate-400 font-semibold">حالة الحلقة:</span>
               <select
