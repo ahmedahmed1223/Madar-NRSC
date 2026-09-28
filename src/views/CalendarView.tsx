@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { findStudioConflicts } from '../shared/schedule';
 import { addDaysIso, localDateString } from '../shared/dates';
@@ -250,7 +251,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div className="flex items-center gap-3 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs animate-in fade-in">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
           <div className="font-semibold">
-            تنبيه تعارض مواعيد: تم رصد {conflicts.size} حلقات تشترك في نفس الاستوديو وتوقيت البث. يرجى مراجعة الاستوديوهات المحددة باللون الأحمر.
+            تنبيه تعارض مواعيد: تم رصد {countLabel(conflicts.size, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })} تشترك في نفس الاستوديو وتوقيت البث. يرجى مراجعة الاستوديوهات المحددة باللون الأحمر.
           </div>
         </div>
       )}
@@ -296,10 +297,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       const isLive = ep.status === 'ON_AIR' || (ep.status as any) === 'LIVE';
 
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={ep.id}
                           onClick={() => onSelectEpisode(ep.id)}
-                          className={`p-3 rounded-xl border transition-all space-y-2 cursor-pointer group ${
+                          title={[ep.title, ep.programName, ep.studioName, ep.presenterName].filter(Boolean).join(' · ')}
+                          className={`w-full text-right p-2 rounded-xl border transition-all space-y-1.5 group ${
                             isConflict
                               ? 'bg-rose-50/80 border-rose-300 hover:border-rose-500 shadow-2xs'
                               : isLive
@@ -307,9 +310,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                               : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-md'
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[11px]">
+                          <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
                             <span
-                              className={`font-mono font-black px-2 py-0.5 rounded ${
+                              className={`font-mono font-black px-1.5 py-0.5 rounded tabular-nums ${
                                 isLive
                                   ? 'bg-red-600 text-white'
                                   : 'bg-blue-50 text-blue-700'
@@ -317,27 +320,21 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             >
                               {ep.startTime || '20:00'}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-bold">
-                              {ep.durationMinutes || 45} دقيقة
+                            <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">
+                              {ep.durationMinutes || 45} د
                             </span>
                           </div>
 
-                          <h4 className="text-xs font-bold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+                          <h4 className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-3 group-hover:text-blue-600 transition-colors">
                             {ep.title}
                           </h4>
 
-                          <div className="text-[10px] text-slate-500 space-y-1 pt-1 border-t border-slate-100">
-                            <div className="font-semibold text-slate-700 truncate">
-                              {ep.programName}
-                            </div>
-                            <div className="flex items-center justify-between text-slate-500">
-                              <span>{ep.studioName || 'استوديو الأخبار'}</span>
-                              <span className="text-slate-600 font-medium truncate max-w-[80px]">
-                                {ep.presenterName}
-                              </span>
-                            </div>
+                          <div className="text-[10px] text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
+                            <div className="font-semibold text-blue-700 truncate">{ep.programName}</div>
+                            <div className="truncate">{ep.studioName || 'استوديو الأخبار'}</div>
+                            {isConflict && <div className="font-bold text-rose-700">تعارض في الاستوديو</div>}
                           </div>
-                        </div>
+                        </button>
                       );
                     })
                   )}
@@ -377,7 +374,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         {studioName}
                       </h4>
                       <Badge variant="default" size="sm">
-                        {studioEps.length} حلقات
+                        {countLabel(studioEps.length, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })}
                       </Badge>
                     </div>
 

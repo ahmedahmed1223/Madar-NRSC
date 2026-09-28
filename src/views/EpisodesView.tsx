@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -345,14 +346,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <SortTh className="py-3.5 px-4" label="عنوان الحلقة والبرنامج" sortKey="title" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="رقم الحلقة / الموسم" sortKey="number" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[11rem]" label="عنوان الحلقة والبرنامج" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="رقم الحلقة / الموسم" sortKey="number" sort={sort} onSort={toggleSort} />
                 <SortTh className="py-3.5 px-3" label="تاريخ وموعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
-                <SortTh className="py-3.5 px-3" label="المقدم / المنتج" sortKey="presenter" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 text-center" label="فقرات الرانداون" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
-                <th className="py-3.5 px-3 text-center">الضيوف</th>
-                <SortTh className="py-3.5 px-3" label="حالة الحلقة" sortKey="status" sort={sort} onSort={toggleSort} />
-                <th className="py-3.5 px-4 text-center w-36">إدارة الحلقة</th>
+                <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="المقدم / المنتج" sortKey="presenter" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="فقرات الرانداون" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <th className="py-3.5 px-3 text-center hidden md:table-cell">الضيوف</th>
+                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="حالة الحلقة" sortKey="status" sort={sort} onSort={toggleSort} />
+                <th className="py-3.5 px-2 sm:px-4 text-center">إدارة الحلقة</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -371,22 +372,31 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   return (
                     <tr key={ep.id} className="hover:bg-slate-50/80 transition-colors">
                       {/* Title & Program */}
-                      <td className="py-3.5 px-4">
-                        <div
+                      <td className="py-3.5 px-3 sm:px-4">
+                        <button
+                          type="button"
                           onClick={() => onSelectEpisode(ep.id)}
-                          className="font-bold text-slate-800 hover:text-blue-600 cursor-pointer block leading-snug"
+                          className="font-bold text-slate-800 hover:text-blue-600 text-right block leading-snug"
                         >
                           {ep.title}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                        </button>
+                        <div className="flex flex-wrap items-center gap-x-2 mt-0.5 text-[11px] text-slate-500">
                           <span className="font-semibold text-blue-700">{ep.programName}</span>
-                          <span>•</span>
+                          <span aria-hidden>•</span>
                           <span>{ep.studioName}</span>
+                          {/* Narrow screens: the folded columns. */}
+                          <span className="lg:hidden tabular-nums">ح {ep.episodeNumber} · م {ep.seasonNumber}</span>
+                          <span className="md:hidden">{countLabel(rundownCount, { zero: 'بلا فقرات', one: 'فقرة واحدة', two: 'فقرتان', few: 'فقرات', many: 'فقرة' })}</span>
+                        </div>
+                        <div className="sm:hidden mt-1">
+                          <Badge variant={sInfo.variant} size="sm">
+                            {sInfo.label}
+                          </Badge>
                         </div>
                       </td>
 
                       {/* Numbers */}
-                      <td className="py-3.5 px-3 font-mono text-slate-600 font-semibold">
+                      <td className="py-3.5 px-3 font-mono text-slate-600 font-semibold hidden lg:table-cell">
                         ح #{ep.episodeNumber} (م {ep.seasonNumber})
                       </td>
 
@@ -401,43 +411,44 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       </td>
 
                       {/* Team */}
-                      <td className="py-3.5 px-3 text-[11px]">
+                      <td className="py-3.5 px-3 text-[11px] hidden xl:table-cell">
                         <div>تقديم: <strong className="text-slate-800">{ep.presenterName}</strong></div>
                         <div className="text-slate-500">إنتاج: {ep.producerName}</div>
                       </td>
 
                       {/* Rundown count */}
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="py-3.5 px-3 text-center hidden md:table-cell">
                         <span className="inline-flex items-center gap-1 font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
                           <ListOrdered className="w-3.5 h-3.5" />
-                          {rundownCount} فقرة
+                          {countLabel(rundownCount, { zero: '0 فقرات', one: 'فقرة', two: 'فقرتان', few: 'فقرات', many: 'فقرة' })}
                         </span>
                       </td>
 
                       {/* Guests count */}
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="py-3.5 px-3 text-center hidden md:table-cell">
                         <span className="inline-flex items-center gap-1 font-mono font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
                           <Users className="w-3.5 h-3.5" />
-                          {guestsCount} ضيوف
+                          {countLabel(guestsCount, { zero: 'بلا ضيوف', one: 'ضيف', two: 'ضيفان', few: 'ضيوف', many: 'ضيفاً' })}
                         </span>
                       </td>
 
                       {/* Status */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3 hidden sm:table-cell">
                         <Badge variant={sInfo.variant} size="sm">
                           {sInfo.label}
                         </Badge>
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center gap-1.5">
+                      <td className="py-3.5 px-2 sm:px-4 text-center">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => onSelectEpisode(ep.id)}
                             className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-1"
                           >
-                            <span>فتح مساحة العمل</span>
+                            <span className="hidden sm:inline">فتح مساحة العمل</span>
+                            <span className="sm:hidden">فتح</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
 

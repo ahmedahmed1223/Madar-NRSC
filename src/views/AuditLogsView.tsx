@@ -27,9 +27,19 @@ const ACTION_LABELS: Record<string, string> = {
   SETTINGS_UPDATE: 'تعديل إعدادات', SECURITY_VIOLATION: 'محاولة غير مصرح بها', PASSWORD_CHANGE: 'تغيير كلمة المرور',
   PASSWORD_RESET: 'إعادة تعيين كلمة المرور', TWO_FACTOR_ENABLED: 'تفعيل التحقق بخطوتين', TWO_FACTOR_DISABLED: 'إلغاء التحقق بخطوتين',
   DB_EXPORT: 'تنزيل قاعدة البيانات', DB_RESET: 'إعادة تهيئة البيانات', DB_RESTORE: 'استعادة نسخة احتياطية', BACKUP_CREATE: 'نسخة احتياطية',
-  DEMO_DATA_REMOVED: 'حذف البيانات التجريبية',
+  DEMO_DATA_REMOVED: 'حذف البيانات التجريبية', ROLE_CHANGE: 'تغيير الدور والصلاحيات', USER_SUSPEND: 'إيقاف حساب',
+  USER_DELETE: 'حذف مستخدم', USER_CREATE: 'إضافة مستخدم',
 };
 const actionName = (a: string) => ACTION_LABELS[a] || a;
+
+/** What the action touched, in Arabic (the codes stay searchable). */
+const ENTITY_LABELS: Record<string, string> = {
+  AUTH: 'الدخول', USER: 'مستخدم', NEWS: 'خبر', BREAKING_NEWS: 'عاجل', EPISODE: 'حلقة', PROGRAM: 'برنامج', GUEST: 'ضيف',
+  STORY: 'تغطية', TASK: 'مهمة', MEDIA: 'وسائط', BULLETIN: 'نشرة', BULLETIN_FORMAT: 'قالب نشرة', BULLETIN_STORY: 'قصة نشرة',
+  DIARY: 'أجندة', BOOKING: 'حجز', RESOURCE: 'مورد', REQUEST: 'طلب قسم', SETTINGS: 'الإعدادات', BACKUP: 'النسخ الاحتياطي',
+  BROADCAST: 'البث', ROLE: 'دور', DATABASE: 'قاعدة البيانات',
+};
+const entityName = (e: string) => ENTITY_LABELS[e] || e;
 
 export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +53,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
   const filteredLogs = (logs || []).filter((log) => {
     if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
     if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), actionOf(log), ACTION_LABELS[actionOf(log)]);
+      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), ENTITY_LABELS[entityOf(log)], actionOf(log), ACTION_LABELS[actionOf(log)]);
     }
     return true;
   });
@@ -82,7 +92,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-600" />
-            <span>سجل التدقيق الأمني والتحريري (Audit Trail)</span>
+            <span>سجل التدقيق الأمني والتحريري</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             تسجيل غير قابل للتعديل لجميع العمليات والاعتمادات والنشر وتغيير الصلاحيات في النظام
@@ -214,8 +224,10 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               ) : (
                 filteredLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
-                      {timeOf(log) ? new Date(timeOf(log)).toLocaleString(appLocale(), zoneOptions()) : ''}
+                    <td className="py-3 px-4 tabular-nums text-slate-500 whitespace-nowrap">
+                      {timeOf(log)
+                        ? new Date(timeOf(log)).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : ''}
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
@@ -224,7 +236,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                     <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">
                       <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                        {entityOf(log)}
+                        {entityName(entityOf(log))}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">

@@ -422,8 +422,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 flex-1 min-w-[260px]">
-              <div className="relative flex-1">
+            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+              <div className="relative flex-1 min-w-[12rem]">
                 <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
                 <input
                   type="text"

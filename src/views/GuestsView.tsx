@@ -232,15 +232,15 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               </div>
 
               {/* Specialty & last appearance */}
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-                {guest.specialty ? (
-                  <Badge variant="primary" size="sm">
+              <div className="space-y-1.5 pt-2 border-t border-slate-100 text-xs">
+                {guest.specialty && (
+                  <Badge variant="primary" size="sm" className="max-w-full whitespace-normal! leading-snug">
                     {guest.specialty}
                   </Badge>
-                ) : <span />}
-                <span className="text-[11px] text-slate-500">
+                )}
+                <p className="text-[11px] text-slate-500">
                   {guest.lastAppearanceDate ? `آخر ظهور: ${arabicDate(guest.lastAppearanceDate)}` : 'لم يظهر بعد'}
-                </span>
+                </p>
               </div>
 
               {/* Contact Info */}
@@ -270,7 +270,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               {(guest.appearanceHistory || []).slice(0, 3).map((a) => (
                 <div key={a.episodeId} className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="truncate text-slate-700">{a.programName} — {a.episodeTitle}</span>
-                  <span className="font-mono shrink-0">{a.date}</span>
+                  <span className="tabular-nums shrink-0">{arabicDate(a.date)}</span>
                 </div>
               ))}
             </div>

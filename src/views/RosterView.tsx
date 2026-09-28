@@ -7,7 +7,8 @@ import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
 import { onDutyAt, SHIFTS, ShiftId, RosterEntry } from '../shared/roster';
-import { addDaysIso, localDateString } from '../shared/dates';
+import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
+import { FilterTabs } from '../components/common/FilterTabs';
 
 interface RosterViewProps {
   users: User[];
@@ -85,7 +86,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
           <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-xs font-bold text-slate-700 font-mono px-2" dir="ltr" aria-live="polite">{`${days[0]} → ${days[6]}`}</span>
+          <span className="text-xs font-bold text-slate-700 px-2 tabular-nums" aria-live="polite">{`${arabicDate(days[0])} – ${arabicDate(days[6])}`}</span>
           <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -150,22 +151,12 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
       </section>
 
       {/* Department selector */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="الأقسام">
-        {DEPARTMENTS.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            role="tab"
-            aria-selected={departmentId === d.id}
-            onClick={() => setDepartmentId(d.id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
-              departmentId === d.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {d.name}
-          </button>
-        ))}
-      </div>
+      <FilterTabs<string>
+        label="الأقسام"
+        active={departmentId}
+        onChange={setDepartmentId}
+        tabs={DEPARTMENTS.map((d) => ({ id: d.id, label: d.name, tone: 'blue' as const }))}
+      />
 
       {/* Week grid for the department */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
@@ -179,7 +170,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                 return (
                   <th key={d} scope="col" className={`p-3 text-center ${d === today ? 'text-blue-700' : ''}`}>
                     <span className="block font-bold">{DAY_NAMES[new Date(y, m - 1, dd).getDay()]}</span>
-                    <span className="block font-mono text-[10px] text-slate-400">{d.slice(5)}</span>
+                    <span className="block tabular-nums text-[10px] text-slate-400">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
                   </th>
                 );
               })}

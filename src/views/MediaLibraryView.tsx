@@ -55,6 +55,20 @@ const DURATION_PRESETS = [
   { label: '10 دقائق (600ث)', value: 600 },
 ];
 
+/** Thumbnail that shows the type icon while loading, when missing, or when the file fails. */
+const ThumbImage: React.FC<{ src?: string; alt: string; className: string; icon?: React.ReactNode }> = ({ src, alt, className, icon }) => {
+  const [state, setState] = React.useState<'loading' | 'ok' | 'failed'>(src ? 'loading' : 'failed');
+  React.useEffect(() => setState(src ? 'loading' : 'failed'), [src]);
+  return (
+    <>
+      {state !== 'ok' && icon && <span className="absolute inset-0 flex items-center justify-center text-slate-500 [&>svg]:w-10 [&>svg]:h-10">{icon}</span>}
+      {src && state !== 'failed' && (
+        <img src={src} alt={alt} loading="lazy" onLoad={() => setState('ok')} onError={() => setState('failed')} className={`${className} ${state === 'ok' ? '' : 'opacity-0'}`} />
+      )}
+    </>
+  );
+};
+
 export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   mediaAssets = [],
   currentUser,
@@ -294,18 +308,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             {/* Visual Thumbnail */}
             <div className="theme-fixed relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
-                <img
-                  src={asset.fileUrl || asset.url}
-                  alt={asset.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
+                <ThumbImage src={asset.fileUrl || asset.url} alt={asset.title} icon={getMediaIcon('IMAGE')} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
               ) : asset.mediaType === 'VIDEO' ? (
                 <div className="w-full h-full relative flex items-center justify-center bg-slate-950">
-                  <img
-                    src={asset.fileUrl || asset.url || '/icon.svg'}
-                    alt=""
-                    className="w-full h-full object-cover opacity-60"
-                  />
+                  <ThumbImage src={(asset as any).thumbnailUrl || (asset as any).posterUrl} alt="" className="w-full h-full object-cover opacity-60" />
                   <div className="absolute w-11 h-11 rounded-full bg-blue-600/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                     <Video className="w-5 h-5" />
                   </div>
@@ -349,7 +355,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   onClick={() => setPreviewAsset(asset)}
                   className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug cursor-pointer hover:text-blue-600 transition-colors"
                 >
-                  {asset.title || asset.fileName}
+                  {asset.title || (
+                    <span dir="ltr" className="block break-all text-left font-mono font-semibold">
+                      {asset.fileName}
+                    </span>
+                  )}
                 </h4>
                 {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] font-bold">

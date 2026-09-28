@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import { StationClock } from '../components/common/StationClock';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { arabicDate, localDateString } from '../shared/dates';
@@ -136,7 +137,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             مرحباً، {currentUser.fullName}
           </h1>
           <p className="text-slate-600 text-xs sm:text-sm max-w-2xl leading-relaxed">
-            المنظومة في حالة جاهزية كاملة للبث. تم جدولة {todayEpisodes.length} حلقات اليوم، وهناك {pendingReviewNewsCount} أخبار تنتظر التدقيق والاعتماد النهائي.
+            اليوم: {countLabel(todayEpisodes.length, { zero: 'لا حلقات مجدولة', one: 'حلقة واحدة مجدولة', two: 'حلقتان مجدولتان', few: 'حلقات مجدولة', many: 'حلقة مجدولة' })}،
+            و{countLabel(pendingReviewNewsCount, { zero: 'لا أخبار تنتظر التدقيق', one: 'خبر واحد ينتظر التدقيق والاعتماد', two: 'خبران ينتظران التدقيق والاعتماد', few: 'أخبار تنتظر التدقيق والاعتماد', many: 'خبراً ينتظر التدقيق والاعتماد' })}.
           </p>
         </div>
 
@@ -258,7 +260,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-xs text-purple-600 font-semibold">{programs.length} برامج</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
-            <span>{todayEpisodes.length} حلقات مجدولة للبث اليوم</span>
+            <span>{countLabel(todayEpisodes.length, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })} للبث اليوم</span>
           </div>
         </div>
 

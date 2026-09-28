@@ -22,22 +22,36 @@ interface AvatarProps {
   className?: string;
 }
 
-/** Profile picture that falls back to coloured initials when there is no image or it fails to load. */
+/**
+ * Profile picture over coloured initials: the initials show until the image has actually
+ * loaded, and stay when there is no image or it fails (no empty box on a slow network).
+ */
 export const Avatar: React.FC<AvatarProps> = ({ src, name, className = 'w-8 h-8 rounded-full' }) => {
   const usable = !!src && !/\/avatar\.svg$/.test(src);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [src]);
 
-  if (!usable || failed) {
-    return (
-      <span
-        role="img"
-        aria-label={name || 'صورة شخصية'}
-        className={`${className} ${colorFor(name)} inline-flex items-center justify-center shrink-0 text-white font-bold text-[0.7em] leading-none select-none overflow-hidden`}
-      >
-        {initialsOf(name)}
-      </span>
-    );
-  }
-  return <img src={src!} alt={name || ''} loading="lazy" onError={() => setFailed(true)} className={`${className} object-cover shrink-0`} />;
+  return (
+    <span
+      role="img"
+      aria-label={name || 'صورة شخصية'}
+      className={`${className} ${colorFor(name)} relative inline-flex items-center justify-center shrink-0 text-white font-bold text-[0.7em] leading-none select-none overflow-hidden`}
+    >
+      {initialsOf(name)}
+      {usable && !failed && (
+        <img
+          src={src!}
+          alt=""
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        />
+      )}
+    </span>
+  );
 };

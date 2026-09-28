@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { matchesQuery } from '../shared/search';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -107,7 +108,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
           <p className="text-xs text-slate-500 mt-1">
             برقيات تُجلب آلياً من خلاصات الوكالات المعتمدة
             {status && status.pollMinutes > 0 ? ` كل ${status.pollMinutes} دقائق` : ''}
-            {status ? `، وتُحفظ ${status.retentionDays} أيام` : ''}. حوّل أي برقية إلى مسودة خبر لتحريرها ومراجعتها.
+            {status ? `، وتُحفظ ${countLabel(status.retentionDays, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}` : ''}. حوّل أي برقية إلى مسودة خبر لتحريرها ومراجعتها.
           </p>
         </div>
         {can('news.create') && feedSources.length > 0 && (

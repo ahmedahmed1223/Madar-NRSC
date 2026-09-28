@@ -289,7 +289,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                           </span>
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
                         </div>
-                        <h3 className="text-sm font-bold text-slate-800 mt-1 truncate">{b.title}</h3>
+                        <h3 className="text-sm font-bold text-slate-800 mt-1 line-clamp-2 leading-snug" title={b.title}>{b.title}</h3>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
                         {status === 'ON_AIR' ? 'على الهواء' : status === 'DONE' ? 'أُذيعت' : 'قيد الإعداد'}
@@ -303,9 +303,14 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                       <span className="font-bold text-slate-700">{live.length} قصة</span>
                       <span className="text-emerald-700 font-bold">{approved} معتمدة</span>
                       {ready > 0 && <span className="text-amber-700 font-bold">{ready} بانتظار الاعتماد</span>}
-                      <span className={`font-mono font-bold mr-auto ${off ? (timing.overUnder > 0 ? 'text-rose-700' : 'text-amber-700') : 'text-emerald-700'}`} dir="ltr">
-                        {timing.overUnder > 0 ? '+' : ''}
-                        {mmss(timing.overUnder)}
+                      <span
+                        className={`font-bold mr-auto ${off ? (timing.overUnder > 0 ? 'text-rose-700' : 'text-amber-700') : 'text-emerald-700'}`}
+                        title="الفرق بين زمن القصص المعتمدة والمخططة ومدة النشرة"
+                      >
+                        {off ? (timing.overUnder > 0 ? 'زيادة ' : 'نقص ') : 'في الوقت '}
+                        <span className="font-mono tabular-nums" dir="ltr">
+                          {off ? mmss(Math.abs(timing.overUnder)) : ''}
+                        </span>
                       </span>
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden>

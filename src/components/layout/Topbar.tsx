@@ -177,7 +177,12 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Station clock + shared on-air lock (enforced by the server for every user) */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 bg-slate-100 border border-slate-200 text-slate-800 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-mono shrink-0">
+        {isLiveLockActive && (
+          <span className="sm:hidden p-1.5 rounded-lg bg-red-50 text-red-600" role="status" aria-label="قفل البث المباشر مفعّل" title="قفل البث المباشر مفعّل">
+            <Lock className="w-4 h-4" />
+          </span>
+        )}
+        <div className="hidden sm:flex items-center gap-1.5 sm:gap-2.5 bg-slate-100 border border-slate-200 text-slate-800 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-mono shrink-0">
           <button
             type="button"
             onClick={onToggleLiveLock}
@@ -278,7 +283,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           >
             <Plus className="w-4 h-4" />
             <span className="hidden xl:inline">إنشاء جديد</span>
-            <ChevronDown className="w-3 h-3 opacity-80" />
+            <ChevronDown className="w-3 h-3 opacity-80 hidden sm:block" />
           </button>
 
           {isCreateMenuOpen && (
@@ -420,7 +425,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 {roleLabels[currentUser.role] || currentUser.jobTitle}
               </span>
             </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
           </button>
 
           {isUserMenuOpen && (

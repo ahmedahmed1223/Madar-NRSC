@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
@@ -308,7 +309,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-700">{cat.nameAr}</span>
                     <span className="font-mono text-slate-500">
-                      {count} أخبار ({pct}%)
+                      {countLabel(count, { zero: 'لا أخبار', one: 'خبر واحد', two: 'خبران', few: 'أخبار', many: 'خبراً' })} ({pct}%)
                     </span>
                   </div>
                   <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">

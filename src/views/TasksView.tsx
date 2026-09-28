@@ -1,3 +1,4 @@
+import { countLabel } from '../shared/labels';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
@@ -37,7 +38,7 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
   if (!days) return null;
   return (
     <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold whitespace-nowrap">
-      متأخرة {days === 1 ? 'يوماً' : days === 2 ? 'يومين' : `${days} أيام`}
+      متأخرة {countLabel(days, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
     </span>
   );
 };

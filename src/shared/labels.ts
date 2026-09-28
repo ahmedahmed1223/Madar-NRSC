@@ -62,3 +62,15 @@ export function statusLabel(code: string | undefined, kind?: 'news' | 'episode' 
 }
 
 export const priorityLabel = (code: string | undefined) => (code ? PRIORITY_LABELS[code] || code : '—');
+
+/**
+ * A count with the right Arabic form: «لا حلقات»، «حلقة واحدة»، «حلقتان»، «3 حلقات»، «11 حلقة».
+ * `few` is used for 3–10, `many` (singular noun) for 11 and above.
+ */
+export function countLabel(n: number, forms: { zero: string; one: string; two: string; few: string; many: string }): string {
+  if (!n) return forms.zero;
+  if (n === 1) return forms.one;
+  if (n === 2) return forms.two;
+  const mod = n % 100;
+  return `${n} ${mod >= 3 && mod <= 10 ? forms.few : forms.many}`;
+}
