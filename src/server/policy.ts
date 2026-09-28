@@ -9,6 +9,7 @@ import { bulletinError, findShow, formatError, isApprover, storyError, storyStat
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
+import { videosError } from '../shared/newsVideos';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -95,6 +96,10 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
 
   if (!!before?.isBreaking !== !!after?.isBreaking && !auth.can('news.breaking_push')) {
     return 'صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها';
+  }
+  if (changed(before, after, 'videos')) {
+    const bad = videosError(after?.videos);
+    if (bad) return bad;
   }
   return null;
 };

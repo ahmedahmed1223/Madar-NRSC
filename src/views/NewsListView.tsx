@@ -1,3 +1,5 @@
+import { NewsVideosList } from '../components/news/NewsVideosEditor';
+import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { notify } from '../services/notify';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -812,6 +814,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 className="w-full h-64 object-cover rounded-xl shadow-xs"
               />
             )}
+
+            <NewsVideosList videos={videosOf(previewNews)} />
 
             {/* Summary */}
             {previewNews.summary && (

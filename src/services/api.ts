@@ -367,6 +367,7 @@ export class ApiService {
       summary: data.summary || '',
       mainImageUrl: data.mainImageUrl || '',
       videoUrl: data.videoUrl,
+      videos: data.videos,
       storyId: data.storyId,
       wireId: data.wireId,
       diaryId: data.diaryId,

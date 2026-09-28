@@ -1,3 +1,4 @@
+import { totalVideoSeconds, videoLines, videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
@@ -203,16 +204,29 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const inBulletin = new Set(all.map((s) => s.newsId).filter(Boolean));
 
   const pullNews = (n: NewsItem) => {
-    const video = (n.mediaIds || []).map((id) => apiService.getMedia().find((m) => m.id === id)).find((m) => m?.mediaType === 'VIDEO');
+    const media = apiService.getMedia();
+    const clips = videosOf(n);
+    // The story's own clips (in order) come first; otherwise a video attached to it.
+    const firstLibrary = clips.find((v) => v.kind === 'library' && v.mediaId);
+    const attached = (n.mediaIds || []).map((id) => media.find((m) => m.id === id)).find((m) => m?.mediaType === 'VIDEO');
+    const video = firstLibrary ? media.find((m) => m.id === firstLibrary.mediaId) : attached;
+    const clipTotal = totalVideoSeconds(clips);
+    const notes = clips.length
+      ? `مقاطع الفيديو بالترتيب:\n${videoLines(clips, (id) => {
+          const m: any = media.find((x) => x.id === id);
+          return m ? m.title || m.fileName : undefined;
+        }).join('\n')}`.slice(0, 1900)
+      : undefined;
     apiService.saveBulletinStory({
       bulletinId: bulletin.id,
       slug: n.shortTitle || n.title,
-      type: video ? 'VO' : 'READER',
+      type: video || clips.length ? 'VO' : 'READER',
       script: anchorCopyFromNews(n as any),
       newsId: n.id,
       newsUpdatedAt: n.updatedAt,
       clipMediaId: video?.id,
-      clipSeconds: video?.durationSeconds ? Math.round(video.durationSeconds) : undefined,
+      clipSeconds: clipTotal || (video?.durationSeconds ? Math.round(video.durationSeconds) : undefined),
+      directorNotes: notes,
       status: 'DRAFT',
     });
   };

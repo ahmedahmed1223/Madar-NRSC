@@ -1,3 +1,4 @@
+import { notify } from '../services/notify';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
@@ -11,6 +12,8 @@ import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { apiService } from '../services/api';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { NewsVideosEditor } from '../components/news/NewsVideosEditor';
+import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
 import {
   Save,
   Send,
@@ -104,7 +107,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [locationName, setLocationName] = useState('المقر الرئيسي');
   const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 16));
   const [mainImageUrl, setMainImageUrl] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videos, setVideos] = useState<NewsVideo[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isBreaking, setIsBreaking] = useState(false);
@@ -239,7 +242,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     locationName,
     eventDate,
     mainImageUrl,
-    videoUrl,
+    videos,
     keywords,
     isBreaking,
     internalNotes,
@@ -306,7 +309,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     }, 1200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videoUrl, keywords, isBreaking, internalNotes, storyId, mediaIds, draftKey, lockedByOther]);
+  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videos, keywords, isBreaking, internalNotes, storyId, mediaIds, draftKey, lockedByOther]);
 
   const handleRestoreEmergencyDraft = () => {
     try {
@@ -323,7 +326,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.locationName !== undefined) setLocationName(parsed.locationName);
         if (parsed.eventDate) setEventDate(parsed.eventDate);
         if (parsed.mainImageUrl !== undefined) setMainImageUrl(parsed.mainImageUrl);
-        if (parsed.videoUrl !== undefined) setVideoUrl(parsed.videoUrl);
+        if (Array.isArray(parsed.videos)) setVideos(parsed.videos);
+        else if (parsed.videoUrl) setVideos(videosOf({ videoUrl: parsed.videoUrl }));
         if (Array.isArray(parsed.keywords)) setKeywords(parsed.keywords);
         if (parsed.isBreaking !== undefined) setIsBreaking(parsed.isBreaking);
         if (parsed.internalNotes !== undefined) setInternalNotes(parsed.internalNotes);
@@ -369,7 +373,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       locationName: item.locationName || '',
       eventDate: item.eventDate ? item.eventDate.slice(0, 16) : new Date().toISOString().slice(0, 16),
       mainImageUrl: item.mainImageUrl || '',
-      videoUrl: item.videoUrl || '',
+      videos: videosOf(item),
       keywords: item.keywords || [],
       isBreaking: !!item.isBreaking,
       internalNotes: item.internalNotes || '',
@@ -388,7 +392,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setLocationName(fields.locationName);
     setEventDate(fields.eventDate);
     setMainImageUrl(fields.mainImageUrl);
-    setVideoUrl(fields.videoUrl);
+    setVideos(fields.videos);
     setKeywords(fields.keywords);
     setIsBreaking(fields.isBreaking);
     setInternalNotes(fields.internalNotes);
@@ -416,7 +420,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         locationName: '',
         eventDate: new Date().toISOString().slice(0, 16),
         mainImageUrl: '',
-        videoUrl: '',
+        videos: [],
         keywords: [] as string[],
         isBreaking: false,
         internalNotes: '',
@@ -489,7 +493,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       locationName,
       eventDate,
       mainImageUrl,
-      videoUrl: videoUrl || undefined,
+      videos,
+      videoUrl: primaryVideoUrl(videos, (id) => { const m: any = apiService.getMedia().find((x: any) => x.id === id); return m?.fileUrl || m?.url; }) || undefined,
       keywords,
       isBreaking,
       internalNotes,
@@ -505,6 +510,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
   /** Saves the text (never the status). Returns the stored story or null. */
   const saveContent = (stay: boolean, extra: Partial<NewsItem> = {}): NewsItem | null => {
+    const badClip = videosError(videos);
+    if (badClip) {
+      notify({ type: 'warning', title: 'راجع مقاطع الفيديو', message: badClip });
+      document.querySelector('[data-testid="news-videos"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return null;
+    }
     const saved = onSave({ ...buildPayload(), ...extra }, { stay });
     if (saved) {
       clearDraft();
@@ -1507,39 +1518,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               )}
             </div>
 
-            {/* Video Playout URL */}
+            {/* Video clips in playout order */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="news-video-url-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <Video className="w-3.5 h-3.5 text-slate-400" />
-                  رابط الفيديو وسيرفر البث (Playout)
-                </label>
-                {videoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setVideoUrl('')}
-                    className="text-[10px] text-slate-400 hover:text-rose-500"
-                  >
-                    مسح
-                  </button>
-                )}
-              </div>
-
-              <input
-                id="news-video-url-input"
-                type="text"
-                inputMode="url"
-                pattern="(https?://|/).+"
-                title="رابط كامل يبدأ بـ https:// أو ملف مرفوع إلى مكتبة الوسائط"
-                autoCapitalize="none"
-                spellCheck="false"
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="https://...mp4"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                dir="ltr"
-              />
-
+              <p className="block text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                <Video className="w-3.5 h-3.5 text-slate-400" />
+                مقاطع الفيديو (بترتيب العرض)
+              </p>
+              <NewsVideosEditor videos={videos} onChange={setVideos} disabled={!canEditContent} />
             </div>
           </div>
 
@@ -1704,7 +1689,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             if (data.sourceId) setSourceId(data.sourceId);
             setLocationName(data.locationName || '');
             setMainImageUrl(data.mainImageUrl || '');
-            setVideoUrl(data.videoUrl || '');
+            if (data.videoUrl) setVideos(videosOf({ videoUrl: data.videoUrl }));
             setInternalNotes(data.internalNotes || '');
           }}
         />

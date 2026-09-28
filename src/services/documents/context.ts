@@ -9,5 +9,9 @@ export function docContext(): DocContext {
   } catch {
     user = null;
   }
-  return { organization: apiService.getSettings()?.organizationName || '', user };
+  const mediaName = (id: string) => {
+    const m: any = apiService.getMedia().find((x: any) => x.id === id);
+    return m ? m.title || m.fileName : undefined;
+  };
+  return { organization: apiService.getSettings()?.organizationName || '', user, mediaName };
 }

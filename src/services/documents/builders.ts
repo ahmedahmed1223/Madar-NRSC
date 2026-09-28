@@ -1,3 +1,4 @@
+import { VIDEO_KIND_NAMES, formatClipDuration, totalVideoSeconds, videosOf } from '../../shared/newsVideos';
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 /**
  * The standard documents a newsroom prints or files: the story sheet, the news list,
@@ -46,6 +47,8 @@ export interface DocContext {
   organization?: string;
   user?: Pick<User, 'fullName'> | null;
   now?: Date;
+  /** Name of a media-library item (for video clips). */
+  mediaName?: (id: string) => string | undefined;
 }
 
 const stamp = (ctx: DocContext) => {
@@ -111,6 +114,28 @@ export function newsStoryDoc(n: NewsItem, ctx: DocContext): DocSpec {
   if (n.shortTitle && n.shortTitle !== n.title) blocks.push({ t: 'heading', text: 'العنوان المختصر' }, { t: 'paragraph', text: n.shortTitle, bold: true });
   if (n.summary) blocks.push({ t: 'heading', text: 'الموجز' }, { t: 'paragraph', text: n.summary, bold: true });
   blocks.push({ t: 'heading', text: 'نص الخبر' }, ...paragraphs(n.content || ''));
+  const clips = videosOf(n);
+  if (clips.length) {
+    const total = totalVideoSeconds(clips);
+    blocks.push(
+      { t: 'heading', text: `مقاطع الفيديو بترتيب العرض (${clips.length}${total ? ` — ${formatClipDuration(total)}` : ''})` },
+      {
+        t: 'table',
+        head: ['#', 'المقطع', 'المدة', 'النوع', 'الرابط / المادة / المكان', 'ملاحظة للتنفيذ'],
+        widths: [5, 20, 9, 11, 35, 20],
+        rows: clips.map((v, i) => ({
+          cells: [
+            String(i + 1),
+            v.title || 'مقطع',
+            formatClipDuration(v.seconds) || '—',
+            VIDEO_KIND_NAMES[v.kind],
+            v.kind === 'link' ? v.url || '' : v.kind === 'library' ? ctx.mediaName?.(v.mediaId || '') || v.mediaId || '' : v.location || '',
+            v.note || '',
+          ],
+        })),
+      }
+    );
+  }
   if (n.keywords?.length) blocks.push({ t: 'heading', text: 'الكلمات المفتاحية' }, { t: 'paragraph', text: n.keywords.join('، ') });
   if (n.internalNotes) blocks.push({ t: 'heading', text: 'ملاحظات داخلية' }, { t: 'paragraph', text: n.internalNotes, muted: true });
   if (n.workflowLogs?.length) {

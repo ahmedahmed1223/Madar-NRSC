@@ -167,7 +167,10 @@ export interface NewsItem {
   content: string;
   summary: string;
   mainImageUrl: string;
+  /** First playable clip (kept for screens that show one video); the full list is `videos`. */
   videoUrl?: string;
+  /** Video clips in playout order: links, library items, or written locations. */
+  videos?: import('../shared/newsVideos').NewsVideo[];
   sourceId: string;
   sourceName?: string;
   /** Agency wire item this story was written from. */
