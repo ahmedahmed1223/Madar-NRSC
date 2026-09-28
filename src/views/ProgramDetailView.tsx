@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
 import { formatSecondsToTime } from '../shared/rundown';
@@ -222,7 +223,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <>
                 <strong className="text-sm text-white leading-snug line-clamp-2">{nextEpisode.title}</strong>
                 <span className="text-xs text-slate-300 font-mono">
-                  {nextEpisode.broadcastDate} · {nextEpisode.startTime}
+                  {arabicDate(nextEpisode.broadcastDate)} · {nextEpisode.startTime}
                 </span>
                 <button
                   type="button"
@@ -417,7 +418,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   الحلقة القادمة
                 </span>
                 <span className="text-[10px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
-                  {nextEpisode ? `${nextEpisode.broadcastDate} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
+                  {nextEpisode ? `${arabicDate(nextEpisode.broadcastDate)} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
                 </span>
               </div>
 
@@ -522,7 +523,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">تاريخ ووقت البث:</span>
                       <strong className="text-slate-800 font-mono">
-                        {ep.broadcastDate} | {ep.startTime}
+                        {arabicDate(ep.broadcastDate)} | {ep.startTime}
                       </strong>
                     </div>
 

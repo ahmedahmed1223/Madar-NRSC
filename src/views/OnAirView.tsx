@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
@@ -149,7 +150,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>
                 {liveIds.includes(e.id) ? '● على الهواء — ' : ''}
-                {e.programName} — {e.title} ({e.broadcastDate} {e.startTime})
+                {e.programName} — {e.title} ({arabicDate(e.broadcastDate)} {e.startTime})
               </option>
             ))}
           </select>

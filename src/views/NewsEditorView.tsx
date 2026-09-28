@@ -105,7 +105,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [sourceId, setSourceId] = useState('');
   const [priority, setPriority] = useState<NewsPriority>('NORMAL');
   const [locationName, setLocationName] = useState('المقر الرئيسي');
-  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 16));
+  const [eventDate, setEventDate] = useState(() => toLocalInputValue());
   const [mainImageUrl, setMainImageUrl] = useState('');
   const [videos, setVideos] = useState<NewsVideo[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
@@ -371,7 +371,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       sourceId: item.sourceId || '',
       priority: item.priority || 'NORMAL',
       locationName: item.locationName || '',
-      eventDate: item.eventDate ? item.eventDate.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      // The field shows the station's/device's wall time for the stored instant.
+      eventDate: toLocalInputValue(item.eventDate || new Date()),
       mainImageUrl: item.mainImageUrl || '',
       videos: videosOf(item),
       keywords: item.keywords || [],
@@ -418,7 +419,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         sourceId: sources[0]?.id || '',
         priority: 'NORMAL' as NewsPriority,
         locationName: '',
-        eventDate: new Date().toISOString().slice(0, 16),
+        eventDate: toLocalInputValue(),
         mainImageUrl: '',
         videos: [],
         keywords: [] as string[],
@@ -491,7 +492,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       sourceName: selectedSrc?.name || '',
       priority,
       locationName,
-      eventDate,
+      eventDate: fromLocalInputValue(eventDate) || eventDate,
       mainImageUrl,
       videos,
       videoUrl: primaryVideoUrl(videos, (id) => { const m: any = apiService.getMedia().find((x: any) => x.id === id); return m?.fileUrl || m?.url; }) || undefined,
@@ -571,7 +572,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   }, []);
 
   const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
-  const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || new Date(scheduleAt).getTime() < Date.now());
+  const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || Date.parse(fromLocalInputValue(scheduleAt)) < Date.now());
 
   const handleConfirmStatus = () => {
     if (!newsItem?.id || !pendingStatus) return;
@@ -583,7 +584,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       if (!saved) return;
     }
     // datetime-local is local time; send an absolute instant.
-    onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? new Date(scheduleAt).toISOString() : undefined);
+    onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
     const fresh = apiService.getNewsById(newsItem.id);
     if (fresh) setBaseUpdatedAt(fresh.updatedAt);
     setShowCommentModal(false);
@@ -893,7 +894,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={handleCopyPrompterText}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 rounded-xl text-xs font-bold transition-colors border border-purple-500/30"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-colors border border-purple-200"
             title="نسخ نص الملقن المباشر للمذيع (AutoCue Format)"
           >
             {copiedPrompter ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1635,7 +1636,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   id="schedule-at-input"
                   type="datetime-local"
                   value={scheduleAt}
-                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                  min={toLocalInputValue()}
                   onChange={(e) => setScheduleAt(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
                   dir="ltr"

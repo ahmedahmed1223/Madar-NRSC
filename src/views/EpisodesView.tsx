@@ -664,7 +664,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               <select aria-label="الحلقة المصدر" value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
                 {previousEpisodes.map((e) => (
                   <option key={e.id} value={e.id}>
-                    #{e.episodeNumber} — {e.title} ({e.broadcastDate})
+                    #{e.episodeNumber} — {e.title} ({arabicDate(e.broadcastDate)})
                   </option>
                 ))}
               </select>

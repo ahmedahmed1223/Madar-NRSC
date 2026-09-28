@@ -1,3 +1,4 @@
+import { arabicDate } from '../../shared/dates';
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React from 'react';
 import { ExternalLink, FileText, Film, ListVideo, Plus, ArrowLeftRight } from 'lucide-react';
@@ -136,7 +137,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
                 <span className="min-w-0">
                   <span className="block font-bold text-slate-800 truncate">{segment.title}</span>
                   <span className="text-[10px] text-slate-500">
-                    {episode.programName} — {episode.title} · {episode.broadcastDate}
+                    {episode.programName} — {episode.title} · {arabicDate(episode.broadcastDate)}
                   </span>
                 </span>
                 {onOpenEpisode && (

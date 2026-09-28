@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import { totalVideoSeconds, videoLines, videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog, promptDialog } from '../services/dialogs';
@@ -345,7 +346,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             { label: 'النهاية المحددة', value: clockOf(timing.hardOut) },
             { label: 'المخطط', value: mmss(timing.planned) },
             { label: 'المجموع', value: mmss(timing.total) },
-            { label: off > 0 ? 'زيادة' : 'نقص', value: `${off > 0 ? '+' : ''}${mmss(off)}`, tone: Math.abs(off) <= 10 ? 'text-emerald-700' : off > 0 ? 'text-rose-600' : 'text-amber-700' },
+            { label: Math.abs(off) <= 10 ? 'في الوقت' : off > 0 ? 'زيادة' : 'نقص', value: mmss(Math.abs(off)), tone: Math.abs(off) <= 10 ? 'text-emerald-700' : off > 0 ? 'text-rose-600' : 'text-amber-700' },
             { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'ON AIR' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-700' : '' },
           ].map((c) => (
             <div key={c.label}>
@@ -476,12 +477,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       {/* Rundown */}
       <SortableScope onDrop={dropStory} disabled={!canEdit}>
       <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-        <table className="w-full text-xs md:min-w-[900px]" aria-label="رانداون النشرة">
+        <table className="w-full text-xs md:min-w-[900px] max-sm:[&_td]:px-1 max-sm:[&_th]:px-1" aria-label="رانداون النشرة">
           <thead className="bg-slate-50 text-slate-500 text-[11px]">
             <tr>
               <th className="p-2 text-right w-8">#</th>
               <th className="p-2 text-right">القصة</th>
-              <th className="p-2 text-center">النوع</th>
+              <th className="p-2 text-center hidden sm:table-cell">النوع</th>
               <th className="p-2 text-right hidden lg:table-cell">المذيع</th>
               <th className="p-2 text-center">الحالة</th>
               <th className="p-2 text-center hidden md:table-cell">قراءة</th>
@@ -489,7 +490,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               <th className="p-2 text-center">المدة</th>
               <th className="p-2 text-center hidden sm:table-cell">البداية</th>
               <th className="p-2 text-center hidden md:table-cell">Back</th>
-              <th className="p-2 text-center">إجراءات</th>
+              <th className="p-2 text-center"><span className="sr-only sm:not-sr-only">إجراءات</span></th>
             </tr>
           </thead>
           <SortableList id="bulletin" as="tbody">
@@ -534,6 +535,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {s.slug}
                     </button>
                     <div className="flex flex-wrap gap-1 mt-0.5">
+                      <span className="sm:hidden text-[10px] font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
                       {s.floated && <span className="text-[10px] font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
                       {s.killed && <span className="text-[10px] font-bold text-rose-500">مستبعدة</span>}
                       {changed && <span className="text-[10px] font-bold text-blue-700">تحدّث الخبر</span>}
@@ -548,7 +550,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       )}
                     </div>
                   </td>
-                  <td className="p-2 text-center font-mono font-black text-blue-700" title={t.name}>
+                  <td className="p-2 text-center font-mono font-black text-blue-700 hidden sm:table-cell" title={t.name}>
                     {t.code}
                   </td>
                   <td className="p-2 hidden lg:table-cell">{s.anchorName || bulletin.anchors[0] || ''}</td>
@@ -582,7 +584,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                                   : `أُعيدت «${s.slug}» مسودة`
                             );
                           }}
-                          className={`text-[10px] font-bold ps-1.5 pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
+                          className={`text-[10px] font-bold ps-1 pe-4 sm:ps-1.5 sm:pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
                         >
                           {options.map((o) => (
                             <option key={o.id} value={o.id}>
@@ -741,7 +743,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               <option value="">— اختر النشرة —</option>
               {others.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.date} {b.startTime} — {b.title}
+                  {arabicDate(b.date)} {b.startTime} — {b.title}
                 </option>
               ))}
             </select>

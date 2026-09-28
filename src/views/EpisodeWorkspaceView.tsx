@@ -1,3 +1,4 @@
+import { arabicDate } from '../shared/dates';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
 import { notify } from '../services/notify';
@@ -306,8 +307,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           <div className="flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-slate-400" />
             <span>موعد البث:</span>
-            <strong className="text-slate-800 font-mono">
-              {episode.broadcastDate} ({episode.startTime} - {episode.endTime})
+            <strong className="text-slate-800 tabular-nums">
+              {arabicDate(episode.broadcastDate)} ({episode.startTime} - {episode.endTime})
             </strong>
           </div>
           <div className="flex items-center gap-1.5">
