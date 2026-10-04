@@ -53,7 +53,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
   };
 
   return (
-    <div className="bg-gradient-to-r from-red-600 via-red-700 to-rose-700 text-white flex items-center justify-between px-3 sm:px-4 py-1.5 text-xs font-semibold shadow-md border-b border-red-800 select-none z-40">
+    <div className="theme-fixed bg-red-700 text-white flex items-center justify-between px-3 sm:px-4 py-1.5 text-xs font-semibold shadow-md border-b border-red-800 select-none z-40">
       <div className="flex items-center gap-2.5 sm:gap-3 overflow-hidden flex-1 min-w-0">
         {/* Pulsing Tag */}
         <div className="flex items-center gap-1.5 bg-black/25 px-2.5 py-1 rounded-lg shrink-0 border border-white/10">

@@ -359,7 +359,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
             <Lightbulb className="w-4 h-4 text-amber-500" /> ملخص الحلقة (الفكرة والزاوية والرسالة)
           </h3>
-          {briefOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          {briefOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
         </button>
         {!briefOpen && episode.brief?.idea && <p className="text-xs text-slate-600 mt-2 line-clamp-2">{episode.brief.idea}</p>}
         {briefOpen && (

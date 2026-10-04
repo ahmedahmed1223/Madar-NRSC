@@ -74,12 +74,12 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="مولد شارات الجرافيكس والشريط الإخباري (CG / Lower Thirds Generator)"
+      title="مولد شارات الجرافيكس والشريط الإخباري"
       maxWidth="lg"
     >
       <div className="space-y-5 text-right">
         <p className="text-xs text-slate-500 leading-relaxed">
-          توليد نصوص الشارات (Lower Thirds) بصيغة موحدة يدرجها فني الجرافيكس في نظام الشارات لديكم. لا يرتبط النظام آلياً بأجهزة الجرافيكس.
+          توليد نصوص الشارات بصيغة موحدة يدرجها فني الجرافيكس في نظام الشارات لديكم. لا يرتبط النظام آلياً بأجهزة الجرافيكس.
         </p>
 
         {/* Tab Selection */}
@@ -93,7 +93,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                 : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
-            شارة الضيف (Guest Aston)
+            شارة الضيف
           </button>
           <button
             type="button"
@@ -104,7 +104,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                 : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
-            عنوان الموضوع (Headline Strap)
+            عنوان الموضوع
           </button>
           <button
             type="button"
@@ -115,7 +115,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                 : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
-            المراسل الميداني (Live Location)
+            المراسل الميداني
           </button>
           <button
             type="button"
@@ -126,7 +126,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                 : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
-            شريط عاجل (Breaking Ticker)
+            شريط عاجل
           </button>
         </div>
 
@@ -258,7 +258,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
             <Tv className="w-4 h-4 text-slate-500" />
-            معاينة شارة البث على شاشة التلفزيون (On-Screen Lower Third Preview)
+            معاينة شارة البث على شاشة التلفزيون
           </label>
           <div className="relative h-28 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden p-3 flex flex-col justify-end border border-slate-700 shadow-inner">
             <div className="absolute top-2 left-3 flex items-center gap-1.5 text-[10px] font-mono text-red-400 font-bold">
@@ -304,7 +304,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
 
               {activeTab === 'BREAKING' && (
                 <div className="text-red-400 text-xs font-black flex items-center gap-1.5">
-                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-[9px]">عاجل</span>
+                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-[10px]">عاجل</span>
                   <span className="text-white">{breakingText || 'نص الخبر العاجل'}</span>
                 </div>
               )}

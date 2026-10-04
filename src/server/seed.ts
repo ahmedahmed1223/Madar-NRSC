@@ -257,6 +257,18 @@ function migrateToDepartments(db: NewsroomDatabase) {
  * edit them again (news.edit_own was missing).
  */
 function migrateRoleDefaults(db: NewsroomDatabase) {
+  if (db.getMeta('roles_migration_arabic_names') !== '1') {
+    // System role names were «اسم (English)»; the interface is Arabic-first, so keep the Arabic.
+    db.transaction(() => {
+      for (const row of db.listCollection('roles')) {
+        const role = row.d;
+        const name = typeof role?.nameAr === 'string' ? role.nameAr : '';
+        const plain = name.replace(/\s*\([A-Za-z][^)]*\)\s*$/, '');
+        if (role?.isSystemRole && plain && plain !== name) db.writeRow('roles', row.id, { ...role, nameAr: plain }, row.p, null);
+      }
+      db.setMeta('roles_migration_arabic_names', '1');
+    });
+  }
   if (db.getMeta('roles_migration_2') !== '1') {
     // Presenters may tick questions, not rewrite whole episodes.
     db.transaction(() => {

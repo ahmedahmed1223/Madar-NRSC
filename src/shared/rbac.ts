@@ -205,7 +205,7 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
   },
   {
     code: 'rundown.lock_override',
-    nameAr: 'تجاوز قفل البث الحي (On-Air Override)',
+    nameAr: 'تجاوز قفل البث الحي',
     nameEn: 'Override On-Air Lock',
     description: 'إجراء تعديلات طارئة على الرانداون أثناء البث المباشر المقفول',
     category: 'RUNDOWN',
@@ -214,7 +214,7 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
   },
   {
     code: 'rundown.presenter_teleprompter',
-    nameAr: 'شاشة التلقين والمذيع (Teleprompter)',
+    nameAr: 'شاشة التلقين والمذيع',
     nameEn: 'Presenter Teleprompter Access',
     description: 'تشغيل شاشة القراءة الحية للمذيعين في الاستوديو',
     category: 'RUNDOWN',
@@ -539,7 +539,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-super-admin',
     roleCode: 'SUPER_ADMIN',
-    nameAr: 'مدير النظام العام (Super Admin)',
+    nameAr: 'مدير النظام العام',
     nameEn: 'Super Administrator',
     description: 'كامل الصلاحيات دون أي قيود على مستوى كافة أقسام المنظومة وقواعد البيانات والبث',
     color: '#dc2626',
@@ -551,7 +551,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-admin',
     roleCode: 'ADMIN',
-    nameAr: 'مدير قطاع الأخبار والبرامج (News Director)',
+    nameAr: 'مدير قطاع الأخبار والبرامج',
     nameEn: 'News & Broadcast Director',
     description: 'إدارة العمليات التحريرية، إقرار السياسات، النشر المباشر، وتعيين الطواقم وإدارتها',
     color: '#7c3aed',
@@ -563,7 +563,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-editor',
     roleCode: 'EDITOR',
-    nameAr: 'رئيس تحرير أول (Senior Editor)',
+    nameAr: 'رئيس تحرير أول',
     nameEn: 'Senior Editor & Desk Chief',
     description: 'اعتماد المواد، تدقيق المسودات، التحكم بالرانداون، وإطلاق الأخبار العاجلة',
     color: '#2563eb',
@@ -611,7 +611,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-journalist',
     roleCode: 'JOURNALIST',
-    nameAr: 'محرر صحفي (Journalist / Copywriter)',
+    nameAr: 'محرر صحفي',
     nameEn: 'Journalist / Copywriter',
     description: 'صياغة الأخبار، كتابة التقارير، إرفاق الوسائط، وتلقي المهام التحريرية',
     color: '#059669',
@@ -636,7 +636,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-producer',
     roleCode: 'PRODUCER',
-    nameAr: 'منتج برامج (Executive Producer)',
+    nameAr: 'منتج برامج',
     nameEn: 'Executive Producer',
     description: 'إعداد الحلقات، التنسيق مع الضيوف، إعداد محاور النقاش والأسئلة، وتجهيز الرانداون',
     color: '#d97706',
@@ -674,7 +674,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-presenter',
     roleCode: 'PRESENTER',
-    nameAr: 'مذيع ومقدم برامج (News Anchor / Presenter)',
+    nameAr: 'مذيع ومقدم برامج',
     nameEn: 'News Anchor / Presenter',
     description: 'الاطلاع على الرانداون الحي، قراءة شاشة التلقين (Teleprompter)، ومتابعة أسئلة الضيوف',
     color: '#0891b2',
@@ -694,7 +694,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-reporter',
     roleCode: 'REPORTER',
-    nameAr: 'مراسل ميداني (Field Reporter)',
+    nameAr: 'مراسل ميداني',
     nameEn: 'Field Reporter / Correspondent',
     description: 'إرسال التقارير الميدانية العاجلة، رفع المواد المصورة، واستقبال التكليفات الخارجية',
     color: '#ea580c',
@@ -716,7 +716,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-media',
     roleCode: 'MEDIA',
-    nameAr: 'فني وسائط وأرشيف (Media & Video Specialist)',
+    nameAr: 'فني وسائط وأرشيف',
     nameEn: 'Media & Video Specialist',
     description: 'معالجة الفيديو والصور، تصنيف المواد الأرشيفية، وضبط الجودة الفنية',
     color: '#4f46e5',
@@ -736,7 +736,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-crew',
     roleCode: 'CREW',
-    nameAr: 'طاقم فني وتشغيل (Crew)',
+    nameAr: 'طاقم فني وتشغيل',
     nameEn: 'Technical & Operations Crew',
     description: 'أقسام الاستديو والصوت والإضاءة والكنترول والجرافيكس: استقبال طلبات القسم وتنفيذها ومتابعة الرانداون',
     color: '#0d9488',
@@ -758,7 +758,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     id: 'role-viewer',
     roleCode: 'VIEWER',
-    nameAr: 'مطلع / متدرب (Viewer / Trainee)',
+    nameAr: 'مطلع / متدرب',
     nameEn: 'Viewer / Trainee',
     description: 'صلاحيات قراءة واطلاع فقط دون إمكانية التعديل أو النشر أو الحذف',
     color: '#64748b',

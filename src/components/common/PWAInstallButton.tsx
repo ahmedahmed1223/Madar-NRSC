@@ -18,7 +18,7 @@ export const PWAInstallButton: React.FC = () => {
         id="pwa-install-button"
         type="button"
         onClick={install}
-        className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+        className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
         title="تثبيت المنظومة كتطبيق رسمي مستقل على محطة العمل"
       >
         <Download className="w-3.5 h-3.5" />
@@ -50,7 +50,7 @@ export const PWAInstallButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowIOSGuide(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                  className="p-1 text-slate-500 hover:text-slate-600 rounded-lg"
                 >
                   <X className="w-4 h-4" />
                 </button>

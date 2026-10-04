@@ -92,7 +92,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-600" />
-            <span>سجل التدقيق الأمني والتحريري</span>
+            <span>سجل التدقيق</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             تسجيل غير قابل للتعديل لجميع العمليات والاعتمادات والنشر وتغيير الصلاحيات في النظام
@@ -108,7 +108,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-96">
             <label htmlFor="audit-search-input" className="sr-only">بحث في سجل التدقيق</label>
-            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               id="audit-search-input"
               type="search"
@@ -123,7 +123,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
                 title="مسح البحث"
                 aria-label="مسح البحث"
               >
@@ -166,7 +166,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
 
         {/* Action quick tags */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 text-xs">
-          <span className="text-[11px] font-bold text-slate-400 ml-1">تصفية سريعة:</span>
+          <span className="text-[11px] font-bold text-slate-500 ml-1">تصفية سريعة:</span>
           {[
             { id: 'ALL', label: 'الكل' },
             { id: 'PUBLISH', label: 'نشر فوري' },
@@ -193,7 +193,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
 
       {/* Audit Log Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="جدول سجل التدقيق (يمكن تمريره أفقياً)">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
@@ -208,7 +208,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             <tbody className="divide-y divide-slate-100 font-sans">
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
                     لا توجد سجلات تطابق معايير البحث أو التصفية الحالية.
                     {hasActiveFilters && (
                       <button
@@ -231,7 +231,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{log.userId}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">{log.userId}</div>
                     </td>
                     <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">
@@ -242,7 +242,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                     <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">
                       {log.details}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-400 text-[11px]" dir="ltr">
+                    <td className="py-3 px-3 font-mono text-slate-500 text-[11px]" dir="ltr">
                       {log.ipAddress || '—'}
                     </td>
                   </tr>

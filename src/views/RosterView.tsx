@@ -125,7 +125,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
       {/* On duty right now */}
       <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="المناوبون الآن">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <UserCheck className="w-4 h-4 text-emerald-600" />
+          <UserCheck className="w-4 h-4 text-emerald-700" />
           المناوبون الآن
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
@@ -170,7 +170,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                 return (
                   <th key={d} scope="col" className={`p-3 text-center ${d === today ? 'text-blue-700' : ''}`}>
                     <span className="block font-bold">{DAY_NAMES[new Date(y, m - 1, dd).getDay()]}</span>
-                    <span className="block tabular-nums text-[10px] text-slate-400">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
+                    <span className="block tabular-nums text-[10px] text-slate-500">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
                   </th>
                 );
               })}
@@ -181,7 +181,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
               <tr key={s.id} className="border-t border-slate-100 align-top">
                 <th scope="row" className="p-3 text-right">
                   <span className="block font-bold text-slate-800">{s.name}</span>
-                  <span className="block font-mono text-[10px] text-slate-400" dir="ltr">
+                  <span className="block font-mono text-[10px] text-slate-500" dir="ltr">
                     {s.start} – {s.end}
                   </span>
                 </th>
@@ -213,7 +213,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                                 type="button"
                                 onClick={() => run(() => apiService.removeRosterEntry(e.id))}
                                 aria-label={`إزالة ${e.userName} من الوردية`}
-                                className="text-slate-400 hover:text-rose-600"
+                                className="text-slate-500 hover:text-rose-600"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -257,7 +257,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                               type="button"
                               onClick={() => setAdding(key)}
                               aria-label={`إضافة مناوب ${s.name} يوم ${date}`}
-                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-400 hover:text-blue-600 hover:border-blue-300"
+                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
                             >
                               <Plus className="w-3 h-3" />
                             </button>

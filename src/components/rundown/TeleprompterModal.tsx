@@ -169,7 +169,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           </span>
           <div className="truncate">
             <h2 className="text-sm font-bold text-slate-100">{episodeTitle}</h2>
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-slate-500">
               الفقرة {currentSegmentIndex + 1} من {segments.length}: {activeSegment?.title || 'فقرة مجهولة'}
             </div>
           </div>
@@ -204,16 +204,16 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
             type="button"
             onClick={() => setIsMirrored(!isMirrored)}
             className={`p-2 rounded-lg transition-colors ${
-              isMirrored ? 'bg-amber-600 text-white' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+              isMirrored ? 'bg-amber-700 text-white' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
             }`}
-            title={isMirrored ? 'إلغاء وضع المرآة للزجاج' : 'تفعيل وضع المرآة لعاكس الكاميرا (Prompter Glass)'}
+            title={isMirrored ? 'إلغاء وضع المرآة للزجاج' : 'تفعيل وضع المرآة لعاكس الكاميرا'}
           >
             <FlipHorizontal className="w-4 h-4" />
           </button>
 
           {/* Font Size Controls */}
           <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-            <Type className="w-3.5 h-3.5 text-slate-400" />
+            <Type className="w-3.5 h-3.5 text-slate-500" />
             <button
               type="button"
               onClick={() => setFontSize((f) => Math.max(22, f - 4))}
@@ -235,7 +235,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
           {/* Speed Controls */}
           <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-            <span className="text-slate-400 text-[11px]">السرعة:</span>
+            <span className="text-slate-500 text-[11px]">السرعة:</span>
             <button
               type="button"
               onClick={() => setScrollSpeed((s) => Math.max(1, s - 1))}
@@ -257,7 +257,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-400 hover:text-red-300 rounded-lg transition-colors"
+            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-500 hover:text-red-300 rounded-lg transition-colors"
             title="خروج من شاشة الملقن (Esc)"
           >
             <X className="w-5 h-5" />
@@ -269,7 +269,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
       <div className="flex-1 flex overflow-hidden">
         {/* Segments Navigation Rail */}
         <div className="w-64 bg-slate-950 border-l border-slate-900 flex flex-col shrink-0 hidden md:flex">
-          <div className="p-3 border-b border-slate-900 text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <div className="p-3 border-b border-slate-900 text-xs font-bold text-slate-500 uppercase tracking-wider">
             تسلسل فقرات الحلقة ({segments.length})
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -283,12 +283,12 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                   className={`w-full text-right p-2.5 rounded-xl text-xs transition-all ${
                     isActive
                       ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 font-bold'
-                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                      : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-[11px] text-slate-500">#{seg.orderIndex || idx + 1}</span>
-                    <span className="font-mono text-[10px] text-slate-400">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
+                    <span className="font-mono text-[10px] text-slate-500">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
                   </div>
                   <div className="truncate text-xs">{seg.title}</div>
                   {seg.presenterName && (
@@ -328,7 +328,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                     {activeSegment.title}
                   </h1>
                   {activeSegment.presenterName && (
-                    <div className="text-sm text-slate-400 mt-2">
+                    <div className="text-sm text-slate-500 mt-2">
                       مقدم الفقرة: <span className="text-slate-200 font-semibold">{activeSegment.presenterName}</span>
                     </div>
                   )}
@@ -408,7 +408,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 onClick={handleTogglePlay}
                 className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold shadow-md transition-all ${
                   isPlaying
-                    ? 'bg-amber-500 hover:bg-amber-600 text-black'
+                    ? 'bg-amber-700 hover:bg-amber-800 text-black'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >

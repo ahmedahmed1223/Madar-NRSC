@@ -57,7 +57,7 @@ export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
                   البداية <b className="font-mono" dir="ltr">{signed(s.startDelaySeconds)}</b> عن الموعد
                 </span>
               )}
-              {s.operatorName && <span className="text-slate-400">التشغيل: {s.operatorName}</span>}
+              {s.operatorName && <span className="text-slate-500">التشغيل: {s.operatorName}</span>}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[640px]">

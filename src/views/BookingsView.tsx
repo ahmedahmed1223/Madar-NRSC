@@ -144,7 +144,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[900px]">
-              <div className="flex border-b border-slate-100 text-[10px] text-slate-400">
+              <div className="flex border-b border-slate-100 text-[10px] text-slate-500">
                 <div className="w-40 shrink-0" />
                 <div className="flex-1 grid grid-cols-24" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                   {HOURS.map((h) => (
@@ -192,7 +192,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                             style={{ insetInlineStart: `${s}%`, width: `${Math.max(e - s, 1.5)}%` }}
                           >
                             {b.title}
-                            <span className="block font-normal opacity-80">
+                            <span className="block font-normal">
                               {fmtTime(b.start)}–{fmtTime(b.end)}
                             </span>
                           </button>
@@ -322,7 +322,7 @@ const ResourcesManager: React.FC<{ onClose: () => void; resources: Resource[] }>
         {resources.length === 0 && <li className="p-4 text-xs text-slate-500 text-center">لا موارد بعد</li>}
         {resources.map((r) => (
           <li key={r.id} className="p-3 flex items-center justify-between gap-2 text-xs">
-            <span className={r.isActive === false ? 'text-slate-400 line-through' : ''}>
+            <span className={r.isActive === false ? 'text-slate-500 line-through' : ''}>
               <span className="font-bold text-slate-800">{r.name}</span> — {resourceKindName(r.kind)}
               {r.location ? ` — ${r.location}` : ''}
             </span>

@@ -240,7 +240,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleBold}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="نص عريض (Bold)" aria-label="نص عريض (Bold)"
+            title="نص عريض" aria-label="نص عريض"
           >
             <Bold className="w-4 h-4" />
           </button>
@@ -249,7 +249,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleItalic}
             className="p-1.5 hover:bg-slate-200/70 rounded-md transition-colors"
-            title="نص مائل (Italic)" aria-label="نص مائل (Italic)"
+            title="نص مائل" aria-label="نص مائل"
           >
             <Italic className="w-4 h-4" />
           </button>
@@ -345,7 +345,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </div>
 
       {/* Editor Body: scrolls inside itself so long stories keep the toolbar in view */}
-      <div className={`p-4 overflow-y-auto ${fs.full ? 'flex-1' : 'max-h-[75vh] resize-y'}`}>
+      <div className={`p-4 overflow-y-auto ${fs.full ? 'flex-1' : 'max-h-[75vh] resize-y'}`} {...(readOnly ? { tabIndex: 0, role: 'region', 'aria-label': 'نص الخبر' } : {})}>
         {isSource ? (
           <textarea
             value={value}
@@ -364,6 +364,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             aria-label="محتوى الخبر"
             aria-readonly={readOnly}
             contentEditable={!readOnly}
+            tabIndex={readOnly ? -1 : 0}
             suppressContentEditableWarning
             data-placeholder={placeholder}
             onInput={emit}
@@ -409,7 +410,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             زمن الإلقاء التقديري: {wordCount > 0 ? readingTimeStr : '0 ثانية'} (~130 ك/د)
           </span>
         </div>
-        <span className="text-[11px] text-slate-400">محرر متوافق مع نظام النشر والأوتوكيو</span>
+        <span className="text-[11px] text-slate-500">محرر متوافق مع نظام النشر والأوتوكيو</span>
       </div>
 
       {/* Link Modal */}
@@ -482,7 +483,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             />
           </div>
           <div>
-            <label htmlFor="rich-text-editor-field-4" className="block text-xs font-semibold text-slate-700 mb-1">وصف أو تعليق توضيحي (Caption)</label>
+            <label htmlFor="rich-text-editor-field-4" className="block text-xs font-semibold text-slate-700 mb-1">وصف أو تعليق توضيحي</label>
             <input id="rich-text-editor-field-4"
               type="text"
               value={mediaCaption}

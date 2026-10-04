@@ -38,7 +38,7 @@ export const NetworkStatusBanner: React.FC = () => {
       <div
         role="status"
         aria-live="polite"
-        className="fixed top-0 inset-x-0 z-50 bg-emerald-600 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-md"
+        className="fixed top-0 inset-x-0 z-50 bg-emerald-700 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-md"
       >
         <Wifi className="w-4 h-4" />
         <span>{pending > 0 ? `عاد الاتصال بالخادم — جارٍ إرسال ${pending} تعديل` : 'عاد الاتصال بالخادم وتمت مزامنة كل التعديلات'}</span>
@@ -50,7 +50,7 @@ export const NetworkStatusBanner: React.FC = () => {
     <div
       role="alert"
       aria-live="assertive"
-      className="fixed top-0 inset-x-0 z-50 bg-amber-600 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg"
+      className="fixed top-0 inset-x-0 z-50 bg-amber-700 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg"
     >
       <div className="flex items-center gap-2 mx-auto">
         <WifiOff className="w-4 h-4 text-amber-200" />

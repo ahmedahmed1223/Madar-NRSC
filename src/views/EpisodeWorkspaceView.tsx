@@ -165,7 +165,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       {lockedByOther && lock.holder && (
         <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
           <div className="flex items-center gap-2.5">
-            <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+            <Lock className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
               <strong className="text-xs font-bold block">هذه الحلقة قيد التحرير الآن لدى {lock.holder.userName}</strong>
               <span className="text-[11px] text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
@@ -177,7 +177,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               onClick={async () => {
                 if ((await confirmDialog(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الحلقة؟`))) void lock.takeOver();
               }}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
+              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold"
             >
               تولي التحرير
             </button>
@@ -250,7 +250,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
                   {episode.programName}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">
+                <span className="text-xs text-slate-500 font-mono">
                   حلقة #{episode.episodeNumber} (الموسم {episode.seasonNumber})
                 </span>
               </div>
@@ -282,8 +282,9 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               ]}
             />
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-400 font-semibold">حالة الحلقة:</span>
+              <span className="text-slate-500 font-semibold">حالة الحلقة:</span>
               <select
+                aria-label="حالة الحلقة"
                 value={episode.status}
                 onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
                 disabled={!canEditEpisode}
@@ -292,7 +293,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 <option value="PLANNING">مرحلة التخطيط</option>
                 <option value="IN_PREPARATION">قيد الإعداد والتحرير</option>
                 <option value="READY_FOR_BROADCAST">جاهز للبث المباشر</option>
-                <option value="ON_AIR">على الهواء الآن (ON AIR)</option>
+                <option value="ON_AIR">على الهواء الآن</option>
                 <option value="BROADCASTED">تم البث</option>
                 <option value="ARCHIVED">مؤرشفة</option>
               </select>
@@ -305,14 +306,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         {/* Episode Info Bar */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">
           <div className="flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-slate-400" />
+            <Clock className="w-4 h-4 text-slate-500" />
             <span>موعد البث:</span>
             <strong className="text-slate-800 tabular-nums">
               {arabicDate(episode.broadcastDate)} ({episode.startTime} - {episode.endTime})
             </strong>
           </div>
           <div className="flex items-center gap-1.5">
-            <Tv className="w-4 h-4 text-slate-400" />
+            <Tv className="w-4 h-4 text-slate-500" />
             <span>الاستوديو:</span>
             <strong className="text-slate-800">{episode.studioName}</strong>
           </div>
@@ -459,7 +460,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">
-                سكريبت المقدمة الترحيبية (Autocue Script)
+                سكريبت المقدمة الترحيبية
               </h3>
               <p className="text-xs text-slate-500">
                 النص الكامل لقراءة المذيع في افتتاحية الحلقة على شاشة الأوتوكيو
@@ -475,7 +476,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 >
                   {copiedScript ? (
                     <>
-                      <Check className="w-4 h-4 text-emerald-600" />
+                      <Check className="w-4 h-4 text-emerald-700" />
                       <span className="text-emerald-700">تم النسخ</span>
                     </>
                   ) : (

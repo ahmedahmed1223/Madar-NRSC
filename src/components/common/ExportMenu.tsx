@@ -116,7 +116,7 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
               {error}
             </p>
           )}
-          <p className="text-[10px] text-slate-400 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
+          <p className="text-[10px] text-slate-500 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
         </div>
       )}
     </div>

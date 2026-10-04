@@ -69,7 +69,7 @@ export const DemoDataCard: React.FC = () => {
         <span>حذف البيانات التجريبية</span>
       </h3>
       {error && <p className="text-xs text-rose-600">{error}</p>}
-      {!info && !error && <p className="text-xs text-slate-400">جارٍ الفحص...</p>}
+      {!info && !error && <p className="text-xs text-slate-500">جارٍ الفحص...</p>}
       {info && nothingLeft && (
         <p className="text-xs text-emerald-700 font-bold flex items-center gap-1.5">
           <CheckCircle2 className="w-4 h-4" /> لا توجد بيانات تجريبية؛ النظام يحوي بياناتكم فقط{info.removed ? ' ولن تُضاف البيانات التجريبية مجدداً' : ''}.

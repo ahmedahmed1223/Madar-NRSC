@@ -60,7 +60,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
     const mainHeadline = currentTitle || 'قمة دولية تبحث استقرار الاقتصاد وتحديات الطاقة النظيفة';
       if (activeMode === 'TV_REWRITE') {
         const rewrittenLead = `أكدت المصادر الرسمية في مستهل التطورات المتسارعة، أن الجهود المشتركة تتجه نحو تبني حلول استراتيجية شاملة. وفي هذا السياق، أوضح المتحدثون أن المرحلة الراهنة تتطلب تعزيز التنسيق المباشر بين مختلف الأطراف الفاعلة لضمان استدامة النتائج المحققة ومواكبة متطلبات الميدان.`;
-        const tvScript = `<h3>مقدمة المذيع (On-Camera Reader):</h3><p><strong>[CG_ANCHOR: استوديو الأخبار]</strong><br />مساء الخير، نبدأ جولتنا الإخبارية بهذا التطور الميداني الأبرز، حيث تتواصل التحركات الرسمية المكثفة لإنجاز الأهداف المعلنة وسط ترحيب واسع من الأوساط المعنية.</p><h3>متن التقرير المصور (Voice Over VT):</h3><p>${rawBody.slice(0, 300) || rewrittenLead}</p><p>وتشير المعطيات الميدانية إلى أن الساعات القادمة ستشهد إعلاناً رسمياً يتضمن تفاصيل الآليات التنفيذية والجداول الزمنية المعتمدة.</p>`;
+        const tvScript = `<h3>مقدمة المذيع:</h3><p><strong>[CG_ANCHOR: استوديو الأخبار]</strong><br />مساء الخير، نبدأ جولتنا الإخبارية بهذا التطور الميداني الأبرز، حيث تتواصل التحركات الرسمية المكثفة لإنجاز الأهداف المعلنة وسط ترحيب واسع من الأوساط المعنية.</p><h3>متن التقرير المصور:</h3><p>${rawBody.slice(0, 300) || rewrittenLead}</p><p>وتشير المعطيات الميدانية إلى أن الساعات القادمة ستشهد إعلاناً رسمياً يتضمن تفاصيل الآليات التنفيذية والجداول الزمنية المعتمدة.</p>`;
 
         return ({
           type: 'TV_REWRITE',
@@ -144,7 +144,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="المساعد التحريري الذكي لغرفة الأخبار (AI Newsroom Co-Pilot)"
+      title="المساعد التحريري الذكي لغرفة الأخبار"
       maxWidth="xl"
     >
       <div className="space-y-5 text-right">
@@ -193,7 +193,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
             }`}
           >
             <Bot className="w-3.5 h-3.5 text-purple-500" />
-            مقدمة المذيع (Lead)
+            مقدمة المذيع
           </button>
           <button
             type="button"
@@ -286,7 +286,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Tv className="w-4 h-4 text-blue-600" />
-                    المسودة التلفزيونية المقترحة (VT + Reader Script)
+                    المسودة التلفزيونية المقترحة
                   </span>
                   <button
                     type="button"
@@ -298,7 +298,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                       });
                       onClose();
                     }}
-                    className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                    className="flex items-center gap-1 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
                   >
                     <Check className="w-3.5 h-3.5" />
                     اعتماد واستبدال بالمحرر
@@ -306,21 +306,21 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-400 font-bold block">العنوان المقترح:</span>
+                  <span className="text-[11px] text-slate-500 font-bold block">العنوان المقترح:</span>
                   <div className="text-xs font-bold text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1">
                     {generatedResult.title}
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-400 font-bold block">مقدمة المذيع / الملخص:</span>
+                  <span className="text-[11px] text-slate-500 font-bold block">مقدمة المذيع / الملخص:</span>
                   <div className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 leading-relaxed">
                     {generatedResult.summary}
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-400 font-bold block">متن التقرير التلفزيوني:</span>
+                  <span className="text-[11px] text-slate-500 font-bold block">متن التقرير التلفزيوني:</span>
                   <div
                     className="rich-content text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(generatedResult.content) }}
@@ -358,7 +358,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                           title="نسخ العنوان"
                         >
                           {copiedKey === `hl-${idx}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <Check className="w-3.5 h-3.5 text-emerald-700" />
                           ) : (
                             <Copy className="w-3.5 h-3.5" />
                           )}
@@ -388,7 +388,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 <div className="space-y-2">
                   <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-purple-700">الصيغة المباشرة (Direct Lead):</span>
+                      <span className="text-[11px] font-bold text-purple-700">الصيغة المباشرة:</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -405,7 +405,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
 
                   <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-blue-700">الصيغة التفاعلية (Engaging Lead):</span>
+                      <span className="text-[11px] font-bold text-blue-700">الصيغة التفاعلية:</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -427,7 +427,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
               <div className="space-y-3 bg-emerald-50/50 border border-emerald-200 p-4 rounded-xl">
                 <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
                   <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                     تقرير التدقيق والتصويب الأسلوبي
                   </span>
                   <button
@@ -436,7 +436,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                       onApplyChanges({ content: generatedResult.polishedContent });
                       onClose();
                     }}
-                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold"
+                    className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold"
                   >
                     تطبيق النص المصوب
                   </button>
@@ -445,7 +445,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 <ul className="space-y-1 text-xs text-emerald-800">
                   {generatedResult.notes.map((note: string, idx: number) => (
                     <li key={idx} className="flex items-start gap-1.5">
-                      <span className="text-emerald-600 font-bold">•</span>
+                      <span className="text-emerald-700 font-bold">•</span>
                       <span>{note}</span>
                     </li>
                   ))}

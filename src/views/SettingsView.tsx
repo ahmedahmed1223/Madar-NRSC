@@ -83,7 +83,7 @@ const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSe
           <span className="min-w-0">
             <span className="block text-xs font-bold">
               {sec.label}
-              {counts[sec.id] !== undefined && <span className={`ms-1 text-[10px] ${active ? 'text-blue-100' : 'text-slate-400'}`}>({counts[sec.id]})</span>}
+              {counts[sec.id] !== undefined && <span className={`ms-1 text-[10px] ${active ? 'text-blue-100' : 'text-slate-500'}`}>({counts[sec.id]})</span>}
             </span>
             <span className={`block text-[11px] mt-0.5 leading-snug ${active ? 'text-blue-100' : 'text-slate-500'}`}>{sec.hint}</span>
           </span>
@@ -367,7 +367,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {isSaved && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-2xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.</span>
         </div>
       )}
@@ -511,7 +511,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Plus className="w-4 h-4 text-blue-600" />
                 <span>إضافة قسم صحفي جديد</span>
               </h3>
-              <span className="text-[11px] text-slate-400">تخصيص لوني فوري</span>
+              <span className="text-[11px] text-slate-500">تخصيص لوني فوري</span>
             </div>
 
             <form onSubmit={handleAddCategory} className="space-y-3.5 text-xs">
@@ -539,7 +539,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setNewCatNameAr('')}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -654,7 +654,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {/* Live Preview Card */}
               <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   معاينة حية للشارة والبطاقة
                 </div>
                 <div className="flex items-center gap-3">
@@ -720,7 +720,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Search & Stats Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={categorySearch}
@@ -732,7 +732,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setCategorySearch('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -746,7 +746,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Category Cards List */}
             <div className="space-y-2.5">
               {filteredCategories.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
                   لا توجد أقسام مطابقة للبحث "{categorySearch}".
                 </div>
               ) : (
@@ -779,7 +779,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {cat.nameAr}
                             </strong>
                             {cat.nameEn && (
-                              <span className="text-[11px] text-slate-400 font-mono" dir="ltr">
+                              <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
                                 {cat.nameEn}
                               </span>
                             )}
@@ -798,7 +798,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {cat.description ? (
                             <p className="text-[11px] text-slate-500 line-clamp-1">{cat.description}</p>
                           ) : (
-                            <p className="text-[11px] text-slate-400 font-mono">slug: {cat.slug || cat.id}</p>
+                            <p className="text-[11px] text-slate-500 font-mono">slug: {cat.slug || cat.id}</p>
                           )}
                         </div>
                       </div>
@@ -833,7 +833,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               }
                               setCategoryToDelete(cat);
                             }}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="حذف هذا التصنيف"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -876,7 +876,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewSourceName('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
                     aria-label="مسح اسم المصدر"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -896,7 +896,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewSourceType('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
                     aria-label="مسح نوع المصدر"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -933,9 +933,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <strong className="text-slate-800 block">{src.name}</strong>
-                  <span className="text-[11px] text-slate-400">{src.type}</span>
+                  <span className="text-[11px] text-slate-500">{src.type}</span>
                   {src.feedUrl && (
-                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-600' : 'text-slate-400'}`}>
+                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
                       {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
                     </span>
                   )}
@@ -950,7 +950,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   >
                     <Rss className="w-4 h-4" />
                   </button>
-                  <span className="text-[11px] font-mono text-emerald-600 font-bold">
+                  <span className="text-[11px] font-mono text-emerald-700 font-bold">
                     موثوقية {src.reliabilityScore}/5
                   </span>
                   <button
@@ -995,7 +995,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* Production Backup & Disaster Recovery Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <HardDrive className="w-4 h-4 text-emerald-600" />
+            <HardDrive className="w-4 h-4 text-emerald-700" />
             <span>التصدير والاستعادة</span>
           </h3>
 
@@ -1008,7 +1008,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }`}
             >
               {backupMsg.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
               ) : (
                 <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
               )}
@@ -1027,7 +1027,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={handleExportBackup}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-xs"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-all shadow-xs"
               >
                 <Download className="w-3.5 h-3.5" />
                 تحميل النسخة الاحتياطية (JSON)
@@ -1176,7 +1176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Live Preview */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 block uppercase">
+              <span className="text-[10px] font-bold text-slate-500 block uppercase">
                 معاينة الشارة بعد التعديل:
               </span>
               <span

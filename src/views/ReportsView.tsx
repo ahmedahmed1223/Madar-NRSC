@@ -135,7 +135,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            التقارير التحليلية ومؤشرات الأداء (KPIs)
+            التقارير
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             إحصائيات الإنتاج الإخباري، كفاءة التدقيق التحريري، ودقة الالتزام بجداول البث التلفزيوني
@@ -148,7 +148,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             onClick={handleExportCsv}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
           >
-            <Download className="w-4 h-4 text-emerald-600" />
+            <Download className="w-4 h-4 text-emerald-700" />
             <span>تصدير تقرير CSV</span>
           </button>
           <button
@@ -216,7 +216,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
+          <Filter className="w-4 h-4 text-slate-500" />
           <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">القسم الصحفي:</label>
           <select
             id="reports-category-filter"
@@ -237,21 +237,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-bold text-slate-600">معدل نشر الأخبار</span>
             <FileText className="w-5 h-5 text-blue-600" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">
             {filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%
           </div>
-          <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>{publishedCount} من أصل {filteredNews.length} مادة معتمدة ومنشورة</span>
           </p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-bold text-slate-600">جاهزية الحلقات للبث</span>
             <Tv className="w-5 h-5 text-purple-600" />
           </div>
@@ -264,9 +264,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون</span>
-            <Clock className="w-5 h-5 text-emerald-600" />
+            <Clock className="w-5 h-5 text-emerald-700" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">
             {rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
@@ -279,9 +279,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف <span className="font-normal text-slate-400">(الإجمالي، لا يتأثر بالفترة)</span></span>
-            <Users className="w-5 h-5 text-amber-600" />
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف <span className="font-normal text-slate-500">(الإجمالي، لا يتأثر بالفترة)</span></span>
+            <Users className="w-5 h-5 text-amber-700" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">{guests.length}</div>
           <p className="text-[11px] text-amber-700 font-semibold">
@@ -332,7 +332,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
           <div className="grid grid-cols-2 gap-3 pt-2">
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="text-xs text-slate-500 block">المسودات الأولية (Draft)</span>
+              <span className="text-xs text-slate-500 block">المسودات الأولية</span>
               <strong className="text-xl font-bold font-mono text-slate-700 block mt-1">
                 {draftCount}
               </strong>

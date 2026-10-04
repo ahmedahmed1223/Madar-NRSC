@@ -103,7 +103,7 @@ export function FilterTabs<K extends string>({
                 onClick={() => onChange(t.id)}
                 onKeyDown={(e) => onKeyDown(e, i)}
                 className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-colors ${
-                  on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : `text-slate-600 hover:text-slate-900 hover:bg-white/70 ${empty ? 'opacity-70' : ''}`
+                  on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 }`}
               >
                 {t.tone && <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${DOT[tone]}`} />}
@@ -111,7 +111,7 @@ export function FilterTabs<K extends string>({
                 {t.count !== undefined && (
                   <span
                     className={`min-w-5 px-1.5 py-px rounded-full text-[10px] font-bold text-center tabular-nums ${
-                      on ? ACTIVE_COUNT[tone] : empty ? 'text-slate-400' : 'bg-slate-200/80 text-slate-700'
+                      on ? ACTIVE_COUNT[tone] : empty ? 'text-slate-500' : 'bg-slate-200/80 text-slate-700'
                     }`}
                   >
                     {t.count}

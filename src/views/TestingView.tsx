@@ -107,7 +107,7 @@ const CHECKS: LiveCheck[] = [
   },
   {
     id: 'rbac',
-    name: 'مصفوفة الصلاحيات (RBAC)',
+    name: 'مصفوفة الصلاحيات',
     category: 'الأمان',
     run: async () => {
       const journalist = { role: 'JOURNALIST' as const, isActive: true };
@@ -185,7 +185,7 @@ export const TestingView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-emerald-600" />
+            <ShieldCheck className="w-6 h-6 text-emerald-700" />
             حالة النظام
           </h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -218,21 +218,21 @@ export const TestingView: React.FC = () => {
           return (
             <div key={check.id} className="p-4 flex items-start gap-3">
               <div className="mt-0.5">
-                {r.status === 'PASSED' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-                {r.status === 'WARNING' && <AlertTriangle className="w-5 h-5 text-amber-600" />}
+                {r.status === 'PASSED' && <CheckCircle2 className="w-5 h-5 text-emerald-700" />}
+                {r.status === 'WARNING' && <AlertTriangle className="w-5 h-5 text-amber-700" />}
                 {r.status === 'FAILED' && <XCircle className="w-5 h-5 text-red-600" />}
-                {(r.status === 'RUNNING' || r.status === 'PENDING') && <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />}
+                {(r.status === 'RUNNING' || r.status === 'PENDING') && <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold text-slate-800">{check.name}</span>
-                  <span className="text-[10px] font-semibold text-slate-400">{check.category}</span>
+                  <span className="text-[10px] font-semibold text-slate-500">{check.category}</span>
                 </div>
                 {r.message && <p className="text-xs text-slate-600 mt-1">{r.message}</p>}
               </div>
               <div className="text-left shrink-0">
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
-                {r.durationMs !== undefined && <div className="text-[10px] text-slate-400 mt-1 font-mono">{r.durationMs}ms</div>}
+                {r.durationMs !== undefined && <div className="text-[10px] text-slate-500 mt-1 font-mono">{r.durationMs}ms</div>}
               </div>
             </div>
           );

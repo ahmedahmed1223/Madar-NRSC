@@ -166,10 +166,10 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            البرامج التلفزيونية والإذاعية
+            البرامج
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            دليل وإدارة خريطة البرامج، طواقم العمل، ومواعيد البث والاستوديوهات
+            البرامج وطواقمها ومواعيد بثها واستوديوهاتها.
           </p>
         </div>
 
@@ -188,7 +188,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="programs-search-input"
             type="search"
@@ -203,7 +203,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -272,19 +272,19 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
 
                 <div className="space-y-2 pt-3 border-t border-slate-100 text-xs text-slate-600">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">المقدم:</span>
+                    <span className="text-slate-500">المقدم:</span>
                     <strong className="text-slate-800">{prog.presenterName}</strong>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">المنتج المنفذ:</span>
+                    <span className="text-slate-500">المنتج المنفذ:</span>
                     <strong className="text-slate-800">{prog.producerName}</strong>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">الاستوديو:</span>
+                    <span className="text-slate-500">الاستوديو:</span>
                     <span className="text-slate-700">{prog.studioName}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">أيام البث:</span>
+                    <span className="text-slate-500">أيام البث:</span>
                     <span className="font-semibold text-blue-700">{prog.broadcastDays.join('، ')}</span>
                   </div>
                 </div>
@@ -360,7 +360,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setName('')}
-                    className="text-[10px] text-slate-400 hover:text-rose-500"
+                    className="text-[10px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -400,7 +400,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -517,7 +517,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     key={d}
                     type="button"
                     onClick={() => setDurationMinutes(d)}
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
                       durationMinutes === d
                         ? 'bg-blue-600 text-white font-bold'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -547,7 +547,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCoverImageUrl('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

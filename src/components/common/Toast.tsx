@@ -85,7 +85,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+          className="text-slate-500 hover:text-white p-1 rounded-md transition-colors"
           aria-label="إغلاق"
         >
           <X className="w-3.5 h-3.5" />

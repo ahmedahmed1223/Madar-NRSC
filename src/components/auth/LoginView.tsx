@@ -93,7 +93,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   return (
     <div className="relative min-h-screen bg-[#0f172a] flex items-center justify-center p-4 font-sans" dir="rtl">
-      <ThemeToggle className="absolute top-4 left-4 text-slate-400 hover:text-white hover:bg-white/10" />
+      <ThemeToggle className="absolute top-4 left-4 text-slate-500 hover:text-white hover:bg-white/10" />
       <div className="w-full max-w-sm flex flex-col gap-5">
       <StationClock variant="hero" onDark />
       <div className="w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
@@ -117,7 +117,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               البريد الإلكتروني
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input
                 id="login-email"
                 type="email"
@@ -136,7 +136,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               كلمة المرور
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input
                 id="login-password"
                 type="password"
@@ -228,7 +228,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 ))}
               </ul>
             )}
-            <p className="mt-2 text-[10px] text-slate-400">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
+            <p className="mt-2 text-[10px] text-slate-500">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
           </div>
         )}
       </div>

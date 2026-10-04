@@ -247,10 +247,10 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            حلقات البرامج التلفزيونية
+            الحلقات
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            إعداد الحلقات، تنظيم محاور الحوار، جداول الرانداون، وتنسيق الضيوف
+            إعداد الحلقات ومحاورها ورانداونها وضيوفها.
           </p>
         </div>
 
@@ -281,7 +281,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="episodes-search-input"
             type="search"
@@ -296,7 +296,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -359,7 +359,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredEpisodes.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     لا توجد حلقات مطابقة لمعايير البحث. انقر على "إعداد حلقة جديدة" لبدء العمل.
                   </td>
                 </tr>
@@ -404,7 +404,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       <td className="py-3.5 px-3">
                         <div className="text-slate-700 tabular-nums">
                           <div className="whitespace-nowrap">{arabicDate(ep.broadcastDate)}</div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-[11px] text-slate-500">
                             {ep.startTime} - {ep.endTime}
                           </div>
                         </div>
@@ -510,7 +510,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="text-[10px] text-slate-400 hover:text-rose-500"
+                    className="text-[10px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>

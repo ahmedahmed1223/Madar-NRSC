@@ -68,7 +68,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
                   onFix(html ? (result as ReturnType<typeof proofreadHtml>).fixAll() : applyFixes(value, issues));
                   setOpen(false);
                 }}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
               >
                 <Wand2 className="w-3.5 h-3.5" /> إصلاح الكل ({issues.length})
               </button>
@@ -86,7 +86,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
                     <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
                     <span className="text-slate-700 flex-1">{i.message}</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
+                  <p className="text-[11px] text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
                   <div className="flex gap-1.5">
                     <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[11px] font-bold">
                       إصلاح
@@ -99,7 +99,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-slate-400">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
+          <p className="text-[10px] text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
         </div>
       )}
     </div>
@@ -167,7 +167,7 @@ export function useAutocomplete(ref: React.RefObject<HTMLTextAreaElement | HTMLI
 export const AutocompleteBar: React.FC<{ suggestions: string[]; onPick: (term: string) => void }> = ({ suggestions, onPick }) =>
   suggestions.length ? (
     <div role="listbox" aria-label="اقتراحات الإكمال" className="flex flex-wrap items-center gap-1 mt-1 text-[11px]">
-      <span className="text-slate-400">إكمال (Tab):</span>
+      <span className="text-slate-500">إكمال (Tab):</span>
       {suggestions.map((t, i) => (
         <button
           key={t}
@@ -185,7 +185,7 @@ export const AutocompleteBar: React.FC<{ suggestions: string[]; onPick: (term: s
   ) : null;
 
 export const DismissButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button type="button" onClick={onClick} aria-label="إخفاء" className="p-0.5 text-slate-400">
+  <button type="button" onClick={onClick} aria-label="إخفاء" className="p-0.5 text-slate-500">
     <X className="w-3 h-3" />
   </button>
 );

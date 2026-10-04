@@ -54,7 +54,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         {/* List */}
         <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
           {notifications.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
+            <div className="py-8 text-center text-xs text-slate-500">
               لا توجد إشعارات جديدة حالياً
             </div>
           ) : (
@@ -79,7 +79,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">{notif.message}</p>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(notif.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(),

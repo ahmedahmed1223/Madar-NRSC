@@ -124,7 +124,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
             className="flex gap-2"
           >
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
               <input
                 type="search"
                 value={query}
@@ -143,7 +143,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
 
           {loading ? (
             <div className="py-10 flex justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
             </div>
           ) : result && result.items.length === 0 ? (
             <p className="py-10 text-center text-xs text-slate-500">
@@ -164,7 +164,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                       >
                         <span className="text-sm font-bold text-slate-800 block">{item.title}</span>
                         {item.summary && <span className="text-xs text-slate-500 line-clamp-2 block">{item.summary}</span>}
-                        <span className="text-[11px] text-slate-400 block">
+                        <span className="text-[11px] text-slate-500 block">
                           {STATUS_LABELS[item.status] || item.status} · {item.categoryName || '—'} · نُشر {fmt(item.publishDate)} · آخر تعديل {fmt(item.updatedAt)}
                         </span>
                       </button>

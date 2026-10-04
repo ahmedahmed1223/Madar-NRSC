@@ -53,7 +53,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
           <input
             type="search"
             value={query}
@@ -94,7 +94,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 <h2 className="text-lg font-bold text-slate-900">{active.title}</h2>
                 <p className="text-xs text-slate-500 mt-1">{active.summary}</p>
                 {active.departments.length > 0 && (
-                  <p className="text-[11px] text-slate-400 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
                 )}
               </header>
               {active.sections.map((s) => (

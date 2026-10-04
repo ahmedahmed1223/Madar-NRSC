@@ -128,7 +128,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[75vh]"
       >
         <div className="flex items-center px-4 py-3.5 border-b border-slate-200 bg-slate-50/50">
-          <Search className="w-5 h-5 text-slate-400 shrink-0 ml-3" aria-hidden />
+          <Search className="w-5 h-5 text-slate-500 shrink-0 ml-3" aria-hidden />
           <input
             ref={inputRef}
             type="text"
@@ -144,20 +144,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             className="w-full bg-transparent border-none text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-400"
           />
           {query && (
-            <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" className="p-1 text-slate-400 hover:text-slate-600 rounded-md">
+            <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" className="p-1 text-slate-500 hover:text-slate-600 rounded-md">
               <X className="w-4 h-4" />
             </button>
           )}
-          <button type="button" onClick={onClose} aria-label="إغلاق البحث" className="p-1 text-slate-400 hover:text-slate-600 rounded-md ms-1">
+          <button type="button" onClick={onClose} aria-label="إغلاق البحث" className="p-1 text-slate-500 hover:text-slate-600 rounded-md ms-1">
             <span className="text-[10px] font-mono border border-slate-300 rounded px-1">Esc</span>
           </button>
         </div>
 
         <div className="p-2 overflow-y-auto flex-1">
           {!query.trim() ? (
-            <p className="p-8 text-center text-slate-400 text-xs">اكتب كلمة للبحث في المنظومة الإخبارية كلها</p>
+            <p className="p-8 text-center text-slate-500 text-xs">اكتب كلمة للبحث في المنظومة الإخبارية كلها</p>
           ) : results.length === 0 ? (
-            <p className="p-8 text-center text-slate-400 text-xs" role="status">
+            <p className="p-8 text-center text-slate-500 text-xs" role="status">
               لا نتائج مطابقة لـ «{query}»
             </p>
           ) : (
@@ -169,7 +169,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 return (
                   <React.Fragment key={r.key}>
                     {header && (
-                      <li role="presentation" className="text-[11px] font-bold text-slate-400 mt-2 mb-1 px-2">
+                      <li role="presentation" className="text-[11px] font-bold text-slate-500 mt-2 mb-1 px-2">
                         {header}
                       </li>
                     )}

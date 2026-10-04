@@ -151,7 +151,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                       type="button"
                       aria-label="إزالة الجهاز"
                       onClick={() => run('rm', () => apiService.removePushSubscription(d.endpoint), 'أُزيل الجهاز')}
-                      className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600"
+                      className="p-1 rounded hover:bg-rose-50 text-slate-500 hover:text-rose-600"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -237,7 +237,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 </button>
               </span>
             ))}
-            {!prefs.watchWords.length && <span className="text-[11px] text-slate-400">لا كلمات بعد</span>}
+            {!prefs.watchWords.length && <span className="text-[11px] text-slate-500">لا كلمات بعد</span>}
           </div>
           <div className="flex gap-2">
             <input

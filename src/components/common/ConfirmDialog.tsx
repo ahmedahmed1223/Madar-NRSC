@@ -28,7 +28,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div className="flex items-start gap-4">
         <div
           className={`p-3 rounded-xl shrink-0 ${
-            isDestructive ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+            isDestructive ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'
           }`}
         >
           <AlertTriangle className="w-6 h-6" />

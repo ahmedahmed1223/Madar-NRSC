@@ -143,7 +143,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
             {({ handle }) => (
             <>
             {canEdit && handle}
-            <button type="button" onClick={() => canEdit && toggle(q.id)} disabled={!canEdit} aria-label={q.isAsked ? 'إلغاء «طُرح»' : 'تعليم كمطروح'} className={q.isAsked ? 'text-emerald-600' : 'text-slate-300 hover:text-slate-500'}>
+            <button type="button" onClick={() => canEdit && toggle(q.id)} disabled={!canEdit} aria-label={q.isAsked ? 'إلغاء «طُرح»' : 'تعليم كمطروح'} className={q.isAsked ? 'text-emerald-700' : 'text-slate-300 hover:text-slate-500'}>
               {q.isAsked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
             </button>
             <div className="flex-1 min-w-0 space-y-1">
@@ -152,7 +152,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
                 <span className={`px-1.5 py-0.5 rounded ${KIND_TONE[q.kind || 'MAIN']}`}>{questionKindName(q.kind)}</span>
                 {(guest || q.assignedToName) && <span className="text-purple-700">إلى: {guest?.guestName || q.assignedToName}</span>}
               </div>
-              <p className={`text-sm font-bold leading-relaxed ${q.isAsked ? 'line-through text-slate-400' : 'text-slate-800'}`}>{q.questionText}</p>
+              <p className={`text-sm font-bold leading-relaxed ${q.isAsked ? 'line-through text-slate-500' : 'text-slate-800'}`}>{q.questionText}</p>
               {q.notes && <p className="text-[11px] text-slate-500">للمذيع: {q.notes}</p>}
             </div>
             {canEdit && (

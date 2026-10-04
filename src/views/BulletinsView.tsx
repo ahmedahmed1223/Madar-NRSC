@@ -193,7 +193,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
-            <Radio className="w-6 h-6 text-red-600" /> النشرات الإخبارية
+            النشرات
           </h1>
           <p className="text-xs text-slate-500 mt-1">رانداون النشرة، قصصها وتوقيتها واعتمادها قبل الهواء.</p>
         </div>
@@ -361,7 +361,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                     <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
                   ) : (
                     DAY_NAMES.map((d, i) => (
-                      <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                      <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                         {d}
                       </span>
                     ))
@@ -563,7 +563,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   {({ handle }) => (
                   <>
                   {handle}
-                  <span className="text-[11px] font-mono text-slate-400 w-5">{i + 1}</span>
+                  <span className="text-[11px] font-mono text-slate-500 w-5">{i + 1}</span>
                   <input aria-label={`عنوان القصة ${i + 1}`} value={s.slug} onChange={(e) => setDraftStory(i, { slug: e.target.value })} className="flex-1 min-w-[8rem] px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
                   <select aria-label={`نوع القصة ${i + 1}`} value={s.type} onChange={(e) => setDraftStory(i, { type: e.target.value as StoryType })} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
                     {STORY_TYPES.map((t) => (

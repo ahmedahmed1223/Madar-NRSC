@@ -71,7 +71,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
       <div className="space-y-3 text-right">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
             <input
               type="search"
               value={query}
@@ -132,7 +132,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
                   {m.mediaType === 'IMAGE' && (m.url || m.fileUrl) ? (
                     <img src={m.url || m.fileUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <Icon className="w-8 h-8 text-slate-400" />
+                    <Icon className="w-8 h-8 text-slate-500" />
                   )}
                 </div>
                 <div className="p-2 space-y-0.5">

@@ -594,11 +594,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
-    UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق', className: 'bg-amber-600 hover:bg-amber-700' },
+    UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق', className: 'bg-amber-700 hover:bg-amber-800' },
     APPROVED: { label: 'اعتماد الخبر للنشر', className: 'bg-purple-600 hover:bg-purple-700' },
     NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات', className: 'bg-orange-600 hover:bg-orange-700' },
     REJECTED: { label: 'رفض الخبر', className: 'bg-red-700 hover:bg-red-800' },
-    PUBLISHED: { label: 'نشر فوري على المنصات', className: 'bg-emerald-600 hover:bg-emerald-700' },
+    PUBLISHED: { label: 'نشر فوري على المنصات', className: 'bg-emerald-700 hover:bg-emerald-800' },
     SCHEDULED: { label: 'جدولة النشر', className: 'bg-sky-600 hover:bg-sky-700' },
     UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
     ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
@@ -628,7 +628,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       {hasEmergencyDraft && (
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
               <strong className="text-xs font-bold block">تنبيه حماية البث الحي: تم العثور على مسودة أحدث محفوظة محلياً</strong>
               <span className="text-[11px] text-amber-700">
@@ -640,7 +640,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={handleRestoreEmergencyDraft}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               استعادة المسودة الآن
@@ -660,7 +660,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       {lockedByOther && lock.holder && (
         <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
           <div className="flex items-center gap-2.5">
-            <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+            <Lock className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
               <strong className="text-xs font-bold block">هذا الخبر قيد التحرير الآن لدى {lock.holder.userName}</strong>
               <span className="text-[11px] text-amber-700">يمكنك القراءة فقط حتى ينتهي من التحرير. ستُتاح الكتابة تلقائياً عند إغلاقه للخبر.</span>
@@ -672,7 +672,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={async () => {
                 if ((await confirmDialog(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الخبر؟`))) void lock.takeOver();
               }}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold"
+              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold"
             >
               تولي التحرير
             </button>
@@ -739,7 +739,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   خبر عاجل
                 </Badge>
               )}
-              <div className="flex items-center gap-1.5 ml-2 text-[10px] text-slate-400 font-medium">
+              <div className="flex items-center gap-1.5 ml-2 text-[10px] text-slate-500 font-medium">
                 {isAutoSaving ? (
                   <>
                     <span className="w-3 h-3 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
@@ -789,7 +789,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
               title="Ctrl+Enter"
               aria-keyshortcuts="Control+Enter"
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <Send className="w-4 h-4" />
               حفظ وإرسال للمراجعة
@@ -848,11 +848,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs border border-blue-400/30"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-bold transition-colors border border-blue-200"
             title="المساعد التحريري الذكي: إعادة الصياغة التلفزيونية وتوليد العناوين والشارات"
           >
             <Bot className="w-3.5 h-3.5 text-amber-300" />
-            المساعد الذكي (AI Co-Pilot)
+            المساعد الذكي
           </button>
 
           <button
@@ -862,7 +862,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             title="توليد وسوم شارات الجرافيكس التلفزيوني وعناوين الشاشة"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            مولد الشارات (CG Lower Thirds)
+            مولد الشارات
           </button>
 
           {newsItem?.id && can('requests.create') && (
@@ -895,7 +895,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             type="button"
             onClick={handleCopyPrompterText}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-colors border border-purple-200"
-            title="نسخ نص الملقن المباشر للمذيع (AutoCue Format)"
+            title="نسخ نص الملقن المباشر للمذيع"
           >
             {copiedPrompter ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             {copiedPrompter ? 'تم نسخ نص الملقن' : 'نسخ للأوتوكيو'}
@@ -919,7 +919,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <span
                     className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-semibold transition-colors ${
                       title.length === 0
-                        ? 'text-slate-400 bg-slate-100'
+                        ? 'text-slate-500 bg-slate-100'
                         : title.length < 30
                         ? 'text-amber-700 bg-amber-50 border border-amber-200'
                         : title.length <= 75
@@ -937,7 +937,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       className="text-[11px] text-slate-500 hover:text-blue-600 flex items-center gap-1 bg-slate-100 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
                       title="نسخ العنوان"
                     >
-                      {copiedTitle ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      {copiedTitle ? <Check className="w-3 h-3 text-emerald-700" /> : <Copy className="w-3 h-3" />}
                       {copiedTitle ? 'تم النسخ' : 'نسخ'}
                     </button>
                   )}
@@ -963,7 +963,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-600 rounded-full hover:bg-slate-100"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان"
                     aria-label="مسح العنوان"
                   >
@@ -1015,7 +1015,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setShortTitle('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-600 rounded-full hover:bg-slate-100"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان المختصر"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1033,8 +1033,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <div className="text-xs font-bold text-amber-200 truncate flex-1 font-sans">
                     {shortTitle || title}
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono shrink-0 hidden sm:inline">
-                    LIVE ON-AIR CUE
+                  <span className="text-[10px] text-slate-300 shrink-0 hidden sm:inline">
+                    معاينة الشريط
                   </span>
                 </div>
               )}
@@ -1044,7 +1044,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="news-summary-textarea" className="block text-xs font-bold text-slate-700">
-                  المقدمة والملخص الإخباري (Lead Paragraph)
+                  المقدمة والملخص الإخباري
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
@@ -1086,7 +1086,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Quick Lead Templates */}
               {!summary && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-slate-400 font-bold">بدايات سريعة:</span>
+                  <span className="text-[10px] text-slate-500 font-bold">بدايات سريعة:</span>
                   {LEAD_STARTERS.map((starter, idx) => (
                     <button
                       key={idx}
@@ -1108,7 +1108,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label className="block text-xs font-bold text-slate-700">
                 محتوى التقرير الصحفي الكامل *
               </label>
-              <span className="text-[11px] text-slate-400">يمكن حفظ مسودة ناقصة؛ العنوان والنص مطلوبان للإرسال للمراجعة والنشر</span>
+              <span className="text-[11px] text-slate-500">يمكن حفظ مسودة ناقصة؛ العنوان والنص مطلوبان للإرسال للمراجعة والنشر</span>
             </div>
             {contentError?.field === 'content' && (
               <p id="news-content-error" role="alert" className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
@@ -1185,7 +1185,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[10px] text-slate-400 font-bold">توجيهات نموذجية:</span>
+              <span className="text-[10px] text-slate-500 font-bold">توجيهات نموذجية:</span>
               {DIRECTIVE_PRESETS.map((preset, idx) => (
                 <button
                   key={idx}
@@ -1222,6 +1222,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
               <input
                 type="checkbox"
+                aria-label="خبر عاجل للبث"
                 checked={isBreaking}
                 onChange={(e) => setIsBreaking(e.target.checked)}
                 className="w-5 h-5 text-red-600 rounded-md focus:ring-red-500 cursor-pointer"
@@ -1292,10 +1293,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs bg-white font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
-                <option value="URGENT">🔴 عاجل جداً (Urgent)</option>
-                <option value="HIGH">🟠 أولوية عالية (High)</option>
-                <option value="NORMAL">🔵 أولوية عادية (Normal)</option>
-                <option value="LOW">⚪ أولوية منخفضة (Low)</option>
+                <option value="URGENT">🔴 عاجل جداً</option>
+                <option value="HIGH">🟠 أولوية عالية</option>
+                <option value="NORMAL">🔵 أولوية عادية</option>
+                <option value="LOW">⚪ أولوية منخفضة</option>
               </select>
             </div>
 
@@ -1304,14 +1305,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label htmlFor="news-location-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
                     مكان الحدث والمكتب
                   </label>
                   {locationName && (
                     <button
                       type="button"
                       onClick={() => setLocationName('')}
-                      className="text-[10px] text-slate-400 hover:text-rose-500"
+                      className="text-[10px] text-slate-500 hover:text-rose-500"
                     >
                       مسح
                     </button>
@@ -1351,7 +1352,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label htmlFor="news-event-date-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <Calendar className="w-3.5 h-3.5 text-slate-500" />
                     تاريخ وتوقيت وقوع الحدث
                   </label>
                   <div className="flex items-center gap-1">
@@ -1406,7 +1407,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center justify-between">
                         <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-500 font-mono">
                           {new Date(log.timestamp).toLocaleString(appLocale(), { ...zoneOptions(),
                             hour: '2-digit',
                             minute: '2-digit',
@@ -1461,14 +1462,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label htmlFor="news-image-url-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
+                  <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
                   رابط الصورة البارزة (URL)
                 </label>
                 {mainImageUrl && (
                   <button
                     type="button"
                     onClick={() => setMainImageUrl('')}
-                    className="text-[10px] text-slate-400 hover:text-rose-500"
+                    className="text-[10px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -1491,7 +1492,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Recent images from the media library */}
               {IMAGE_PRESETS.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
-                <span className="text-[10px] text-slate-400 font-bold">من مكتبة الوسائط:</span>
+                <span className="text-[10px] text-slate-500 font-bold">من مكتبة الوسائط:</span>
                 {IMAGE_PRESETS.map((img) => (
                   <button
                     key={img.label}
@@ -1512,7 +1513,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     alt="معاينة الصورة"
                     className="w-full h-32 object-cover"
                   />
-                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-[9px] font-mono text-white rounded">
+                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-[10px] font-mono text-white rounded">
                     16:9 Broadcast Frame
                   </div>
                 </div>
@@ -1522,7 +1523,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {/* Video clips in playout order */}
             <div>
               <p className="block text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
-                <Video className="w-3.5 h-3.5 text-slate-400" />
+                <Video className="w-3.5 h-3.5 text-slate-500" />
                 مقاطع الفيديو (بترتيب العرض)
               </p>
               <NewsVideosEditor videos={videos} onChange={setVideos} disabled={!canEditContent} />
@@ -1540,7 +1541,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setKeywords([])}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح الكل
                 </button>
@@ -1561,7 +1562,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Trending Suggestions */}
             <div>
-              <span className="text-[10px] text-slate-400 font-bold block mb-1">
+              <span className="text-[10px] text-slate-500 font-bold block mb-1">
                 وسوم مقترحة وشائعة:
               </span>
               <div className="flex flex-wrap gap-1">
@@ -1579,12 +1580,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       disabled={alreadyAdded}
                       className={`text-[10px] px-2 py-0.5 rounded-full transition-all flex items-center gap-0.5 ${
                         alreadyAdded
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
                           : 'bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium'
                       }`}
                     >
                       <span>#{t}</span>
-                      {alreadyAdded && <Check className="w-2.5 h-2.5 text-slate-400" />}
+                      {alreadyAdded && <Check className="w-2.5 h-2.5 text-slate-500" />}
                     </button>
                   );
                 })}
@@ -1719,7 +1720,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         }}
       />
       {requestNotice && (
-        <div role="status" className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-lg">
+        <div role="status" className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-emerald-700 text-white text-xs font-bold shadow-lg">
           {requestNotice}
         </div>
       )}

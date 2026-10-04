@@ -269,7 +269,7 @@ export const DragHandle: React.FC<{ label: string; handleProps: Record<string, a
       {...handleProps}
       aria-label={`اسحب لإعادة ترتيب «${label}» — أو استخدم السهمين للأعلى والأسفل`}
       title="اسحب لإعادة الترتيب (أو الأسهم ↑ ↓)"
-      className={`p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-blue-500 ${className}`}
+      className={`p-1 rounded-md text-slate-500 hover:text-slate-700 hover:bg-slate-100 cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-blue-500 ${className}`}
     >
       <GripVertical className="w-4 h-4" />
     </button>

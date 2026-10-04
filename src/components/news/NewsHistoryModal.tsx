@@ -78,7 +78,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                     }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                      <History className="w-3.5 h-3.5 text-slate-400" />
+                      <History className="w-3.5 h-3.5 text-slate-500" />
                       النسخة {rev.version}
                       <span className="text-[10px] font-semibold text-slate-500">({STATUS_LABELS[rev.data.status] || rev.data.status})</span>
                     </div>

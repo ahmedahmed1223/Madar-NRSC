@@ -9,6 +9,8 @@ const palette = {};
 for (const m of theme.matchAll(/--color-([a-z]+)-(\d+):\s*([^;]+);/g)) {
   (palette[m[1]] ||= {})[m[2]] = m[3].trim();
 }
+// Matches src/index.css: muted text darkened for 4.5:1 contrast on the page grey.
+palette.slate['500'] = 'oklch(50% 0.046 257.417)';
 const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
 const NEUTRALS = ['slate', 'gray', 'zinc', 'neutral', 'stone'];
 
@@ -18,8 +20,8 @@ const NEUTRAL_DARK = {
   100: 'oklch(25% 0.032 262)',
   200: 'oklch(31% 0.034 260)',
   300: 'oklch(40% 0.038 258)',
-  400: 'oklch(56% 0.04 257)',
-  500: 'oklch(66% 0.035 257)',
+  400: 'oklch(64% 0.035 257)',
+  500: 'oklch(71% 0.032 257)',
   600: 'oklch(76% 0.028 256)',
   700: 'oklch(85% 0.018 255)',
   800: 'oklch(91% 0.012 255)',

@@ -294,19 +294,12 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       )}
 
       {/* Header & Main Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-              <UserCog className="w-6 h-6" />
-            </div>
+          <div>
             <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                إدارة المستخدمين والصلاحيات التحريرية (RBAC)
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                التحكم في طاقم الأخبار، تعيين مصفوفة الأذونات، إدارة المناوبات التلفزيونية، وتدقيق الأمان
-              </p>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">المستخدمون والصلاحيات</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">الحسابات والأدوار والأقسام وأمان الدخول.</p>
             </div>
           </div>
         </div>
@@ -343,7 +336,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
             <div className="text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
+            <span className="text-[10px] text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <UsersIcon className="w-5 h-5" />
@@ -353,19 +346,19 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{activeCount} مفعل</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">{suspendedCount} حساب مجمد</span>
+            <div className="text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
+            <span className="text-[10px] text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
             <UserCheck className="w-5 h-5" />
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات (RBAC)</span>
+            <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
             <div className="text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">{roles.length} أدوار معرفة</span>
+            <span className="text-[10px] text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
@@ -376,7 +369,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
             <div className="text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">معايير الأمان الإخباري</span>
+            <span className="text-[10px] text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
             <KeyRound className="w-5 h-5" />
@@ -409,7 +402,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>مصفوفة الصلاحيات والأدوار (Permissions Matrix)</span>
+          <span>مصفوفة الصلاحيات والأدوار</span>
         </button>
 
         
@@ -424,7 +417,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
               <div className="relative flex-1 min-w-[12rem]">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                <Search className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -435,6 +428,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               </div>
 
               <select
+                aria-label="الدور"
                 value={selectedRoleFilter}
                 onChange={(e) => setSelectedRoleFilter(e.target.value)}
                 className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
@@ -448,6 +442,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               </select>
 
               <select
+                aria-label="القسم"
                 value={selectedDepartmentFilter}
                 onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
                 className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
@@ -461,6 +456,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               </select>
 
               <select
+                aria-label="حالة الحساب"
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value as any)}
                 className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
@@ -586,7 +582,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-black text-slate-900 truncate">{user.fullName}</h3>
                           {user.fullNameEn && (
-                            <p className="text-[11px] text-slate-400 font-sans truncate" dir="ltr">
+                            <p className="text-[11px] text-slate-500 font-sans truncate" dir="ltr">
                               {user.fullNameEn}
                             </p>
                           )}
@@ -605,14 +601,14 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                       {/* Contact Info */}
                       <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
                         <div className="flex items-center gap-2 truncate">
-                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           <span className="truncate font-mono" dir="ltr">
                             {user.email}
                           </span>
                         </div>
                         {user.phone && (
                           <div className="flex items-center gap-2 truncate">
-                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="font-mono" dir="ltr">
                               {user.phone}
                             </span>
@@ -671,7 +667,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           disabled={isCurrentActive}
                           className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                             user.isActive
-                              ? 'bg-white hover:bg-amber-100 text-amber-600 border-slate-200'
+                              ? 'bg-white hover:bg-amber-100 text-amber-700 border-slate-200'
                               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
                           } disabled:opacity-40 disabled:cursor-not-allowed`}
                           title={user.isActive ? 'تجميد الحساب' : 'تنشيط الحساب'}
@@ -725,7 +721,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{user.fullName}</span>
                                   {isCurrent && (
-                                    <span className="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
+                                    <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
                                       أنت
                                     </span>
                                   )}

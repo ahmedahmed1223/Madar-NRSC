@@ -149,7 +149,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
 
           <div>
             <label htmlFor="role-edit-modal-field-2" className="block text-xs font-bold text-slate-700 mb-1.5">
-              الاسم بالإنجليزية (Role Title)
+              الاسم بالإنجليزية
             </label>
             <input id="role-edit-modal-field-2"
               type="text"
@@ -315,13 +315,13 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                       {isSelected ? (
                         <CheckSquare className="w-4 h-4 text-blue-600" />
                       ) : (
-                        <Square className="w-4 h-4 text-slate-400" />
+                        <Square className="w-4 h-4 text-slate-500" />
                       )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-800">{perm.nameAr}</span>
-                        <span className="text-[10px] text-slate-400 font-mono" dir="ltr">
+                        <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
                           ({perm.code})
                         </span>
                       </div>

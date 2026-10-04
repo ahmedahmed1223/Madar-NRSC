@@ -140,7 +140,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
               </div>
               <div>
                 <h3 className="text-xs font-black text-white">المحادثة الداخلية بين الأقسام</h3>
-                <span className="text-[10px] text-slate-400">رسائل فورية تصل لكل الزملاء المتصلين</span>
+                <span className="text-[10px] text-slate-500">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
 
@@ -148,7 +148,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
               type="button"
               onClick={() => setIsOpen(false)}
               aria-label="إغلاق المحادثة"
-              className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+              className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -164,7 +164,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 aria-selected={activeChannel === c.id}
                 onClick={() => setActiveChannel(c.id)}
                 className={`py-1.5 px-2.5 rounded-lg font-bold whitespace-nowrap transition-all ${
-                  activeChannel === c.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  activeChannel === c.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-200'
                 }`}
               >
                 {c.name}
@@ -191,7 +191,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <div className="flex items-center justify-between text-[10px]">
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
-                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[9px]">
+                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[10px]">
                         عاجل
                       </span>
                     )}

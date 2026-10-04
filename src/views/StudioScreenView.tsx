@@ -77,9 +77,9 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             {cue.message}
           </div>
         )}
-        <div className="flex items-center justify-between text-sm sm:text-base text-slate-400">
+        <div className="flex items-center justify-between text-sm sm:text-base text-slate-500">
           <span>{episode ? `${episode.programName} — ${episode.title}` : 'لا يوجد بث'}</span>
-          <span className={`px-3 py-1 rounded-lg font-black ${state?.status === 'LIVE' ? 'bg-red-600 text-white' : 'bg-slate-800'}`}>{state?.status === 'LIVE' ? 'ON AIR' : 'OFF AIR'}</span>
+          <span className={`px-3 py-1 rounded-lg font-black ${state?.status === 'LIVE' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-200'}`}>{state?.status === 'LIVE' ? 'على الهواء' : 'خارج الهواء'}</span>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black leading-tight">{seg?.title || (state?.status === 'ENDED' ? 'انتهى البث' : 'بانتظار بدء البث')}</h1>

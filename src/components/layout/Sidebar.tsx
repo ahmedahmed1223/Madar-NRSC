@@ -265,7 +265,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4">
           {!isCollapsed && (
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-red-600 flex items-center justify-center text-white shadow-md shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md shrink-0">
                 <Radio className="w-5 h-5" />
               </div>
               <div className="truncate">
@@ -280,7 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {isCollapsed && (
-            <div className="mx-auto w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-red-600 flex items-center justify-center text-white shadow-md">
+            <div className="mx-auto w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md">
               <Radio className="w-5 h-5" />
             </div>
           )}
@@ -319,7 +319,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
               {group.label && !isCollapsed && (
-                <div className="px-3 pt-3 pb-1 text-[10px] font-bold text-slate-500 tracking-wide">{group.label}</div>
+                <div className="px-3 pt-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wide">{group.label}</div>
               )}
               {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
         {items.map((item) => {
@@ -379,7 +379,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Footer: organisation, build version and live connection state */}
       {!isCollapsed && (
         <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400">
-          <div className="flex items-center justify-between text-slate-500 mb-1">
+          <div className="flex items-center justify-between text-slate-400 mb-1">
             <span>الإصدار: v{__APP_VERSION__}</span>
             <span className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-red-400'}`} />

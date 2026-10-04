@@ -57,7 +57,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[260px]">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
@@ -68,7 +68,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+            <Filter className="w-4 h-4 text-slate-500 shrink-0" />
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as any)}
@@ -113,7 +113,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
             <thead>
               <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold border-b border-slate-200">
                 <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-100 z-10">
-                  الصلاحية ونطاق العملية (RBAC Permission)
+                  الصلاحية ونطاق العملية
                 </th>
                 <th className="p-3.5 text-center min-w-[90px]">مستوى الحساسية</th>
                 {roles.map((role) => (
@@ -148,7 +148,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredPermissions.length === 0 ? (
                 <tr>
-                  <td colSpan={roles.length + 2} className="p-8 text-center text-slate-400">
+                  <td colSpan={roles.length + 2} className="p-8 text-center text-slate-500">
                     لا توجد صلاحيات مطابقة لمعايير البحث الحالية
                   </td>
                 </tr>
@@ -173,7 +173,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{perm.nameAr}</span>
-                            <span className="text-[10px] text-slate-400 font-mono" dir="ltr">
+                            <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
                               ({perm.code})
                             </span>
                           </div>
@@ -230,9 +230,9 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
 
       {/* Info footer */}
       <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
         <div className="space-y-0.5">
-          <p className="font-bold">ملاحظة أمنية حول مصفوفة الصلاحيات (RBAC Matrix):</p>
+          <p className="font-bold">ملاحظة أمنية حول مصفوفة الصلاحيات:</p>
           <p className="text-[11px] text-amber-800 leading-relaxed">
             النقر المباشر على أي خلية يقوم بتفعيل أو إلغاء الصلاحية للدور المحدد فورياً. دور (مدير النظام العام) يمتلك كامل الصلاحيات بصورة سيادية غير قابلة للإلغاء لضمان عدم قفل النظام.
           </p>

@@ -84,7 +84,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ target, currentUse
         {title} ({comments.length})
       </h3>
       <ul className="space-y-2 max-h-80 overflow-y-auto">
-        {comments.length === 0 && <li className="text-[11px] text-slate-400">لا توجد ملاحظات بعد. اكتب @ لإشراك زميل.</li>}
+        {comments.length === 0 && <li className="text-[11px] text-slate-500">لا توجد ملاحظات بعد. اكتب @ لإشراك زميل.</li>}
         {comments.map((c) => (
           <li key={c.id} className="flex gap-2">
             <Avatar name={c.authorName} className="w-7 h-7 rounded-full text-[11px]" />
@@ -123,7 +123,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ target, currentUse
             {suggestions.map((u) => (
               <li key={u.id}>
                 <button type="button" role="option" aria-selected="false" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(u)} className="w-full text-right px-3 py-2 text-xs hover:bg-blue-50 flex items-center gap-2">
-                  <AtSign className="w-3 h-3 text-slate-400" />
+                  <AtSign className="w-3 h-3 text-slate-500" />
                   <span className="font-bold text-slate-800">{u.fullName}</span>
                   <span className="text-[10px] text-slate-500 mr-auto">{departmentName(departmentIdOf(u))}</span>
                 </button>

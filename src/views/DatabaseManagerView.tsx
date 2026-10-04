@@ -269,7 +269,7 @@ export const DatabaseManagerView: React.FC = () => {
 
       {feedbackMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>{feedbackMessage}</span>
         </div>
       )}
@@ -312,7 +312,7 @@ export const DatabaseManagerView: React.FC = () => {
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>مخطط وهيكل قاعدة البيانات (Schema)</span>
+          <span>مخطط وهيكل قاعدة البيانات</span>
         </button>
       </div>
 
@@ -327,11 +327,11 @@ export const DatabaseManagerView: React.FC = () => {
                   <TableIcon className="w-4 h-4 text-slate-700" />
                   <h2 className="text-sm font-bold text-slate-900">جداول المنظومة ({filteredTables.length})</h2>
                 </div>
-                <span className="text-[11px] text-slate-400">انقر للفحص الفوري</span>
+                <span className="text-[11px] text-slate-500">انقر للفحص الفوري</span>
               </div>
 
               <div className="relative mb-3">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="db-table-search-input"
                   type="text"
@@ -347,7 +347,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setTableSearch('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
                     title="مسح البحث"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -376,7 +376,7 @@ export const DatabaseManagerView: React.FC = () => {
                         {table.columns.length > 4 && ` +${table.columns.length - 4}`}
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-transform group-hover:-translate-x-0.5 shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-600 transition-transform group-hover:-translate-x-0.5 shrink-0" />
                   </div>
                 ))}
               </div>
@@ -484,7 +484,7 @@ export const DatabaseManagerView: React.FC = () => {
                     </span>
                     <span className="text-slate-300">|</span>
                     <span className="text-slate-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
+                      <Clock className="w-3 h-3 text-slate-500" />
                       زمن التنفيذ: <strong className="text-slate-900 font-mono">{queryResult.executionTimeMs}ms</strong>
                     </span>
                   </div>
@@ -502,7 +502,7 @@ export const DatabaseManagerView: React.FC = () => {
                     خطأ في الاستعلام
                   </span>
                 ) : (
-                  <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                  <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الاسترجاع بنجاح
                   </span>
@@ -542,7 +542,7 @@ export const DatabaseManagerView: React.FC = () => {
                               title={String(cell ?? '')}
                             >
                               {cell === null ? (
-                                <span className="text-slate-400 italic">NULL</span>
+                                <span className="text-slate-500 italic">NULL</span>
                               ) : (
                                 String(cell)
                               )}
@@ -554,7 +554,7 @@ export const DatabaseManagerView: React.FC = () => {
                   </table>
                 </div>
               ) : (
-                <div className="py-12 text-center text-slate-400 text-xs">
+                <div className="py-12 text-center text-slate-500 text-xs">
                   لا توجد بيانات مسترجعة. اكتب استعلام SQL ثم اضغط "تشغيل الاستعلام".
                 </div>
               )}
@@ -614,7 +614,7 @@ export const DatabaseManagerView: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {backups.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-10 text-center text-slate-400">
+                      <td colSpan={4} className="py-10 text-center text-slate-500">
                         لا توجد نقاط استعادة محفوظة بعد. انقر على "إنشاء نقطة استعادة فورية" لتسجيل نسخة جديدة.
                       </td>
                     </tr>
@@ -659,10 +659,10 @@ export const DatabaseManagerView: React.FC = () => {
 
             <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
                 <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono">data/newsroom.sqlite</strong> مع كل عملية تحرير.</span>
               </div>
-              <span className="font-mono text-slate-400">ACID Compliant SQLite Engine</span>
+              <span className="font-mono text-slate-500">ACID Compliant SQLite Engine</span>
             </div>
           </div>
         </div>
@@ -674,7 +674,7 @@ export const DatabaseManagerView: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Layers className="w-5 h-5 text-indigo-600" />
-              مخطط الجداول والعلاقات العلائقية (Relational Schema)
+              مخطط الجداول والعلاقات العلائقية
             </h2>
             <p className="text-xs text-slate-500 mt-1">
               تفاصيل وتوزيع الأعمدة والمفاتيح لكل جدول ضمن هيكل منظومة الأخبار والإنتاج التلفزيوني.
@@ -694,7 +694,7 @@ export const DatabaseManagerView: React.FC = () => {
                 </div>
 
                 <div className="space-y-1 text-xs">
-                  <span className="text-[11px] text-slate-400 block mb-1">الأعمدة ({tbl.columns.length}):</span>
+                  <span className="text-[11px] text-slate-500 block mb-1">الأعمدة ({tbl.columns.length}):</span>
                   <div className="flex flex-wrap gap-1">
                     {tbl.columns.map((c) => (
                       <span

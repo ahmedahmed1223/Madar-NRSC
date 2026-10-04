@@ -80,7 +80,7 @@ Component Stack: ${this.state.errorInfo?.componentStack}`;
                   <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300">
                     FAIL-SAFE RECOVERY
                   </span>
-                  <span className="text-xs text-slate-400">حماية بيئة الإنتاج</span>
+                  <span className="text-xs text-slate-500">حماية بيئة الإنتاج</span>
                 </div>
                 <h1 className="text-lg sm:text-xl font-bold text-white mt-1">
                   حدث استثناء تقني غير متوقع في واجهة العمل
@@ -93,7 +93,7 @@ Component Stack: ${this.state.errorInfo?.componentStack}`;
             </p>
 
             {this.state.error && (
-              <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 text-xs font-mono text-slate-400 overflow-x-auto text-left" dir="ltr">
+              <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 text-xs font-mono text-slate-500 overflow-x-auto text-left" dir="ltr">
                 <div className="text-red-400 font-bold mb-1">
                   {this.state.error.name}: {this.state.error.message}
                 </div>
@@ -123,12 +123,12 @@ Component Stack: ${this.state.errorInfo?.componentStack}`;
               </button>
             </div>
 
-            <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-xs text-slate-400">
+            <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-xs text-slate-500">
               <span>فريق الدعم الفني وهندسة البث</span>
               <button
                 type="button"
                 onClick={this.handleCopyDiagnostics}
-                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors cursor-pointer"
               >
                 {this.state.isCopied ? (
                   <>

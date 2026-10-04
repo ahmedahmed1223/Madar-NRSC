@@ -303,7 +303,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="news-list-search-input"
             type="search"
@@ -316,7 +316,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -327,7 +327,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         {/* Dropdowns & Reset */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <Filter className="w-3.5 h-3.5 text-slate-500" />
             <label htmlFor="news-list-category-select">القسم:</label>
             <select
               id="news-list-category-select"
@@ -375,7 +375,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             </button>
           )}
 
-          <div className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
+          <div className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
             {filteredNews.length} نتيجة
           </div>
           <ExportMenu
@@ -418,7 +418,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   onBulkAction(selectedIds, 'PUBLISH');
                   setSelectedIds([]);
                 }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-semibold"
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-500 rounded-lg font-semibold"
               >
                 نشر المحدد
               </button>
@@ -483,7 +483,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredNews.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
                   </td>
                 </tr>
@@ -509,7 +509,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                           role="checkbox"
                           aria-checked={isSelected}
                           aria-label={`تحديد الخبر: ${item.title}`}
-                          className="p-1 text-slate-400 hover:text-slate-700"
+                          className="p-1 text-slate-500 hover:text-slate-700"
                         >
                           {isSelected ? (
                             <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -539,7 +539,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             >
                               {item.title}
                             </span>
-                            <span className="text-[11px] text-slate-400 block line-clamp-1 mt-0.5">
+                            <span className="text-[11px] text-slate-500 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
                             {/* Below 1024px the category, priority, author and time columns fold in here. */}
@@ -613,7 +613,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <td className="py-3.5 px-3 hidden lg:table-cell">
                         <div className="text-[11px]">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
-                          <span className="text-slate-400 block">{item.authorName}</span>
+                          <span className="text-slate-500 block">{item.authorName}</span>
                         </div>
                       </td>
 
@@ -646,7 +646,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRestore(item.id)}
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
                               title="استعادة الخبر من سلة المحذوفات"
                             >
                               <RotateCcw className="w-4 h-4" />
@@ -668,7 +668,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'UNDER_REVIEW')}
-                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
+                              className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg"
                               title="إرسال للمراجعة"
                             >
                               <Send className="w-4 h-4" />
@@ -690,7 +690,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'NEEDS_REVISION')}
-                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg"
+                              className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg"
                               title="إعادة للكاتب مع ملاحظات"
                             >
                               <Undo2 className="w-4 h-4" />
@@ -701,7 +701,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'PUBLISHED')}
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
                               title="نشر رسمي الآن"
                             >
                               <Radio className="w-4 h-4" />
@@ -716,7 +716,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               className={`p-1.5 rounded-lg transition-colors ${
                                 isBreakingLive(item)
                                   ? 'text-red-600 bg-red-50 hover:bg-red-100'
-                                  : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                                  : 'text-slate-500 hover:text-red-600 hover:bg-red-50'
                               }`}
                               title={isBreakingLive(item) ? 'إيقاف من شريط العاجل' : 'إطلاق على شريط العاجل (4 ساعات)'}
                             >
@@ -833,7 +833,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             {/* Workflow Timeline / Audit History */}
             <div className="border-t border-slate-200 pt-5">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                سجل سير الموافقات والاعتمادات (Workflow Audit Trail)
+                سجل سير الموافقات والاعتمادات
               </h4>
               <div className="space-y-2.5">
                 {previewNews.workflowLogs?.map((log) => (
@@ -845,13 +845,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <div className="flex items-center gap-2 font-bold text-slate-800">
                         <span>{log.changedBy.name}</span>
                         <span className="text-[10px] text-blue-600">({log.changedBy.role})</span>
-                        <span className="text-slate-400 text-[10px]">
+                        <span className="text-slate-500 text-[10px]">
                           نقل من [{log.fromStatus}] إلى [{log.toStatus}]
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">
+                    <span className="text-[10px] text-slate-500 font-mono">
                       {new Date(log.timestamp).toLocaleString(appLocale(), zoneOptions())}
                     </span>
                   </div>
@@ -889,7 +889,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusComment('')}
-                  className="text-[10px] text-slate-400 hover:text-slate-600"
+                  className="text-[10px] text-slate-500 hover:text-slate-600"
                 >
                   مسح الملاحظة
                 </button>

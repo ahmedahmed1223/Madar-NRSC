@@ -141,7 +141,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
                     }}
                     className="inline-flex items-center gap-1 px-3 rounded-xl border border-slate-300 text-xs font-bold hover:bg-slate-50"
                   >
-                    {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                    {copied ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />}
                     {copied ? 'نُسخت' : 'نسخ'}
                   </button>
                 )}

@@ -802,7 +802,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           <main id="app-main" className="flex-1 p-4 sm:p-6 pb-12 max-w-7xl w-full mx-auto">
             <ViewErrorBoundary key={`${activeNav}:${activeBulletinId || ''}:${selectedEpisodeId || ''}`} onHome={() => setActiveNav('dashboard')}>
             <Suspense
-              fallback={<div className="py-24 text-center text-sm font-semibold text-slate-400">جارٍ التحميل...</div>}
+              fallback={<div className="py-24 text-center text-sm font-semibold text-slate-500">جارٍ التحميل...</div>}
             >
             {activeNav === 'dashboard' && (
               <DashboardView

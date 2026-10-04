@@ -40,7 +40,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
         <p className="text-xs text-slate-500 leading-relaxed">
           حدث خطأ غير متوقع في هذه الشاشة فقط؛ بقية النظام تعمل وبياناتك محفوظة. أعد المحاولة، وإن تكرر الخطأ انتقل لشاشة أخرى أو أعد تحميل الصفحة.
         </p>
-        <p className="text-[11px] font-mono text-slate-400 break-all" dir="ltr">
+        <p className="text-[11px] font-mono text-slate-500 break-all" dir="ltr">
           {this.state.error.message}
         </p>
         <div className="flex flex-wrap justify-center gap-2 pt-1">

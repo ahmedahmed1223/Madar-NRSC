@@ -47,7 +47,7 @@ export const ApprovalChainEditor: React.FC<{
   return (
     <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2" disabled={disabled}>
       <legend className="px-1 text-xs font-bold text-slate-700 flex items-center gap-1.5">
-        <ShieldCheck className="w-4 h-4 text-emerald-600" /> مسار اعتماد القصص
+        <ShieldCheck className="w-4 h-4 text-emerald-700" /> مسار اعتماد القصص
       </legend>
       <p className="text-[11px] text-slate-500">لا تُعتمد القصة للهواء إلا بعد كل الخطوات بالترتيب؛ أي تعديل على نصها يعيد المسار من البداية.</p>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="مسارات جاهزة">
@@ -57,7 +57,7 @@ export const ApprovalChainEditor: React.FC<{
             type="button"
             aria-pressed={presetId === p.id}
             onClick={() => onChange(p.steps.map((s) => ({ ...s })))}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${presetId === p.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${presetId === p.id ? 'bg-emerald-700 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
           >
             {p.name}
           </button>
@@ -66,15 +66,15 @@ export const ApprovalChainEditor: React.FC<{
       <ol className="space-y-1">
         {steps.map((s, i) => (
           <li key={s.id} className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+            <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
             <span className="flex-1 font-bold text-slate-700">{approvalStepName(s, { editorName })}</span>
-            <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`تقديم الخطوة ${i + 1}`} className="p-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-30">
+            <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`تقديم الخطوة ${i + 1}`} className="p-0.5 text-slate-500 hover:text-slate-700 disabled:opacity-30">
               <ArrowUp className="w-3.5 h-3.5" />
             </button>
-            <button type="button" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={`تأخير الخطوة ${i + 1}`} className="p-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-30">
+            <button type="button" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={`تأخير الخطوة ${i + 1}`} className="p-0.5 text-slate-500 hover:text-slate-700 disabled:opacity-30">
               <ArrowDown className="w-3.5 h-3.5" />
             </button>
-            <button type="button" disabled={steps.length === 1} onClick={() => onChange(steps.filter((x) => x.id !== s.id))} aria-label={`حذف الخطوة ${i + 1}`} className="p-0.5 text-slate-400 hover:text-rose-600 disabled:opacity-30">
+            <button type="button" disabled={steps.length === 1} onClick={() => onChange(steps.filter((x) => x.id !== s.id))} aria-label={`حذف الخطوة ${i + 1}`} className="p-0.5 text-slate-500 hover:text-rose-600 disabled:opacity-30">
               <X className="w-3.5 h-3.5" />
             </button>
           </li>

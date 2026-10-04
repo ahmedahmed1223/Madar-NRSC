@@ -286,7 +286,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 <p className="text-xs text-slate-700 flex items-center gap-2">
                   <strong>{(clip as any).title || clip.originalName || clip.fileName}</strong>
                   {canEdit && (
-                    <button type="button" onClick={() => setClipMediaId(undefined)} aria-label="إزالة اللقطة" className="text-slate-400 hover:text-rose-600">
+                    <button type="button" onClick={() => setClipMediaId(undefined)} aria-label="إزالة اللقطة" className="text-slate-500 hover:text-rose-600">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
@@ -380,12 +380,12 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
           <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && status === 'DRAFT' && (
-                <button type="button" onClick={() => save('READY')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold">
+                <button type="button" onClick={() => save('READY')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold">
                   <Send className="w-4 h-4" /> حفظ وإرسال للاعتماد
                 </button>
               )}
               {approverNow && !lockedByOther && status !== 'APPROVED' && (
-                <button type="button" onClick={() => save('APPROVED')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+                <button type="button" onClick={() => save('APPROVED')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
                   <CheckCircle2 className="w-4 h-4" />
                   {progress && progress.total - progress.done > 1 ? `اعتمادي (${progress.nextName})` : 'حفظ واعتماد للهواء'}
                 </button>

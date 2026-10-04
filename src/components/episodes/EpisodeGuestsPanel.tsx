@@ -334,7 +334,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                <div className="text-[11px] font-bold text-slate-700">شارة الاسم (Lower third)</div>
+                <div className="text-[11px] font-bold text-slate-700">شارة الاسم</div>
                 <input aria-label={`سطر الاسم لـ ${g.guestName}`} value={cgName} readOnly={!canEditEpisode} onChange={(e) => setDraft({ cgName: e.target.value })} className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white" />
                 <input aria-label={`سطر الصفة لـ ${g.guestName}`} value={cgTitle} readOnly={!canEditEpisode} onChange={(e) => setDraft({ cgTitle: e.target.value })} className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white" />
                 {canRequest &&
@@ -371,7 +371,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                   .reverse()
                   .map((c: any, i: number) => (
                     <p key={i} className="text-[11px] text-slate-600">
-                      <span className="text-slate-400">{new Date(c.at).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
+                      <span className="text-slate-500">{new Date(c.at).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
                     </p>
                   ))}
                 {canEditEpisode && (

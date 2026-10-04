@@ -43,7 +43,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         )}
 
         <div className="flex items-center gap-1.5 text-slate-500">
-          <Home className="w-3.5 h-3.5 text-slate-400" />
+          <Home className="w-3.5 h-3.5 text-slate-500" />
           {items.map((item, index) => {
             const isLast = index === items.length - 1;
             return (

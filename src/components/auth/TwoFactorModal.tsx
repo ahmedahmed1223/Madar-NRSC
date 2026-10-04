@@ -144,7 +144,7 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
 
         {step === 'done' && (
           <div className="text-center space-y-3 py-4">
-            <ShieldCheck className="w-10 h-10 text-emerald-600 mx-auto" />
+            <ShieldCheck className="w-10 h-10 text-emerald-700 mx-auto" />
             <p className="text-sm font-bold text-slate-800">تم تفعيل التحقق بخطوتين</p>
             <p className="text-xs text-slate-500">سيُطلب منك الرمز عند كل تسجيل دخول. تم إنهاء جلساتك على الأجهزة الأخرى.</p>
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">

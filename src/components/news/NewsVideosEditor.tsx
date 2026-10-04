@@ -69,7 +69,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                 />
               </div>
               <div className="flex items-center gap-1">
-                <Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
+                <Icon className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
                 <select
                   value={v.kind}
                   onChange={(e) => update(v.id, { kind: e.target.value as NewsVideoKind })}
@@ -84,10 +84,10 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                   ))}
                 </select>
                 <span className="ms-auto flex items-center">
-                  <button type="button" onClick={() => move(i, -1)} disabled={disabled || i === 0} aria-label={`تقديم المقطع ${i + 1}`} title="تقديم" className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-30" data-compact>
+                  <button type="button" onClick={() => move(i, -1)} disabled={disabled || i === 0} aria-label={`تقديم المقطع ${i + 1}`} title="تقديم" className="p-1.5 text-slate-500 hover:text-slate-800 disabled:opacity-30" data-compact>
                     <ArrowUp className="w-3.5 h-3.5" />
                   </button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={disabled || i === videos.length - 1} aria-label={`تأخير المقطع ${i + 1}`} title="تأخير" className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-30" data-compact>
+                  <button type="button" onClick={() => move(i, 1)} disabled={disabled || i === videos.length - 1} aria-label={`تأخير المقطع ${i + 1}`} title="تأخير" className="p-1.5 text-slate-500 hover:text-slate-800 disabled:opacity-30" data-compact>
                     <ArrowDown className="w-3.5 h-3.5" />
                   </button>
                   <button type="button" onClick={() => onChange(videos.filter((x) => x.id !== v.id))} disabled={disabled} aria-label={`حذف المقطع ${i + 1}`} title="حذف" className="p-1.5 text-slate-300 hover:text-rose-600" data-compact>

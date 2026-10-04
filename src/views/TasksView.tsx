@@ -165,7 +165,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            المهام التحريرية والإنتاجية
+            المهام
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             متابعة تكليفات المراسلين والمعدين، تواريخ التسليم، وسير العمل الصحفي
@@ -210,7 +210,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="tasks-search-input"
             type="search"
@@ -303,7 +303,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(t)}
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded"
+                            aria-label={`تعديل المهمة: ${t.title}`}
+                            title="تعديل المهمة"
+                            className="p-1 text-slate-500 hover:text-slate-800 rounded"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -312,7 +314,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onDeleteTask(t.id)}
-                            className="p-1 text-red-400 hover:text-red-600 rounded"
+                            aria-label={`حذف المهمة: ${t.title}`}
+                            title="حذف المهمة"
+                            className="p-1 text-red-600 hover:text-red-700 rounded"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -328,10 +332,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                         <div className="flex items-center gap-1">
-                          <UserIcon className="w-3 h-3 text-slate-400" />
+                          <UserIcon className="w-3 h-3 text-slate-500" />
                           <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
                         </div>
-                        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-400'}`}>
+                        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-500'}`}>
                           <OverdueBadge task={t} />
                           <Clock className="w-3 h-3" />
                           <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''}</span>
@@ -460,7 +464,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -477,7 +481,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             />
             {/* Quick Title Templates */}
             <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className="text-[10px] text-slate-400 font-bold">قوالب مهام:</span>
+              <span className="text-[10px] text-slate-500 font-bold">قوالب مهام:</span>
               {TASK_TEMPLATES.map((tmpl) => (
                 <button
                   key={tmpl}
@@ -543,7 +547,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
               >
-                <option value="TODO">مطلوبة (To Do)</option>
+                <option value="TODO">مطلوبة</option>
                 <option value="IN_PROGRESS">قيد التنفيذ</option>
                 <option value="IN_REVIEW">مراجعة وتدقيق</option>
                 <option value="COMPLETED">مكتملة ومسلمة</option>

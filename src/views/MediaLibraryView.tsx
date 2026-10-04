@@ -63,7 +63,7 @@ const ThumbImage: React.FC<{ src?: string; alt: string; className: string; icon?
     <>
       {state !== 'ok' && icon && <span className="absolute inset-0 flex items-center justify-center text-slate-500 [&>svg]:w-10 [&>svg]:h-10">{icon}</span>}
       {src && state !== 'failed' && (
-        <img src={src} alt={alt} loading="lazy" onLoad={() => setState('ok')} onError={() => setState('failed')} className={`${className} ${state === 'ok' ? '' : 'opacity-0'}`} />
+        <img src={src} alt={alt || ''} loading="lazy" onLoad={() => setState('ok')} onError={() => setState('failed')} className={`${className} ${state === 'ok' ? '' : 'opacity-0'}`} />
       )}
     </>
   );
@@ -207,19 +207,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <HardDrive className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-slate-800 tracking-tight">
-              مكتبة وأرشيف الوسائط (MAM System)
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              إدارة أصول الصور، لقطات الفيديو للبث، التسجيلات الصوتية، والمواد الوثائقية مع نظام وسوم متقدم
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">مكتبة الوسائط</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">الصور والفيديو والصوت والوثائق، مع الوسوم والبحث.</p>
         </div>
 
         {canUpload && (
@@ -237,7 +228,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="media-search-input"
             type="search"
@@ -252,7 +243,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -317,7 +308,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-400 p-4 text-center">
+                <div className="flex flex-col items-center gap-2 text-slate-500 p-4 text-center">
                   <div className="p-3 bg-slate-800 rounded-2xl text-blue-400">
                     {getMediaIcon(asset.mediaType)}
                   </div>
@@ -341,7 +332,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
               {asset.durationSeconds && (
                 <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-xs">
-                  <Clock className="w-3 h-3 text-slate-400" />
+                  <Clock className="w-3 h-3 text-slate-500" />
                   {Math.floor(asset.durationSeconds / 60)}:
                   {(asset.durationSeconds % 60).toString().padStart(2, '0')}
                 </div>
@@ -417,10 +408,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         ))}
 
         {filteredAssets.length === 0 && (
-          <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <HardDrive className="w-12 h-12 mb-3 text-slate-300" />
             <p className="font-semibold text-sm">لا توجد وسائط مطابقة لمعايير البحث</p>
-            <p className="text-xs text-slate-400 mt-1">اضغط على زر "رفع مادة وسائط جديدة" لتسجيل ملف جديد بالأرشيف</p>
+            <p className="text-xs text-slate-500 mt-1">اضغط على زر "رفع مادة وسائط جديدة" لتسجيل ملف جديد بالأرشيف</p>
           </div>
         )}
       </div>
@@ -468,7 +459,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -520,7 +511,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                       key={dp.value}
                       type="button"
                       onClick={() => setDurationSeconds(dp.value)}
-                      className="text-[9px] bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
+                      className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
                     >
                       {dp.label}
                     </button>
@@ -537,7 +528,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFileUrl('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -578,7 +569,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTagsInput('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -593,8 +584,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                <Tag className="w-3 h-3 text-slate-400" />
+              <span className="text-[10px] text-slate-500 flex items-center gap-0.5">
+                <Tag className="w-3 h-3 text-slate-500" />
                 اقتراحات:
               </span>
               {TAG_SUGGESTIONS.map((tag) => (
@@ -602,7 +593,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   key={tag}
                   type="button"
                   onClick={() => handleAddTag(tag)}
-                  className="text-[9px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
                 >
                   +{tag}
                 </button>
@@ -617,7 +608,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -732,7 +723,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               <div className="pt-1 border-t border-slate-200">
                 <span className="text-slate-500 block mb-1">مستخدمة في:</span>
                 {apiService.getMediaUsage(previewAsset.id).length === 0 ? (
-                  <span className="text-slate-400">غير مرتبطة بأي خبر أو فقرة بعد</span>
+                  <span className="text-slate-500">غير مرتبطة بأي خبر أو فقرة بعد</span>
                 ) : (
                   <ul className="space-y-0.5">
                     {apiService.getMediaUsage(previewAsset.id).map((u) => (
@@ -777,7 +768,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 onClick={() => handleCopyUrl(previewAsset.fileUrl || previewAsset.url || '')}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
               >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedLink ? 'تم نسخ الرابط' : 'نسخ رابط الملف'}
               </button>
 

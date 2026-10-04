@@ -197,7 +197,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'ON AIR LOCK' : 'غير مقفل'}</span>
+            <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
           </button>
           <span className="text-slate-300 hidden lg:inline">|</span>
           <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
@@ -258,9 +258,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           onClick={handleSearchClick}
           className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
         >
-          <Search className="w-3.5 h-3.5 text-slate-400" />
+          <Search className="w-3.5 h-3.5 text-slate-500" />
           <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
-          <kbd className="bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[10px] font-mono text-slate-400">
+          <kbd className="bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[10px] font-mono text-slate-500">
             Ctrl + K
           </kbd>
         </button>
@@ -309,7 +309,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   }}
                   className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
                 >
-                  <Tv className="w-4 h-4 text-emerald-600" />
+                  <Tv className="w-4 h-4 text-emerald-700" />
                   برنامج تلفزيوني جديد
                 </button>
                 <button
@@ -331,7 +331,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   }}
                   className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
                 >
-                  <CheckSquare className="w-4 h-4 text-amber-600" />
+                  <CheckSquare className="w-4 h-4 text-amber-700" />
                   مهمة تحريرية جديدة
                 </button>
               </div>
@@ -353,7 +353,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[9px] leading-4 text-center font-bold">
+            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[10px] leading-4 text-center font-bold">
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
@@ -425,7 +425,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 {roleLabels[currentUser.role] || currentUser.jobTitle}
               </span>
             </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
           </button>
 
           {isUserMenuOpen && (

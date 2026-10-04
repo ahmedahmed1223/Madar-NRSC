@@ -124,7 +124,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Welcome & Live Banner */}
-      <div className="bg-gradient-to-l from-blue-50 via-white to-white rounded-3xl p-6 text-slate-900 shadow-xs border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="bg-white rounded-3xl p-6 text-slate-900 shadow-xs border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 flex items-center gap-1.5">
@@ -216,9 +216,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-black text-slate-800">{newsList.length}</span>
-            <span className="text-xs text-emerald-600 font-semibold">{publishedNewsCount} منشور</span>
+            <span className="text-xs text-emerald-700 font-semibold">{publishedNewsCount} منشور</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+          <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
             <FileCheck className="w-3.5 h-3.5 text-amber-500" />
             <span>{pendingReviewNewsCount} قيد المراجعة والتدقيق</span>
           </div>
@@ -239,7 +239,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{activeBreakingCount}</span>
             <span className="text-xs text-red-600 font-semibold">على شريط البث</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400">
+          <div className="mt-2 text-[11px] text-slate-500">
             <span>من إجمالي {breakingNews.length} خبراً عاجلاً مسجلاً</span>
           </div>
         </div>
@@ -259,7 +259,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{episodes.length}</span>
             <span className="text-xs text-purple-600 font-semibold">{programs.length} برامج</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400">
+          <div className="mt-2 text-[11px] text-slate-500">
             <span>{countLabel(todayEpisodes.length, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })} للبث اليوم</span>
           </div>
         </div>
@@ -271,15 +271,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">المهام التحريرية</span>
-            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors">
               <CheckSquare className="w-5 h-5" />
             </div>
           </div>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-black text-slate-800">{openTasks.length}</span>
-            <span className="text-xs text-amber-600 font-semibold">مفتوحة</span>
+            <span className="text-xs text-amber-700 font-semibold">مفتوحة</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400">
+          <div className="mt-2 text-[11px] text-slate-500">
             <span>من إجمالي {tasks.length} مهمة إجمالية</span>
           </div>
         </div>
@@ -307,7 +307,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-3">
-              {upcomingEpisodes.length === 0 && <p className="text-xs text-slate-400 text-center py-6">لا حلقات قادمة مجدولة.</p>}
+              {upcomingEpisodes.length === 0 && <p className="text-xs text-slate-500 text-center py-6">لا حلقات قادمة مجدولة.</p>}
               {upcomingEpisodes.slice(0, 3).map((ep) => (
                 <div
                   key={ep.id}
@@ -333,7 +333,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                   <div className="flex items-center gap-4 self-end sm:self-center">
                     <div className="text-left font-mono text-xs">
-                      <span className="text-slate-400 block text-[10px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
+                      <span className="text-slate-500 block text-[10px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
                       <strong className="text-slate-800 font-bold">{ep.startTime} - {ep.endTime}</strong>
                     </div>
                     <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700">
@@ -349,7 +349,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <Newspaper className="w-5 h-5 text-emerald-600" />
+                <Newspaper className="w-5 h-5 text-emerald-700" />
                 <h3 className="font-bold text-slate-800 text-sm sm:text-base">
                   طوابير سير العمل التحريري
                 </h3>
@@ -388,7 +388,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {categories.length > 0 && (
               <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto">
                 <span className="text-xs font-bold text-slate-500 pl-1.5 shrink-0 flex items-center gap-1">
-                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <Filter className="w-3.5 h-3.5 text-slate-500" />
                   <span>تصفية بالقسم:</span>
                 </span>
                 <button
@@ -503,13 +503,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
 
                       <div className="shrink-0 self-end sm:self-center">
-                         <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                         <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-blue-600 transition-colors" />
                       </div>
                     </div>
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
+                <div className="flex flex-col items-center justify-center h-full py-12 text-slate-500">
                   <FileCheck className="w-12 h-12 mb-3 text-slate-200" />
                   <p className="text-sm font-medium">الطابور فارغ حالياً</p>
                   <p className="text-xs">
@@ -529,7 +529,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-amber-600" />
+                <CheckSquare className="w-5 h-5 text-amber-700" />
                 <h3 className="font-bold text-slate-800 text-sm">مهام تحريرية مستعجلة</h3>
               </div>
               <button

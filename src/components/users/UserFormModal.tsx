@@ -159,7 +159,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               الاسم الكامل (بالعربية) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <UserIcon className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <UserIcon className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input id="user-form-modal-field-2"
                 type="text"
                 value={fullName}
@@ -179,7 +179,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
           <div>
             <label htmlFor="user-form-modal-field-3" className="block text-xs font-bold text-slate-700 mb-1.5">
-              الاسم بالإنجليزية (English Full Name)
+              الاسم بالإنجليزية
             </label>
             <input id="user-form-modal-field-3"
               type="text"
@@ -196,7 +196,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               البريد الإلكتروني المهني <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input id="user-form-modal-field-4"
                 type="email"
                 value={email}
@@ -220,7 +220,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 كلمة المرور الأولية <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                <KeyRound className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
                 <input id="user-form-modal-field-5"
                   type="password"
                   autoComplete="new-password"
@@ -245,7 +245,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               رقم الهاتف المباشر / الاتصال
             </label>
             <div className="relative">
-              <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Phone className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input id="user-form-modal-field-6"
                 type="text"
                 value={phone}
@@ -262,10 +262,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
           <div>
             <label htmlFor="user-form-modal-field-7" className="block text-xs font-bold text-slate-700 mb-1.5">
-              الدور والصلاحية (Role) <span className="text-red-500">*</span>
+              الدور والصلاحية <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <Shield className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Shield className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-field-7"
                 value={role}
                 onChange={(e) => setRole(e.target.value as UserRole)}
@@ -282,10 +282,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
           <div>
             <label htmlFor="user-form-modal-field-8" className="block text-xs font-bold text-slate-700 mb-1.5">
-              المسمى الوظيفي (Job Title) <span className="text-red-500">*</span>
+              المسمى الوظيفي <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <Briefcase className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Briefcase className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input id="user-form-modal-field-8"
                 type="text"
                 value={jobTitle}
@@ -307,7 +307,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               القسم
             </label>
             <div className="relative">
-              <Building className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Building className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-field-9"
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
@@ -342,7 +342,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {/* Bio / Description */}
         <div>
           <label htmlFor="user-form-modal-field-13" className="block text-xs font-bold text-slate-700 mb-1.5">
-            نبذة مهنية وسجل التخصص التحريري (Bio & Specialization)
+            نبذة مهنية وسجل التخصص التحريري
           </label>
           <textarea id="user-form-modal-field-13"
             rows={2}
@@ -369,7 +369,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               type="checkbox"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
-              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+              className="w-4 h-4 rounded text-emerald-700 focus:ring-emerald-500 border-slate-300"
             />
             <span className={isActive ? 'text-emerald-700' : 'text-slate-500'}>
               الحساب نشط ومصرح له بالدخول للنظام

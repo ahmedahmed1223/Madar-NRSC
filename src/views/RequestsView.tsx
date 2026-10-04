@@ -162,7 +162,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                 {r.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
                 <span className={`px-2 py-0.5 rounded-md border font-bold ${STATUS_STYLE[r.status]}`}>{requestStatusName(r.status)}</span>
                 {overdue && <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 font-bold">متأخر</span>}
-                <span className="text-slate-400 mr-auto">{when(r.createdAt)}</span>
+                <span className="text-slate-500 mr-auto">{when(r.createdAt)}</span>
               </div>
               <h2 className="text-sm font-bold text-slate-900">{r.title}</h2>
               {r.details && <p className="text-xs text-slate-600 whitespace-pre-line">{r.details}</p>}
@@ -204,7 +204,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   <button
                     type="button"
                     onClick={() => (r.type === 'MONTAGE' ? setDoneFor(r) : act(() => apiService.updateRequest(r.id, { status: 'DONE' }), 'أُنجز الطلب'))}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الإنجاز

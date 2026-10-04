@@ -131,10 +131,10 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            أرشيف وبنك الضيوف والخبراء
+            الضيوف
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            سجل شامل للمحللين والخبراء والمسؤولين مع بيانات التواصل والتقييم وسجل المشاركات
+            الخبراء والمحللون وبيانات تواصلهم وسجل ظهورهم.
           </p>
         </div>
 
@@ -153,7 +153,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="guests-search-input"
             type="search"
@@ -207,7 +207,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(guest)}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                     title="تعديل بيانات الضيف"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -247,13 +247,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                 {guest.phone && (
                   <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
                     <span className="font-mono text-left" dir="ltr">{guest.phone}</span>
                   </div>
                 )}
                 {guest.email && (
                   <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <Mail className="w-3.5 h-3.5 text-slate-500" />
                     <span className="font-mono text-left truncate" dir="ltr">{guest.email}</span>
                   </div>
                 )}
@@ -293,7 +293,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFullName('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -337,7 +337,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           {/* Quick Organization Presets */}
           <div className="flex flex-wrap gap-1">
-            <span className="text-[10px] text-slate-400 font-bold">مقترحات جهات:</span>
+            <span className="text-[10px] text-slate-500 font-bold">مقترحات جهات:</span>
             {ORG_PRESETS.map((org) => (
               <button
                 key={org}
@@ -412,12 +412,12 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="guest-avatar-input" className="block text-xs font-bold text-slate-700">رابط الصورة الشخصية (Avatar URL)</label>
+              <label htmlFor="guest-avatar-input" className="block text-xs font-bold text-slate-700">رابط الصورة الشخصية</label>
               {avatarUrl && (
                 <button
                   type="button"
                   onClick={() => setAvatarUrl('')}
-                  className="text-[10px] text-slate-400 hover:text-rose-500"
+                  className="text-[10px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

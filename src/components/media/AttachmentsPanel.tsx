@@ -52,7 +52,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
         )}
       </div>
       {error && <p className="text-[11px] text-rose-600 font-bold">{error}</p>}
-      {attached.length === 0 && <p className="text-[11px] text-slate-400">لا توجد مرفقات.</p>}
+      {attached.length === 0 && <p className="text-[11px] text-slate-500">لا توجد مرفقات.</p>}
       <ul className="space-y-1.5">
         {attached.map((m) => {
           const Icon = mediaIcon(m.mediaType);
@@ -91,7 +91,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
                 </button>
               )}
               {!readOnly && (
-                <button type="button" onClick={() => onChange(mediaIds.filter((id) => id !== m.id))} aria-label={`إزالة ${m.title || m.fileName}`} className="p-1 text-slate-400 hover:text-rose-600">
+                <button type="button" onClick={() => onChange(mediaIds.filter((id) => id !== m.id))} aria-label={`إزالة ${m.title || m.fileName}`} className="p-1 text-slate-500 hover:text-rose-600">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}

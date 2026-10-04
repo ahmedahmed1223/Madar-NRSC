@@ -27,7 +27,7 @@ interface ShortcutItem {
 
 const SHORTCUTS: ShortcutItem[] = [
   // General & Navigation
-  { keys: ['Ctrl', 'K'], description: 'فتح لوحة الأوامر والبحث الذكي الفوري (Command Palette)', category: 'NAVIGATION' },
+  { keys: ['Ctrl', 'K'], description: 'فتح لوحة الأوامر والبحث الذكي الفوري', category: 'NAVIGATION' },
   { keys: ['?'], description: 'عرض قائمة اختصارات لوحة المفاتيح', category: 'GENERAL' },
   { keys: ['Esc'], description: 'إغلاق أي نافذة منبثقة أو محادثة فرعية مفتوحة', category: 'GENERAL' },
   { keys: ['Ctrl', 'Shift', 'D'], description: 'الانتقال المباشر إلى لوحة القيادة المركزية', category: 'NAVIGATION' },
@@ -47,7 +47,7 @@ const SHORTCUTS: ShortcutItem[] = [
 
 const CATEGORY_MAP = {
   NAVIGATION: { label: 'التنقل والبحث', color: 'text-blue-600 bg-blue-50 border-blue-200' },
-  EDITORIAL: { label: 'التحرير وغرفة الأخبار', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+  EDITORIAL: { label: 'التحرير وغرفة الأخبار', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
   BROADCAST: { label: 'الاستوديو والبث المباشر', color: 'text-purple-600 bg-purple-50 border-purple-200' },
   GENERAL: { label: 'عام والنظام', color: 'text-slate-600 bg-slate-50 border-slate-200' },
 };
@@ -78,7 +78,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
         {/* Search & Filter bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
           <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
@@ -91,7 +91,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -158,7 +158,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
                       <kbd className="min-w-[28px] text-center px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-[11px] font-bold text-slate-800 shadow-2xs">
                         {k}
                       </kbd>
-                      {kIdx < item.keys.length - 1 && <span className="text-slate-400 text-xs">+</span>}
+                      {kIdx < item.keys.length - 1 && <span className="text-slate-500 text-xs">+</span>}
                     </React.Fragment>
                   ))}
                 </div>

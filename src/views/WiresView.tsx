@@ -103,7 +103,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Rss className="w-5 h-5 text-orange-500" />
-            مكتب برقيات الوكالات
+            البرقيات
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             برقيات تُجلب آلياً من خلاصات الوكالات المعتمدة
@@ -167,7 +167,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
       {wires.length > 0 && (
         <div className="bg-white p-3 rounded-2xl border border-slate-200 flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
             <input
               type="search"
               value={query}

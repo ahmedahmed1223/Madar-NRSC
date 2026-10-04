@@ -56,7 +56,7 @@ const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; mor
       )}
     </div>
     {rows.length === 0 ? (
-      <p className="text-[11px] text-slate-400 py-3 text-center">{empty}</p>
+      <p className="text-[11px] text-slate-500 py-3 text-center">{empty}</p>
     ) : (
       <ul className="space-y-1.5">
         {rows.slice(0, 5).map((r) => (

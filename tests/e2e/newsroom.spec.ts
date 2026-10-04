@@ -25,7 +25,7 @@ test('an embargoed story shows its embargo everywhere and cannot go out early', 
 test('the As-Run log lists what went to air', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'producer@akhbar.tv');
   await openNav(page, 'وضع الهواء');
-  await page.getByRole('tab', { name: /As-Run/ }).click();
+  await page.getByRole('tab', { name: /سجل البث الفعلي/ }).click();
   await expect(page.getByLabel('التاريخ')).toBeVisible();
   expect(errors).toEqual([]);
   await close();

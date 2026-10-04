@@ -101,17 +101,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
-              <CalendarIcon className="w-5 h-5" />
-            </div>
+          <div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                جدول ومواعيد البث التلفزيوني
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                الخريطة البرامجية الذكية، إدارة حجز الاستوديوهات، ومراقبة البث المباشر
-              </p>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">جدول البث</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">حلقات الأسبوع حسب اليوم أو الاستوديو، مع كشف تعارض الاستوديوهات.</p>
             </div>
           </div>
         </div>
@@ -179,7 +172,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <label htmlFor="calendar-search-input" className="sr-only">بحث في جدول البث</label>
-              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 id="calendar-search-input"
                 type="search"
@@ -194,7 +187,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
                   title="مسح البحث"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -353,7 +346,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <Tv className="w-4 h-4 text-blue-600" />
               مخطط تشغيل الاستوديوهات لليوم الحالي
             </h3>
-            <span className="text-xs text-slate-400 font-mono">تحديث مباشر</span>
+            <span className="text-xs text-slate-500 font-mono">تحديث مباشر</span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -380,7 +373,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                     <div className="space-y-2">
                       {studioEps.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                        <div className="py-8 text-center text-xs text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
                           الاستوديو متاح
                         </div>
                       ) : (
