@@ -54,10 +54,10 @@ interface NewsListViewProps {
   currentUser: User;
   onEditNews: (newsId: string) => void;
   onCreateNews: () => void;
-  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string) => void;
+  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string) => Promise<boolean>;
   onDeleteNews: (newsId: string) => void;
   onToggleBreaking: (newsItem: NewsItem) => void;
-  onBulkAction: (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => void;
+  onBulkAction: (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => Promise<void>;
   /** Opens the list on a specific tab (e.g. the breaking-news desk). */
   initialTab?: ListTab;
 }
@@ -95,6 +95,17 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const runBulkAction = async (action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
+    if (bulkSubmitting) return;
+    setBulkSubmitting(true);
+    try {
+      await onBulkAction(selectedIds, action);
+      setSelectedIds([]);
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
   const [previewNews, setPreviewNews] = useState<NewsItem | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -192,10 +203,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     setStatusComment('');
   };
 
-  const handleConfirmStatusChange = () => {
-    if (statusModalNews) {
-      onUpdateStatus(statusModalNews.id, targetStatus, statusComment);
-      setStatusModalNews(null);
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const handleConfirmStatusChange = async () => {
+    if (!statusModalNews || statusSubmitting) return;
+    setStatusSubmitting(true);
+    try {
+      if (await onUpdateStatus(statusModalNews.id, targetStatus, statusComment)) setStatusModalNews(null);
+    } finally {
+      setStatusSubmitting(false);
     }
   };
 
@@ -404,9 +419,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onBulkAction(selectedIds, 'APPROVE');
-                  setSelectedIds([]);
+                  void runBulkAction('APPROVE');
                 }}
+                disabled={bulkSubmitting}
                 className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded-lg font-semibold"
               >
                 اعتماد المحدد
@@ -416,9 +431,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onBulkAction(selectedIds, 'PUBLISH');
-                  setSelectedIds([]);
+                  void runBulkAction('PUBLISH');
                 }}
+                disabled={bulkSubmitting}
                 className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-500 rounded-lg font-semibold"
               >
                 نشر المحدد
@@ -427,9 +442,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                onBulkAction(selectedIds, 'ARCHIVE');
-                setSelectedIds([]);
+                void runBulkAction('ARCHIVE');
               }}
+              disabled={bulkSubmitting}
               className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold"
             >
               أرشفة المحدد
@@ -438,9 +453,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onBulkAction(selectedIds, 'DELETE');
-                  setSelectedIds([]);
+                  void runBulkAction('DELETE');
                 }}
+                disabled={bulkSubmitting}
                 className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-lg font-semibold"
               >
                 حذف المحدد
@@ -940,7 +955,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <button
               type="button"
               onClick={handleConfirmStatusChange}
-              disabled={['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim()}
+              disabled={statusSubmitting || (['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim())}
               title={['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim() ? 'اكتب ملاحظات للكاتب أولاً' : undefined}
               className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs disabled:opacity-50"
             >

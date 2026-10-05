@@ -285,17 +285,18 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
-  const handleUpdateNewsStatus = (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => {
+  const handleUpdateNewsStatus = async (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string): Promise<boolean> => {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
       refreshData();
-      void confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
+      return await confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
     } catch (err: any) {
       addToast({
         type: 'error',
         title: 'فشل التحديث',
         message: err.message || 'حدث خطأ أثناء تحديث حالة الخبر',
       });
+      return false;
     }
   };
 
@@ -321,21 +322,23 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   /** Applies the action only where the workflow and permissions allow it, and reports what was skipped. */
-  const handleBulkAction = (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
+  const handleBulkAction = async (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
     const target: Record<string, NewsStatus> = { PUBLISH: 'PUBLISHED', APPROVE: 'APPROVED', ARCHIVE: 'ARCHIVED' };
     const comment: Record<string, string> = { PUBLISH: 'نشر جماعي', APPROVE: 'اعتماد جماعي', ARCHIVE: 'أرشفة جماعية' };
     let done = 0;
     const skipped: string[] = [];
-    newsIds.forEach((id) => {
+    for (const id of newsIds) {
       try {
         if (action === 'DELETE') apiService.deleteNews(id, currentUser);
         else apiService.updateNewsStatus(id, target[action], currentUser, comment[action]);
+        const outcome = await dataStore.awaitWrite('news', id);
+        if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم تنفيذ الإجراء');
         done++;
       } catch (err: any) {
         const title = newsList.find((n) => n.id === id)?.title || id;
         skipped.push(`«${title.slice(0, 30)}»: ${err.message}`);
       }
-    });
+    }
     refreshData();
     if (done > 0) {
       addToast({ type: 'success', title: 'إجراء جماعي', message: `تم تنفيذ الإجراء على ${done} من ${newsIds.length} خبراً` });

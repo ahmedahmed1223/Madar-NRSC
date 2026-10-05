@@ -55,6 +55,7 @@ import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
 import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
+import { dataStore } from '../services/dataStore';
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
@@ -71,7 +72,7 @@ interface NewsEditorViewProps {
   defaultStoryId?: string;
   /** Returns the saved story, or null if the save was refused. */
   onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => NewsItem | null;
-  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => void;
+  onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -587,23 +588,32 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
   const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || Date.parse(fromLocalInputValue(scheduleAt)) < Date.now());
 
-  const handleConfirmStatus = () => {
-    if (!newsItem?.id || !pendingStatus) return;
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const handleConfirmStatus = async () => {
+    if (!newsItem?.id || !pendingStatus || statusSubmitting) return;
     if (needsComment && !statusComment.trim()) return;
     if (scheduleInvalid) return;
+    setStatusSubmitting(true);
+    try {
     // Unsaved text is saved first so a transition never silently drops edits.
     if (isDirty && canEditContent) {
       const saved = saveContent(true);
       if (!saved) return;
+      const outcome = await dataStore.awaitWrite('news', saved.id);
+      if (!outcome.ok) return;
     }
     // datetime-local is local time; send an absolute instant.
-    onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
+    const accepted = await onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
+    if (!accepted) return;
     const fresh = apiService.getNewsById(newsItem.id);
     if (fresh) setBaseUpdatedAt(fresh.updatedAt);
     setShowCommentModal(false);
     setStatusComment('');
     // The story now belongs to someone else (writer or reviewers): leave it so the edit lock is released.
     if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
+    } finally {
+      setStatusSubmitting(false);
+    }
   };
 
   const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
@@ -611,7 +621,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     APPROVED: { label: 'اعتماد الخبر للنشر', className: 'bg-purple-600 hover:bg-purple-700' },
     NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات', className: 'bg-orange-600 hover:bg-orange-700' },
     REJECTED: { label: 'رفض الخبر', className: 'bg-red-700 hover:bg-red-800' },
-    PUBLISHED: { label: 'نشر فوري على المنصات', className: 'bg-emerald-700 hover:bg-emerald-800' },
+    PUBLISHED: { label: 'نشر الخبر داخل النظام', className: 'bg-emerald-700 hover:bg-emerald-800' },
     SCHEDULED: { label: 'جدولة النشر', className: 'bg-sky-600 hover:bg-sky-700' },
     UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
     ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
@@ -1684,7 +1694,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmStatus}
-                disabled={(needsComment && !statusComment.trim()) || scheduleInvalid}
+                disabled={statusSubmitting || (needsComment && !statusComment.trim()) || scheduleInvalid}
                 className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
               >
                 تأكيد ونقل الحالة
