@@ -16,6 +16,7 @@ import { NewsVideosEditor } from '../components/news/NewsVideosEditor';
 import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
 import {
   Save,
+  Settings2,
   Send,
   CheckCircle,
   Radio,
@@ -54,6 +55,7 @@ import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
+import { Modal } from '../components/common/Modal';
 import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
@@ -644,6 +646,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Contextual Breadcrumbs */}
+      <div className="hidden sm:block">
       <Breadcrumbs
         items={[
           { label: 'غرفة الأخبار', onClick: onCancel },
@@ -660,6 +663,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         onBack={onCancel}
         backLabel="العودة لقائمة الأخبار"
       />
+      </div>
 
       {draftStorageFailed && (
         <p role="alert" className="bg-red-50 border border-red-200 p-3 text-sm text-red-800 rounded-lg">
@@ -758,21 +762,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       )}
 
       {/* Top Header & Actions Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+      <div className="border-b border-slate-200 pb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+            className="min-h-11 min-w-11 flex items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
             title="العودة لقائمة الأخبار"
           >
             <ArrowRight className="w-5 h-5" />
           </button>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-slate-800">
-              {newsItem ? `تحرير الخبر: ${newsItem.title}` : 'إنشاء مادة إخبارية جديدة'}
+              {newsItem ? 'تحرير الخبر' : 'إنشاء خبر جديد'}
             </h1>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex flex-wrap items-center gap-2 mt-0.5">
               <Badge variant="default" size="sm">
                 الحالة: {newsItem?.status ? NEWS_STATUS_LABELS[newsItem.status] : 'مسودة جديدة'}
               </Badge>
@@ -781,13 +785,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   خبر عاجل
                 </Badge>
               )}
-              <div className="flex items-center gap-1.5 ml-2 text-[10px] text-slate-500 font-medium">
-                {lastSaved && isDirty && !draftStorageFailed ? (
+              <div role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                {saving ? 'جارٍ الحفظ على الخادم...' : lastSaved && isDirty && !draftStorageFailed ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
                     تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
                   </>
-                ) : null}
+                ) : isDirty ? 'تغييرات غير محفوظة' : newsItem?.id ? 'لا توجد تغييرات غير محفوظة' : null}
               </div>
             </div>
           </div>
@@ -799,7 +803,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={() => setIsHistoryOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
+              className="min-h-11 flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold"
             >
               <History className="w-4 h-4" />
               سجل النسخ
@@ -813,16 +817,16 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               disabled={saving || lock.status === 'acquiring'}
               title="حفظ (Ctrl+S)"
               aria-keyshortcuts="Control+S"
-              className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+              className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              {newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
+              {saving ? 'جارٍ الحفظ...' : newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
             </button>
           )}
 
           {canEditContent && (
              <button type="button" onClick={() => saveContent(false)} disabled={saving || lock.status === 'acquiring'}
-              className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
+              className="min-h-11 flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
               <Save className="w-4 h-4" /> حفظ وإغلاق
             </button>
           )}
@@ -833,7 +837,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
               title="Ctrl+Enter"
               aria-keyshortcuts="Control+Enter"
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
             >
               <Send className="w-4 h-4" />
               حفظ وإرسال للمراجعة
@@ -848,7 +852,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   key={t}
                   type="button"
                   onClick={() => handleTriggerStatusChange(t)}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
+                  className={`min-h-11 flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
                 >
                   {t === 'UNDER_REVIEW' && <Send className="w-4 h-4" />}
                   {t === 'APPROVED' && <CheckCircle className="w-4 h-4" />}
@@ -860,14 +864,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       </div>
 
       {/* Broadcast Timing & Production Tools Banner */}
-      <div className="bg-white text-slate-800 p-3.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+      <div className="text-slate-800 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 block">زمن الإلقاء المقدر (130 ك/د):</span>
+              <span className="text-xs text-slate-500 block">زمن الإلقاء المقدر:</span>
               <strong className="text-sm font-mono text-emerald-700">{textStats.timeFormatted} دقيقة</strong>
             </div>
           </div>
@@ -875,20 +879,24 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
-            <span className="text-[10px] text-slate-500 block">عدد الكلمات:</span>
+            <span className="text-xs text-slate-500 block">عدد الكلمات:</span>
             <span className="font-mono font-bold text-slate-800">{textStats.words} كلمة</span>
           </div>
 
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
-            <span className="text-[10px] text-slate-500 block">عدد الأحرف:</span>
+            <span className="text-xs text-slate-500 block">عدد الأحرف:</span>
             <span className="font-mono text-slate-700">{textStats.chars} حرف</span>
           </div>
         </div>
 
         {/* Broadcast Helper Tools */}
-        <div className="flex flex-wrap items-center gap-2">
+        <details className="w-full sm:w-auto">
+          <summary className="min-h-11 flex items-center gap-2 cursor-pointer text-sm font-semibold text-slate-700 rounded-lg px-2 hover:bg-slate-100">
+            <Settings2 className="w-4 h-4" /> أدوات الخبر
+          </summary>
+        <div className="flex flex-wrap items-center gap-2 pt-2">
           <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}
@@ -945,6 +953,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             {copiedPrompter ? 'تم نسخ نص الملقن' : 'نسخ للأوتوكيو'}
           </button>
         </div>
+        </details>
       </div>
 
       {/* Main Grid: Content Area & Metadata Sidebar */}
@@ -1662,12 +1671,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       </div>
 
       {/* Status Transition Comment Modal */}
-      {showCommentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-w-md w-full space-y-4 text-right">
-            <h3 className="text-base font-bold text-slate-800">
-              تأكيد نقل الحالة التحريرية إلى: «{pendingStatus ? NEWS_STATUS_LABELS[pendingStatus] : ''}»
-            </h3>
+      <Modal isOpen={showCommentModal} onClose={() => { if (!statusSubmitting) setShowCommentModal(false); }}
+        title={`نقل الخبر إلى «${pendingStatus ? NEWS_STATUS_LABELS[pendingStatus] : ''}»`} maxWidth="md">
+          <div className="space-y-4 text-right" aria-busy={statusSubmitting}>
             <p className="text-xs text-slate-500">
               {needsComment
                 ? 'اكتب ملاحظاتك للكاتب (إلزامية) لتُسجل في سجل سير العمل:'
@@ -1689,10 +1695,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <p className="text-[10px] text-slate-500 mt-1">ينشر الخادم الخبر تلقائياً في هذا الموعد حتى لو لم يكن أحد متصلاً.</p>
               </div>
             )}
+            <label htmlFor="status-transition-comment" className="block text-sm font-semibold text-slate-700">
+              ملاحظات المراجعة {needsComment ? '(مطلوبة)' : '(اختيارية)'}
+            </label>
             <textarea
               id="status-transition-comment"
               rows={3}
               value={statusComment}
+              disabled={statusSubmitting}
               onChange={(e) => setStatusComment(e.target.value)}
               placeholder="مثال: تم تدقيق الأسماء، مطابقة المصادر، والتأكد من الصياغة اللغوية..."
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1701,7 +1711,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCommentModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                disabled={statusSubmitting}
+                className="min-h-11 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
               >
                 إلغاء
               </button>
@@ -1709,14 +1720,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 type="button"
                 onClick={handleConfirmStatus}
                 disabled={statusSubmitting || (needsComment && !statusComment.trim()) || scheduleInvalid}
-                className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
+                className="min-h-11 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
               >
-                تأكيد ونقل الحالة
+                {statusSubmitting ? 'جارٍ تأكيد التحديث...' : 'تأكيد ونقل الحالة'}
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
 
       {newsItem?.id && (
         <NewsHistoryModal

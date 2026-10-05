@@ -152,6 +152,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Contextual Navigation Breadcrumbs */}
+      <div className="hidden sm:block">
       <Breadcrumbs
         items={[
           { label: 'دليل الحلقات', onClick: onBack },
@@ -179,6 +180,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         onBack={onBack}
         backLabel="العودة للحلقات"
       />
+      </div>
 
       {lockedByOther && lock.holder && (
         <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
@@ -252,7 +254,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       </section>
 
       {/* Top Episode Banner */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+      <div className="border-b border-slate-200 pb-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
@@ -272,7 +274,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                   حلقة #{episode.episodeNumber} (الموسم {episode.seasonNumber})
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-800 mt-1">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1 break-words">
                 {episode.title}
               </h1>
             </div>
@@ -347,10 +349,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-slate-200 pb-2 text-xs font-bold">
+      <nav aria-label="خطوات إعداد الحلقة" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 border-b border-slate-200 pb-3 text-xs font-bold">
         <button
           type="button"
           onClick={() => setActiveTab('PLAN')}
+          aria-pressed={activeTab === 'PLAN'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'PLAN' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
@@ -362,6 +365,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('RUNDOWN')}
+          aria-pressed={activeTab === 'RUNDOWN'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'RUNDOWN'
               ? 'bg-blue-600 text-white shadow-xs'
@@ -375,6 +379,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('QUESTIONS')}
+          aria-pressed={activeTab === 'QUESTIONS'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'QUESTIONS'
               ? 'bg-blue-600 text-white shadow-xs'
@@ -388,6 +393,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('GUESTS')}
+          aria-pressed={activeTab === 'GUESTS'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'GUESTS'
               ? 'bg-blue-600 text-white shadow-xs'
@@ -401,6 +407,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('SCRIPT')}
+          aria-pressed={activeTab === 'SCRIPT'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'SCRIPT'
               ? 'bg-blue-600 text-white shadow-xs'
@@ -414,6 +421,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('NOTES')}
+          aria-pressed={activeTab === 'NOTES'}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'NOTES' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
@@ -421,7 +429,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           <MessageSquareText className="w-4 h-4" />
           <span>ملاحظات الفريق ({apiService.getComments({ kind: 'episode', id: episode.id }).length})</span>
         </button>
-      </div>
+      </nav>
 
       {activeTab === 'NOTES' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
@@ -525,7 +533,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
               >
                 <Save className="w-4 h-4" />
-                حفظ السكريبت
+                {savingScript ? 'جارٍ حفظ السكريبت...' : 'حفظ السكريبت'}
               </button>
               )}
             </div>

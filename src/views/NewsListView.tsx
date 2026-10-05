@@ -2,6 +2,7 @@ import { NewsVideosList } from '../components/news/NewsVideosEditor';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { notify } from '../services/notify';
+import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
@@ -94,12 +95,17 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
+  const [onlyMine, setOnlyMine] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const runBulkAction = async (action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
     if (bulkSubmitting) return;
     setBulkSubmitting(true);
     try {
+      const labels = { APPROVE: 'اعتماد', PUBLISH: 'نشر', ARCHIVE: 'أرشفة', DELETE: 'حذف' };
+      if (!await confirmDialog({ title: `${labels[action]} الأخبار المحددة`,
+        message: `تنفيذ ${labels[action]} على ${selectedIds.length} خبر؟ تُنفذ العملية فقط على الأخبار التي تسمح حالتها وصلاحياتك بذلك.`,
+        confirmLabel: labels[action] })) return;
       await onBulkAction(selectedIds, action);
       setSelectedIds([]);
     } finally {
@@ -149,6 +155,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
     if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
+    if (onlyMine && item.authorId !== currentUser.id) return false;
     if (searchQuery.trim()) {
       if (!matchesQuery(searchQuery, item.title, item.shortTitle, item.summary, item.authorName, item.categoryName, item.sourceName, item.locationName, item.keywords || [])) return false;
     }
@@ -163,7 +170,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   useEffect(() => {
     setSelectedIds([]);
     setPage(0);
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority]);
+  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine]);
 
   const handleRestore = (id: string) => {
     try {
@@ -326,13 +333,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
-            className="w-full pr-9 pl-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="min-h-11 w-full pr-9 pl-12 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+              onClick={() => { setSearchQuery(''); document.getElementById('news-list-search-input')?.focus(); }}
+              className="absolute left-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-600"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -342,6 +349,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
         {/* Dropdowns & Reset */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <label className="min-h-11 inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+            أخباري فقط
+          </label>
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <Filter className="w-3.5 h-3.5 text-slate-500" />
             <label htmlFor="news-list-category-select">القسم:</label>
@@ -372,18 +383,20 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <option value="CRITICAL">عاجل وفوري</option>
               <option value="URGENT">عاجل جداً</option>
               <option value="HIGH">أولوية عالية</option>
+              <option value="MEDIUM">متوسط</option>
               <option value="NORMAL">عادي</option>
               <option value="LOW">منخفض</option>
             </select>
           </div>
 
-          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL') && (
+          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' || onlyMine) && (
             <button
               type="button"
               onClick={() => {
                 setSearchQuery('');
                 setSelectedCategory('ALL');
                 setSelectedPriority('ALL');
+                setOnlyMine(false);
               }}
               className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
             >
@@ -411,10 +424,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold">تم تحديد {selectedIds.length} عنصر</span>
+            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${selectedIds.length} خبر`}</span>
+            <button type="button" disabled={bulkSubmitting} onClick={() => setSelectedIds([])} aria-label="إلغاء تحديد الأخبار"
+              title="إلغاء التحديد" className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-50"><X className="w-4 h-4" /></button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canApprove && (
               <button
                 type="button"
@@ -422,7 +437,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   void runBulkAction('APPROVE');
                 }}
                 disabled={bulkSubmitting}
-                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded-lg font-semibold"
+                className="min-h-11 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded-lg font-semibold disabled:opacity-50"
               >
                 اعتماد المحدد
               </button>
@@ -434,7 +449,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   void runBulkAction('PUBLISH');
                 }}
                 disabled={bulkSubmitting}
-                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-500 rounded-lg font-semibold"
+                className="min-h-11 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded-lg font-semibold disabled:opacity-50"
               >
                 نشر المحدد
               </button>
@@ -445,7 +460,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 void runBulkAction('ARCHIVE');
               }}
               disabled={bulkSubmitting}
-              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold"
+              className="min-h-11 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold disabled:opacity-50"
             >
               أرشفة المحدد
             </button>
@@ -456,7 +471,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   void runBulkAction('DELETE');
                 }}
                 disabled={bulkSubmitting}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-lg font-semibold"
+                className="min-h-11 px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-lg font-semibold disabled:opacity-50"
               >
                 حذف المحدد
               </button>
@@ -478,7 +493,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     role="checkbox"
                     aria-checked={selectedIds.length === 0 ? false : selectedIds.length === pagedNews.length ? true : 'mixed'}
                     aria-label="تحديد كل الأخبار المعروضة"
-                    className="p-1 text-slate-500 hover:text-slate-800"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-800"
                   >
                     {selectedIds.length === filteredNews.length && filteredNews.length > 0 ? (
                       <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -530,7 +545,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                           role="checkbox"
                           aria-checked={isSelected}
                           aria-label={`تحديد الخبر: ${item.title}`}
-                          className="p-1 text-slate-500 hover:text-slate-700"
+                          className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-700"
                         >
                           {isSelected ? (
                             <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -554,12 +569,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             </Badge>
                           )}
                           <div>
-                            <span
+                            <button type="button"
                               onClick={() => setPreviewNews(item)}
-                              className="font-bold text-slate-800 hover:text-blue-600 cursor-pointer block leading-snug"
+                              className="font-bold text-slate-800 hover:text-blue-600 block leading-snug text-right break-words"
                             >
                               {item.title}
-                            </span>
+                            </button>
                             <span className="text-[11px] text-slate-500 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
@@ -886,16 +901,16 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       {/* Status Change with Comment Modal */}
       <Modal
         isOpen={!!statusModalNews}
-        onClose={() => setStatusModalNews(null)}
+        onClose={() => { if (!statusSubmitting) setStatusModalNews(null); }}
         title="تحديث الحالة التحريرية وسير العمل"
         subtitle={statusModalNews?.title}
         maxWidth="md"
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor="news-status-comment-textarea" className="block text-xs font-bold text-slate-700 mb-1">
+            <p className="block text-xs font-bold text-slate-700 mb-1">
               الحالة المستهدفة:
-            </label>
+            </p>
             <div className="p-2.5 bg-blue-50 text-blue-900 rounded-lg text-xs font-bold">
               {statusBadgeInfo[targetStatus]?.label}
             </div>
@@ -920,6 +935,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               id="news-status-comment-textarea"
               rows={3}
               value={statusComment}
+              disabled={statusSubmitting}
               onChange={(e) => setStatusComment(e.target.value)}
               placeholder="مثال: تمت مراجعة الأرقام وصحة المصادر والتأكد من صياغة العناوين..."
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 leading-relaxed transition-all"
@@ -948,6 +964,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusModalNews(null)}
+              disabled={statusSubmitting}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
@@ -959,7 +976,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               title={['NEEDS_REVISION', 'REJECTED'].includes(targetStatus) && !statusComment.trim() ? 'اكتب ملاحظات للكاتب أولاً' : undefined}
               className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs disabled:opacity-50"
             >
-              تأكيد التحديث
+              {statusSubmitting ? 'جارٍ تأكيد التحديث...' : 'تأكيد التحديث'}
             </button>
           </div>
         </div>

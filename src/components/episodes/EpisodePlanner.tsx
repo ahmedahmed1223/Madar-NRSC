@@ -401,7 +401,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                   onClick={saveBrief}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50"
                 >
-                  حفظ الملخص
+                  {savingBrief ? 'جارٍ حفظ الملخص...' : 'حفظ الملخص'}
                 </button>
               </div>
             )}
