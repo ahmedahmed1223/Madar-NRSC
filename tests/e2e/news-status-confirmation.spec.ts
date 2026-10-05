@@ -1,6 +1,31 @@
 import { expect, test } from '@playwright/test';
 import { openNav, signIn } from './helpers';
 
+test('rejected save-and-close preserves the edited text and local recovery draft', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'editor@akhbar.tv');
+  await openNav(page, 'الأخبار');
+  await page.locator('button[title="تحرير الخبر"]').first().click();
+  const id = new URL(page.url()).pathname.split('/').pop()!;
+  const me = await (await page.request.get('/api/v1/auth/me')).json();
+  const data = await (await page.request.get('/api/v1/data')).json();
+  const row = data.collections.news.find((entry: any) => entry.id === id);
+  const headline = 'تعديل يجب أن يبقى عند رفض الحفظ';
+  await page.locator('#news-headline-input').fill(headline);
+  await page.route('**/api/v1/data/sync', async route => {
+    const body = route.request().postDataJSON();
+    if (!body.ops.some((op: any) => op.c === 'news')) return route.continue();
+    await route.fulfill({ json: { rev: data.rev, dbId: data.dbId,
+      results: body.ops.map(() => ({ ok: false, code: 'CONFLICT', message: 'رفض الحفظ للاختبار', current: row })) } });
+  });
+  await page.getByRole('button', { name: 'حفظ وإغلاق', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'حفظ وإغلاق', exact: true })).toBeEnabled();
+  await expect(page.locator('#news-headline-input')).toHaveValue(headline);
+  const draft = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null'), `nrcs_draft_${me.user.id}_${id}`);
+  expect(draft.title).toBe(headline);
+  await page.unroute('**/api/v1/data/sync');
+  await close();
+});
+
 test('a rejected editorial transition keeps the editor and reviewer notes open', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'editor@akhbar.tv');
   let data = await (await page.request.get('/api/v1/data')).json();

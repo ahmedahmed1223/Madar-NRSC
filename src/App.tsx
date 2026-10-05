@@ -266,14 +266,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- NEWS ACTIONS ---
   /** Returns the saved story, or null when the save was refused. `stay` keeps the editor open. */
-  const handleSaveNews = (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): NewsItem | null => {
+  const handleSaveNews = async (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): Promise<NewsItem | null> => {
     try {
       const saved = apiService.saveNews(newsData, currentUser);
       refreshData();
-      setSelectedNewsItem(saved);
-      if (!opts.stay) setActiveNav('news');
       // «تم الحفظ» only once the server has stored it (the sync layer reports refusals).
-      void confirmSaved('news', saved.id, `تم حفظ الخبر: «${saved.title?.slice(0, 40)}»`);
+      if (!await confirmSaved('news', saved.id, `تم حفظ الخبر: «${saved.title?.slice(0, 40)}»`)) return null;
+      setSelectedNewsItem(saved);
       return saved;
     } catch (err: any) {
       addToast({

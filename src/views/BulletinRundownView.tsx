@@ -5,7 +5,8 @@ import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import { dataStore } from '../services/dataStore';
 import {
   ArrowDown,
   ArrowRight,
@@ -102,6 +103,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [meta, setMeta] = useState<(Omit<Bulletin, 'plannedSeconds' | 'anchors'> & { minutes: string; anchorsText: string }) | null>(null);
   const [prompter, setPrompter] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const pendingStories = useRef(new Set<string>());
 
   const flash = (ok: boolean, text: string) => {
     setMessage({ ok, text });
@@ -173,7 +175,24 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     });
   };
 
-  const toggle = (s: BulletinStory, patch: Partial<BulletinStory>, text: string) => attempt(() => apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, ...patch }), text);
+  const saveStoryConfirmed = async (s: BulletinStory, patch: Partial<BulletinStory>): Promise<boolean> => {
+    if (pendingStories.current.has(s.id)) return false;
+    pendingStories.current.add(s.id);
+    try {
+      apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, ...patch });
+      const outcome = await dataStore.awaitWrite('bulletinStories', s.id);
+      if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ القصة بعد');
+      return true;
+    } catch (err: any) {
+      flash(false, err?.message || 'تعذر حفظ القصة');
+      return false;
+    } finally {
+      pendingStories.current.delete(s.id);
+    }
+  };
+  const toggle = async (s: BulletinStory, patch: Partial<BulletinStory>, text: string) => {
+    if (await saveStoryConfirmed(s, patch)) flash(true, text);
+  };
 
   const makeHeadlines = () =>
     attempt(() => {
@@ -394,8 +413,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             const mine = free.filter(
               (s) => s.status === 'DRAFT' && (s.writerId === currentUser.id || !s.writerId) && (s.script || '').trim() && !storyStatusError(s, { ...s, status: 'READY' }, bulletin, actor)
             );
-            const bulk = (list: BulletinStory[], to: BulletinStory['status'], done: string) =>
-              attempt(() => list.forEach((s) => apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, status: to })), done);
+            const bulk = async (list: BulletinStory[], to: BulletinStory['status'], done: string) => {
+              let confirmed = 0;
+              for (const s of list) if (await saveStoryConfirmed(s, { status: to })) confirmed++;
+              if (confirmed === list.length) flash(true, done);
+              else flash(false, `أكد الخادم ${confirmed} من ${list.length} قصة؛ لم يكتمل الإجراء الجماعي`);
+            };
             return (
               <>
                 {approvable.length > 0 && (

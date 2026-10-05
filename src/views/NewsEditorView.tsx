@@ -55,7 +55,6 @@ import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
 import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
-import { dataStore } from '../services/dataStore';
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
@@ -71,7 +70,7 @@ interface NewsEditorViewProps {
   /** Pre-links a new story to a coverage (from the stories desk). */
   defaultStoryId?: string;
   /** Returns the saved story, or null if the save was refused. */
-  onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => NewsItem | null;
+  onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => Promise<NewsItem | null>;
   onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => Promise<boolean>;
   onCancel: () => void;
 }
@@ -254,6 +253,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     embargoNote,
     tagInput,
   });
+  const formFieldsRef = useRef(formFields);
+  formFieldsRef.current = formFields;
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
   const persistDraftRef = useRef<() => void>(() => {});
   persistDraftRef.current = () => {
@@ -524,20 +525,35 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   /** Saves the text (never the status). Returns the stored story or null. */
-  const saveContent = (stay: boolean, extra: Partial<NewsItem> = {}): NewsItem | null => {
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const saveContent = async (stay: boolean, extra: Partial<NewsItem> = {}): Promise<NewsItem | null> => {
+    if (savingRef.current) return null;
     const badClip = videosError(videos);
     if (badClip) {
       notify({ type: 'warning', title: 'راجع مقاطع الفيديو', message: badClip });
       document.querySelector('[data-testid="news-videos"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       return null;
     }
-    const saved = onSave({ ...buildPayload(), ...extra }, { stay });
-    if (saved) {
-      clearDraft();
-      loadedSnapshotRef.current = JSON.stringify(formFields());
-      setBaseUpdatedAt(saved.updatedAt);
+    const snapshot = JSON.stringify(formFields());
+    persistDraftRef.current();
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await onSave({ ...buildPayload(), ...extra }, { stay: true });
+      if (saved) {
+        loadedSnapshotRef.current = snapshot;
+        setBaseUpdatedAt(saved.updatedAt);
+        if (snapshot === JSON.stringify(formFieldsRef.current())) {
+          clearDraft();
+          if (!stay) onCancel();
+        }
+      }
+      return saved;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-    return saved;
   };
 
   const handleSaveDraft = () => {
@@ -595,22 +611,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     if (scheduleInvalid) return;
     setStatusSubmitting(true);
     try {
-    // Unsaved text is saved first so a transition never silently drops edits.
-    if (isDirty && canEditContent) {
-      const saved = saveContent(true);
-      if (!saved) return;
-      const outcome = await dataStore.awaitWrite('news', saved.id);
-      if (!outcome.ok) return;
-    }
-    // datetime-local is local time; send an absolute instant.
-    const accepted = await onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
-    if (!accepted) return;
-    const fresh = apiService.getNewsById(newsItem.id);
-    if (fresh) setBaseUpdatedAt(fresh.updatedAt);
-    setShowCommentModal(false);
-    setStatusComment('');
-    // The story now belongs to someone else (writer or reviewers): leave it so the edit lock is released.
-    if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
+      // Confirm the text save before changing its editorial status.
+      if (isDirty && canEditContent) {
+        const saved = await saveContent(true);
+        if (!saved) return;
+      }
+      // datetime-local is local time; send an absolute instant.
+      const accepted = await onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
+      if (!accepted) return;
+      const fresh = apiService.getNewsById(newsItem.id);
+      if (fresh) setBaseUpdatedAt(fresh.updatedAt);
+      setShowCommentModal(false);
+      setStatusComment('');
+      // Leave the editor to release its lock for the next colleague.
+      if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
     } finally {
       setStatusSubmitting(false);
     }
@@ -796,7 +810,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={lock.status === 'acquiring'}
+              disabled={saving || lock.status === 'acquiring'}
               title="حفظ (Ctrl+S)"
               aria-keyshortcuts="Control+S"
               className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
@@ -807,7 +821,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           )}
 
           {canEditContent && (
-            <button type="button" onClick={() => saveContent(false)} disabled={lock.status === 'acquiring'}
+             <button type="button" onClick={() => saveContent(false)} disabled={saving || lock.status === 'acquiring'}
               className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
               <Save className="w-4 h-4" /> حفظ وإغلاق
             </button>
