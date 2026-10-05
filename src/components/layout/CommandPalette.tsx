@@ -3,6 +3,7 @@ import { Search, FileText, Tv, Video, Users, CheckSquare, X } from 'lucide-react
 import { ApiService } from '../../services/api';
 import { NewsItem, Program, Episode, Guest } from '../../types';
 import { statusLabel } from '../../shared/labels';
+import { useLiveData } from '../../hooks/useLiveData';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -46,15 +47,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [groupFilter, setGroupFilter] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const dataVersion = useLiveData(['news', 'programs', 'episodes', 'guests', 'tasks']);
 
   useEffect(() => {
     if (!isOpen) return;
     openerRef.current = document.activeElement as HTMLElement | null;
     setQuery('');
     setActive(0);
+    setGroupFilter('');
     const t = setTimeout(() => inputRef.current?.focus(), 30);
     return () => {
       clearTimeout(t);
@@ -76,9 +80,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ...r.guests.slice(0, 3).map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick(onSelectGuest, g.id) })),
       ...r.tasks.slice(0, 3).map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick(onSelectTask, t.id) })),
     ];
-  }, [query, onClose, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
+  }, [query, dataVersion, onClose, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
 
-  useEffect(() => setActive(0), [query]);
+  const visibleResults = results.filter(r => !groupFilter || r.group === groupFilter);
+  useEffect(() => setActive(0), [query, dataVersion, groupFilter]);
   useEffect(() => {
     document.getElementById(`cmdk-${active}`)?.scrollIntoView({ block: 'nearest' });
   }, [active]);
@@ -90,18 +95,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       e.preventDefault();
       e.stopPropagation();
       onClose();
-    } else if (e.key === 'ArrowDown') {
+    } else if (e.key === 'ArrowDown' && e.target === inputRef.current) {
       e.preventDefault();
-      setActive((i) => (results.length ? (i + 1) % results.length : 0));
-    } else if (e.key === 'ArrowUp') {
+      setActive((i) => (visibleResults.length ? (i + 1) % visibleResults.length : 0));
+    } else if (e.key === 'ArrowUp' && e.target === inputRef.current) {
       e.preventDefault();
-      setActive((i) => (results.length ? (i - 1 + results.length) % results.length : 0));
-    } else if (e.key === 'Enter' && results[active] && e.target === inputRef.current) {
+      setActive((i) => (visibleResults.length ? (i - 1 + visibleResults.length) % visibleResults.length : 0));
+    } else if (e.key === 'Enter' && visibleResults[active] && e.target === inputRef.current) {
       e.preventDefault();
-      results[active].open();
+      visibleResults[active].open();
     } else if (e.key === 'Tab') {
       // Keep focus inside the dialog.
-      const focusables = dialogRef.current?.querySelectorAll<HTMLElement>('input, button');
+      const focusables = dialogRef.current?.querySelectorAll<HTMLElement>('input, button, select');
       if (!focusables?.length) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
@@ -117,7 +122,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   let lastGroup = '';
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-4 sm:pt-20 p-4 bg-slate-900/60 backdrop-blur-xs">
       <div className="fixed inset-0" onClick={onClose} aria-hidden />
       <div
         ref={dialogRef}
@@ -125,7 +130,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         aria-modal="true"
         aria-label="البحث الموحد"
         onKeyDown={onKeyDown}
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[75vh]"
+        className="relative w-full max-w-2xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[75vh]"
       >
         <div className="flex items-center px-4 py-3.5 border-b border-slate-200 bg-slate-50/50">
           <Search className="w-5 h-5 text-slate-500 shrink-0 ml-3" aria-hidden />
@@ -133,9 +138,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ref={inputRef}
             type="text"
             role="combobox"
-            aria-expanded={results.length > 0}
+            aria-expanded={visibleResults.length > 0}
             aria-controls="cmdk-results"
-            aria-activedescendant={results[active] ? `cmdk-${active}` : undefined}
+            aria-activedescendant={visibleResults[active] ? `cmdk-${active}` : undefined}
             aria-autocomplete="list"
             aria-label="بحث في الأخبار والبرامج والحلقات والضيوف والمهام"
             value={query}
@@ -144,25 +149,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             className="w-full bg-transparent border-none text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-400"
           />
           {query && (
-            <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" className="p-1 text-slate-500 hover:text-slate-600 rounded-md">
+            <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" title="مسح البحث" className="w-11 h-11 shrink-0 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md">
               <X className="w-4 h-4" />
             </button>
           )}
-          <button type="button" onClick={onClose} aria-label="إغلاق البحث" className="p-1 text-slate-500 hover:text-slate-600 rounded-md ms-1">
-            <span className="text-[10px] font-mono border border-slate-300 rounded px-1">Esc</span>
+          <button type="button" onClick={onClose} aria-label="إغلاق البحث" title="إغلاق البحث" className="w-11 h-11 shrink-0 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md ms-1">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-2 overflow-y-auto flex-1">
+        <div className="px-4 py-2 border-b border-slate-100">
+          <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="w-full sm:w-auto min-h-11 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+            <option value="">كل الأنواع</option>
+            {['الأخبار', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'].map(group => <option key={group} value={group}>{group}</option>)}
+          </select>
+        </div>
+        <div className="p-2 overflow-y-auto overscroll-contain min-h-0 flex-1">
           {!query.trim() ? (
             <p className="p-8 text-center text-slate-500 text-xs">اكتب كلمة للبحث في المنظومة الإخبارية كلها</p>
-          ) : results.length === 0 ? (
-            <p className="p-8 text-center text-slate-500 text-xs" role="status">
+          ) : visibleResults.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-sm" role="status">
               لا نتائج مطابقة لـ «{query}»
-            </p>
+              {groupFilter && <button type="button" onClick={() => { setGroupFilter(''); inputRef.current?.focus(); }} className="block mx-auto mt-3 min-h-11 text-blue-600 font-semibold">البحث في كل الأنواع</button>}
+            </div>
           ) : (
             <ul id="cmdk-results" role="listbox" aria-label="نتائج البحث" className="space-y-0.5">
-              {results.map((r, i) => {
+              {visibleResults.map((r, i) => {
                 const header = r.group !== lastGroup ? r.group : null;
                 lastGroup = r.group;
                 const Icon = r.icon;
@@ -179,11 +191,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       aria-selected={i === active}
                       onMouseEnter={() => setActive(i)}
                       onClick={r.open}
-                      className={`p-2.5 rounded-xl cursor-pointer flex items-center gap-2 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                      className={`p-3 min-h-14 rounded-lg cursor-pointer flex items-center gap-3 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
                     >
                       <Icon className={`w-4 h-4 shrink-0 ${r.tone}`} aria-hidden />
                       <span className="truncate flex-1 min-w-0">
-                        <span className="text-xs font-bold text-slate-800 block truncate">{r.title}</span>
+                        <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}>{r.title}</span>
                         {r.meta && <span className="text-[11px] text-slate-500 block truncate">{r.meta}</span>}
                       </span>
                       {r.badge && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
@@ -196,8 +208,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span>↑↓ للتنقل · Enter للفتح · Esc للإغلاق</span>
-          <span aria-live="polite">{query.trim() ? `${results.length} نتيجة` : ''}</span>
+          <span className="hidden sm:inline">↑↓ للتنقل · Enter للفتح · Esc للإغلاق</span>
+          <span aria-live="polite">{query.trim() ? `${visibleResults.length} نتيجة معروضة` : ''}</span>
         </div>
       </div>
     </div>

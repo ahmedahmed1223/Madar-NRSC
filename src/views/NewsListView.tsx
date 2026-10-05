@@ -300,13 +300,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       )}
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      <div className="py-3 border-y border-slate-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
         {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="news-list-search-input"
             type="search"
+            aria-label="البحث في الأخبار"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
@@ -375,7 +376,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             </button>
           )}
 
-          <div className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+          <div role="status" aria-live="polite" className="text-xs tabular-nums text-slate-600 px-2 py-1">
             {filteredNews.length} نتيجة
           </div>
           <ExportMenu
@@ -393,8 +394,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
       {/* Bulk Action Bar (when selected) */}
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
-        <div className="bg-slate-900 text-white px-4 py-3 rounded-xl flex items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
-          <div className="flex items-center gap-2">
+          <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold">تم تحديد {selectedIds.length} عنصر</span>
           </div>
 
@@ -485,6 +486,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500">
                     لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
+                    {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL') && (
+                      <button type="button" onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); setSelectedPriority('ALL'); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
+                        مسح البحث والفلاتر
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -587,8 +593,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <span
                               className="px-2 py-0.5 rounded-md text-[11px] font-bold border inline-flex items-center gap-1.5"
                               style={{
-                                backgroundColor: `${color}15`,
-                                color: color,
+                                backgroundColor: 'var(--color-slate-50)',
+                                color: 'var(--color-slate-800)',
                                 borderColor: `${color}30`,
                               }}
                             >
@@ -819,7 +825,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
             {/* Summary */}
             {previewNews.summary && (
-              <div className="p-4 bg-blue-50/50 border-r-4 border-blue-600 rounded-lg text-sm text-slate-700 font-medium">
+              <div className="p-4 bg-blue-50/50 rounded-lg text-sm text-blue-900 font-medium">
                 {previewNews.summary}
               </div>
             )}

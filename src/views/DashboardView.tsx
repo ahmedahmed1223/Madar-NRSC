@@ -426,9 +426,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         isSelected ? 'shadow-xs text-white' : 'bg-white hover:opacity-90'
                       }`}
                       style={{
-                        backgroundColor: isSelected ? color : `${color}10`,
-                        borderColor: isSelected ? color : `${color}35`,
-                        color: isSelected ? '#ffffff' : color,
+                          backgroundColor: isSelected ? 'var(--color-blue-600)' : 'var(--color-slate-50)',
+                          borderColor: isSelected ? 'var(--color-blue-600)' : `${color}35`,
+                          color: isSelected ? '#ffffff' : 'var(--color-slate-800)',
                       }}
                     >
                       <span
@@ -439,8 +439,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <span
                         className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold"
                         style={{
-                          backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : `${color}20`,
-                          color: isSelected ? '#ffffff' : color,
+                            backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'var(--color-slate-100)',
+                            color: isSelected ? '#ffffff' : 'var(--color-slate-800)',
                         }}
                       >
                         {countInQueue}
@@ -487,8 +487,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span
                             className="px-2 py-0.5 rounded-md text-[11px] font-bold border flex items-center gap-1.5 shrink-0"
                             style={{
-                              backgroundColor: `${catColor}15`,
-                              color: catColor,
+                                backgroundColor: 'var(--color-slate-50)',
+                                color: 'var(--color-slate-800)',
                               borderColor: `${catColor}30`,
                             }}
                           >

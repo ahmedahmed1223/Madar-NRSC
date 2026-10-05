@@ -1,4 +1,6 @@
 node_modules/
+.npm-cache/
+.impeccable-runtime/
 build/
 dist/
 coverage/

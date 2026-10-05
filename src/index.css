@@ -47,6 +47,20 @@
     text-align: right;
   }
 
+  ::selection {
+    background: var(--color-blue-100);
+    color: var(--color-slate-900);
+  }
+
+  input, textarea, [contenteditable='true'] {
+    caret-color: var(--color-blue-600);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-400) transparent;
+  }
+
   /* Unified Form Inputs, Selects, and Textareas */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
   select,
@@ -222,13 +236,17 @@ html.reduce-motion .animate-spin {
   animation: spin 1.5s linear infinite !important;
 }
 
-/* Touch screens: small links, chips and tabs get a finger-sized hit area (at least 36px). */
+/* Touch controls retain their visual size with a finger-sized hit area. */
 @media (pointer: coarse) {
   main button:not([data-compact]),
   main [role='tab'],
   main select,
   header button {
-    min-height: 36px;
+    min-height: 44px;
+  }
+  header button,
+  main button:not([data-compact]) {
+    min-width: 44px;
   }
   main a:not([data-compact]) {
     display: inline-block;

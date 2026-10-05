@@ -122,13 +122,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [statusComment, setStatusComment] = useState('');
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<NewsStatus | null>(null);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [draftStorageFailed, setDraftStorageFailed] = useState(false);
 
   // Broadcast Production State
   const [isCgModalOpen, setIsCgModalOpen] = useState(false);
   const [isAiCopilotOpen, setIsAiCopilotOpen] = useState(false);
   const [hasEmergencyDraft, setHasEmergencyDraft] = useState(false);
+  const [draftVersionChanged, setDraftVersionChanged] = useState(false);
   const [copiedPrompter, setCopiedPrompter] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [showTickerPreview, setShowTickerPreview] = useState(true);
@@ -250,13 +251,26 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     mediaIds,
     embargoUntil,
     embargoNote,
+    tagInput,
   });
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
+  const persistDraftRef = useRef<() => void>(() => {});
+  persistDraftRef.current = () => {
+    if (!loadedSnapshotRef.current || !isDirty || lockedByOther || hasEmergencyDraft) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
+      setDraftStorageFailed(false);
+      setLastSaved(new Date());
+    } catch {
+      setDraftStorageFailed(true);
+    }
+  };
 
   // Closing or reloading the tab with unsaved text asks first (the local recovery copy stays as a safety net).
   useEffect(() => {
     if (!isDirty) return;
     const warn = (e: BeforeUnloadEvent) => {
+      persistDraftRef.current();
       e.preventDefault();
       e.returnValue = '';
     };
@@ -279,39 +293,32 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       const raw = localStorage.getItem(draftKey);
       if (!raw) return;
       const draft = JSON.parse(raw);
+      if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return;
       const sameBase = !newsItem?.id || draft.baseUpdatedAt === serverUpdatedAt;
       const { savedAt: _s, baseUpdatedAt: _b, ...fields } = draft;
       if (sameBase && JSON.stringify({ ...JSON.parse(loadedSnapshotRef.current || '{}'), ...fields }) !== loadedSnapshotRef.current) {
         setHasEmergencyDraft(true);
       } else if (!sameBase) {
-        localStorage.removeItem(draftKey); // based on an older version: would overwrite newer work
+        setDraftVersionChanged(true);
+        setHasEmergencyDraft(true);
       }
     } catch {
       // ignore
     }
   };
 
-  // Local crash-recovery copy, written only while there are unsaved changes.
+  // Persist each change; a reload must not race a debounce timer.
   useEffect(() => {
-    if (!isDirty || lockedByOther) {
-      setIsAutoSaving(false);
-      return;
-    }
-    setIsAutoSaving(true);
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
-      } catch {
-        // storage full or disabled
-      }
-      setIsAutoSaving(false);
-      setLastSaved(new Date());
-    }, 1200);
-    return () => clearTimeout(timer);
+    persistDraftRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videos, keywords, isBreaking, internalNotes, storyId, mediaIds, draftKey, lockedByOther]);
+  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videos, keywords, isBreaking, internalNotes, storyId, mediaIds, embargoUntil, embargoNote, tagInput, draftKey, lockedByOther, hasEmergencyDraft, baseUpdatedAt]);
 
-  const handleRestoreEmergencyDraft = () => {
+  const handleRestoreEmergencyDraft = async () => {
+    if (draftVersionChanged && !(await confirmDialog({
+      title: 'استعادة مسودة من إصدار سابق',
+      message: 'تم تحديث الخبر بعد إنشاء هذه المسودة. استعادتها ستضع نص المسودة في المحرر؛ راجع الفروق قبل حفظ التغييرات.',
+      confirmLabel: 'استعادة للمراجعة',
+    }))) return;
     try {
       const savedDraft = localStorage.getItem(draftKey);
       if (savedDraft) {
@@ -320,8 +327,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.shortTitle !== undefined) setShortTitle(parsed.shortTitle);
         if (parsed.summary !== undefined) setSummary(parsed.summary);
         if (parsed.content !== undefined) setContent(parsed.content);
-        if (parsed.categoryId) setCategoryId(parsed.categoryId);
-        if (parsed.sourceId) setSourceId(parsed.sourceId);
+        if (parsed.categoryId !== undefined) setCategoryId(parsed.categoryId);
+        if (parsed.sourceId !== undefined) setSourceId(parsed.sourceId);
         if (parsed.priority) setPriority(parsed.priority);
         if (parsed.locationName !== undefined) setLocationName(parsed.locationName);
         if (parsed.eventDate) setEventDate(parsed.eventDate);
@@ -333,6 +340,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.internalNotes !== undefined) setInternalNotes(parsed.internalNotes);
         if (parsed.storyId !== undefined) setStoryId(parsed.storyId);
         if (Array.isArray(parsed.mediaIds)) setMediaIds(parsed.mediaIds);
+        if (parsed.embargoUntil !== undefined) setEmbargoUntil(parsed.embargoUntil);
+        if (parsed.embargoNote !== undefined) setEmbargoNote(parsed.embargoNote);
+        if (parsed.tagInput !== undefined) setTagInput(parsed.tagInput);
         setHasEmergencyDraft(false);
       }
     } catch {
@@ -382,6 +392,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       mediaIds: item.mediaIds || [],
       embargoUntil: item.embargoUntil ? toLocalInputValue(item.embargoUntil) : '',
       embargoNote: item.embargoNote || '',
+      tagInput: '',
     };
     setTitle(fields.title);
     setShortTitle(fields.shortTitle);
@@ -401,6 +412,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setMediaIds(fields.mediaIds);
     setEmbargoUntil(fields.embargoUntil);
     setEmbargoNote(fields.embargoNote);
+    setTagInput('');
     loadedSnapshotRef.current = JSON.stringify(fields);
     setBaseUpdatedAt(item.updatedAt);
   };
@@ -429,6 +441,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         mediaIds: [] as string[],
         embargoUntil: '',
         embargoNote: '',
+        tagInput: '',
       };
       setEmbargoUntil('');
       setEmbargoNote('');
@@ -624,15 +637,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         backLabel="العودة لقائمة الأخبار"
       />
 
+      {draftStorageFailed && (
+        <p role="alert" className="bg-red-50 border border-red-200 p-3 text-sm text-red-800 rounded-lg">
+          تعذر حفظ النسخة المحلية. احفظ تغييراتك قبل تحديث الصفحة أو إغلاقها.
+        </p>
+      )}
       {/* Emergency Draft Recovery Alert */}
       {hasEmergencyDraft && (
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
-              <strong className="text-xs font-bold block">تنبيه حماية البث الحي: تم العثور على مسودة أحدث محفوظة محلياً</strong>
+              <strong className="text-xs font-bold block">توجد مسودة غير محفوظة على هذا الجهاز</strong>
               <span className="text-[11px] text-amber-700">
-                يمكنك استعادة محتوى النص والملخص قبل فقدانه أو إغلاق المتصفح.
+                {draftVersionChanged ? 'تم تحديث الخبر على الخادم. المسودة محفوظة ويمكن استعادتها للمراجعة قبل الحفظ.' : 'يمكنك استعادة جميع حقول الخبر غير المحفوظة بعد تحديث الصفحة.'}
               </span>
             </div>
           </div>
@@ -647,10 +665,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setHasEmergencyDraft(false)}
+              onClick={clearDraft}
               className="px-2.5 py-1.5 text-xs text-amber-700 hover:bg-amber-100 rounded-lg"
             >
-              تجاهل
+              حذف النسخة المحلية
             </button>
           </div>
         </div>
@@ -740,12 +758,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </Badge>
               )}
               <div className="flex items-center gap-1.5 ml-2 text-[10px] text-slate-500 font-medium">
-                {isAutoSaving ? (
-                  <>
-                    <span className="w-3 h-3 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
-                    نسخة احتياطية محلية...
-                  </>
-                ) : lastSaved && isDirty ? (
+                {lastSaved && isDirty && !draftStorageFailed ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
                     تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
@@ -1054,7 +1067,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setSummary('')}
-                      className="text-[11px] text-rose-500 hover:text-rose-700"
+                      className="text-[11px] text-rose-700 hover:text-rose-800"
                       title="مسح الملخص"
                     >
                       مسح
@@ -1171,7 +1184,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setInternalNotes('')}
-                  className="text-[11px] text-rose-500 hover:text-rose-700"
+                  className="text-[11px] text-rose-700 hover:text-rose-800"
                 >
                   مسح
                 </button>

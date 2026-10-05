@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { matchesQuery } from '../shared/search';
 import {
   NewsItem,
   Story,
@@ -1966,18 +1967,14 @@ export class ApiService {
     if (!query.trim()) {
       return { news: [], programs: [], episodes: [], guests: [], tasks: [] };
     }
-    const q = query.toLowerCase().trim();
-    const has = (...values: unknown[]) =>
-      values.some((v) =>
-        Array.isArray(v) ? v.some((x) => String(x ?? '').toLowerCase().includes(q)) : String(v ?? '').toLowerCase().includes(q)
-      );
+    const has = (...values: unknown[]) => matchesQuery(query, ...values);
     const text = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
 
     const news = this.getNews().filter((n) => has(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, text(n.content)));
-    const programs = this.getPrograms().filter((p) => has(p.name, p.description));
-    const episodes = this.getEpisodes().filter((e) => has(e.title, e.description));
-    const guests = this.getGuests().filter((g) => has(g.fullName, g.organization, g.specialty));
-    const tasks = this.getTasks().filter((t) => has(t.title, t.description));
+    const programs = this.getPrograms().filter((p) => has(p.name, p.description, p.presenterName, p.producerName));
+    const episodes = this.getEpisodes().filter((e) => has(e.title, e.description, e.programName, e.episodeNumber, e.broadcastDate));
+    const guests = this.getGuests().filter((g) => has(g.fullName, g.organization, g.specialty, g.jobTitle));
+    const tasks = this.getTasks().filter((t) => has(t.title, t.description, t.assigneeName, t.assignedToName));
 
     return { news, programs, episodes, guests, tasks };
   }

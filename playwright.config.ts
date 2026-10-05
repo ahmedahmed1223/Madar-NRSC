@@ -23,7 +23,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {},
   },
-  webServer: {
+  webServer: process.env.E2E_EXTERNAL_SERVER === 'true' ? undefined : {
     command: 'node tests/e2e/server.mjs',
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,

@@ -256,6 +256,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <button
           type="button"
           onClick={handleSearchClick}
+          aria-label="البحث السريع (Ctrl + K)"
           className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />

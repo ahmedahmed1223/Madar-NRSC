@@ -234,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'المساعدة',
       items: [
         { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
-        { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-500 text-white' },
+          { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-700 text-white' },
       ],
     },
   ];
