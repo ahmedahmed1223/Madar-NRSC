@@ -3,6 +3,7 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
@@ -78,6 +79,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
   // Tasks are assigned to real accounts so the assignee is notified and can update the task.
   const assignableUsers = apiService.getUsers().filter((u) => u.isActive !== false && !u.deletedAt);
   const [status, setStatus] = useState<TaskStatus>('TODO');
+  const [saving, setSaving] = useState(false);
+  const draft = useFormDraft(`task:${currentUser.id}:${editingTask?.id || 'new'}`, isModalOpen,
+    { title, description, priority, dueDate, assigneeId, status }, value => {
+      setTitle(value.title); setDescription(value.description); setPriority(value.priority);
+      setDueDate(value.dueDate); setAssigneeId(value.assigneeId); setStatus(value.status);
+    });
 
   const TASK_TEMPLATES = [
     'تصوير تقرير ميداني VT مع المقابلات',
@@ -117,9 +124,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
+    setSaving(true);
     const assignee = assignableUsers.find((u) => u.id === assigneeId) || currentUser;
     const assignedToName = assignee.fullName;
+    try {
     const saved = await onSaveTask({
       id: editingTask?.id,
       title,
@@ -134,7 +143,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
       assigneeAvatar: assignee.avatarUrl,
       ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
     });
-    if (saved !== false) setIsModalOpen(false);
+    if (saved !== false) { draft.clearDraft(); setIsModalOpen(false); }
+    } finally { setSaving(false); }
   };
 
   const handleQuickStatusChange = (taskId: string, newStatus: TaskStatus) => {
@@ -384,8 +394,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </SortableScope>
       ) : (
         /* LIST VIEW */
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-          <table className="w-full text-right text-xs">
+        <div role="region" aria-label="قائمة المهام" tabIndex={0} className="bg-white border border-slate-200 rounded-lg overflow-x-auto shadow-2xs">
+          <table className="w-full min-w-[720px] text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                 <th className="py-3 px-4">عنوان المهمة</th>
@@ -426,7 +436,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(t)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                        aria-label={`تعديل المهمة: ${t.title}`}
+                        title={`تعديل المهمة: ${t.title}`}
+                        className="w-11 h-11 inline-flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -435,7 +447,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onDeleteTask(t.id)}
-                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                        aria-label={`حذف المهمة: ${t.title}`}
+                        title={`حذف المهمة: ${t.title}`}
+                        className="w-11 h-11 inline-flex items-center justify-center text-red-700 hover:bg-red-50 rounded"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -452,6 +466,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* Task Add / Edit Modal */}
       <FormPage
         isOpen={isModalOpen}
+        draft={draft}
         onClose={() => setIsModalOpen(false)}
         title={editingTask ? 'تعديل المهمة التحريرية' : 'إسناد وتكليف بمهمة صحفية'}
         maxWidth="md"
@@ -595,13 +610,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => void draft.close(() => setIsModalOpen(false))}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               حفظ المهمة

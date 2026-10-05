@@ -48,6 +48,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [groupFilter, setGroupFilter] = useState('');
+  const [limit, setLimit] = useState(40);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -74,16 +75,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClose();
     };
     return [
-      ...r.news.slice(0, 5).map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick(onSelectNews, n.id) })),
-      ...r.programs.slice(0, 3).map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick(onSelectProgram, p.id) })),
-      ...r.episodes.slice(0, 4).map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick(onSelectEpisode, e.id) })),
-      ...r.guests.slice(0, 3).map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick(onSelectGuest, g.id) })),
-      ...r.tasks.slice(0, 3).map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick(onSelectTask, t.id) })),
+      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick(onSelectNews, n.id) })),
+      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick(onSelectProgram, p.id) })),
+      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick(onSelectEpisode, e.id) })),
+      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick(onSelectGuest, g.id) })),
+      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick(onSelectTask, t.id) })),
     ];
   }, [query, dataVersion, onClose, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
 
-  const visibleResults = results.filter(r => !groupFilter || r.group === groupFilter);
-  useEffect(() => setActive(0), [query, dataVersion, groupFilter]);
+  const filteredResults = results.filter(r => !groupFilter || r.group === groupFilter);
+  const visibleResults = filteredResults.slice(0, limit);
+  useEffect(() => { setActive(0); setLimit(40); }, [query, dataVersion, groupFilter]);
   useEffect(() => {
     document.getElementById(`cmdk-${active}`)?.scrollIntoView({ block: 'nearest' });
   }, [active]);
@@ -207,9 +209,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </div>
 
+        {visibleResults.length < filteredResults.length && (
+          <button type="button" onClick={() => {
+            setLimit(current => current + 40);
+            inputRef.current?.focus({ preventScroll: true });
+          }} className="min-h-11 px-4 py-2 text-sm font-semibold text-blue-700 border-t border-slate-200 hover:bg-blue-50">
+            عرض المزيد من النتائج ({filteredResults.length - visibleResults.length})
+          </button>
+        )}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
           <span className="hidden sm:inline">↑↓ للتنقل · Enter للفتح · Esc للإغلاق</span>
-          <span aria-live="polite">{query.trim() ? `${visibleResults.length} نتيجة معروضة` : ''}</span>
+          <span aria-live="polite">{query.trim() ? `${visibleResults.length} من ${filteredResults.length} نتيجة` : ''}</span>
         </div>
       </div>
     </div>

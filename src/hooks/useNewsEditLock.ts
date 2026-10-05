@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
@@ -24,60 +24,62 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
   const newsId = enabled ? entityId : undefined;
   const [status, setStatus] = useState<EditLockStatus>('none');
   const [holder, setHolder] = useState<EditLock | null>(null);
-  const heldRef = useRef(false);
-  const acquiringRef = useRef(false);
-
   const me = authClient.getSession()?.user.id;
-
   const acquireRef = useRef<() => Promise<void>>(async () => undefined);
-
-  const evaluate = useCallback(() => {
-    if (!newsId || acquiringRef.current) return;
-    const lock = apiService.getEditLocks().find((l) => l.id === lockIdFor(collection, newsId));
-    if (lock && isLockActive(lock) && lock.userId !== me) {
-      heldRef.current = false;
-      setHolder(lock);
-      setStatus('locked');
-    } else if (lock && isLockActive(lock) && lock.userId === me) {
-      heldRef.current = true;
-      setHolder(null);
-      setStatus('held');
-    } else {
-      // Released or expired (possibly our own): (re)acquire so the editor stays protected.
-      void acquireRef.current();
-    }
-  }, [collection, newsId, me]);
-
-  const acquire = useCallback(async () => {
-    if (!newsId || acquiringRef.current) return;
-    acquiringRef.current = true;
-    setStatus('acquiring');
-    try {
-      const lock = await apiService.acquireEditLock(collection, newsId);
-      if (lock && lock.userId === me && isLockActive(lock)) {
-        heldRef.current = true;
-        setHolder(null);
-        setStatus('held');
-      } else {
-        heldRef.current = false;
-        setHolder(lock);
-        setStatus(lock && isLockActive(lock) ? 'locked' : 'none');
-      }
-    } catch {
-      setStatus('none');
-    } finally {
-      acquiringRef.current = false;
-    }
-  }, [collection, newsId, me]);
-  acquireRef.current = acquire;
+  const pendingRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    heldRef.current = false;
+    let held = false;
+    let acquiring = false;
+    let disposed = false;
     setHolder(null);
     if (!newsId) {
       setStatus('none');
       return;
     }
+    const acquire = () => {
+      if (disposed || acquiring) return pendingRef.current;
+      acquiring = true;
+      const previous = pendingRef.current;
+      const pending = (async () => {
+        // Serialize lifecycles so a late release cannot clear the next editor's lease.
+        await previous;
+        if (disposed) return;
+        setStatus('acquiring');
+        try {
+          const lock = await apiService.acquireEditLock(collection, newsId);
+          if (disposed) {
+            if (lock?.userId === me) {
+              apiService.releaseEditLock(collection, newsId);
+              await dataStore.settle();
+            }
+            return;
+          }
+          held = !!lock && lock.userId === me && isLockActive(lock);
+          setHolder(held ? null : lock);
+          setStatus(held ? 'held' : lock && isLockActive(lock) ? 'locked' : 'none');
+        } catch {
+          if (!disposed) setStatus('none');
+        } finally {
+          acquiring = false;
+        }
+      })();
+      pendingRef.current = pending;
+      return pending;
+    };
+    acquireRef.current = acquire;
+    const evaluate = () => {
+      if (disposed || acquiring) return;
+      const lock = apiService.getEditLocks().find(l => l.id === lockIdFor(collection, newsId));
+      if (lock && isLockActive(lock)) {
+        held = lock.userId === me;
+        setHolder(held ? null : lock);
+        setStatus(held ? 'held' : 'locked');
+      } else {
+        held = false;
+        void acquire();
+      }
+    };
     const foreign = apiService.getForeignLock(newsId, collection);
     if (foreign) {
       setHolder(foreign);
@@ -87,7 +89,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
     }
 
     const heartbeat = setInterval(() => {
-      if (heldRef.current) void acquire();
+      if (held) void acquire();
       else evaluate();
     }, HEARTBEAT_MS);
 
@@ -97,7 +99,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
 
     // Best-effort release when the tab closes; otherwise the lock simply expires.
     const onUnload = () => {
-      if (!heldRef.current) return;
+      if (!held) return;
       try {
         fetch('/api/v1/data/sync', {
           method: 'POST',
@@ -113,18 +115,19 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
     window.addEventListener('beforeunload', onUnload);
 
     return () => {
+      disposed = true;
       clearInterval(heartbeat);
       unsubscribe();
       window.removeEventListener('beforeunload', onUnload);
-      if (heldRef.current) apiService.releaseEditLock(collection, newsId);
-      heldRef.current = false;
+      if (held) apiService.releaseEditLock(collection, newsId);
+      held = false;
     };
-  }, [collection, newsId, acquire, evaluate]);
+  }, [collection, newsId, me]);
 
   return {
     status,
     holder,
     /** Editors (news.edit_any) may take a story over from a colleague. */
-    takeOver: acquire,
+    takeOver: () => acquireRef.current(),
   };
 }

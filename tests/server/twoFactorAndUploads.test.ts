@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import { request as httpRequest } from 'http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { createTestServer, loginAgent, DEMO_PASSWORD } from '../helpers';
+import { createTestServer, loginAgent, listen, DEMO_PASSWORD } from '../helpers';
 import { base32Decode, base32Encode, hotp, totp, totpCounter, verifyTotp } from '../../src/server/totp';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
@@ -127,20 +128,49 @@ describe('media uploads', () => {
     expect((await editor.get(url)).status).toBe(404);
   });
 
-  it('rejects script-capable types, oversized files and users without upload rights', async () => {
+  it('rejects script-capable types', async () => {
     const editor = await loginAgent(server.app, 'editor@akhbar.tv');
     const svg = await editor.post('/api/v1/media/upload').set(H).set('Content-Type', 'image/svg+xml').send(Buffer.from('<svg onload="alert(1)"/>'));
     expect(svg.status).toBe(415);
+  });
 
+  it('rejects oversized files with an HTTP response and no partial file', async () => {
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
     const big = await editor.post('/api/v1/media/upload').set(H).set('Content-Type', 'video/mp4').send(Buffer.alloc(1024 * 1024 + 10));
     expect(big.status).toBe(413);
     const leftovers = fs.readdirSync(path.join(server.dir, 'uploads')).filter((f) => f.endsWith('.part'));
     expect(leftovers).toEqual([]);
+  });
 
-    const viewer = await loginAgent(server.app, 'trainee@akhbar.tv').catch(() => null);
-    if (viewer) {
-      const res = await viewer.post('/api/v1/media/upload').set(H).set('Content-Type', 'image/png').send(png);
-      expect(res.status).toBe(403);
+  it('rejects users without upload rights', async () => {
+    const viewer = await loginAgent(server.app, 'trainee@akhbar.tv');
+    const res = await viewer.post('/api/v1/media/upload').set(H).set('Content-Type', 'image/png').send(png);
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects oversized chunked uploads without resetting the connection or leaving partial files', async () => {
+    const login = await request(server.app).post('/api/v1/auth/login').set(H)
+      .send({ email: 'editor@akhbar.tv', password: DEMO_PASSWORD });
+    expect(login.status).toBe(200);
+    const cookie = login.headers['set-cookie'][0].split(';')[0];
+    const running = await listen(server.app);
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpRequest(`${running.baseUrl}/api/v1/media/upload`, {
+          method: 'POST', headers: { ...H, Cookie: cookie, 'Content-Type': 'video/mp4' },
+        }, res => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode!));
+          res.on('error', reject);
+        });
+        req.on('error', reject);
+        req.write(Buffer.alloc(1024 * 1024));
+        req.end(Buffer.alloc(10));
+      });
+      expect(status).toBe(413);
+      await expect.poll(() => fs.readdirSync(path.join(server.dir, 'uploads')).filter(f => f.endsWith('.part'))).toEqual([]);
+    } finally {
+      await running.close();
     }
   });
 

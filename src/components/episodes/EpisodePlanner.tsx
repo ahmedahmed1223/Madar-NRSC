@@ -1,5 +1,4 @@
 import { confirmDialog } from '../../services/dialogs';
-import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
 import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
@@ -23,6 +22,9 @@ import {
   TALK_SEGMENT_TYPES,
 } from '../../shared/episodePlan';
 import { FormPage } from '../common/FormPage';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { DraftStatus } from '../common/DraftStatus';
+import { matchesQuery } from '../../shared/search';
 import { SegmentModal } from '../rundown/SegmentModal';
 import { DropEvent, moveInArray, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
 import { notify } from '../../services/notify';
@@ -36,7 +38,7 @@ interface EpisodePlannerProps {
   currentUser: User;
   canEditEpisode: boolean;
   canEditRundown: boolean;
-  onSaveEpisode: (data: Partial<Episode>) => void;
+  onSaveEpisode: (data: Partial<Episode>) => boolean | Promise<boolean>;
   onUpdateRundown: (segments: RundownSegment[]) => void;
   onOpenNews?: (id: string) => void;
 }
@@ -97,10 +99,22 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const [briefOpen, setBriefOpen] = useState(!episode.brief?.idea);
   const [brief, setBrief] = useState<EpisodeBrief>(episode.brief || {});
   const briefDirty = JSON.stringify(brief) !== JSON.stringify(episode.brief || {});
+  const briefDraft = useFormDraft(`episode-brief:${currentUser.id}:${episode.id}`, canEditEpisode, brief, setBrief);
+  const [savingBrief, setSavingBrief] = useState(false);
+  const saveBrief = async () => {
+    if (savingBrief) return;
+    setSavingBrief(true);
+    try {
+      if (await onSaveEpisode({ id: episode.id, brief })) briefDraft.clearDraft();
+    } finally { setSavingBrief(false); }
+  };
 
   // Topic form
   const [topicForm, setTopicForm] = useState<(EpisodeTopic & { minutes: string }) | null>(null);
   const [newsFilter, setNewsFilter] = useState('');
+  const [topicDraftId, setTopicDraftId] = useState('new');
+  const topicDraft = useFormDraft(`episode-topic:${currentUser.id}:${episode.id}:${topicDraftId}`,
+    !!topicForm, topicForm, setTopicForm);
 
   // Segment form
   const [segmentForm, setSegmentForm] = useState<{ segment: RundownSegment | null; topicId?: string; type?: RundownSegmentType } | null>(null);
@@ -116,12 +130,11 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     const { minutes, ...t } = topicForm;
     const topic: EpisodeTopic = { ...t, title: t.title.trim(), targetSeconds: minutes ? mmToSec(minutes) : undefined };
     const exists = topics.some((x) => x.id === topic.id);
-    saveTopics(exists ? topics.map((x) => (x.id === topic.id ? topic : x)) : [...topics, topic]);
     // Close only once the server has stored the episode; the form keeps its input otherwise.
     setSavingTopic(true);
-    const ok = await confirmSaved('episodes', episode.id, exists ? 'حُفظ المحور' : `أُضيف المحور «${topic.title}»`);
+    const ok = await saveTopics(exists ? topics.map((x) => (x.id === topic.id ? topic : x)) : [...topics, topic]);
     setSavingTopic(false);
-    if (ok) setTopicForm(null);
+    if (ok) { topicDraft.clearDraft(); setTopicForm(null); }
   };
 
   /**
@@ -318,8 +331,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   };
 
   const newsOptions = allNews
-    .filter((n) => !n.deletedAt && (!newsFilter.trim() || n.title.includes(newsFilter.trim())))
-    .slice(0, 30);
+    .filter((n) => !n.deletedAt && matchesQuery(newsFilter, n.title, n.summary, n.keywords || []));
 
   return (
     <div className="space-y-4" data-testid="episode-planner">
@@ -355,6 +367,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
 
       {/* Brief */}
       <section className="bg-white rounded-2xl border border-slate-200 p-4" aria-label="ملخص الحلقة">
+        <DraftStatus draft={briefDraft} />
         <button type="button" onClick={() => setBriefOpen((v) => !v)} aria-expanded={briefOpen} className="w-full flex items-center justify-between gap-2 text-right">
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
             <Lightbulb className="w-4 h-4 text-amber-500" /> ملخص الحلقة (الفكرة والزاوية والرسالة)
@@ -372,7 +385,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 <textarea
                   id={`brief-${f.key}`}
                   rows={f.rows}
-                  readOnly={!canEditEpisode}
+                  readOnly={!canEditEpisode || savingBrief}
                   value={brief[f.key] || ''}
                   placeholder={f.placeholder}
                   onChange={(e) => setBrief({ ...brief, [f.key]: e.target.value })}
@@ -384,8 +397,8 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               <div className="md:col-span-2 flex justify-end">
                 <button
                   type="button"
-                  disabled={!briefDirty}
-                  onClick={() => onSaveEpisode({ id: episode.id, brief })}
+                  disabled={!briefDirty || savingBrief}
+                  onClick={saveBrief}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50"
                 >
                   حفظ الملخص
@@ -404,7 +417,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
         {canEditEpisode && (
           <button
             type="button"
-            onClick={() => setTopicForm({ id: newId('topic'), title: '', minutes: '' })}
+            onClick={() => { setTopicDraftId('new'); setTopicForm({ id: newId('topic'), title: '', minutes: '' }); }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold"
           >
             <Plus className="w-4 h-4" /> محور جديد
@@ -479,7 +492,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                   <>
                     <button
                       type="button"
-                      onClick={() => setTopicForm({ ...topic, minutes: topic.targetSeconds ? String(Math.round(topic.targetSeconds / 6) / 10) : '' })}
+                      onClick={() => { setTopicDraftId(topic.id); setTopicForm({ ...topic, minutes: topic.targetSeconds ? String(Math.round(topic.targetSeconds / 6) / 10) : '' }); }}
                       aria-label={`تعديل المحور ${topic.title}`}
                       className="p-1.5 text-blue-600 hover:bg-white rounded-lg"
                     >
@@ -529,7 +542,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
       </SortableScope>
 
       {/* Topic form */}
-      <FormPage isOpen={!!topicForm} onClose={() => setTopicForm(null)} title={topicForm && topics.some((t) => t.id === topicForm.id) ? 'تعديل المحور' : 'محور جديد'} maxWidth="lg">
+      <FormPage draft={topicDraft} isOpen={!!topicForm} onClose={() => setTopicForm(null)} title={topicForm && topics.some((t) => t.id === topicForm.id) ? 'تعديل المحور' : 'محور جديد'} maxWidth="lg">
         {topicForm && (
           <form onSubmit={submitTopic} className="space-y-3">
             <div>
@@ -572,7 +585,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               </div>
             </fieldset>
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button type="button" onClick={() => setTopicForm(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
+              <button type="button" onClick={() => void topicDraft.close(() => setTopicForm(null))} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
                 إلغاء
               </button>
               <button type="submit" disabled={savingTopic} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl">

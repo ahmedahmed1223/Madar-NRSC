@@ -21,7 +21,7 @@ test('a story carries several ordered clips, including where to find a clip that
   await clips.getByRole('button', { name: 'تقديم المقطع 2' }).click();
   await expect(clips.getByLabel('اسم المقطع 1')).toHaveValue('لقطات الافتتاح');
 
-  await page.getByRole('button', { name: 'حفظ التغييرات' }).click();
+  await page.getByRole('button', { name: 'حفظ وإغلاق', exact: true }).click();
   await expect(page).toHaveURL(/\/news$/);
 
   // Reopen: order and texts are kept; the preview tells production where each clip is.

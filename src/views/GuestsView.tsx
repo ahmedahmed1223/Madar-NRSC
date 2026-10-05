@@ -2,6 +2,7 @@ import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
@@ -28,7 +29,7 @@ import { Modal } from '../components/common/Modal';
 interface GuestsViewProps {
   guests: Guest[];
   currentUser: User;
-  onSaveGuest: (guest: Partial<Guest>) => void;
+  onSaveGuest: (guest: Partial<Guest>) => boolean | Promise<boolean>;
   onDeleteGuest?: (guestId: string) => void;
 }
 
@@ -53,6 +54,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const draft = useFormDraft(`guest:${currentUser.id}:${editingGuest?.id || 'new'}`, isModalOpen,
+    { fullName, organization, jobTitle, specialty, phone, email, notes, avatarUrl }, value => {
+      setFullName(value.fullName); setOrganization(value.organization); setJobTitle(value.jobTitle);
+      setSpecialty(value.specialty); setPhone(value.phone); setEmail(value.email);
+      setNotes(value.notes); setAvatarUrl(value.avatarUrl);
+    });
 
   const SPECIALTY_PRESETS = [
     'علاقات دولية ودبلوماسية',
@@ -101,9 +109,12 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveGuest({
+    if (saving) return;
+    setSaving(true);
+    try {
+    const saved = await onSaveGuest({
       id: editingGuest?.id,
       fullName,
       organization,
@@ -114,7 +125,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       notes,
       avatarUrl: avatarUrl || '/avatar.svg',
     });
-    setIsModalOpen(false);
+    if (saved) { draft.clearDraft(); setIsModalOpen(false); }
+    } finally { setSaving(false); }
   };
 
   const filteredGuests = guests.filter((g) => {
@@ -281,6 +293,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       {/* Add/Edit Modal */}
       <FormPage
         isOpen={isModalOpen}
+        draft={draft}
         onClose={() => setIsModalOpen(false)}
         title={editingGuest ? 'تعديل بيانات الضيف' : 'إضافة ضيف جديد للأرشيف'}
         maxWidth="md"
@@ -452,13 +465,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => void draft.close(() => setIsModalOpen(false))}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               حفظ في الأرشيف

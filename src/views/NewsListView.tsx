@@ -2,7 +2,7 @@ import { NewsVideosList } from '../components/news/NewsVideosEditor';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { notify } from '../services/notify';
-import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
+import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -247,14 +247,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <Archive className="w-4 h-4" />
             الأرشيف القديم
           </button>
-          <button
+          {can('news.create') && <button
             type="button"
             onClick={onCreateNews}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
           >
             <Plus className="w-4 h-4" />
             إنشاء خبر جديد
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -664,9 +664,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             type="button"
                             onClick={() => onEditNews(item.id)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
-                            title={lock ? `يحرره الآن ${lock.userName} (فتح للقراءة)` : 'تحرير الخبر'}
+                            title={lock ? `يحرره الآن ${lock.userName} (فتح للقراءة)` : canEditNewsContent(can, currentUser.id, item) ? 'تحرير الخبر' : 'فتح الخبر للقراءة'}
                           >
-                            <Edit2 className="w-4 h-4" />
+                            {canEditNewsContent(can, currentUser.id, item) && !lock ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
 
                           {/* Workflow actions offered only when the server will accept them */}

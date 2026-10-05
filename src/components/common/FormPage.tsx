@@ -1,6 +1,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight } from 'lucide-react';
+import { DraftStatus } from './DraftStatus';
+import type { FormDraftStatus } from '../../hooks/useFormDraft';
+import { confirmDialog } from '../../services/dialogs';
 
 interface FormPageProps {
   isOpen: boolean;
@@ -11,6 +14,7 @@ interface FormPageProps {
   /** Accepted for drop-in compatibility with Modal; pages size themselves. */
   maxWidth?: string;
   size?: string;
+  draft?: FormDraftStatus;
 }
 
 export const FORM_PAGE_ROOT_ID = 'form-page-root';
@@ -34,10 +38,18 @@ const WIDTHS: Record<string, string> = {
  * Create/edit form shown as its own page inside the app shell (the current screen is hidden
  * while it is open). Browser Back closes it, and the screen underneath keeps its scroll position.
  */
-export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subtitle, children, maxWidth, size }) => {
+export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subtitle, children, maxWidth, size, draft }) => {
   const [root, setRoot] = useState<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const onCloseRef = useRef<() => boolean | Promise<boolean>>(() => true);
+  const requestClose = async () => {
+    if (draft?.dirty && draft.error && !(await confirmDialog({
+      title: 'تغييرات غير محفوظة', message: 'تعذر حفظ نسخة الاستعادة. المغادرة ستفقد التغييرات.',
+      confirmLabel: 'مغادرة دون حفظ', cancelLabel: 'البقاء', danger: true,
+    }))) return false;
+    onClose();
+    return true;
+  };
+  onCloseRef.current = requestClose;
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -63,9 +75,13 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     } catch {
       // history unavailable (sandboxed frame): the back button still works
     }
-    const onPop = () => {
+    const onPop = async () => {
       closedByHistory = true;
-      onCloseRef.current();
+      const closed = await onCloseRef.current();
+      if (closed === false) {
+        closedByHistory = false;
+        history.pushState({ ...(history.state || {}), nrcsFormPage: id }, '');
+      }
     };
     window.addEventListener('popstate', onPop);
 
@@ -108,7 +124,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-2xs">
         <button
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors shrink-0"
         >
           <ArrowRight className="w-4 h-4" />
@@ -120,6 +136,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
         </div>
       </div>
       <div ref={bodyRef} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xs">
+        {draft && <DraftStatus draft={draft} />}
         {children}
       </div>
     </section>

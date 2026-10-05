@@ -19,7 +19,7 @@ test('unified search works with the keyboard only', async ({ browser }) => {
   const box = page.getByRole('combobox', { name: /بحث في الأخبار/ });
   await expect(box).toBeFocused();
   await box.fill('القمة');
-  await expect(page.getByRole('option').first()).toBeVisible();
+  await expect(page.getByRole('listbox').getByRole('option').first()).toBeVisible();
   await expect(page.getByRole('listbox')).not.toContainText('PUBLISHED');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');

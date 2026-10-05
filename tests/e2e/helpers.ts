@@ -18,10 +18,32 @@ export async function signIn(browser: Browser, email: string, opts: { viewport?:
   await page.fill('#login-password', DEMO_PASSWORD);
   await page.click('button[type=submit]');
   await expect(page.locator('main')).toBeVisible();
-  return { page, errors, close: () => context.close() };
+  return { page, errors, close: async () => {
+    await leaveEditors(page);
+    await context.close();
+  } };
+}
+
+/** Let the normal UI unmount and confirm lock release before destroying the browser context. */
+export async function leaveEditors(page: Page) {
+  const me = await (await page.request.get('/api/v1/auth/me')).json();
+  const dialogs = page.locator('[role="dialog"], [role="alertdialog"]');
+  if (await dialogs.count()) {
+    await page.keyboard.press('Escape');
+    await expect(dialogs).toHaveCount(0);
+  }
+  await openNav(page, 'الرئيسية');
+  await expect.poll(async () => {
+    const data = await (await page.request.get('/api/v1/data')).json();
+    return (data.collections?.editLocks || []).filter((row: any) =>
+      row.d.userId === me.user.id && Date.parse(row.d.expiresAt) > Date.now()).map((row: any) => row.id);
+  }).toEqual([]);
 }
 
 /** Opens a screen from the sidebar by its label. */
 export async function openNav(page: Page, label: string) {
+  if (await page.locator('aside').getAttribute('aria-hidden') === 'true') {
+    await page.getByRole('button', { name: 'فتح القائمة الرئيسية', exact: true }).click();
+  }
   await page.locator('aside nav button', { hasText: label }).first().click();
 }

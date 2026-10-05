@@ -189,18 +189,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     .getNews()
     .filter((n) => PULLABLE.includes(n.status) && !(n as any).deletedAt)
     .filter((n) => matchesQuery(query, n.title, n.shortTitle, n.summary, n.keywords || []))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 40);
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const wires = apiService
     .getWires()
     .filter((w) => matchesQuery(query, w.title, w.summary, w.sourceName))
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-    .slice(0, 40);
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
   const others = apiService
     .getBulletins()
     .filter((b) => b.id !== bulletin.id)
-    .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`))
-    .slice(0, 20);
+    .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`));
   const copyStories = copyFrom ? apiService.getBulletinStories(copyFrom).filter((s) => !s.killed) : [];
   const inBulletin = new Set(all.map((s) => s.newsId).filter(Boolean));
 

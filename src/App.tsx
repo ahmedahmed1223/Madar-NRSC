@@ -459,9 +459,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- PROGRAMS & EPISODES ACTIONS ---
-  const handleSaveProgram = (progData: Partial<Program>) => {
-    if (!attempt('حفظ البرنامج', () => apiService.saveProgram(progData, currentUser))) return;
+  const handleSaveProgram = async (progData: Partial<Program>): Promise<boolean> => {
+    let saved: Program | null = null;
+    if (!attempt('حفظ البرنامج', () => (saved = apiService.saveProgram(progData, currentUser)))) return false;
     refreshData();
+    return confirmSaved('programs', saved!.id, 'حُفظ البرنامج');
   };
 
   const handleDeleteProgram = (programId: string) => {
@@ -482,9 +484,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     setActiveNav('episodes');
   };
 
-  const handleSaveEpisode = (epData: Partial<Episode>) => {
-    if (!attempt('حفظ الحلقة', () => apiService.saveEpisode(epData, currentUser))) return;
+  const handleSaveEpisode = async (epData: Partial<Episode>): Promise<boolean> => {
+    let saved: Episode | null = null;
+    if (!attempt('حفظ الحلقة', () => (saved = apiService.saveEpisode(epData, currentUser)))) return false;
     refreshData();
+    return confirmSaved('episodes', saved!.id, 'حُفظت الحلقة');
   };
 
   const handleDeleteEpisode = (episodeId: string) => {
@@ -515,9 +519,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- GUESTS ACTIONS ---
-  const handleSaveGuest = (guestData: Partial<Guest>) => {
-    if (!attempt('حفظ الضيف', () => apiService.saveGuest(guestData, currentUser))) return;
+  const handleSaveGuest = async (guestData: Partial<Guest>): Promise<boolean> => {
+    let saved: Guest | null = null;
+    if (!attempt('حفظ الضيف', () => (saved = apiService.saveGuest(guestData, currentUser)))) return false;
     refreshData();
+    return confirmSaved('guests', saved!.id, 'حُفظ الضيف');
   };
 
   const handleDeleteGuest = (guestId: string) => {

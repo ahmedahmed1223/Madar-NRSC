@@ -22,6 +22,8 @@ import { EpisodeQuestionsPanel } from '../components/episodes/EpisodeQuestionsPa
 import { episodeGuestList } from '../shared/episodePlan';
 import { Episode, RundownSegment, Guest, NewsItem, User, EpisodeStatus } from '../types';
 import { useEditLock } from '../hooks/useNewsEditLock';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { DraftStatus } from '../components/common/DraftStatus';
 import { RundownTable } from '../components/rundown/RundownTable';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -33,7 +35,7 @@ interface EpisodeWorkspaceViewProps {
   allNews: NewsItem[];
   currentUser: User;
   onUpdateRundown: (segments: RundownSegment[]) => void;
-  onSaveEpisode: (episodeData: Partial<Episode>) => void;
+  onSaveEpisode: (episodeData: Partial<Episode>) => boolean | Promise<boolean>;
   onBack: () => void;
   onOpenNews?: (id: string) => void;
 }
@@ -66,10 +68,18 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   // Script state (follows the server copy unless the user has unsaved edits)
   const [introScript, setIntroScript] = useState(episode.introScript || '');
   const loadedScriptRef = useRef(episode.introScript || '');
+  const scriptDraft = useFormDraft(`episode-script:${currentUser.id}:${episode.id}`, mayEditEpisode, introScript, setIntroScript);
+  const [undoScript, setUndoScript] = useState<string | null>(null);
+  const changeScript = (next: string) => {
+    setUndoScript(introScript);
+    setIntroScript(next);
+  };
   useEffect(() => {
     const incoming = episode.introScript || '';
-    if (introScript === loadedScriptRef.current) setIntroScript(incoming);
-    loadedScriptRef.current = incoming;
+    if (incoming !== loadedScriptRef.current && introScript === loadedScriptRef.current) {
+      setIntroScript(incoming);
+      loadedScriptRef.current = incoming;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode.introScript]);
   const [copiedScript, setCopiedScript] = useState(false);
@@ -126,9 +136,17 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     onSaveEpisode({ id: episode.id, status: newStatus });
   };
 
-  const handleSaveIntroScript = () => {
-    onSaveEpisode({ id: episode.id, introScript });
-    loadedScriptRef.current = introScript;
+  const [savingScript, setSavingScript] = useState(false);
+  const handleSaveIntroScript = async () => {
+    if (savingScript) return;
+    const savedText = introScript;
+    setSavingScript(true);
+    try {
+      if (await onSaveEpisode({ id: episode.id, introScript: savedText })) {
+        loadedScriptRef.current = savedText;
+        scriptDraft.clearDraft();
+      }
+    } finally { setSavingScript(false); }
   };
 
   return (
@@ -490,7 +508,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               {introScript && (
                 <button
                   type="button"
-                  onClick={() => setIntroScript('')}
+                  disabled={!canEditEpisode || savingScript}
+                  onClick={() => changeScript('')}
                   className="flex items-center gap-1 px-3 py-2 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-xl text-xs font-bold transition-all"
                   title="مسح النص"
                 >
@@ -502,6 +521,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveIntroScript}
+                disabled={savingScript}
                 className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
               >
                 <Save className="w-4 h-4" />
@@ -510,6 +530,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               )}
             </div>
           </div>
+
+          <DraftStatus draft={scriptDraft} />
+          {canEditEpisode && undoScript !== null && (
+            <button type="button" disabled={savingScript} onClick={() => { setIntroScript(undoScript); setUndoScript(null); }}
+              className="min-h-11 px-3 text-sm text-blue-700 font-semibold">
+              تراجع عن تعديل النص
+            </button>
+          )}
 
           {/* Quick Script Presets */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -531,7 +559,9 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <button
                 key={preset.label}
                 type="button"
-                onClick={() => setIntroScript(preset.text)}
+                disabled={!canEditEpisode || savingScript}
+                onClick={() => changeScript(introScript ? `${introScript}\n\n${preset.text}` : preset.text)}
+                title={`إضافة ${preset.label} إلى النص`}
                 className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
               >
                 +{preset.label}
@@ -546,6 +576,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             label="نص مقدمة الحلقة للمذيع"
             rows={10}
             value={introScript}
+            readOnly={!canEditEpisode || savingScript}
             onChange={(e) => setIntroScript(e.target.value)}
             placeholder="أهلاً بكم مشاهدينا الكرام في حلقة جديدة ومباشرة من برنامج..."
             className="p-4 bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

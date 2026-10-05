@@ -36,6 +36,26 @@ export function uploadsDir(dataDir: string) {
   return path.join(dataDir, 'uploads');
 }
 
+function rejectUpload(req: Request, error: UploadError): Promise<never> {
+  if (req.complete || req.destroyed) return Promise.reject(error);
+  return new Promise((_, reject) => {
+    // Finish draining before the response closes; otherwise an in-flight body can reset the socket.
+    const finish = () => {
+      clearTimeout(timeout);
+      req.off('end', finish);
+      req.off('aborted', finish);
+      req.off('error', finish);
+      reject(error);
+    };
+    const timeout = setTimeout(finish, 5000);
+    timeout.unref();
+    req.once('end', finish);
+    req.once('aborted', finish);
+    req.once('error', finish);
+    req.resume();
+  });
+}
+
 /**
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
@@ -43,11 +63,13 @@ export function uploadsDir(dataDir: string) {
 export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string): Promise<UploadRecord> {
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = ALLOWED_UPLOAD_TYPES[mimeType];
-  if (!ext) return Promise.reject(new UploadError(415, 'نوع الملف غير مدعوم'));
+  if (!ext) {
+    return rejectUpload(req, new UploadError(415, 'نوع الملف غير مدعوم'));
+  }
 
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    return Promise.reject(new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
+    return rejectUpload(req, new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
   }
 
   let originalName = 'file';
@@ -77,8 +99,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
       out.destroy();
       fs.rm(tempPath, { force: true }, () => undefined);
       // Drain the rest of the body so the client receives the error response.
-      req.resume();
-      reject(err);
+      void rejectUpload(req, err).catch(reject);
     };
 
     req.on('data', (chunk: Buffer) => {
@@ -87,6 +108,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
     });
     req.on('aborted', () => fail(new UploadError(400, 'انقطع رفع الملف')));
     out.on('error', (err) => {
+      if (failed) return;
       logger.error('upload write failed', { error: String(err) });
       fail(new UploadError(500, 'تعذر حفظ الملف'));
     });

@@ -230,14 +230,14 @@ export const Topbar: React.FC<TopbarProps> = ({
           role="status"
         >
           <span className={`w-2 h-2 rounded-full ${!syncStatus.online ? 'bg-red-500' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-          {!syncStatus.online ? 'غير متصل' : syncStatus.pending > 0 ? `جارٍ الحفظ (${syncStatus.pending})` : 'متصل ومحفوظ'}
+          {!syncStatus.online ? 'غير متصل' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
         </div>
 
         {/* Compact sync indicator for narrower screens */}
         <span
           role="status"
-          title={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? `جارٍ الحفظ (${syncStatus.pending})` : 'متصل ومحفوظ'}
-          aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ الحفظ' : 'متصل ومحفوظ'}
+          title={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
+          aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ المزامنة' : 'متصل بالخادم'}
           className={`xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
         />
 

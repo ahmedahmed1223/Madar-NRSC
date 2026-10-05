@@ -4,6 +4,7 @@ import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { studioConflictsFor } from '../shared/schedule';
 import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
@@ -55,7 +56,7 @@ interface EpisodesViewProps {
   programs: Program[];
   currentUser: User;
   onSelectEpisode: (episodeId: string) => void;
-  onSaveEpisode: (episode: Partial<Episode>) => void;
+  onSaveEpisode: (episode: Partial<Episode>) => boolean | Promise<boolean>;
   filterProgramId?: string | null;
   onDeleteEpisode?: (episodeId: string) => void;
 }
@@ -112,6 +113,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   // How the new episode's structure starts: the program template, a copy of an earlier episode, or blank.
   const [startMode, setStartMode] = useState<'TEMPLATE' | 'COPY' | 'BLANK'>('BLANK');
   const [copyFromId, setCopyFromId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const draft = useFormDraft(`episode:${currentUser.id}:new`, isAddModalOpen,
+    { programId, title, episodeNumber, seasonNumber, broadcastDate, startTime, durationMinutes,
+      presenterName, producerName, studioName, description, startMode, copyFromId }, value => {
+      setProgramId(value.programId); setTitle(value.title); setEpisodeNumber(value.episodeNumber);
+      setSeasonNumber(value.seasonNumber); setBroadcastDate(value.broadcastDate); setStartTime(value.startTime);
+      setDurationMinutes(value.durationMinutes); setPresenterName(value.presenterName);
+      setProducerName(value.producerName); setStudioName(value.studioName); setDescription(value.description);
+      setStartMode(value.startMode); setCopyFromId(value.copyFromId);
+    });
   const programTemplate = programs.find((p) => p.id === programId)?.template;
   const previousEpisodes = episodes
     .filter((e) => e.programId === programId && (e.rundown || []).length > 0)
@@ -208,7 +219,10 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
         : null;
     const structure = source ? structureFromTemplate(source, id, newId, presenterName || selProg?.presenterName) : { topics: [], rundown: [] };
 
-    onSaveEpisode({
+    if (saving) return;
+    setSaving(true);
+    try {
+    const saved = await onSaveEpisode({
       id,
       programId,
       programName: selProg?.name || '',
@@ -228,7 +242,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       rundown: structure.rundown,
     });
 
-    setIsAddModalOpen(false);
+    if (saved) { draft.clearDraft(); setIsAddModalOpen(false); }
+    } finally { setSaving(false); }
   };
 
   const [sort, toggleSort] = usePersistentSort<EpisodeSortKey>('nrcs_sort_episodes', { key: 'date', dir: 'desc' }, EPISODE_SORT_KEYS);
@@ -480,6 +495,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       {/* Add Episode Modal */}
       <FormPage
         isOpen={isAddModalOpen}
+        draft={draft}
         onClose={() => setIsAddModalOpen(false)}
         title="إعداد وتجهيز حلقة جديدة"
         subtitle="إنشاء حلقة جديدة وتجهيز جدول الرانداون والضيوف"
@@ -674,13 +690,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsAddModalOpen(false)}
+              onClick={() => void draft.close(() => setIsAddModalOpen(false))}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               بدء إعداد الحلقة

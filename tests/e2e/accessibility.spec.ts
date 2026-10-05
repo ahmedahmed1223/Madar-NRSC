@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createRequire } from 'module';
 import fs from 'fs';
-import { DEMO_PASSWORD } from './helpers';
+import { DEMO_PASSWORD, leaveEditors } from './helpers';
 
 /**
  * WCAG 2.x A/AA checks (axe-core) on every main screen, by day, by night and on a phone.
@@ -37,7 +37,9 @@ async function audit(browser: Browser, opts: { colorScheme: 'light' | 'dark'; wi
     await expect(page.locator('main')).toBeVisible();
     await page.waitForTimeout(400);
     found.push(...(await violations(page)).map((v: string) => `/${screen} → ${v}`));
+    await leaveEditors(page);
   }
+  await leaveEditors(page);
   await context.close();
   return found;
 }

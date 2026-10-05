@@ -540,7 +540,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   const handleSaveDraft = () => {
-    saveContent(false);
+    saveContent(true);
   };
 
   /** Title/body problem that blocks sending this story onwards (drafts may stay incomplete). */
@@ -787,12 +787,19 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               type="button"
               onClick={handleSaveDraft}
               disabled={lock.status === 'acquiring'}
-              title="حفظ (Ctrl+S للحفظ مع البقاء في المحرر)"
+              title="حفظ (Ctrl+S)"
               aria-keyshortcuts="Control+S"
               className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               {newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
+            </button>
+          )}
+
+          {canEditContent && (
+            <button type="button" onClick={() => saveContent(false)} disabled={lock.status === 'acquiring'}
+              className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
+              <Save className="w-4 h-4" /> حفظ وإغلاق
             </button>
           )}
 

@@ -2,7 +2,7 @@ import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Radio, Square } from 'lucide-react';
 import type { Episode, User } from '../types';
 import { apiService } from '../services/api';
@@ -49,19 +49,16 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const episodes = apiService.getAirShows().filter((e) => !e.deletedAt);
   const states = apiService.getOnAirStates();
   const liveIds = states.filter((s) => s.status === 'LIVE').map((s) => s.episodeId);
-  const candidates = useMemo(
-    () =>
-      episodes
+  const candidates = episodes
         .filter(
           (e) =>
             liveIds.includes(e.id) ||
             (e.status !== 'BROADCASTED' && (e.broadcastDate >= today || e.status === 'READY_FOR_BROADCAST' || e.status === 'ON_AIR'))
         )
-        .sort((a, b) => Number(liveIds.includes(b.id)) - Number(liveIds.includes(a.id)) || `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [episodes.length, liveIds.join(','), today]
-  );
-  const [episodeId, setEpisodeId] = useState<string>(() => initialShowId || liveIds[0] || candidates[0]?.id || '');
+        .sort((a, b) => Number(liveIds.includes(b.id)) - Number(liveIds.includes(a.id)) ||
+          Number(a.broadcastDate < today) - Number(b.broadcastDate < today) ||
+          `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`));
+  const [episodeId, setEpisodeId] = useState<string>(() => initialShowId || liveIds[0] || candidates.find(e => e.broadcastDate >= today)?.id || '');
   const [error, setError] = useState<string | null>(null);
   const [cueText, setCueText] = useState('');
   const [cueTargets, setCueTargets] = useState<string[]>([]);
@@ -70,6 +67,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const state = episode ? apiService.getOnAir(episode.id) : null;
   const rundown = (episode?.rundown || []).filter((s) => s && s.id);
   const live = state?.status === 'LIVE';
+  const pastShow = !!episode && episode.broadcastDate < today && !live;
   const timing = liveTiming(state, episode);
   const isBulletin = (episode as any)?.kind === 'bulletin';
   // A bulletin is ready when every story on air is approved; an episode when every department delivered.
@@ -120,6 +118,11 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
 
   const start = async () => {
     if (!episode || !rundown.length) return;
+    if (pastShow && !(await confirmDialog({
+      title: 'حلقة أو نشرة من موعد سابق',
+      message: `موعد «${episode.title}» هو ${arabicDate(episode.broadcastDate)}. هل تريد بث هذا المحتوى السابق؟`,
+      confirmLabel: 'بث المحتوى السابق', cancelLabel: 'إلغاء', danger: true,
+    }))) return;
     if (readiness && !readiness.ready && !(await confirmDialog(isBulletin ? `${readiness.blockers.length} قصة غير معتمدة في النشرة. بدء البث رغم ذلك؟` : `الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
@@ -146,7 +149,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
         </div>
         <div className="flex flex-wrap gap-2">
           <select value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-xs">
-            {candidates.length === 0 && <option value="">لا توجد حلقات قادمة</option>}
+            <option value="">{candidates.length ? 'اختر الحلقة أو النشرة' : 'لا توجد حلقات قادمة'}</option>
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>
                 {liveIds.includes(e.id) ? '● على الهواء — ' : ''}
@@ -164,6 +167,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       </div>
 
       {error && <p className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{error}</p>}
+      {pastShow && <p role="alert" className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">تم اختيار محتوى من موعد سابق: {arabicDate(episode!.broadcastDate)}. راجع الحلقة أو النشرة قبل بدء البث.</p>}
 
       {!episode ? (
         <p className="text-center text-xs text-slate-500 py-10 bg-white border border-dashed border-slate-300 rounded-2xl">اختر حلقة لمتابعتها على الهواء.</p>

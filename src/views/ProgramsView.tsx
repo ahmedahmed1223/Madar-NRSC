@@ -1,6 +1,7 @@
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
 import {
@@ -30,7 +31,7 @@ interface ProgramsViewProps {
   programs: Program[];
   programTypes: ProgramType[];
   currentUser: User;
-  onSaveProgram: (program: Partial<Program>) => void;
+  onSaveProgram: (program: Partial<Program>) => boolean | Promise<boolean>;
   onSelectProgramEpisodes: (programId: string) => void;
   onSelectProgram?: (programId: string) => void;
   onDeleteProgram?: (programId: string) => void;
@@ -73,6 +74,16 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const [channelName, setChannelName] = useState('');
   const [studioName, setStudioName] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const draft = useFormDraft(`program:${currentUser.id}:${editingProgram?.id || 'new'}`, isModalOpen,
+    { name, shortName, description, typeId, presenterName, producerName, broadcastDays,
+      broadcastTime, durationMinutes, channelName, studioName, coverImageUrl }, value => {
+      setName(value.name); setShortName(value.shortName); setDescription(value.description);
+      setTypeId(value.typeId); setPresenterName(value.presenterName); setProducerName(value.producerName);
+      setBroadcastDays(value.broadcastDays); setBroadcastTime(value.broadcastTime);
+      setDurationMinutes(value.durationMinutes); setChannelName(value.channelName);
+      setStudioName(value.studioName); setCoverImageUrl(value.coverImageUrl);
+    });
 
   const daysOfWeek = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
 
@@ -128,11 +139,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    try {
     const typeObj = programTypes.find((t) => t.id === typeId);
 
-    onSaveProgram({
+    const saved = await onSaveProgram({
       id: editingProgram?.id,
       name,
       shortName: shortName || name,
@@ -149,7 +163,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       coverImageUrl: coverImageUrl || '',
     });
 
-    setIsModalOpen(false);
+    if (saved) { draft.clearDraft(); setIsModalOpen(false); }
+    } finally { setSaving(false); }
   };
 
   const filteredPrograms = (programs || []).filter((p) => {
@@ -346,6 +361,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Program Add / Edit Modal */}
       <FormPage
         isOpen={isModalOpen}
+        draft={draft}
         onClose={() => setIsModalOpen(false)}
         title={editingProgram ? 'تعديل بيانات البرنامج' : 'إضافة برنامج تلفزيوني جديد'}
         subtitle="تحديد معلومات البرنامج والمسؤولين ومواعيد البث"
@@ -570,13 +586,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => void draft.close(() => setIsModalOpen(false))}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
               {editingProgram ? 'حفظ التعديلات' : 'إنشاء البرنامج'}

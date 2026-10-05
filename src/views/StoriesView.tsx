@@ -3,6 +3,7 @@ import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import {
@@ -85,6 +86,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
   const [status, setStatus] = useState<'ACTIVE' | 'RESOLVED' | 'ARCHIVED'>('ACTIVE');
   const [locationName, setLocationName] = useState('غرفة الأخبار المركزية');
   const [keywordsInput, setKeywordsInput] = useState('');
+  const draft = useFormDraft(`story:${currentUser?.id || 'anonymous'}:${editingStory?.id || 'new'}`, isModalOpen,
+    { title, description, categoryId, priority, status, locationName, keywordsInput }, value => {
+      setTitle(value.title); setDescription(value.description); setCategoryId(value.categoryId);
+      setPriority(value.priority); setStatus(value.status); setLocationName(value.locationName);
+      setKeywordsInput(value.keywordsInput);
+    });
 
   const handleOpenAddModal = () => {
     setEditingStory(null);
@@ -137,7 +144,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
     setSaving(true);
     const saved = onSaveStory ? await onSaveStory(storyData) : true;
     setSaving(false);
-    if (saved !== false) setIsModalOpen(false);
+    if (saved !== false) { draft.clearDraft(); setIsModalOpen(false); }
   };
 
   const filteredStories = stories.filter((story) => {
@@ -341,6 +348,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
       {/* Create / Edit Story Modal */}
       <FormPage
         isOpen={isModalOpen}
+        draft={draft}
         onClose={() => setIsModalOpen(false)}
         title={editingStory ? 'تعديل التغطية والقصة الإخبارية' : 'إنشاء تغطية أو قصة مركزية جديدة'}
         subtitle="تجميع الأخبار والتقارير ومتابعة التطورات تحت ملف إخباري موحد"
@@ -502,7 +510,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => void draft.close(() => setIsModalOpen(false))}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء
