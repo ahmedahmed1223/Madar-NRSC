@@ -1,6 +1,7 @@
 import { NewsVideosList } from '../components/news/NewsVideosEditor';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { toLocalInputValue } from '../shared/dates';
 import { notify } from '../services/notify';
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -11,7 +12,7 @@ import { newsListDoc } from '../services/documents/builders';
 import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   Search,
@@ -58,7 +59,8 @@ interface NewsListViewProps {
   onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string) => Promise<boolean>;
   onDeleteNews: (newsId: string) => void;
   onToggleBreaking: (newsItem: NewsItem) => void;
-  onBulkAction: (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => Promise<void>;
+  onBulkAction: (newsIds: string[], action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => Promise<{ done: number; failures: { id: string; title: string; reason: string }[] }>;
+  onReviewNews: (newsId: string, queue: string[]) => void;
   /** Opens the list on a specific tab (e.g. the breaking-news desk). */
   initialTab?: ListTab;
 }
@@ -73,41 +75,55 @@ const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
   key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
 const PAGE_SIZE = 50;
+const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || item.updatedAt;
 
 export const NewsListView: React.FC<NewsListViewProps> = ({
   newsList = [],
   categories = [],
   currentUser,
-  onEditNews,
-  onCreateNews,
+  onEditNews: openNews,
+  onCreateNews: createNews,
   onUpdateStatus,
   onDeleteNews,
   onToggleBreaking,
   onBulkAction,
+  onReviewNews: openReview,
   initialTab = 'ALL',
 }) => {
-  const [activeTab, setActiveTab] = useState<ListTab>(initialTab);
+  const contextKey = `nrcs_news_context:${currentUser.id}:${initialTab}`;
+  const savedContext = useMemo(() => {
+    try { return JSON.parse(sessionStorage.getItem(contextKey) || '{}') || {}; } catch { return {}; }
+  }, [contextKey]);
+  const textValue = (key: string, fallback = '') => typeof savedContext[key] === 'string' ? savedContext[key] : fallback;
+  const savedTab = textValue('activeTab', initialTab);
+  const [activeTab, setActiveTab] = useState<ListTab>(() => ['ALL', 'BREAKING', 'TRASH', ...Object.keys(STATUS_RANK)].includes(savedTab) ? savedTab as ListTab : initialTab);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(() => Number.isInteger(savedContext.page) && savedContext.page >= 0 ? savedContext.page : 0);
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
   const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [selectedPriority, setSelectedPriority] = useState('ALL');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
+  const [selectedCategory, setSelectedCategory] = useState(() => textValue('selectedCategory', 'ALL'));
+  const [selectedPriority, setSelectedPriority] = useState(() => textValue('selectedPriority', 'ALL'));
+  const [onlyMine, setOnlyMine] = useState(savedContext.onlyMine === true);
+  const [authorId, setAuthorId] = useState(() => textValue('authorId', 'ALL'));
+  const [fromDate, setFromDate] = useState(() => textValue('fromDate'));
+  const [toDate, setToDate] = useState(() => textValue('toDate'));
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const runBulkAction = async (action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE') => {
+  const [bulkResult, setBulkResult] = useState<{ done: number; failures: { id: string; title: string; reason: string }[]; action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE' } | null>(null);
+  const runBulkAction = async (action: 'PUBLISH' | 'APPROVE' | 'ARCHIVE' | 'DELETE', ids = selectedIds) => {
     if (bulkSubmitting) return;
     setBulkSubmitting(true);
     try {
       const labels = { APPROVE: 'اعتماد', PUBLISH: 'نشر', ARCHIVE: 'أرشفة', DELETE: 'حذف' };
       if (!await confirmDialog({ title: `${labels[action]} الأخبار المحددة`,
-        message: `تنفيذ ${labels[action]} على ${selectedIds.length} خبر؟ تُنفذ العملية فقط على الأخبار التي تسمح حالتها وصلاحياتك بذلك.`,
+        message: `تنفيذ ${labels[action]} على ${ids.length} خبر؟ تُنفذ العملية فقط على الأخبار التي تسمح حالتها وصلاحياتك بذلك.`,
         confirmLabel: labels[action] })) return;
-      await onBulkAction(selectedIds, action);
-      setSelectedIds([]);
+      const result = await onBulkAction(ids, action);
+      setSelectedIds(result.failures.map(f => f.id));
+      setBulkResult({ ...result, action });
     } finally {
       setBulkSubmitting(false);
     }
@@ -156,6 +172,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (onlyMine && item.authorId !== currentUser.id) return false;
+    if (authorId !== 'ALL' && item.authorId !== authorId) return false;
+    const day = item.updatedAt ? toLocalInputValue(item.updatedAt).slice(0, 10) : '';
+    if (fromDate && (!day || day < fromDate)) return false;
+    if (toDate && (!day || day > toDate)) return false;
     if (searchQuery.trim()) {
       if (!matchesQuery(searchQuery, item.title, item.shortTitle, item.summary, item.authorName, item.categoryName, item.sourceName, item.locationName, item.keywords || [])) return false;
     }
@@ -167,10 +187,40 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const pagedNews = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   // Selection never includes rows hidden by a filter or tab change.
+  const initialFilters = useRef(true);
   useEffect(() => {
+    if (initialFilters.current) { initialFilters.current = false; return; }
     setSelectedIds([]);
     setPage(0);
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine]);
+  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate]);
+
+  const contextRef = useRef({});
+  const leavingRef = useRef(false);
+  contextRef.current = { activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page };
+  const rememberPosition = () => {
+    try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep navigation available. */ }
+    leavingRef.current = true;
+  };
+  const onEditNews = (id: string) => { rememberPosition(); openNews(id); };
+  const onCreateNews = () => { rememberPosition(); createNews(); };
+  const onReviewNews = (id: string, queue: string[]) => { rememberPosition(); openReview(id, queue); };
+  useEffect(() => {
+    const scroller = document.getElementById('app-main')?.parentElement;
+    if (!scroller) return;
+    const save = () => {
+      if (leavingRef.current) return;
+      try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: scroller.scrollTop })); } catch { /* Storage may be disabled. */ }
+    };
+    const frame = requestAnimationFrame(() => { scroller.scrollTop = Math.max(0, Number(savedContext.scrollTop) || 0); });
+    scroller.addEventListener('scroll', save, { passive: true });
+    return () => { cancelAnimationFrame(frame); save(); scroller.removeEventListener('scroll', save); };
+  }, [contextKey, savedContext]);
+  useEffect(() => {
+    try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
+  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
+
+  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
+    (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
 
   const handleRestore = (id: string) => {
     try {
@@ -315,6 +365,22 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         ]}
       />
 
+      {activeTab === 'UNDER_REVIEW' && canApprove && (
+        <section aria-label="طابور مراجعة الأخبار" className="border-y border-amber-200 py-3 space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">طابور المراجعة ({reviewQueue.length})</h2>
+          {reviewQueue.length === 0 ? <p className="text-sm text-slate-600">لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.</p> : reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => {
+            const submitted = submittedForReview(item);
+            const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(submitted)) / 60000)) || 0;
+            return <div key={item.id} className="flex flex-wrap items-center gap-2 border-b border-slate-100 py-2">
+              <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map(n => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-0 break-words">{item.title}</button>
+              <span className="text-xs text-slate-600">{item.authorName}</span>
+              <Badge variant={item.priority === 'HIGH' || item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'danger' : 'default'} size="sm">{item.priority === 'HIGH' ? 'عالية' : item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'عاجلة' : 'عادية'}</Badge>
+              <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>بانتظار المراجعة: {minutes < 60 ? `${minutes} دقيقة` : `${Math.floor(minutes / 60)} ساعة`}</span>
+            </div>;
+          })}
+        </section>
+      )}
+
       {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
           تُحذف المواد نهائياً من السلة تلقائياً بعد {authClient.getSession()?.trashRetentionDays} يوماً من نقلها إليها.
@@ -353,6 +419,20 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} className="w-4 h-4 accent-blue-600" />
             أخباري فقط
           </label>
+          <button type="button" aria-expanded={filtersExpanded} aria-controls="news-advanced-filters" onClick={() => setFiltersExpanded(v => !v)} className="sm:hidden min-h-11 px-3 inline-flex items-center gap-2 border border-slate-300 rounded-lg text-sm"><Filter className="w-4 h-4" />الفلاتر{authorId !== 'ALL' || fromDate || toDate || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' ? ' (مفعلة)' : ''}</button>
+          <div id="news-advanced-filters" className={`${filtersExpanded ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2.5 w-full sm:w-auto`}>
+          <label className="min-h-11 flex items-center gap-2 text-xs text-slate-700">الكاتب:
+            <select aria-label="الكاتب:" value={authorId} onChange={e => setAuthorId(e.target.value)} className="min-h-11 max-w-44 px-2 border border-slate-300 rounded-lg bg-white">
+              <option value="ALL">جميع الكتّاب</option>
+              {Array.from(new Map(newsList.map(n => [n.authorId, n.authorName])).entries()).filter(([id]) => id).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </label>
+          <label className="min-h-11 flex items-center gap-2 text-xs text-slate-700">من تاريخ:
+            <input aria-label="من تاريخ:" type="date" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)} className="min-h-11 min-w-0 w-36 px-2 border border-slate-300 rounded-lg bg-white" />
+          </label>
+          <label className="min-h-11 flex items-center gap-2 text-xs text-slate-700">إلى تاريخ:
+            <input aria-label="إلى تاريخ:" type="date" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)} className="min-h-11 min-w-0 w-36 px-2 border border-slate-300 rounded-lg bg-white" />
+          </label>
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <Filter className="w-3.5 h-3.5 text-slate-500" />
             <label htmlFor="news-list-category-select">القسم:</label>
@@ -360,7 +440,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               id="news-list-category-select"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
+              className="min-h-11 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأقسام</option>
               {categoryOptions.map((c) => (
@@ -377,7 +457,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               id="news-list-priority-select"
               value={selectedPriority}
               onChange={(e) => setSelectedPriority(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
+              className="min-h-11 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأولويات</option>
               <option value="CRITICAL">عاجل وفوري</option>
@@ -388,8 +468,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <option value="LOW">منخفض</option>
             </select>
           </div>
-
-          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' || onlyMine) && (
+          </div>
+          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' || onlyMine || authorId !== 'ALL' || fromDate || toDate) && (
             <button
               type="button"
               onClick={() => {
@@ -397,6 +477,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 setSelectedCategory('ALL');
                 setSelectedPriority('ALL');
                 setOnlyMine(false);
+                setAuthorId('ALL'); setFromDate(''); setToDate('');
               }}
               className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
             >
@@ -421,6 +502,16 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       </div>
 
       {/* Bulk Action Bar (when selected) */}
+      {bulkResult && (
+        <section aria-label="نتيجة الإجراء الجماعي" className="border-y border-slate-200 py-3 space-y-2">
+          <p role="status" className="text-sm font-semibold text-slate-800">نجح: {bulkResult.done}، تعذر: {bulkResult.failures.length}</p>
+          <ul className="space-y-1 text-sm text-rose-800">{bulkResult.failures.map(f => <li key={f.id} className="break-words">{f.title}: {f.reason}</li>)}</ul>
+          <div className="flex flex-wrap gap-2">
+            {bulkResult.failures.length > 0 && <button type="button" disabled={bulkSubmitting} onClick={() => void runBulkAction(bulkResult.action, bulkResult.failures.map(f => f.id))} className="min-h-11 px-3 border border-slate-300 rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50"><RotateCcw className="w-4 h-4" />إعادة محاولة الفاشل فقط</button>}
+            <button type="button" onClick={() => setBulkResult(null)} title="إغلاق نتيجة الإجراء الجماعي" aria-label="إغلاق نتيجة الإجراء الجماعي" className="min-h-11 min-w-11 flex items-center justify-center"><X className="w-4 h-4" /></button>
+          </div>
+        </section>
+      )}
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">

@@ -577,6 +577,7 @@ export class DataStore {
     results.forEach((result, i) => {
       if (!result.ok) return;
       const op = ops[i];
+      if (op.c === 'editLocks') return;
       const { row } = result as Extract<SyncOpResult, { ok: true }>;
       this.journal.set(keyOf(op.c, op.id), { c: op.c, id: op.id, op: op.op, d: op.op === 'delete' ? undefined : row?.d ?? op.d, p: row?.p ?? op.p, v: row?.v ?? 0, at: now });
     });
@@ -613,7 +614,7 @@ export class DataStore {
     try {
       const saved: PersistedJournal | null = JSON.parse(localStorage.getItem(JOURNAL_KEY) || 'null');
       if (!saved || saved.userId !== this.userId || !Array.isArray(saved.entries)) return;
-      this.journal = new Map(saved.entries.map((e) => [keyOf(e.c, e.id), e]));
+      this.journal = new Map(saved.entries.filter(e => e.c !== 'editLocks').map((e) => [keyOf(e.c, e.id), e]));
       this.journalDbId = saved.dbId;
       this.journalRev = saved.rev || 0;
       this.pruneJournal();
@@ -670,7 +671,7 @@ export class DataStore {
       const keys = [...this.dirty.values(), ...[...this.inFlight].map((k) => {
         const [c, id] = k.split('\u0000') as [CollectionName, string];
         return { c, id, op: this.meta.get(c)?.has(id) ? ('upsert' as const) : ('delete' as const) };
-      })];
+      })].filter(e => e.c !== 'editLocks' || e.op === 'delete');
       if (keys.length === 0) {
         localStorage.removeItem(PENDING_KEY);
         return;
@@ -695,6 +696,8 @@ export class DataStore {
 
     const touched = new Set<CollectionName>();
     for (const op of saved.ops) {
+      // Leases belong to the open editor, never to recovered content drafts.
+      if (op.c === 'editLocks' && op.op !== 'delete') continue;
       if (!this.meta.has(op.c)) continue;
       const metaMap = this.meta.get(op.c)!;
       const known = metaMap.get(op.id);

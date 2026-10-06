@@ -47,6 +47,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ALLOW_DB_RESET: bool(!isProduction),
     BACKUP_INTERVAL_HOURS: int(24, 0),
     BACKUP_RETENTION: int(20, 1),
+    BACKUP_DIRECTORY: z.string().optional(),
+    BACKUP_REMOTE: z.string().optional(),
     // Finished news untouched for this many days leaves the synced newsroom (0 = sync everything).
     NEWS_ACTIVE_DAYS: int(90, 0),
     // Agency wire feeds (RSS/Atom) configured per news source.
@@ -121,6 +123,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     allowDbReset: c.ALLOW_DB_RESET,
     backupIntervalHours: c.BACKUP_INTERVAL_HOURS,
     backupRetention: c.BACKUP_RETENTION,
+    backupDirectory: c.BACKUP_DIRECTORY || undefined,
+    backupRemote: c.BACKUP_REMOTE || undefined,
     newsActiveDays: c.NEWS_ACTIVE_DAYS,
     wires: {
       pollMinutes: c.WIRE_POLL_MINUTES,

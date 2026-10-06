@@ -75,6 +75,9 @@ interface NewsEditorViewProps {
   onSave: (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts?: { stay?: boolean }) => Promise<NewsItem | null>;
   onUpdateStatus: (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string) => Promise<boolean>;
   onCancel: () => void;
+  nextReviewId?: string;
+  onNextReview?: (id: string) => void;
+  reviewing?: boolean;
 }
 
 export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
@@ -88,6 +91,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   onSave,
   onUpdateStatus,
   onCancel,
+  nextReviewId,
+  onNextReview,
+  reviewing = false,
 }) => {
   const [storyId, setStoryId] = useState<string>(defaultStoryId || '');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -477,6 +483,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   }, [newsItem?.updatedAt, lock.status]);
   const canEditContent = canEditNewsContent(can, currentUser.id, newsItem) && !lockedByOther;
   const transitions = newsItem?.id ? availableTransitions(can, currentUser.id, newsItem) : [];
+  const primaryTransition = ['UNDER_REVIEW', 'APPROVED', 'PUBLISHED'].find(status => transitions.includes(status as NewsStatus)) || transitions[0];
   const canCreateForReview = !newsItem?.id && transitionDenial(can, currentUser.id, null, 'UNDER_REVIEW') === null;
 
 
@@ -528,6 +535,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
   /** Saves the text (never the status). Returns the stored story or null. */
   const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed'>('idle');
+  const [continueReview, setContinueReview] = useState(true);
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const [actionBarHeight, setActionBarHeight] = useState(100);
+  useEffect(() => {
+    const bar = actionBarRef.current;
+    if (!bar) return;
+    const observer = new ResizeObserver(() => {
+      setActionBarHeight(bar.offsetHeight + 24);
+      document.documentElement.style.setProperty('--editor-actions-height', `${bar.offsetHeight + 12}px`);
+    });
+    observer.observe(bar);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--editor-actions-height'); };
+  }, []);
   const savingRef = useRef(false);
   const saveContent = async (stay: boolean, extra: Partial<NewsItem> = {}): Promise<NewsItem | null> => {
     if (savingRef.current) return null;
@@ -541,9 +562,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     persistDraftRef.current();
     savingRef.current = true;
     setSaving(true);
+    setSaveState('idle');
     try {
       const saved = await onSave({ ...buildPayload(), ...extra }, { stay: true });
       if (saved) {
+        setSaveState('saved');
         loadedSnapshotRef.current = snapshot;
         setBaseUpdatedAt(saved.updatedAt);
         if (snapshot === JSON.stringify(formFieldsRef.current())) {
@@ -551,7 +574,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           if (!stay) onCancel();
         }
       }
+      else setSaveState('failed');
       return saved;
+    } catch {
+      setSaveState('failed');
+      return null;
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -626,7 +653,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       setShowCommentModal(false);
       setStatusComment('');
       // Leave the editor to release its lock for the next colleague.
-      if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
+      if (continueReview && nextReviewId && onNextReview && ['APPROVED', 'NEEDS_REVISION', 'REJECTED'].includes(pendingStatus)) onNextReview(nextReviewId);
+      else if (reviewing && continueReview && ['APPROVED', 'NEEDS_REVISION', 'REJECTED'].includes(pendingStatus)) onCancel();
+      else if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
     } finally {
       setStatusSubmitting(false);
     }
@@ -762,7 +791,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       )}
 
       {/* Top Header & Actions Bar */}
-      <div className="border-b border-slate-200 pb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="sm:sticky sm:top-16 z-20 bg-white border-b border-slate-200 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -786,7 +815,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </Badge>
               )}
               <div role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                {saving ? 'جارٍ الحفظ على الخادم...' : lastSaved && isDirty && !draftStorageFailed ? (
+                {saving ? 'جارٍ الحفظ على الخادم...' : saveState === 'failed' ? 'تعذر الحفظ؛ تعديلاتك باقية في المحرر' : saveState === 'saved' && !isDirty ? 'تم الحفظ على الخادم' : lastSaved && isDirty && !draftStorageFailed ? (
                   <>
                     <CheckCircle className="w-3 h-3 text-amber-500" />
                     تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
@@ -798,12 +827,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
 
         {/* Action Buttons (only what the server will accept) */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div ref={actionBarRef} role="toolbar" aria-label="إجراءات تحرير الخبر" className="fixed sm:static bottom-0 inset-x-0 sm:inset-auto z-30 bg-white border-t sm:border-t-0 border-slate-200 p-3 sm:p-0 flex flex-wrap items-center gap-2 shadow-md sm:shadow-none" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
           {newsItem?.id && (
             <button
               type="button"
               onClick={() => setIsHistoryOpen(true)}
-              className="min-h-11 flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold"
+              className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold"
             >
               <History className="w-4 h-4" />
               سجل النسخ
@@ -820,13 +849,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              {saving ? 'جارٍ الحفظ...' : newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
+              {saving ? 'جارٍ الحفظ...' : saveState === 'failed' ? 'إعادة محاولة الحفظ' : newsItem?.id ? 'حفظ التغييرات' : 'حفظ كمسودة'}
             </button>
           )}
 
           {canEditContent && (
              <button type="button" onClick={() => saveContent(false)} disabled={saving || lock.status === 'acquiring'}
-              className="min-h-11 flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
+              className="hidden sm:flex min-h-11 items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 disabled:opacity-50">
               <Save className="w-4 h-4" /> حفظ وإغلاق
             </button>
           )}
@@ -852,7 +881,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   key={t}
                   type="button"
                   onClick={() => handleTriggerStatusChange(t)}
-                  className={`min-h-11 flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
+                  className={`${t === primaryTransition ? 'flex' : 'hidden sm:flex'} min-h-11 items-center gap-1.5 px-4 py-2 text-white rounded-lg text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
                 >
                   {t === 'UNDER_REVIEW' && <Send className="w-4 h-4" />}
                   {t === 'APPROVED' && <CheckCircle className="w-4 h-4" />}
@@ -862,6 +891,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               ))}
         </div>
       </div>
+
+      {nextReviewId && newsItem?.status === 'UNDER_REVIEW' && (
+        <label className="min-h-11 flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={continueReview} onChange={e => setContinueReview(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+          فتح الخبر التالي بعد إنهاء المراجعة
+        </label>
+      )}
+      {newsItem?.id && <details className="sm:hidden border-b border-slate-200 py-2">
+        <summary className="min-h-11 flex items-center text-sm font-semibold text-slate-700 cursor-pointer">إجراءات إضافية</summary>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setIsHistoryOpen(true)} className="min-h-11 px-3 flex items-center gap-2 text-sm"><History className="w-4 h-4" />سجل النسخ</button>
+          {canEditContent && <button type="button" disabled={saving} onClick={() => void saveContent(false)} className="min-h-11 px-3 flex items-center gap-2 text-sm disabled:opacity-50"><Save className="w-4 h-4" />حفظ وإغلاق</button>}
+          {!lockedByOther && transitions.filter(t => t !== primaryTransition && TRANSITION_BUTTONS[t]).map(t => <button key={t} type="button" onClick={() => handleTriggerStatusChange(t)} className="min-h-11 px-3 text-sm font-semibold text-blue-700">{newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}</button>)}
+        </div>
+      </details>}
 
       {/* Broadcast Timing & Production Tools Banner */}
       <div className="text-slate-800 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -1788,6 +1832,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         currentContent={content}
         onApplyChanges={handleApplyAiChanges}
       />
+      <div aria-hidden="true" className="sm:hidden" style={{ height: actionBarHeight }} />
     </div>
   );
 };

@@ -1794,6 +1794,7 @@ export class ApiService {
     const mine = locks.find((l) => l.id === id && l.userId === me);
     if (!mine) return;
     setStored(COLLECTIONS.editLocks.storageKey, locks.filter((l) => l.id !== id));
+    void dataStore.flush();
   }
 
   // --- REVISION HISTORY & TRASH ---

@@ -1,5 +1,5 @@
 import { newId } from '../../shared/ids';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   RundownSegment,
   RundownSegmentType,
@@ -50,6 +50,7 @@ interface RundownTableProps {
   canEdit?: boolean;
   episodeId?: string;
   topics?: EpisodeTopic[];
+  focusSegment?: { id: string; key: string; sequence: number };
 }
 
 export const RundownTable: React.FC<RundownTableProps> = ({
@@ -62,6 +63,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   canEdit = true,
   episodeId,
   topics = [],
+  focusSegment,
 }) => {
   const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
   const canRequest = !!episodeId && RbacService.hasPermission(apiService.getCurrentUser(), 'requests.create');
@@ -74,6 +76,14 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   const [isPrompterOpen, setIsPrompterOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL');
+  useEffect(() => {
+    if (!focusSegment) return;
+    const segment = segments.find(s => s.id === focusSegment.id);
+    if (!segment) return;
+    setSearchQuery(''); setFilterType('ALL');
+    if (canEdit) { setEditingSegment(segment); setIsAddModalOpen(true); }
+    else requestAnimationFrame(() => document.querySelector(`[data-sortable-item="${CSS.escape(segment.id)}"]`)?.scrollIntoView({ block: 'center' }));
+  }, [focusSegment]);
 
   // Total runtime calculation
   const totalRundownSeconds = segments.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
@@ -667,6 +677,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         defaultPresenter={defaultPresenter}
         episodeId={episodeId}
         topics={topics}
+        focusField={focusSegment?.key === 'text' ? 'segment-script-textarea' : focusSegment?.key === 'video' ? 'segment-video-input' : undefined}
       />
 
       {/* Broadcast Teleprompter Modal */}

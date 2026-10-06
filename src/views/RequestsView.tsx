@@ -18,6 +18,8 @@ interface RequestsViewProps {
   currentUser: User;
   onOpenNews: (newsId: string) => void;
   onOpenEpisode: (episodeId: string) => void;
+  focusSegmentId?: string;
+  onClearFocus?: () => void;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -31,12 +33,12 @@ const STATUS_STYLE: Record<string, string> = {
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
 /** Requests between departments: what my department has to do, and what I asked others for. */
-export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenNews, onOpenEpisode }) => {
+export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenNews, onOpenEpisode, focusSegmentId, onClearFocus }) => {
   const canManage = RbacService.hasPermission(currentUser, 'requests.manage');
   const canCreate = RbacService.hasPermission(currentUser, 'requests.create');
   const myDept = departmentIdOf(currentUser);
   const [requests, setRequests] = useState<DeptRequest[]>(() => apiService.getRequests());
-  const [tab, setTab] = useState<'INBOX' | 'SENT' | 'ALL'>('INBOX');
+  const [tab, setTab] = useState<'INBOX' | 'SENT' | 'ALL'>(focusSegmentId ? 'ALL' : 'INBOX');
   const [dept, setDept] = useState<string>(myDept);
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState('');
@@ -65,17 +67,22 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
 
   const list = useMemo(() => {
     return requests
+      .filter(r => !focusSegmentId || r.link?.segmentId === focusSegmentId)
       .filter((r) => (tab === 'INBOX' ? r.departmentId === dept : tab === 'SENT' ? r.requesterId === currentUser.id : true))
       .filter((r) => showClosed || !isRequestClosed(r.status))
       .filter((r) => typeFilter === 'ALL' || r.type === typeFilter)
       .filter((r) => matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []))
       .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
-  }, [requests, tab, dept, showClosed, currentUser.id, query, typeFilter]);
+  }, [requests, tab, dept, showClosed, currentUser.id, query, typeFilter, focusSegmentId]);
 
   const inboxCount = requests.filter((r) => r.departmentId === myDept && !isRequestClosed(r.status)).length;
 
   return (
     <div className="space-y-5">
+      {focusSegmentId && <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-2 text-sm text-slate-700">
+        <span>طلبات الفقرة: {requests.find(r => r.link?.segmentId === focusSegmentId)?.link?.title || 'الفقرة المحددة'}</span>
+        <button type="button" onClick={onClearFocus} className="min-h-11 px-3 flex items-center gap-2 text-blue-700"><X className="w-4 h-4" />عرض جميع الطلبات</button>
+      </div>}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">

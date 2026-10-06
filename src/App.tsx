@@ -140,6 +140,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Entities state
   const [stories, setStories] = useState<Story[]>([]);
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const [reviewQueueIds, setReviewQueueIds] = useState<string[]>([]);
+  const [newsReturnDesk, setNewsReturnDesk] = useState<'news' | 'breaking'>('news');
+  const [requestSegmentId, setRequestSegmentId] = useState<string | undefined>();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -326,6 +329,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     const comment: Record<string, string> = { PUBLISH: 'نشر جماعي', APPROVE: 'اعتماد جماعي', ARCHIVE: 'أرشفة جماعية' };
     let done = 0;
     const skipped: string[] = [];
+    const failures: { id: string; title: string; reason: string }[] = [];
     for (const id of newsIds) {
       try {
         if (action === 'DELETE') apiService.deleteNews(id, currentUser);
@@ -335,6 +339,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         done++;
       } catch (err: any) {
         const title = newsList.find((n) => n.id === id)?.title || id;
+        failures.push({ id, title, reason: err.message || 'تعذر تنفيذ الإجراء' });
         skipped.push(`«${title.slice(0, 30)}»: ${err.message}`);
       }
     }
@@ -349,6 +354,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         message: skipped.slice(0, 3).join(' — ') + (skipped.length > 3 ? ' …' : ''),
       });
     }
+    return { done, failures };
   };
 
   /** Opens a notification/deep link path ("/tasks", "/episodes/<id>", "/wires/<id>", ...). */
@@ -402,6 +408,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   }, []);
 
   const handleConvertWire = (wire: WireItem) => {
+    setNewsReturnDesk('news');
     const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const paragraphs = (wire.summary || '').split('\n').filter(Boolean).map((p) => `<p>${escape(p)}</p>`).join('');
     const known = sources.find((s) => s.id === wire.sourceId);
@@ -419,13 +426,16 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleCreateNewNewsClick = () => {
+    setNewsReturnDesk(activeNav === 'breaking' ? 'breaking' : 'news');
     setNewsSeed(null);
     setNewNewsStoryId(null);
     setSelectedNewsItem(null);
     setActiveNav('news-editor');
   };
 
-  const handleEditNewsClick = (itemOrId: NewsItem | string) => {
+  const handleEditNewsClick = (itemOrId: NewsItem | string, reviewing = false) => {
+    if (activeNav !== 'news-editor') setNewsReturnDesk(activeNav === 'breaking' ? 'breaking' : 'news');
+    if (!reviewing) setReviewQueueIds([]);
     // The list may not be in state yet when a deep link opens the story at start-up.
     const found = typeof itemOrId === 'string' ? newsList.find((n) => n.id === itemOrId) || apiService.getNews().find((n) => n.id === itemOrId) : itemOrId;
     if (!found) {
@@ -439,6 +449,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleCreateNewsForStory = (storyId: string) => {
+    setNewsReturnDesk('news');
     setNewsSeed(null);
     setSelectedNewsItem(null);
     setNewNewsStoryId(storyId);
@@ -646,6 +657,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // The editor always receives the latest server copy of the selected story.
   const editorNewsItem = selectedNewsItem?.id ? newsList.find((n) => n.id === selectedNewsItem.id) || selectedNewsItem : selectedNewsItem;
+  const reviewIndex = reviewQueueIds.indexOf(editorNewsItem?.id || '');
+  const nextReviewId = [...reviewQueueIds.slice(reviewIndex + 1), ...reviewQueueIds.slice(0, Math.max(0, reviewIndex))].find(id => id !== editorNewsItem?.id && newsList.some(n => n.id === id && n.status === 'UNDER_REVIEW'));
 
   // Resolve current active episode and active program
   // Never fall back to another record: if the open one was deleted, say so instead of editing a different one.
@@ -731,7 +744,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans" dir="rtl">
+    <div className="h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">
       <a
         href="#app-main"
         onClick={(e) => {
@@ -777,7 +790,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         />
 
         {/* Center Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
           {/* Topbar */}
           <Topbar
             currentUser={currentUser}
@@ -873,6 +886,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onDeleteNews={handleDeleteNews}
                 onUpdateStatus={handleUpdateNewsStatus}
                 onBulkAction={handleBulkAction}
+                onReviewNews={(id, queue) => { setReviewQueueIds(queue); handleEditNewsClick(id, true); }}
                 onToggleBreaking={handleToggleBreaking}
                 initialTab={activeNav === 'breaking' ? 'BREAKING' : 'ALL'}
                 key={activeNav}
@@ -905,6 +919,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   setSelectedNewsItem(null);
                   setNewNewsStoryId(null);
                   setNewsSeed(seed);
+                  setNewsReturnDesk('news');
                   setActiveNav('news-editor');
                 }}
                 onOpenNews={handleEditNewsClick}
@@ -927,7 +942,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 sources={sources}
                 onSave={handleSaveNews}
                 onUpdateStatus={handleUpdateNewsStatus}
-                onCancel={() => setActiveNav('news')}
+                onCancel={() => setActiveNav(newsReturnDesk)}
+                nextReviewId={nextReviewId}
+                reviewing={reviewQueueIds.includes(editorNewsItem?.id || '')}
+                onNextReview={id => handleEditNewsClick(id, true)}
               />
             )}
 
@@ -1003,6 +1021,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveEpisode={handleSaveEpisode}
                 onBack={() => setActiveNav('episodes')}
                 onOpenNews={(id) => handleEditNewsClick(id)}
+                onOpenRequests={segmentId => { setRequestSegmentId(segmentId); setActiveNav('requests'); }}
               />
             )}
 
@@ -1141,7 +1160,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 
             {activeNav === 'requests' && (
-              <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
+              <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusSegmentId={requestSegmentId} onClearFocus={() => setRequestSegmentId(undefined)} />
             )}
             </Suspense>
             </ViewErrorBoundary>

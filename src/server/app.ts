@@ -40,7 +40,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.19.0';
+export const APP_VERSION = '3.20.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -84,6 +84,13 @@ function securityHeaders(config: AppConfig) {
 export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const app = express();
   const sync = new SyncService(db, config.dataDir, config.newsActiveDays);
+  let draining = false;
+  const streams = new Set<Response>();
+  app.locals.beginShutdown = () => {
+    draining = true;
+    for (const stream of streams) stream.end();
+    streams.clear();
+  };
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -112,7 +119,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const apiLimiter = createRateLimiter({
     windowMs: 60_000,
     max: config.rateLimitPerMinute,
-    key: (req) => req.ip || 'unknown',
+    key: (req) => req.auth?.user.id ? `user:${req.auth.user.id}` : `ip:${req.ip || 'unknown'}`,
     message: 'عدد كبير من الطلبات، حاول لاحقاً',
   });
   // Per account+IP (so colleagues behind one NAT do not lock each other out) and a wider
@@ -130,10 +137,27 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     message: 'محاولات دخول كثيرة من هذا العنوان، يرجى الانتظار 15 دقيقة',
   });
 
-  app.use('/api', apiLimiter);
+  // Probes bypass user traffic limits and session processing.
+  app.get('/api/health', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ status: 'ok', version: APP_VERSION, dbId: db.dbId, instance: INSTANCE_ID, timestamp: new Date().toISOString() });
+  });
+  app.get('/api/ready', (_req, res) => {
+    const healthy = !draining && db.isHealthy();
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(healthy ? 200 : 503).json({ status: healthy ? 'ready' : 'unavailable', database: healthy });
+  });
+  app.use('/api', (_req, res, next) => {
+    if (!draining) return next();
+    res.setHeader('Retry-After', '5');
+    res.status(503).json({ success: false, code: 'DRAINING', error: 'الخادم يعاد تشغيله؛ حاول بعد لحظات' });
+  });
+  app.use('/api', createRateLimiter({ windowMs: 60_000, max: config.rateLimitPerMinute * 10,
+    key: req => req.ip || 'unknown', message: 'عدد كبير من الطلبات من هذه الشبكة، حاول لاحقاً' }));
   app.use('/api', express.json({ limit: '5mb' }));
   app.use('/api', csrfGuard);
   app.use('/api', sessionMiddleware(db, config));
+  app.use('/api', apiLimiter);
 
   const audit = (
     actor: Pick<User, 'id' | 'fullName' | 'role'> | null,
@@ -163,15 +187,6 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Health ----------------------------------------------------------------
 
-  app.get('/api/health', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    res.json({ status: 'ok', version: APP_VERSION, dbId: db.dbId, instance: INSTANCE_ID, timestamp: new Date().toISOString() });
-  });
-
-  app.get('/api/ready', (_req, res) => {
-    const healthy = db.isHealthy();
-    res.status(healthy ? 200 : 503).json({ status: healthy ? 'ready' : 'unavailable', database: healthy });
-  });
 
   // --- Authentication ------------------------------------------------------
 
@@ -447,6 +462,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   /** Server-Sent Events: tells browsers a new revision exists so they pull changes immediately. */
   app.get('/api/v1/data/stream', requireAuth, (req, res) => {
+    streams.add(res);
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -458,6 +474,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const heartbeat = setInterval(() => res.write(`: ping\n\n`), 25_000);
     changeBus.on('rev', onRev);
     req.on('close', () => {
+      streams.delete(res);
       clearInterval(heartbeat);
       changeBus.off('rev', onRev);
     });

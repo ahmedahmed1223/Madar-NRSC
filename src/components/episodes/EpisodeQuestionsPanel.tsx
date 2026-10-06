@@ -1,5 +1,5 @@
 import { confirmDialog } from '../../services/dialogs';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, CheckSquare, CornerDownLeft, Edit2, Plus, Square, Trash2 } from 'lucide-react';
 import type { Episode, EpisodeQuestion } from '../../types';
 import { newId } from '../../shared/ids';
@@ -12,6 +12,7 @@ interface Props {
   episode: Episode;
   canEdit: boolean;
   onSaveEpisode: (data: Partial<Episode>) => void;
+  focusSegment?: { id: string; sequence: number };
 }
 
 interface Draft {
@@ -30,7 +31,7 @@ const KIND_TONE: Record<string, string> = {
   FOLLOWUP: 'bg-purple-50 text-purple-700',
 };
 
-export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSaveEpisode }) => {
+export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSaveEpisode, focusSegment }) => {
   const questions = episode.questions || [];
   const segments = (episode.rundown || []).filter((s) => s.segmentType !== 'BREAK');
   const guests = episodeGuestList(episode);
@@ -45,6 +46,13 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
         ? { id: q.id, segmentId: q.segmentId || segmentId, guestId: q.guestId || '', kind: q.kind || 'MAIN', parentId: q.parentId || '', questionText: q.questionText, notes: q.notes || '' }
         : { segmentId, guestId: segmentGuests(segments.find((s) => s.id === segmentId))[0]?.guestId || '', kind: 'MAIN', parentId: '', questionText: '', notes: '' }
     );
+
+  useEffect(() => {
+    if (!focusSegment) return;
+    setOnlyTalk(false);
+    if (canEdit) open(focusSegment.id);
+    else requestAnimationFrame(() => document.getElementById(`episode-questions-${focusSegment.id}`)?.scrollIntoView({ block: 'center' }));
+  }, [focusSegment]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,7 +208,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
         const list = segmentQuestions(episode, seg) as EpisodeQuestion[];
         const sg = segmentGuests(seg);
         return (
-          <section key={seg.id} aria-label={`أسئلة ${seg.title}`} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+          <section key={seg.id} id={`episode-questions-${seg.id}`} aria-label={`أسئلة ${seg.title}`} className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h4 className="text-sm font-bold text-slate-800">{seg.title}</h4>

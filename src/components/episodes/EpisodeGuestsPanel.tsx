@@ -211,7 +211,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
           const cgSent = requests.some((r) => r.type === 'GRAPHICS' && r.link?.episodeId === episode.id && r.status !== 'CANCELLED' && r.lines?.[0] === cgName);
           const talkSegments = rundown.filter((s) => s.segmentType !== 'BREAK' && !segs.some((x: any) => x.id === s.id));
           return (
-            <article key={key} aria-label={`الضيف ${g.guestName}`} className={`bg-white p-4 rounded-2xl border-2 space-y-3 ${status === 'DECLINED' ? 'border-rose-200' : 'border-slate-200'}`}>
+            <article key={key} id={`episode-guest-${key}`} tabIndex={-1} aria-label={`الضيف ${g.guestName}`} className={`bg-white p-4 rounded-lg border space-y-3 focus:outline focus:outline-2 focus:outline-blue-500 ${status === 'DECLINED' ? 'border-rose-200' : 'border-slate-200'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <Avatar src={g.guestAvatar || bank?.avatarUrl} name={g.guestName} className="w-11 h-11 rounded-xl ring-1 ring-slate-200" />

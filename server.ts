@@ -11,6 +11,7 @@ import { createScheduledBulletins, publishDueScheduledNews } from './src/server/
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending } from './src/server/delivery';
+import { deliverBackup } from './src/server/backupDelivery';
 
 async function main() {
   const config = loadConfig();
@@ -105,12 +106,21 @@ async function main() {
   }
 
   if (config.backupIntervalHours > 0) {
+    let backingUp = false;
+    const backup = async () => {
+      if (backingUp) return;
+      backingUp = true;
+      try {
+        const file = await db.createBackup('auto', config.backupRetention);
+        const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory,
+          remote: config.backupRemote, retention: config.backupRetention });
+        logger.info('complete backup created and delivered', result);
+      } catch (err) {
+        logger.error('complete backup failed', { error: String(err) });
+      } finally { backingUp = false; }
+    };
     timers.push(
-      setInterval(() => {
-        db.createBackup('auto', config.backupRetention)
-          .then((b) => logger.info('scheduled backup created', { file: b.fileName }))
-          .catch((err) => logger.error('scheduled backup failed', { error: String(err) }));
-      }, config.backupIntervalHours * 60 * 60 * 1000)
+      setInterval(backup, config.backupIntervalHours * 60 * 60 * 1000)
     );
   }
 
@@ -124,6 +134,7 @@ async function main() {
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    app.locals.beginShutdown();
     logger.info('shutting down', { signal });
     timers.forEach(clearInterval);
     const force = setTimeout(() => {
@@ -139,7 +150,7 @@ async function main() {
     });
     // Long-lived SSE connections would otherwise keep server.close() waiting.
     server.closeIdleConnections?.();
-    setTimeout(() => server.closeAllConnections?.(), 2_000).unref();
+    // In-flight uploads and writes may finish until the final shutdown deadline.
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

@@ -253,13 +253,13 @@ export function segmentReadiness(segment: any, episode: any, ctx: ReadinessConte
 
 export function episodeReadiness(episode: any, ctx: ReadinessContext) {
   const segments = (episode?.rundown || []).filter((s: any) => s.segmentType !== 'BREAK');
-  const blockers: { segmentId: string; segmentTitle: string; label: string; detail: string; departmentId: DepartmentId }[] = [];
+  const blockers: { key: string; segmentId: string; segmentTitle: string; label: string; detail: string; departmentId: DepartmentId }[] = [];
   let readySegments = 0;
   for (const seg of segments) {
     const items = segmentReadiness(seg, episode, ctx);
     const notReady = items.filter((i) => i.state !== 'ready');
     if (!notReady.length) readySegments++;
-    notReady.forEach((i) => blockers.push({ segmentId: seg.id, segmentTitle: seg.title, label: i.label, detail: i.detail, departmentId: i.departmentId }));
+    notReady.forEach((i) => blockers.push({ key: i.key, segmentId: seg.id, segmentTitle: seg.title, label: i.label, detail: i.detail, departmentId: i.departmentId }));
   }
   return { total: segments.length, readySegments, blockers, ready: segments.length > 0 && blockers.length === 0 };
 }

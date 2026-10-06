@@ -19,7 +19,7 @@ import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clo
 import { EpisodePlanner } from '../components/episodes/EpisodePlanner';
 import { EpisodeGuestsPanel } from '../components/episodes/EpisodeGuestsPanel';
 import { EpisodeQuestionsPanel } from '../components/episodes/EpisodeQuestionsPanel';
-import { episodeGuestList } from '../shared/episodePlan';
+import { episodeGuestList, segmentGuests } from '../shared/episodePlan';
 import { Episode, RundownSegment, Guest, NewsItem, User, EpisodeStatus } from '../types';
 import { useEditLock } from '../hooks/useNewsEditLock';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -38,6 +38,7 @@ interface EpisodeWorkspaceViewProps {
   onSaveEpisode: (episodeData: Partial<Episode>) => boolean | Promise<boolean>;
   onBack: () => void;
   onOpenNews?: (id: string) => void;
+  onOpenRequests?: (segmentId: string) => void;
 }
 
 export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
@@ -49,6 +50,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   onSaveEpisode,
   onBack,
   onOpenNews,
+  onOpenRequests,
 }) => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'RUNDOWN' | 'QUESTIONS' | 'GUESTS' | 'SCRIPT' | 'NOTES'>('PLAN');
 
@@ -100,6 +102,23 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const timingOk = slotSeconds === 0 || Math.abs(timingGap) <= Math.max(60, slotSeconds * 0.05);
   const mmssOf = (sec: number) => `${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, '0')}`;
   const [showBlockers, setShowBlockers] = useState(false);
+  const [focusSegment, setFocusSegment] = useState<{ id: string; key: string; sequence: number } | undefined>();
+  const resolveBlocker = (blocker: typeof readiness.blockers[number]) => {
+    if (blocker.key.startsWith('req:')) { onOpenRequests?.(blocker.segmentId); return; }
+    setFocusSegment({ id: blocker.segmentId, key: blocker.key, sequence: Date.now() });
+    setActiveTab(blocker.key === 'guest' ? 'GUESTS' : blocker.key === 'questions' ? 'QUESTIONS' : 'RUNDOWN');
+  };
+  useEffect(() => {
+    if (!focusSegment || activeTab !== 'GUESTS') return;
+    const segment = episode.rundown.find(s => s.id === focusSegment.id);
+    const guestId = segmentGuests(segment)[0]?.guestId;
+    const frame = requestAnimationFrame(() => {
+      const target = guestId ? document.getElementById(`episode-guest-${guestId}`) : document.querySelector('[data-testid="episode-guests"]');
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (target as HTMLElement | null)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusSegment, activeTab]);
   const [booking, setBooking] = useState<Partial<Booking> | null>(null);
   const canBook = RbacService.hasPermission(currentUser, 'resources.book') || RbacService.hasPermission(currentUser, 'resources.manage');
   const episodeBookings = apiService.getBookings().filter((b) => b.link?.kind === 'episode' && b.link.id === episode.id && b.status !== 'CANCELLED');
@@ -243,10 +262,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         {showBlockers && readiness.blockers.length > 0 && (
           <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
             {readiness.blockers.map((b, i) => (
-              <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
-                <span className="font-bold text-slate-800 truncate">{b.segmentTitle}</span>
+              <li key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
+                <span className="font-bold text-slate-800 break-words min-w-0">{b.segmentTitle}</span>
                 <span className="text-amber-800">{b.detail}</span>
-                <span className="mr-auto text-[10px] text-slate-500 shrink-0">{departmentName(b.departmentId)}</span>
+                <span className="text-xs text-slate-600">المسؤول: {departmentName(b.departmentId)}{apiService.getRequests().filter(r => r.link?.segmentId === b.segmentId && r.departmentId === b.departmentId && ['OPEN', 'ACCEPTED'].includes(r.status)).map(r => r.assigneeName || r.addressedToName).filter(Boolean).filter((name, i, all) => all.indexOf(name) === i).map(name => `، ${name}`).join('')}</span>
+                <button type="button" aria-label={`معالجة النقص: ${b.segmentTitle} - ${b.label}`} onClick={() => resolveBlocker(b)} className="min-h-11 mr-auto px-3 text-blue-700 font-semibold hover:underline">معالجة النقص</button>
               </li>
             ))}
           </ul>
@@ -463,10 +483,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           canEdit={canEditRundown}
           episodeId={episode.id}
           topics={episode.topics || []}
+          focusSegment={focusSegment}
         />
       )}
 
-      {activeTab === 'QUESTIONS' && <EpisodeQuestionsPanel episode={episode} canEdit={canEditQuestions} onSaveEpisode={onSaveEpisode} />}
+      {activeTab === 'QUESTIONS' && <EpisodeQuestionsPanel episode={episode} canEdit={canEditQuestions} onSaveEpisode={onSaveEpisode} focusSegment={focusSegment} />}
 
       {activeTab === 'GUESTS' && (
         <EpisodeGuestsPanel

@@ -56,6 +56,7 @@ interface SegmentModalProps {
   defaultTopicId?: string;
   /** Segment type preselected for a new segment. */
   defaultType?: RundownSegmentType;
+  focusField?: string;
 }
 
 /** ISO time → value for a datetime-local input (station time under unified time). */
@@ -79,6 +80,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   topics = [],
   defaultTopicId,
   defaultType,
+  focusField,
 }) => {
   const [title, setTitle] = useState('');
   const [segmentType, setSegmentType] = useState<RundownSegmentType>('REPORT');
@@ -103,6 +105,15 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   const [videoAssetUrl, setVideoAssetUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isOpen || !focusField) return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(focusField);
+      target?.scrollIntoView({ block: 'center' });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, focusField]);
   const currentUser = apiService.getCurrentUser();
 
   /** Attaching an edited package fills in its real length. */

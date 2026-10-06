@@ -88,17 +88,22 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       void acquire();
     }
 
-    const heartbeat = setInterval(() => {
+    const renew = () => {
       if (held) void acquire();
       else evaluate();
-    }, HEARTBEAT_MS);
+    };
+    let heartbeat = setInterval(renew, HEARTBEAT_MS);
 
-    const unsubscribe = dataStore.subscribe((evt) => {
+    const subscribe = () => dataStore.subscribe((evt) => {
       if (evt.type === 'data-changed' && evt.collections.includes('editLocks')) evaluate();
     });
+    let unsubscribe = subscribe();
 
     // Best-effort release when the tab closes; otherwise the lock simply expires.
     const onUnload = () => {
+      disposed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
       if (!held) return;
       try {
         fetch('/api/v1/data/sync', {
@@ -112,13 +117,23 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
         // ignore
       }
     };
-    window.addEventListener('beforeunload', onUnload);
+    // pagehide runs only after navigation is accepted, unlike a cancellable beforeunload.
+    const onRestore = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      disposed = false;
+      heartbeat = setInterval(renew, HEARTBEAT_MS);
+      unsubscribe = subscribe();
+      void dataStore.pull().then(evaluate);
+    };
+    window.addEventListener('pagehide', onUnload);
+    window.addEventListener('pageshow', onRestore);
 
     return () => {
       disposed = true;
       clearInterval(heartbeat);
       unsubscribe();
-      window.removeEventListener('beforeunload', onUnload);
+      window.removeEventListener('pagehide', onUnload);
+      window.removeEventListener('pageshow', onRestore);
       if (held) apiService.releaseEditLock(collection, newsId);
       held = false;
     };
