@@ -674,7 +674,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-6">
       {/* Contextual Breadcrumbs */}
       <div className="hidden sm:block">
       <Breadcrumbs

@@ -104,6 +104,16 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [prompter, setPrompter] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const pendingStories = useRef(new Set<string>());
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [metaError, setMetaError] = useState('');
+  const [savingFormat, setSavingFormat] = useState(false);
+  const [addingSources, setAddingSources] = useState(false);
+  const [sourceError, setSourceError] = useState('');
+  const sourceWrites = useRef(new Map<string, string>());
+  const confirmedWrite = async (collection: 'bulletins' | 'bulletinStories' | 'bulletinFormats', id: string) => {
+    const outcome = await dataStore.awaitWrite(collection, id);
+    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم الحفظ بعد؛ أعد المحاولة');
+  };
 
   const flash = (ok: boolean, text: string) => {
     setMessage({ ok, text });
@@ -234,7 +244,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           return m ? m.title || m.fileName : undefined;
         }).join('\n')}`.slice(0, 1900)
       : undefined;
-    apiService.saveBulletinStory({
+    return apiService.saveBulletinStory({
       bulletinId: bulletin.id,
       slug: n.shortTitle || n.title,
       type: video || clips.length ? 'VO' : 'READER',
@@ -248,37 +258,62 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     });
   };
 
-  const addPicked = () =>
-    attempt(() => {
-      if (source === 'NEWS') picked.forEach((id) => pullNews(apiService.getNews().find((n) => n.id === id)!));
-      if (source === 'WIRES')
-        picked.forEach((id) => {
-          const w = apiService.getWires().find((x) => x.id === id)!;
-          apiService.saveBulletinStory({ bulletinId: bulletin.id, slug: w.title, type: 'READER', script: w.summary || '', wireId: w.id, status: 'DRAFT' });
-        });
-      if (source === 'COPY') apiService.copyStoriesToBulletin(picked, bulletin.id);
-      const n = picked.length;
+  const addPicked = async () => {
+    if (addingSources || !picked.length) return;
+    setAddingSources(true); setSourceError('');
+    let completed = 0;
+    try {
+      for (const id of picked) {
+        const key = `${source}:${id}`;
+        let storyId = sourceWrites.current.get(key);
+        if (!storyId || !apiService.getBulletinStories(bulletin.id).some(s => s.id === storyId)) {
+          if (source === 'NEWS') storyId = pullNews(apiService.getNews().find(n => n.id === id)!).id;
+          else if (source === 'WIRES') {
+            const w = apiService.getWires().find(x => x.id === id)!;
+            storyId = apiService.saveBulletinStory({ bulletinId: bulletin.id, slug: w.title, type: 'READER', script: w.summary || '', wireId: w.id, status: 'DRAFT' }).id;
+          } else {
+            const before = new Set(apiService.getBulletinStories(bulletin.id).map(s => s.id));
+            apiService.copyStoriesToBulletin([id], bulletin.id);
+            storyId = apiService.getBulletinStories(bulletin.id).find(s => !before.has(s.id))?.id;
+            if (!storyId) throw new Error('تعذر العثور على القصة المصدر');
+          }
+          sourceWrites.current.set(key, storyId);
+        }
+        await confirmedWrite('bulletinStories', storyId);
+        completed++;
+        sourceWrites.current.delete(key);
+        setPicked(current => current.filter(item => item !== id));
+      }
       setSource(null);
       setPicked([]);
       setQuery('');
-      if (!n) throw new Error('لم تُختر أي مادة');
-    }, `أُضيفت ${picked.length} قصة كمسودات في آخر النشرة`);
+      flash(true, `أُضيفت ${completed} قصة كمسودات في آخر النشرة`);
+    } catch (err: any) {
+      setSourceError(`تأكد حفظ ${completed} قصة. ${err?.message || 'تعذر الحفظ'}؛ بقيت المواد غير المؤكدة محددة.`);
+    } finally { setAddingSources(false); }
+  };
 
-  const saveMeta = (e: React.FormEvent) => {
+  const saveMeta = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!meta) return;
+    if (!meta || savingMeta) return;
+    setSavingMeta(true); setMetaError('');
     const { minutes, anchorsText, ...rest } = meta;
-    attempt(() => {
-      apiService.saveBulletin({ ...rest, plannedSeconds: Math.round(Number(minutes) * 60), anchors: anchorsText.split(/[،,]/).map((x) => x.trim()).filter(Boolean) });
+    try {
+      const saved = apiService.saveBulletin({ ...rest, plannedSeconds: Math.round(Number(minutes) * 60), anchors: anchorsText.split(/[،,]/).map((x) => x.trim()).filter(Boolean) });
+      await confirmedWrite('bulletins', saved.id);
       setMeta(null);
-    }, 'حُفظت بيانات النشرة');
+      flash(true, 'حُفظت بيانات النشرة');
+    } catch (err: any) { setMetaError(err?.message || 'لم يؤكد الخادم حفظ بيانات النشرة'); }
+    finally { setSavingMeta(false); }
   };
 
   const saveAsFormat = async () => {
+    if (savingFormat) return;
     const name = (await promptDialog({ title: 'حفظ النشرة قالباً', label: 'اسم القالب', defaultValue: bulletin.title.split(' — ')[0], required: true }))?.trim();
     if (!name) return;
-    attempt(() => {
-      apiService.saveBulletinFormat({
+    setSavingFormat(true);
+    try {
+      const saved = apiService.saveBulletinFormat({
         name,
         kind: bulletin.kind,
         startTime: bulletin.startTime,
@@ -290,7 +325,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         autoCreate: false,
         stories: air.sort(byRank).map((s) => ({ slug: s.slug, type: s.type, manualSeconds: storyTypeOf(s.type).manual ? s.manualSeconds : undefined })),
       });
-    }, 'حُفظت بنية النشرة كقالب؛ حدد أيام جدولته من «القوالب والجدولة»');
+      await confirmedWrite('bulletinFormats', saved.id);
+      flash(true, 'حُفظت بنية النشرة كقالب؛ حدد أيام جدولته من «القوالب والجدولة»');
+    } catch (err: any) { flash(false, err?.message || 'لم يؤكد الخادم حفظ قالب النشرة'); }
+    finally { setSavingFormat(false); }
   };
 
   const users = apiService.getUsers().filter((u) => u.isActive !== false);
@@ -343,7 +381,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               <Download className="w-4 h-4" /> MOS
             </a>
             {can('bulletins.manage') && (
-              <button type="button" onClick={saveAsFormat} className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
+              <button type="button" disabled={savingFormat} onClick={saveAsFormat} className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                 <Save className="w-4 h-4" /> حفظ كقالب
               </button>
             )}
@@ -750,6 +788,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       <FormPage
         isOpen={!!source}
         onClose={() => {
+          if (addingSources) return false;
           setSource(null);
           setPicked([]);
         }}
@@ -758,6 +797,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         maxWidth="3xl"
       >
         <div className="space-y-3">
+          {sourceError && <p role="alert" className="text-sm text-rose-700">{sourceError}</p>}
+          <fieldset disabled={addingSources} className="space-y-3">
           {source === 'COPY' ? (
             <select aria-label="النشرة المصدر" value={copyFrom} onChange={(e) => { setCopyFrom(e.target.value); setPicked([]); }} className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs bg-white">
               <option value="">— اختر النشرة —</option>
@@ -803,13 +844,16 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               إضافة {picked.length ? `(${picked.length})` : ''} للنشرة
             </button>
           </div>
+          </fieldset>
         </div>
       </FormPage>
 
       {/* Bulletin details */}
-      <FormPage isOpen={!!meta} onClose={() => setMeta(null)} title="بيانات النشرة" maxWidth="xl">
+      <FormPage isOpen={!!meta} onClose={() => { if (savingMeta) return false; setMeta(null); }} title="بيانات النشرة" maxWidth="xl">
         {meta && (
           <form onSubmit={saveMeta} className="space-y-3">
+            {metaError && <p role="alert" className="text-sm text-rose-700">{metaError}</p>}
+            <fieldset disabled={savingMeta} className="space-y-3">
             <label className="block text-xs font-bold text-slate-700">
               العنوان
               <input required value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-bold" />
@@ -902,10 +946,11 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   إلغاء
                 </button>
                 <button type="submit" className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl">
-                  حفظ
+                  {savingMeta ? 'جارٍ تأكيد الحفظ...' : 'حفظ'}
                 </button>
               </div>
             </div>
+            </fieldset>
           </form>
         )}
       </FormPage>

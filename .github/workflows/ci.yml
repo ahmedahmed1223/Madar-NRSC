@@ -24,7 +24,7 @@ jobs:
       - name: Install browser for workflow tests
         run: npx playwright install --with-deps chromium
       - name: Critical newsroom and production workflows
-        run: npx playwright test tests/e2e/news-status-confirmation.spec.ts tests/e2e/news-ux.spec.ts tests/e2e/journey-fixes.spec.ts tests/e2e/collaboration.spec.ts tests/e2e/desk-improvements.spec.ts tests/e2e/settings-controls.spec.ts tests/e2e/settings-accessibility.spec.ts tests/e2e/datetime.spec.ts tests/e2e/news-customization.spec.ts
+        run: npx playwright test tests/e2e/news-status-confirmation.spec.ts tests/e2e/news-ux.spec.ts tests/e2e/journey-fixes.spec.ts tests/e2e/collaboration.spec.ts tests/e2e/desk-improvements.spec.ts tests/e2e/settings-controls.spec.ts tests/e2e/settings-accessibility.spec.ts tests/e2e/datetime.spec.ts tests/e2e/news-customization.spec.ts tests/e2e/bulletin-save-confirmation.spec.ts
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
