@@ -51,6 +51,10 @@ test('empty stories cannot be sent for review; proofreading fixes common slips',
 test('bulletin approval chain: editor then managing editor; copy stories to another bulletin', async ({ browser }) => {
   const producer = await signIn(browser, 'producer@akhbar.tv');
   await openNav(producer.page, 'النشرات');
+  const data = await (await producer.page.request.get('/api/v1/data')).json();
+  const bulletin = data.collections.bulletins.find((row: any) => row.d.title.startsWith('نشرة الثامنة'));
+  expect(bulletin).toBeTruthy();
+  await producer.page.getByLabel('التاريخ', { exact: true }).fill(bulletin.d.date);
   await producer.page.locator('button[aria-label^="فتح نشرة الثامنة"]').first().click();
   await producer.page.getByRole('button', { name: /بيانات النشرة|تعديل النشرة/ }).first().click();
   const form = producer.page.locator('#form-page-root');

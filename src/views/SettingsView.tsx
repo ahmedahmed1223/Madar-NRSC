@@ -161,6 +161,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const initialSettings = useMemo(() => apiService.getSettings(), []);
   const [stationName, setStationName] = useState(initialSettings.organizationName || '');
   const [timezone, setTimezone] = useState(initialSettings.defaultTimezone || 'Asia/Riyadh');
+  const timezoneOptions = useMemo(() => {
+    const common = ['Asia/Riyadh', 'Asia/Dubai', 'Africa/Cairo', 'Asia/Kuwait', 'Asia/Amman', 'Europe/London', 'UTC', 'Europe/Istanbul', 'Asia/Tokyo', 'America/New_York'];
+    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
+    let supported: string[] = [];
+    try { supported = intl.supportedValuesOf?.('timeZone') || []; } catch { /* Older browsers retain the common zones. */ }
+    return [...new Set([...common, initialSettings.defaultTimezone || 'Asia/Riyadh', ...supported])];
+  }, [initialSettings.defaultTimezone]);
   const [defaultDuration, setDefaultDuration] = useState(initialSettings.defaultSegmentDurationSeconds ?? 180);
   const [isSaved, setIsSaved] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -503,30 +510,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="grid grid-cols-1 gap-3">
               {section === 'station' && <div>
                 <label htmlFor="station-timezone-input" className="block font-bold text-slate-700 mb-1">المنطقة الزمنية </label>
-                <input
+                <select
                   id="station-timezone-input"
                   aria-describedby={generalError ? 'settings-error' : undefined}
-                  type="text"
-                  list="broadcast-timezones"
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   dir="ltr"
-                  autoCapitalize="none"
-                  spellCheck="false"
-                />
-                <datalist id="broadcast-timezones">
-                  <option value="Asia/Riyadh" />
-                  <option value="Asia/Dubai" />
-                  <option value="Africa/Cairo" />
-                  <option value="Asia/Kuwait" />
-                  <option value="Asia/Amman" />
-                  <option value="Europe/London" />
-                  <option value="UTC" />
-                  <option value="Europe/Istanbul" />
-                  <option value="Asia/Tokyo" />
-                  <option value="America/New_York" />
-                </datalist>
+                >
+                  {[...new Set([...timezoneOptions, timezone])].map(zone => <option key={zone} value={zone}>{zone}</option>)}
+                </select>
               </div>}
 
               {section === 'editorial' && <div>
