@@ -3,6 +3,8 @@ import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { toLocalInputValue } from '../shared/dates';
 import { notify } from '../services/notify';
+import { useNewsListPreferences } from '../hooks/useNewsListPreferences';
+import { NEWS_COLUMNS, sanitizeNewsListPreferences } from '../shared/newsListPreferences';
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
@@ -74,7 +76,6 @@ const STATUS_RANK: Record<string, number> = { DRAFT: 0, IN_PROGRESS: 1, NEEDS_RE
 const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
   key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
-const PAGE_SIZE = 50;
 const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || item.updatedAt;
 
 export const NewsListView: React.FC<NewsListViewProps> = ({
@@ -90,6 +91,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   onReviewNews: openReview,
   initialTab = 'ALL',
 }) => {
+  const [listPreferences, saveListPreferences] = useNewsListPreferences(currentUser.id);
+  const PAGE_SIZE = listPreferences.pageSize;
+  const showColumn = (key: typeof NEWS_COLUMNS[number]) => listPreferences.columns.includes(key);
+  const columnLabels = { category: 'القسم', priority: 'الأولوية', author: 'المصدر والمحرر', updatedAt: 'آخر تحديث' };
   const contextKey = `nrcs_news_context:${currentUser.id}:${initialTab}`;
   const savedContext = useMemo(() => {
     try { return JSON.parse(sessionStorage.getItem(contextKey) || '{}') || {}; } catch { return {}; }
@@ -330,6 +335,17 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         </div>
       </div>
 
+      <details className="border-b border-slate-200 pb-2">
+        <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-slate-700">تخصيص قائمة الأخبار</summary>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
+          <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
+          <select id="news-page-size" value={PAGE_SIZE} onChange={e => { saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
+          <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
+            {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
+          </fieldset>
+          <button type="button" onClick={() => { saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
+        </div>
+      </details>
       <NewsArchiveModal
         isOpen={isArchiveOpen}
         onClose={() => setIsArchiveOpen(false)}
@@ -594,18 +610,18 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   </button>
                 </th>
                 <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />
-                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />
+                {showColumn('category') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
+                {showColumn('priority') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                {showColumn('author') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
                 <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
                 <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36">إجراءات تحريرية</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredNews.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                  <td colSpan={4 + listPreferences.columns.length} className="py-12 text-center text-slate-500">
                     لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
                     {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL') && (
                       <button type="button" onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); setSelectedPriority('ALL'); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
@@ -676,12 +692,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                                   {sInfo.label}
                                 </Badge>
                               </span>
-                              <span className="font-semibold text-slate-600">{item.categoryName}</span>
-                              <Badge variant={pInfo.variant} size="sm">
+                              {showColumn('category') && <span className="font-semibold text-slate-600">{item.categoryName}</span>}
+                              {showColumn('priority') && <Badge variant={pInfo.variant} size="sm">
                                 {pInfo.label}
-                              </Badge>
-                              {item.authorName && <span>{item.authorName}</span>}
-                              {item.updatedAt && (
+                              </Badge>}
+                              {showColumn('author') && item.authorName && <span>{item.authorName}</span>}
+                              {showColumn('updatedAt') && item.updatedAt && (
                                 <span className="md:hidden tabular-nums">
                                   {new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                 </span>
@@ -704,7 +720,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Category */}
-                      <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('category') && <td className="py-3.5 px-3 hidden lg:table-cell">
                         {(() => {
                           const catObj = (categories || []).find(
                             (c) => c.nameAr === item.categoryName || c.id === item.categoryId
@@ -727,22 +743,22 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             </span>
                           );
                         })()}
-                      </td>
+                      </td>}
 
                       {/* Priority */}
-                      <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('priority') && <td className="py-3.5 px-3 hidden lg:table-cell">
                         <Badge variant={pInfo.variant} size="sm">
                           {pInfo.label}
                         </Badge>
-                      </td>
+                      </td>}
 
                       {/* Source / Author */}
-                      <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('author') && <td className="py-3.5 px-3 hidden lg:table-cell">
                         <div className="text-[11px]">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
                           <span className="text-slate-500 block">{item.authorName}</span>
                         </div>
-                      </td>
+                      </td>}
 
                       {/* Status */}
                       <td className="py-3.5 px-3 hidden sm:table-cell">
@@ -752,9 +768,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Last update */}
-                      <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
+                      {showColumn('updatedAt') && <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
                         {item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </td>
+                      </td>}
 
                       {/* Actions */}
                       <td className="py-3.5 px-2 sm:px-4 text-center">

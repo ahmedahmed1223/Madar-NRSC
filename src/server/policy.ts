@@ -10,6 +10,7 @@ import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
+import { settingsError } from '../shared/settings';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -330,7 +331,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   categories: referencedPolicy('categoryId', 'القسم'),
   sources: referencedPolicy('sourceId', 'المصدر'),
   programTypes: require('system.settings'),
-  settings: require('system.settings'),
+  settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
   comments: ({ auth, kind, before, after }) => {

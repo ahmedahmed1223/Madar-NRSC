@@ -274,7 +274,7 @@ export class SyncService {
   private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
     const NAMES: Partial<Record<CollectionName, string>> = {
       news: 'NEWS', stories: 'STORY', programs: 'PROGRAM', episodes: 'EPISODE', bulletins: 'BULLETIN', guests: 'GUEST',
-      media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', bulletinFormats: 'BULLETIN_FORMAT',
+        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', bulletinFormats: 'BULLETIN_FORMAT', settings: 'SETTINGS',
     };
     const entity = NAMES[collection];
     if (!entity || !after) return;
@@ -282,7 +282,12 @@ export class SyncService {
     let action = '';
     let severity = 'INFO';
     let details = '';
-    if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
+    if (collection === 'settings') {
+      const keys = ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'dateTime', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'newsTemplates'];
+      const changes = keys.filter(key => JSON.stringify(before?.[key]) !== JSON.stringify(after[key])).map(key => ({ field: key, before: before?.[key] ?? null, after: after[key] ?? null }));
+      if (!changes.length) return;
+      [action, details] = ['SETTINGS_UPDATE', JSON.stringify(changes)];
+    } else if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
     else if (after.deletedAt && !before.deletedAt) [action, severity, details] = ['DELETE', 'WARNING', `نقل إلى المحذوفات: ${title}`];
     else if (!after.deletedAt && before.deletedAt) [action, details] = ['RESTORE', `استعادة: ${title}`];
     else if (before.status !== after.status && after.status) {

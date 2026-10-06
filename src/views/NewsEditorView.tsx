@@ -1,4 +1,5 @@
 import { notify } from '../services/notify';
+import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
@@ -111,7 +112,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [content, setContent] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [sourceId, setSourceId] = useState('');
-  const [priority, setPriority] = useState<NewsPriority>('NORMAL');
+  const [priority, setPriority] = useState<NewsPriority>(apiService.getSettings().defaultNewsPriority || 'NORMAL');
   const [locationName, setLocationName] = useState('المقر الرئيسي');
   const [eventDate, setEventDate] = useState(() => toLocalInputValue());
   const [mainImageUrl, setMainImageUrl] = useState('');
@@ -439,7 +440,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         content: '',
         categoryId: categories[0]?.id || '',
         sourceId: sources[0]?.id || '',
-        priority: 'NORMAL' as NewsPriority,
+        priority: apiService.getSettings().defaultNewsPriority || 'NORMAL' as NewsPriority,
         locationName: '',
         eventDate: toLocalInputValue(),
         mainImageUrl: '',
@@ -941,6 +942,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <Settings2 className="w-4 h-4" /> أدوات الخبر
           </summary>
         <div className="flex flex-wrap items-center gap-2 pt-2">
+            <NewsTemplatePicker content={content} onChange={setContent} disabled={!canEditContent || saving} />
           <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}

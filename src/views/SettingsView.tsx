@@ -6,7 +6,17 @@ import { FormPage } from '../components/common/FormPage';
 import { Avatar } from '../components/common/Avatar';
 import { DemoDataCard } from '../components/settings/DemoDataCard';
 import { stationTimeZone } from '../shared/dates';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { confirmSaved } from '../services/confirmSave';
+import { SINGLETON_ID } from '../shared/collections';
+import { settingsError } from '../shared/settings';
+import { sanitizeDateSettings } from '../shared/dateFormat';
+import { DEFAULT_BREAKING_HOURS } from '../shared/newsWorkflow';
+import { themePreference, setThemePreference, reducedMotion, setReducedMotion } from '../services/theme';
+import { apiFetch } from '../services/http';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { DraftStatus } from '../components/common/DraftStatus';
+import { NewsTemplatesSettings } from '../components/settings/NewsTemplatesSettings';
 import {
   Settings,
   Tv,
@@ -52,9 +62,12 @@ interface SettingsViewProps {
   onOpenUsers?: () => void;
 }
 
-type SettingsSection = 'station' | 'datetime' | 'categories' | 'sources' | 'data';
+type SettingsSection = 'station' | 'editorial' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
+  { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
+  { id: 'preferences', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وتقليل الحركة', icon: Palette },
+  { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
   { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
   { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات البرقيات', icon: Rss },
@@ -63,7 +76,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
 const SECTION_KEY = 'nrcs-settings-section';
 
 const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number> }> = ({ section, onChange, counts }) => (
-  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-3 gap-2">
     {SECTIONS.map((sec) => {
       const Icon = sec.icon;
       const active = sec.id === section;
@@ -73,19 +86,19 @@ const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSe
           type="button"
           aria-current={active ? 'page' : undefined}
           onClick={() => onChange(sec.id)}
-          className={`text-right p-3 rounded-2xl border transition-colors flex items-start gap-3 ${
-            active ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50/40'
+          className={`text-right min-h-11 p-2 sm:p-3 rounded-lg border transition-colors flex items-center gap-2 ${
+            active ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50/40'
           }`}
         >
-          <span className={`p-2 rounded-xl shrink-0 ${active ? 'bg-white/15' : 'bg-slate-100 text-slate-500'}`}>
+          <span className={`hidden sm:block p-2 rounded-lg shrink-0 ${active ? 'text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
             <Icon className="w-4 h-4" />
           </span>
           <span className="min-w-0">
             <span className="block text-xs font-bold">
               {sec.label}
-              {counts[sec.id] !== undefined && <span className={`ms-1 text-[10px] ${active ? 'text-blue-100' : 'text-slate-500'}`}>({counts[sec.id]})</span>}
+              {counts[sec.id] !== undefined && <span className="ms-1 text-xs text-slate-600">({counts[sec.id]})</span>}
             </span>
-            <span className={`block text-[11px] mt-0.5 leading-snug ${active ? 'text-blue-100' : 'text-slate-500'}`}>{sec.hint}</span>
+            <span className="hidden sm:block text-xs mt-0.5 leading-snug text-slate-600">{sec.hint}</span>
           </span>
         </button>
       );
@@ -134,7 +147,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return 'station';
     }
   });
-  const chooseSection = (next: SettingsSection) => {
+  const chooseSection = async (next: SettingsSection) => {
+    if (saving) return;
+    if (dirty && !await confirmDialog({ title: 'تغييرات غير محفوظة', message: 'الانتقال دون حفظ التغييرات؟', confirmLabel: 'تجاهل التغييرات' })) return;
+    if (dirty) resetGeneral();
     setSection(next);
     try {
       localStorage.setItem(SECTION_KEY, next);
@@ -148,6 +164,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [defaultDuration, setDefaultDuration] = useState(initialSettings.defaultSegmentDurationSeconds ?? 180);
   const [isSaved, setIsSaved] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [settingsSearch, setSettingsSearch] = useState('');
+  const [channelName, setChannelName] = useState(initialSettings.primaryChannelName || '');
+  const [organizationNameEn, setOrganizationNameEn] = useState(initialSettings.organizationNameEn || '');
+  const [newsPriority, setNewsPriority] = useState(initialSettings.defaultNewsPriority || 'NORMAL');
+  const [breakingHours, setBreakingHours] = useState(initialSettings.breakingDurationHours ?? DEFAULT_BREAKING_HOURS);
+  const [appearance, setAppearance] = useState(themePreference());
+  const [lessMotion, setLessMotion] = useState(reducedMotion());
+  const [runtime, setRuntime] = useState<Record<string, any> | null>(null);
+  const [runtimeError, setRuntimeError] = useState('');
+  useEffect(() => {
+    if (section !== 'system') return;
+    let active = true;
+    setRuntime(null); setRuntimeError('');
+    void apiFetch<{ data: Record<string, any> }>('/api/v1/admin/runtime').then(result => {
+      if (active) setRuntime(result.data);
+    }).catch(() => { if (active) setRuntimeError('تعذر قراءة حالة النظام. تحقق من الاتصال والصلاحيات.'); });
+    return () => { active = false; };
+  }, [section]);
+  const [useStationTime, setUseStationTime] = useState(sanitizeDateSettings(initialSettings.dateTime).timeBasis === 'station');
+  const values = { organizationName: stationName, organizationNameEn, primaryChannelName: channelName, defaultTimezone: timezone, defaultSegmentDurationSeconds: defaultDuration, defaultNewsPriority: newsPriority, breakingDurationHours: breakingHours, timeBasis: useStationTime };
+  const [baseline, setBaseline] = useState(values);
+  const dirty = JSON.stringify(values) !== JSON.stringify(baseline);
+  const restoreGeneral = (saved: typeof values) => {
+    setStationName(saved.organizationName); setOrganizationNameEn(saved.organizationNameEn);
+    setChannelName(saved.primaryChannelName); setTimezone(saved.defaultTimezone);
+    setDefaultDuration(saved.defaultSegmentDurationSeconds); setNewsPriority(saved.defaultNewsPriority);
+    setBreakingHours(saved.breakingDurationHours); setUseStationTime(saved.timeBasis);
+  };
+  const draft = useFormDraft(`settings:${apiService.getCurrentUser().id}`, true, values, restoreGeneral);
+  const resetGeneral = () => {
+    restoreGeneral(baseline);
+    setGeneralError(null); setIsSaved(false);
+  };
   const [backupMsg, setBackupMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Search & Filter Categories
@@ -204,8 +254,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     );
   }, [categories, categorySearch]);
 
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setIsSaved(false);
     setGeneralError(null);
     const name = stationName.trim();
     const duration = Math.round(Number(defaultDuration));
@@ -222,17 +274,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     try {
-      apiService.saveSettings({
+      const patch = {
         organizationName: name,
+        organizationNameEn: organizationNameEn.trim(),
+        primaryChannelName: channelName.trim(),
         defaultTimezone: timezone.trim() || 'Asia/Riyadh',
         defaultSegmentDurationSeconds: duration,
-      });
+        defaultNewsPriority: newsPriority,
+        breakingDurationHours: breakingHours,
+        dateTime: { ...sanitizeDateSettings(apiService.getSettings().dateTime), timeBasis: useStationTime ? 'station' as const : 'device' as const },
+      };
+      const error = settingsError({ ...apiService.getSettings(), ...patch });
+      if (error) { setGeneralError(error); return; }
+      if (timezone !== baseline.defaultTimezone || useStationTime !== baseline.timeBasis) {
+        if (!await confirmDialog({ title: 'تغيير توقيت المحطة', message: 'يتغير عرض وإدخال الأوقات لجميع الزملاء، ولا تتغير المواعيد المحفوظة. اعتماد التغيير؟', confirmLabel: 'اعتماد التوقيت' })) return;
+      }
+      setSaving(true);
+      // Preserve fields another administrator changed while this form was open.
+      const changed = Object.fromEntries(Object.entries(patch).filter(([key]) => key === 'dateTime'
+        ? useStationTime !== baseline.timeBasis
+        : (values as Record<string, unknown>)[key] !== (baseline as Record<string, unknown>)[key]));
+      apiService.saveSettings(changed);
+      if (!await confirmSaved('settings', SINGLETON_ID, 'حُفظت إعدادات المحطة')) {
+        setGeneralError('لم يؤكد الخادم حفظ الإعدادات. بقيت القيم المدخلة؛ أعد المحاولة بعد التحقق من الاتصال.');
+        return;
+      }
+      setBaseline(values);
+      draft.clearDraft();
+      setIsSaved(true);
     } catch (err: any) {
       setGeneralError(err?.message || 'تعذر حفظ الإعدادات');
       return;
+    } finally {
+      setSaving(false);
     }
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
   };
 
   const handleExportBackup = () => {
@@ -361,7 +436,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>الإعدادات</span>
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          هوية المؤسسة، الأقسام الصحفية، وكالات الأنباء وخلاصاتها، والبيانات. التغييرات تسري على كل الزملاء فوراً.
+          إعدادات المحطة مشتركة بين الزملاء. تفضيلات الجهاز خاصة بهذا المتصفح.
         </p>
       </div>
 
@@ -373,33 +448,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       <SettingsNav section={section} onChange={chooseSection} counts={{ categories: categories.length, sources: sources.length }} />
+      <div role="search" className="space-y-2">
+        <label htmlFor="settings-search" className="sr-only">البحث في الإعدادات</label>
+        <input id="settings-search" type="search" value={settingsSearch} onChange={e => setSettingsSearch(e.target.value)} className="w-full min-h-11 border border-slate-300 rounded-lg px-3 bg-white text-slate-800" placeholder="البحث في الإعدادات" />
+        {settingsSearch.trim() && <div aria-live="polite" className="flex flex-wrap gap-2">
+          {SECTIONS.filter(s => `${s.label} ${s.hint}`.includes(settingsSearch.trim())).map(s => <button key={s.id} type="button" onClick={() => { void chooseSection(s.id); setSettingsSearch(''); }} className="min-h-11 px-3 text-blue-700 underline">{s.label}</button>)}
+          {!SECTIONS.some(s => `${s.label} ${s.hint}`.includes(settingsSearch.trim())) && <p>لا توجد إعدادات مطابقة</p>}
+        </div>}
+      </div>
+      {section === 'preferences' && <section className="space-y-4 border-b border-slate-200 py-4">
+        <h2 className="text-lg font-bold">تفضيلات هذا الجهاز</h2>
+        <div><label htmlFor="settings-appearance" className="block">المظهر</label><select id="settings-appearance" value={appearance} onChange={e => { const value = e.target.value as typeof appearance; setAppearance(value); setThemePreference(value); }} className="block min-h-11 border border-slate-300 rounded-lg px-3 mt-1"><option value="system">حسب الجهاز</option><option value="light">نهاري</option><option value="dark">ليلي</option></select></div>
+        <label className="flex items-center gap-2 min-h-11"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
+      </section>}
+      {section === 'system' && <section className="space-y-4 border-b border-slate-200 py-4">
+        <h2 className="text-lg font-bold">حالة النظام وإعدادات التشغيل المعتمدة</h2>
+        {runtimeError ? <p role="alert">{runtimeError}</p> : !runtime ? <p role="status">جارٍ قراءة الحالة...</p> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          {Object.entries({ 'الإصدار': runtime.version, 'قاعدة البيانات': runtime.databaseHealthy ? 'سليمة' : 'تحتاج مراجعة', 'مهلة الجلسة (ساعة)': runtime.sessionTtlHours, 'حد الطلبات في الدقيقة': runtime.rateLimitPerMinute, 'النسخ الدوري (ساعة)': runtime.backupIntervalHours || 'معطل', 'عدد النسخ المحلية المحتفظ بها': runtime.backupRetention, 'وجهة النسخ الخارجية': runtime.externalBackup ? 'معدة' : 'غير معدة', 'الوجهة السحابية': runtime.cloudBackup ? 'معدة' : 'غير معدة', 'كوكي الاتصال الآمن': runtime.secureCookie ? 'مفعلة' : 'غير مفعلة' }).map(([key, value]) => <div key={key} className="border-b border-slate-200 py-2"><dt className="text-slate-600">{key}</dt><dd className="font-semibold break-words">{String(value)}</dd></div>)}
+        </dl>}
+      </section>}
 
-      {section === 'station' && (
+      {(section === 'station' || section === 'editorial') && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* General Station Config */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
             <Tv className="w-4 h-4 text-blue-600" />
-            <span>بيانات المحطة الإخبارية والبث</span>
+            <span>{section === 'station' ? 'بيانات المحطة الإخبارية والبث' : 'الافتراضات التحريرية'}</span>
           </h3>
 
-          <form onSubmit={handleSaveGeneral} className="space-y-3 text-xs">
+          <form onSubmit={handleSaveGeneral} className="space-y-3 text-xs" aria-busy={saving}>
+            <DraftStatus draft={draft} />
+            <fieldset disabled={saving} aria-label="إعدادات المحطة والتحرير" className="space-y-3">
+            {section === 'station' && <>
             <div>
               <label htmlFor="station-name-input" className="block font-bold text-slate-700 mb-1">اسم القناة / المؤسسة الإعلامية</label>
               <input
                 id="station-name-input"
+                aria-describedby={generalError ? 'settings-error' : undefined}
+                required
+                maxLength={120}
                 type="text"
                 value={stationName}
                 onChange={(e) => setStationName(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
+            <label className="block font-bold">اسم المؤسسة بالإنجليزية<input value={organizationNameEn} maxLength={120} onChange={e => setOrganizationNameEn(e.target.value)} dir="ltr" className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
+            <label className="block font-bold">اسم قناة البث<input value={channelName} maxLength={120} onChange={e => setChannelName(e.target.value)} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
+            <label className="flex items-center gap-2 min-h-11"><input type="checkbox" checked={useStationTime} onChange={e => setUseStationTime(e.target.checked)} />اعتماد توقيت المحطة لجميع الزملاء</label>
+            <p role="status" className="text-slate-600">{useStationTime ? `التوقيت المعتمد: ${timezone}` : 'التوقيت المعتمد: جهاز كل مستخدم؛ المنطقة المختارة لا تُطبق على حقول المواعيد حتى تفعيل توقيت المحطة.'}</p>
+            </>}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 gap-3">
+              {section === 'station' && <div>
                 <label htmlFor="station-timezone-input" className="block font-bold text-slate-700 mb-1">المنطقة الزمنية </label>
                 <input
                   id="station-timezone-input"
+                  aria-describedby={generalError ? 'settings-error' : undefined}
                   type="text"
                   list="broadcast-timezones"
                   value={timezone}
@@ -417,10 +523,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <option value="Asia/Amman" />
                   <option value="Europe/London" />
                   <option value="UTC" />
+                  <option value="Europe/Istanbul" />
+                  <option value="Asia/Tokyo" />
+                  <option value="America/New_York" />
                 </datalist>
-              </div>
+              </div>}
 
-              <div>
+              {section === 'editorial' && <div>
                 <label htmlFor="station-duration-input" className="block font-bold text-slate-700 mb-1">الزمن الافتراضي للفقرة (ثانية)</label>
                 <input
                   id="station-duration-input"
@@ -433,17 +542,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={(e) => setDefaultDuration(Number(e.target.value))}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
-              </div>
+              </div>}
             </div>
+            {section === 'editorial' && <>
+            <label className="block font-bold">أولوية الخبر الافتراضية<select value={newsPriority} onChange={e => setNewsPriority(e.target.value as typeof newsPriority)} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1"><option value="LOW">منخفضة</option><option value="NORMAL">عادية</option><option value="HIGH">عالية</option><option value="URGENT">عاجلة</option></select></label>
+            <label className="block font-bold">مدة العاجل الافتراضية (ساعة)<input type="number" min={0.25} max={24} step={0.25} value={breakingHours} onChange={e => setBreakingHours(Number(e.target.value))} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
+            </>}
+            </fieldset>
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 py-3 flex flex-wrap gap-3 items-center">
 
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs"
+              disabled={saving || !dirty}
+              className="flex min-h-11 items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-all shadow-xs disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>حفظ الإعدادات العامة</span>
+              <span>{saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات العامة'}</span>
             </button>
-            {generalError && <p className="text-rose-600 font-bold">{generalError}</p>}
+            <button type="button" disabled={saving || !dirty} onClick={resetGeneral} className="min-h-11 px-3 text-slate-700">إلغاء التغييرات</button>
+            <span role="status">{dirty ? 'تغييرات غير محفوظة' : 'لا توجد تغييرات معلقة'}</span>
+            </div>
+            {generalError && <p id="settings-error" role="alert" className="text-rose-600 font-bold">{generalError}</p>}
           </form>
         </div>
 
@@ -481,6 +600,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
+      {section === 'editorial' && <NewsTemplatesSettings />}
       {section === 'categories' && (
       <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">

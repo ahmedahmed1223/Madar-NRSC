@@ -1,4 +1,5 @@
 import { confirmDialog } from '../../services/dialogs';
+import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
 import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
@@ -317,15 +318,23 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const program = apiService.getPrograms().find((p) => p.id === episode.programId);
   const canSaveTemplate = !!program && RbacService.hasPermission(currentUser, 'programs.manage') && rundown.length > 0;
   const [notice, setNotice] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const saveTemplate = async () => {
-    if (!program) return;
+    if (!program || savingTemplate) return;
     const template = templateFromEpisode(episode);
     if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${program.template.segments.length} فقرة) ببنية هذه الحلقة؟`))) return;
     try {
+      setSavingTemplate(true); setNotice(null); setTemplateError(false);
       apiService.saveProgram({ id: program.id, template: { ...template, updatedAt: new Date().toISOString(), updatedByName: currentUser.fullName } });
-      setNotice(`حُفظت البنية (${template.topics.length} محور، ${template.segments.length} فقرة) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
+      if (await confirmSaved('programs', program.id, 'تم حفظ قالب البرنامج')) {
+        setNotice(`حُفظت البنية (${template.topics.length} محور، ${template.segments.length} فقرة) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
+      } else { setTemplateError(true); setNotice('لم يؤكد الخادم حفظ قالب البرنامج. بقيت بنية الحلقة دون تغيير؛ أعد المحاولة.'); }
     } catch (err: any) {
+      setTemplateError(true);
       setNotice(err?.message || 'تعذر حفظ القالب');
+    } finally {
+      setSavingTemplate(false);
     }
     setTimeout(() => setNotice(null), 6000);
   };
@@ -337,13 +346,13 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
     <div className="space-y-4" data-testid="episode-planner">
       <div className="flex flex-wrap items-center justify-end gap-2">
         {canSaveTemplate && (
-          <button type="button" onClick={saveTemplate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
-            <Save className="w-4 h-4" /> حفظ البنية كقالب للبرنامج
+          <button type="button" disabled={savingTemplate} onClick={saveTemplate} className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <Save className="w-4 h-4" /> {savingTemplate ? 'جارٍ حفظ القالب...' : 'حفظ البنية كقالب للبرنامج'}
           </button>
         )}
       </div>
       {notice && (
-        <p role="status" className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+        <p role={templateError ? 'alert' : 'status'} className={`text-xs font-bold border rounded-lg p-2.5 ${templateError ? 'text-rose-800 bg-rose-50 border-rose-200' : 'text-emerald-800 bg-emerald-50 border-emerald-200'}`}>
           {notice}
         </p>
       )}

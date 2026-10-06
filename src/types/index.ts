@@ -564,6 +564,9 @@ export interface SystemSettings {
   allowGuestProposals: boolean;
   enableAuditLog: boolean;
   defaultSegmentDurationSeconds?: number;
+  defaultNewsPriority?: NewsPriority;
+  breakingDurationHours?: number;
+  newsTemplates?: { id: string; name: string; body: string }[];
   /** Station-wide date/time conventions (see shared/dateFormat). */
   dateTime?: Partial<import('../shared/dateFormat').DateTimeSettings>;
 }

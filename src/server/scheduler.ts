@@ -47,7 +47,8 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
         ],
       };
       if (updated.isBreaking) {
-        updated.breakingUntil = new Date(now.getTime() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString();
+        const hours = db.getRow('settings', 'singleton')?.d?.breakingDurationHours ?? DEFAULT_BREAKING_HOURS;
+        updated.breakingUntil = new Date(now.getTime() + hours * 3600_000).toISOString();
       }
 
       db.recordHistory('news', item.id, row.v, item, null, SYSTEM_ACTOR.name);

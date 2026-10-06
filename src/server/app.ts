@@ -40,7 +40,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.20.0';
+export const APP_VERSION = '3.21.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -186,6 +186,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   };
 
   // --- Health ----------------------------------------------------------------
+  app.get('/api/v1/admin/runtime', requirePermission('system.settings'), (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ data: { version: APP_VERSION, databaseHealthy: db.isHealthy(),
+      sessionTtlHours: config.sessionTtlMs / 3600000, rateLimitPerMinute: config.rateLimitPerMinute,
+      backupIntervalHours: config.backupIntervalHours, backupRetention: config.backupRetention,
+      externalBackup: !!config.backupDirectory, cloudBackup: !!config.backupRemote, secureCookie: config.cookieSecure } });
+  });
 
 
   // --- Authentication ------------------------------------------------------

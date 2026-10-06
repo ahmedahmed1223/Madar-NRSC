@@ -7,9 +7,12 @@ test('news search survives editing and reload with author and date filters', asy
   const search = page.getByRole('searchbox', { name: 'البحث في الأخبار' });
   await search.fill('القمة');
   await page.setViewportSize({ width: 1440, height: 400 });
-  const scrollTop = await page.locator('#app-main').evaluate(el => { const scroller = el.parentElement!; scroller.scrollTop = 80; return scroller.scrollTop; });
+  await page.locator('#app-main').evaluate(el => { el.parentElement!.scrollTop = 80; });
+  const edit = page.locator('button[title="تحرير الخبر"]').first();
+  await edit.scrollIntoViewIfNeeded();
+  const scrollTop = await page.locator('#app-main').evaluate(el => el.parentElement!.scrollTop);
   expect(scrollTop).toBeGreaterThan(0);
-  await page.locator('button[title="تحرير الخبر"]').first().click();
+  await edit.click();
   await page.getByTitle('العودة لقائمة الأخبار', { exact: true }).click();
   await expect(search).toHaveValue('القمة');
   await expect.poll(() => page.locator('#app-main').evaluate(el => el.parentElement!.scrollTop)).toBe(scrollTop);

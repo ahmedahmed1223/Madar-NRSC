@@ -29,6 +29,7 @@ import {
 } from '../types';
 
 import { INITIAL_SETTINGS } from './mockData';
+import { settingsError } from '../shared/settings';
 import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch } from './http';
@@ -342,7 +343,7 @@ export class ApiService {
         const updated: NewsItem = { ...old, ...editable, updatedAt: now };
         if (data.title && data.title !== old.title) updated.slug = makeNewsSlug(data.title, old.id);
         if (updated.isBreaking && !old.isBreaking && !updated.breakingUntil) {
-          updated.breakingUntil = new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString();
+          updated.breakingUntil = new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString();
         }
         all[idx] = updated;
         setStored(STORAGE_KEYS.NEWS, all);
@@ -379,14 +380,14 @@ export class ApiService {
       categoryName: data.categoryName || '',
       authorId: currentUser.id,
       authorName: currentUser.fullName,
-      priority: data.priority || 'NORMAL',
+      priority: data.priority || this.getSettings().defaultNewsPriority || 'NORMAL',
       status: initialStatus,
       keywords: data.keywords || [],
       locationName: data.locationName || '',
       eventDate: data.eventDate || now,
       isBreaking: !!data.isBreaking,
       breakingUntil: data.isBreaking
-        ? data.breakingUntil || new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString()
+        ? data.breakingUntil || new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString()
         : undefined,
       internalNotes: data.internalNotes || '',
       workflowLogs: [
@@ -482,7 +483,7 @@ export class ApiService {
       Object.assign(updated, { publishedById: by.id, publishedByName: by.name });
       if (!item.publishDate) updated.publishDate = now;
       // A story flagged breaking goes on air for the standard window from the moment it is published.
-      if (updated.isBreaking) updated.breakingUntil = new Date(Date.now() + DEFAULT_BREAKING_HOURS * 3600_000).toISOString();
+      if (updated.isBreaking) updated.breakingUntil = new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString();
     }
     // Content that leaves the air also leaves the breaking ticker.
     if (['ARCHIVED', 'UNPUBLISHED', 'REJECTED'].includes(toStatus)) {
@@ -524,7 +525,7 @@ export class ApiService {
   }
 
   /** Turns the breaking flag on (for `hours`) or off for a story. */
-  static setBreaking(newsId: string, on: boolean, hours = DEFAULT_BREAKING_HOURS): NewsItem {
+  static setBreaking(newsId: string, on: boolean, hours = this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS): NewsItem {
     const user = this.getCurrentUser();
     if (!RbacService.hasPermission(user, 'news.breaking_push')) {
       throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها.');
@@ -1748,8 +1749,10 @@ export class ApiService {
   static saveSettings(settings: Partial<SystemSettings>): SystemSettings {
     const current = this.getSettings();
     const updated = { ...current, ...settings };
+    const error = settingsError(updated);
+    if (error) throw new Error(error);
     setStored(STORAGE_KEYS.SETTINGS, updated);
-    this.logAudit('SETTINGS_UPDATE', 'SETTINGS', 'global', 'INFO', 'تم تحديث الإعدادات العامة للمؤسسة.');
+    // Settings are audited by the server only after an accepted write.
     return updated;
   }
 

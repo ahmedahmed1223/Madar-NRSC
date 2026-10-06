@@ -81,7 +81,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
           const itemTime = 'time' in activeItem ? activeItem.time : 'startedAt' in activeItem ? activeItem.startedAt : null;
           if (!itemTime) return null;
           return (
-            <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-mono text-red-100/80 bg-red-900/40 px-2 py-0.5 rounded shrink-0">
+            <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-mono text-white bg-red-950 px-2 py-0.5 rounded shrink-0">
               <Radio className="w-3 h-3 text-red-300 animate-pulse" />
               {itemTime}
             </span>
