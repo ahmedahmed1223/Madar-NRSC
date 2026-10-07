@@ -61,8 +61,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setActive(0);
     setGroupFilter('');
     const t = setTimeout(() => inputRef.current?.focus(), 30);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && !document.querySelector('[role=alertdialog]')) { event.preventDefault(); onClose(); }
+    };
+    window.addEventListener('keydown', escape);
     return () => {
       clearTimeout(t);
+      window.removeEventListener('keydown', escape);
       openerRef.current?.focus?.();
     };
   }, [isOpen]);

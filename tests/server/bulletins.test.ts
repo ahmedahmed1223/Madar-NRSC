@@ -95,6 +95,12 @@ describe('bulletins', () => {
   it('runs on air like an episode, and exports a MOS running order', async () => {
     const director = await loginAgent(server.app, 'director@akhbar.tv');
     const first = server.db.listCollection('bulletinStories').map((r) => r.d).filter((s) => s.bulletinId === 'bul-demo-main' && !s.floated).sort((a, b) => a.rank - b.rank)[0];
+    const premature = await sync(director, [{ c: 'onAir', op: 'upsert', id: 'bul-demo-main', d: { id: 'bul-demo-main', episodeId: 'bul-demo-main', status: 'LIVE', currentSegmentId: first.id } }]);
+    expect(premature.body.results[0].ok).toBe(false);
+    server.db.writeRow('media', 'ready-video', { id: 'ready-video', mediaType: 'VIDEO', durationSeconds: 30 }, 0, null);
+    for (const r of server.db.listCollection('bulletinStories').filter(r => r.d.bulletinId === 'bul-demo-main')) {
+      server.db.writeRow('bulletinStories', r.id, { ...r.d, status: 'APPROVED', script: r.d.script || 'نص مكتمل للبث', clipMediaId: 'ready-video', clipSeconds: 30, manualSeconds: 30 }, r.p, null);
+    }
     const live = await sync(director, [{ c: 'onAir', op: 'upsert', id: 'bul-demo-main', d: { id: 'bul-demo-main', episodeId: 'bul-demo-main', status: 'LIVE', currentSegmentId: first.id } }]);
     expect(live.body.results[0].ok).toBe(true);
     expect(row('bulletins', 'bul-demo-main').d.status).toBe('ON_AIR');
@@ -158,6 +164,12 @@ describe('bulletin approval chain', () => {
     }
     expect(row('bulletinStories', 'bst-chain').d.status).toBe('APPROVED');
     expect(row('bulletinStories', 'bst-chain').d.approvals.map((a: any) => a.stepId)).toEqual(['editor', 'chief']);
+    const changedBulletin = row('bulletins', 'bul-chain');
+    const additional = [...changedBulletin.d.approvalSteps, { id: 'additional', kind: 'USER', userId: 'usr-2' }];
+    expect((await sync(admin, [put('bulletins', { ...changedBulletin.d, approvalSteps: additional }, changedBulletin.v)])).body.results[0].ok).toBe(true);
+    const oldApproved = row('bulletinStories', 'bst-chain');
+    expect((await sync(editor, [put('bulletinStories', { ...oldApproved.d, status: 'APPROVED' }, oldApproved.v)])).body.results[0].ok).toBe(true);
+    expect(row('bulletinStories', 'bst-chain').d.approvals.map((a: any) => a.stepId)).toEqual(['editor', 'chief', 'additional']);
   });
 
   it('a named approver step and only managers change the chain', async () => {

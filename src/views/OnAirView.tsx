@@ -1,4 +1,6 @@
 import { arabicDate } from '../shared/dates';
+import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { dataStore } from '../services/dataStore';
 import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
@@ -60,6 +62,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
           `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`));
   const [episodeId, setEpisodeId] = useState<string>(() => initialShowId || liveIds[0] || candidates.find(e => e.broadcastDate >= today)?.id || '');
   const [error, setError] = useState<string | null>(null);
+  const [commandPending, setCommandPending] = useState(false);
   const [cueText, setCueText] = useState('');
   const [cueTargets, setCueTargets] = useState<string[]>([]);
 
@@ -74,9 +77,11 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const readiness = !episode
     ? null
     : isBulletin
-    ? (() => {
-        const pending = rundown.filter((s: any) => s.notApproved);
-        return { ready: rundown.length > 0 && pending.length === 0, blockers: pending.map((s: any) => ({ segmentTitle: s.title, detail: 'غير معتمدة' })) };
+      ? (() => {
+           const b = apiService.getBulletins().find(b => b.id === episode.id);
+           const stories = apiService.getBulletinStories(episode.id);
+           const issues = b ? evaluateBulletinReadiness(b, stories, apiService.getNews(), apiService.getMedia(), new Date()).filter(i => i.severity === 'blocker') : [];
+           return { ready: !!b && rundown.length > 0 && issues.length === 0, blockers: issues.map(i => ({ segmentTitle: stories.find(s => s.id === i.storyId)?.slug || '', detail: i.message })) };
       })()
     : episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
   const myCues = apiService
@@ -84,13 +89,21 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     .filter((c) => c.fromId === currentUser.id && (!episode || !c.episodeId || c.episodeId === episode.id))
     .slice(0, 5);
 
-  const run = (fn: () => void) => {
+  const run = async (fn: () => any, collection: 'onAir' | 'cues' = 'onAir') => {
+    if (commandPending) return false;
+    setCommandPending(true);
     try {
       setError(null);
-      fn();
+      const saved = fn();
+      if (saved?.id) {
+        const outcome = await dataStore.awaitWrite(collection, saved.id);
+        if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم الأمر');
+      }
+      return true;
     } catch (err: any) {
       setError(err?.message || 'تعذر تنفيذ الأمر');
-    }
+      return false;
+    } finally { setCommandPending(false); }
   };
 
   const goTo = (index: number) => {
@@ -103,7 +116,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     if (!canControl || !live) return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if (e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || commandPending || document.querySelector('[role=dialog], [role=alertdialog]') || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'SUMMARY'].includes(tag) || (e.target as HTMLElement)?.isContentEditable) return;
       if (e.key === ' ' || e.key === 'ArrowLeft') {
         e.preventDefault();
         goTo((timing?.index ?? -1) + 1);
@@ -123,15 +136,14 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       message: `موعد «${episode.title}» هو ${arabicDate(episode.broadcastDate)}. هل تريد بث هذا المحتوى السابق؟`,
       confirmLabel: 'بث المحتوى السابق', cancelLabel: 'إلغاء', danger: true,
     }))) return;
-    if (readiness && !readiness.ready && !(await confirmDialog(isBulletin ? `${readiness.blockers.length} قصة غير معتمدة في النشرة. بدء البث رغم ذلك؟` : `الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
+    if (isBulletin && readiness && !readiness.ready) { setError(`النشرة غير جاهزة: ${readiness.blockers[0]?.detail || 'لا قصص للبث'}`); return; }
+    if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
 
-  const sendCue = (message: string, level: Cue['level']) =>
-    run(() => {
-      apiService.sendCue(message, level, cueTargets, episode?.id);
-      setCueText('');
-    });
+  const sendCue = async (message: string, level: Cue['level']) => {
+    if (await run(() => apiService.sendCue(message, level, cueTargets, episode?.id), 'cues')) setCueText('');
+  };
 
   const remainingCls = !timing ? '' : timing.remaining < 0 ? 'text-red-400' : timing.remaining <= 30 ? 'text-amber-300' : 'text-emerald-300';
 
@@ -166,7 +178,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
         </div>
       </div>
 
-      {error && <p className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{error}</p>}
+      {commandPending && <p role="status" className="text-sm font-bold">جارٍ تأكيد الأمر من الخادم...</p>}
+      {error && <p role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{error}</p>}
       {pastShow && <p role="alert" className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">تم اختيار محتوى من موعد سابق: {arabicDate(episode!.broadcastDate)}. راجع الحلقة أو النشرة قبل بدء البث.</p>}
 
       {!episode ? (

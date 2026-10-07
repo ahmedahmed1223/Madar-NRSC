@@ -70,7 +70,7 @@ export function FilterTabs<K extends string>({
     <div className={className}>
       <label className="sm:hidden block">
         <span className="sr-only">{label}</span>
-        <select value={active} onChange={(e) => onChange(e.target.value as K)} className="w-full px-3 py-2.5 bg-white text-sm font-bold text-slate-800">
+        <select aria-label={label} value={active} onChange={(e) => onChange(e.target.value as K)} className="w-full px-3 py-2.5 bg-white text-sm font-bold text-slate-800">
           {tabs.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}

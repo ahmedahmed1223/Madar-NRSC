@@ -1,6 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { openNav, signIn } from './helpers';
 
+test('rejected story save keeps script open', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'producer@akhbar.tv');
+  const data = await (await page.request.get('/api/v1/data')).json();
+  const row = data.collections.bulletins[0];
+  const story = data.collections.bulletinStories.find((r: any) => r.d.bulletinId === row.id);
+  await openNav(page, 'النشرات');
+  await page.getByLabel('التاريخ', { exact: true }).fill(row.d.date);
+  await page.getByRole('button', { name: `فتح ${row.d.title}`, exact: true }).click();
+  await page.getByRole('button', { name: `فتح ${story.d.slug}`, exact: true }).click();
+  const form = page.getByTestId('story-editor');
+  await form.locator('textarea').first().fill('نص معدل يبقى عند رفض الحفظ');
+  await page.route('**/api/v1/data/sync', async route => {
+    const ops = route.request().postDataJSON().ops;
+    if (!ops.some((op: any) => op.c === 'bulletinStories')) return route.continue();
+    await route.fulfill({ json: { rev: data.rev, results: ops.map((op: any) => ({ c: op.c, id: op.id, ok: false, code: 'CONFLICT', message: 'رفض قصة للاختبار', current: story })) } });
+  });
+  await form.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await expect(form.locator('textarea').first()).toHaveValue('نص معدل يبقى عند رفض الحفظ');
+  await expect(form.getByRole('alert')).toContainText('رفض قصة للاختبار');
+  await page.unroute('**/api/v1/data/sync');
+  await form.getByRole('button', { name: 'إغلاق', exact: true }).click();
+  await close();
+});
+
 test('rejected bulletin metadata keeps fields open and retry saves on the server', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'producer@akhbar.tv');
   const data = await (await page.request.get('/api/v1/data')).json();

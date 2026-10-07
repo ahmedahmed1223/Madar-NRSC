@@ -462,7 +462,7 @@ export interface EditorialTask {
   status: TaskStatus;
   startDate?: string;
   dueDate?: string;
-  relatedEntityType?: 'NEWS' | 'EPISODE' | 'PROGRAM' | 'GENERAL';
+  relatedEntityType?: 'NEWS' | 'EPISODE' | 'PROGRAM' | 'GENERAL' | 'BULLETIN' | 'BULLETIN_STORY';
   relatedEntityId?: string;
   relatedEntityTitle?: string;
   notes?: string;

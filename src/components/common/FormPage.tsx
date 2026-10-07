@@ -7,7 +7,7 @@ import { confirmDialog } from '../../services/dialogs';
 
 interface FormPageProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: () => void | boolean | Promise<void | boolean>;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -46,8 +46,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       title: 'تغييرات غير محفوظة', message: 'تعذر حفظ نسخة الاستعادة. المغادرة ستفقد التغييرات.',
       confirmLabel: 'مغادرة دون حفظ', cancelLabel: 'البقاء', danger: true,
     }))) return false;
-    onClose();
-    return true;
+    return (await onClose()) !== false;
   };
   onCloseRef.current = requestClose;
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -63,6 +62,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     const column = document.getElementById(FORM_PAGE_ROOT_ID)?.parentElement;
     const scroller = column && column.scrollHeight > column.clientHeight ? column : null;
     const savedScroll = scroller ? scroller.scrollTop : window.scrollY;
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     let closedByHistory = false;
 
     openCount++;
@@ -84,6 +84,14 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       }
     };
     window.addEventListener('popstate', onPop);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || document.querySelector('[role=dialog], [role=alertdialog]')) return;
+      const pages = document.querySelectorAll('.form-page');
+      if (!pages[pages.length - 1]?.contains(bodyRef.current)) return;
+      event.preventDefault();
+      void onCloseRef.current();
+    };
+    window.addEventListener('keydown', onKey);
 
     // Put the cursor in the first field.
     const t = window.setTimeout(() => {
@@ -98,6 +106,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     return () => {
       window.clearTimeout(t);
       window.removeEventListener('popstate', onPop);
+      window.removeEventListener('keydown', onKey);
       openCount = Math.max(0, openCount - 1);
       if (!openCount) document.body.classList.remove(OPEN_CLASS);
       if (!closedByHistory && history.state?.nrcsFormPage === id) {
@@ -110,6 +119,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       const restore = () => {
         if (scroller) scroller.scrollTop = savedScroll;
         else window.scrollTo(0, savedScroll);
+        if (!openCount && trigger?.isConnected) trigger.focus({ preventScroll: true });
       };
       window.requestAnimationFrame(restore);
       window.setTimeout(restore, 60); // after the history navigation settles
@@ -125,7 +135,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
         <button
           type="button"
           onClick={requestClose}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors shrink-0"
         >
           <ArrowRight className="w-4 h-4" />
           رجوع

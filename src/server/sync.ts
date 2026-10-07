@@ -152,13 +152,13 @@ function stampBulletinStory(before: any, after: any, auth: AuthContext, bulletin
   let status: string = before ? after.status : after.status === 'APPROVED' ? 'DRAFT' : after.status || 'DRAFT';
 
   // Changing the copy (by anyone but whoever gives the next sign-off) restarts the chain.
-  if (before && storyContentChanged(before, after) && !isApprover(bulletin, actor, before)) {
+  if (before && ((before.newsUpdatedAt !== after.newsUpdatedAt) || (storyContentChanged(before, after) && !isApprover(bulletin, actor, before)))) {
     approvals = [];
     if (status === 'APPROVED') status = 'READY';
   }
   if (status === 'DRAFT') approvals = [];
 
-  if (status === 'APPROVED' && before?.status !== 'APPROVED') {
+  if (status === 'APPROVED' && (before?.status !== 'APPROVED' || nextApprovalStep(bulletin, { approvals }))) {
     const next = nextApprovalStep(bulletin, { approvals });
     if (next && canActOnStep(next, bulletin, actor)) {
       approvals = [...approvals, { stepId: next.id, byId: auth.user.id, byName: auth.user.fullName, at: now }];
@@ -589,7 +589,17 @@ export class SyncService {
           after = stampBulletinStory(before, after, auth, bulletin);
         }
         if (collection === 'cues') after = stampCue(before, after, auth);
-        if (collection === 'comments' && !before && !after.deletedAt) {
+          if (collection === 'tasks') {
+            const member = this.db.getRow('users', String(after.assigneeId))?.d;
+            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName };
+          }
+          if (collection === 'reviewThreads') {
+            const now = new Date().toISOString();
+            after = { ...after, createdById: before?.createdById || auth.user.id, createdAt: before?.createdAt || now,
+              resolvedById: after.resolved ? (before?.resolved && before.resolvedById || auth.user.id) : undefined,
+              resolvedAt: after.resolved ? (before?.resolved && before.resolvedAt || now) : undefined };
+          }
+          if (collection === 'comments' && !before && !after.deletedAt) {
           const known = new Set(this.listData('users').filter((u: any) => u.isActive !== false).map((u: any) => u.id));
           after = {
             ...after,
@@ -667,6 +677,15 @@ export class SyncService {
 
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+          if (collection === 'tasks' && !after.deletedAt) {
+            const assigned = after.assigneeId && after.assigneeId !== before?.assigneeId;
+            const deadline = before && after.dueDate !== before.dueDate;
+            const status = before && after.status !== before.status && ['BLOCKED', 'IN_REVIEW', 'DONE', 'COMPLETED'].includes(after.status);
+            const recipients = new Set<string>();
+            if ((assigned || deadline) && after.assigneeId) recipients.add(after.assigneeId);
+            if (status && after.creatorId) recipients.add(after.creatorId);
+            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, '/tasks', 'assignment');
+          }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
         this.auditLifecycle(collection, before, after, auth, ip);

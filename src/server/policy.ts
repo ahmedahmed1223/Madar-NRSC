@@ -1,11 +1,13 @@
 import { prefsError } from '../shared/notifications';
+import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { reviewThreadError } from '../shared/reviewThreads';
 import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, isDepartmentId } from '../shared/departments';
 import { canControlOnAir } from '../shared/onair';
-import { bulletinError, findShow, formatError, isApprover, storyError, storyStatusError } from '../shared/bulletins';
+import { bulletinError, findShow, formatError, isApprover, nextApprovalStep, canActOnStep, approvalStepName, plainText, storyError, storyStatusError } from '../shared/bulletins';
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
@@ -239,14 +241,22 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (!bulletin || bulletin.deletedAt) return 'النشرة غير موجودة';
   if (!actor.canEdit && !approver) return 'صلاحياتك لا تسمح بتعديل قصص النشرة';
   if (before && before.bulletinId !== after.bulletinId) return 'لا يمكن نقل القصة بين النشرات؛ انسخها بدلاً من ذلك';
+    const pending = nextApprovalStep(bulletin, before);
+    if (before && after.status === 'APPROVED' && pending && !canActOnStep(pending, bulletin, actor)) return `القصة بانتظار اعتماد: ${approvalStepName(pending, bulletin)}`;
   return storyError(after) || storyStatusError(before, after, bulletin, actor);
 };
 
-const tasksPolicy: Policy = ({ auth, kind, before, after }) => {
+const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  if (after && kind !== 'delete') {
+    if (after.assigneeId && !(list?.('users') || []).some((u: any) => u.id === after.assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
+    const c = after.relatedEntityType === 'BULLETIN' ? 'bulletins' : after.relatedEntityType === 'BULLETIN_STORY' ? 'bulletinStories' : null;
+    if (c && !(list?.(c) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
+  }
   if (auth.can('tasks.create_assign')) return null;
   // Assignees may progress their own tasks.
   if (kind === 'update' && before?.assigneeId === auth.user.id && after?.assigneeId === auth.user.id && !isSoftDelete(before, after)) {
-    return null;
+    const protectedFields = ['title', 'description', 'assigneeId', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'priority'];
+    return protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
   }
   return 'صلاحياتك لا تسمح بإدارة المهام';
 };
@@ -334,24 +344,61 @@ export const POLICIES: Record<CollectionName, Policy> = {
   settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
-  comments: ({ auth, kind, before, after }) => {
+  reviewThreads: ({ auth, kind, before, after, list }) => {
+    if (kind === 'delete' || after?.deletedAt) return 'لا تحذف مراجعات النص';
+    const invalid = reviewThreadError(after);
+    if (invalid) return invalid;
+    const target = (list?.(after.collection) || []).find((r: any) => r.id === after.entityId && !r.deletedAt);
+    if (!target) return 'النص المستهدف غير موجود';
+    const news = after.collection === 'news';
+    if (news && !auth.can('news.view')) return DENIED;
+    const canPost = news ? (auth.can('news.review') || auth.can('news.edit_any') || canEditNewsContent(p => auth.can(p), auth.user.id, target)) : (auth.can('bulletins.edit') || auth.can('bulletins.approve'));
+    if (!canPost) return DENIED;
+    if (!before) {
+      if (after.baseVersion !== target.updatedAt || !plainText(target[after.field] || '').includes(after.quote)) return 'احفظ النص الحالي أولاً ثم أضف المراجعة على نسخته المحفوظة';
+      return after.resolved ? 'تبدأ المراجعة مفتوحة' : null;
+    }
+    const keys = ['collection', 'entityId', 'field', 'baseVersion', 'quote', 'contextBefore', 'contextAfter', 'createdById', 'createdAt'];
+    if (keys.some(key => changed(before, after, key))) return 'موضع المراجعة لا يعدل بعد إنشائه';
+    const canResolve = news ? (auth.can('news.review') || auth.can('news.edit_any')) : auth.can('bulletins.approve');
+    const ownsMaterial = (news ? target.authorId : target.writerId) === auth.user.id;
+    return !ownsMaterial && (canResolve || before.createdById === auth.user.id) ? null : 'إغلاق المراجعة لمراجعها أو المحرر المسؤول غير كاتب المادة';
+  },
+  comments: ({ auth, kind, before, after, list }) => {
     if (kind === 'delete' || isSoftDelete(before, after)) {
       return before?.authorId === auth.user.id || auth.can('system.settings') ? null : 'يحذف التعليق كاتبه فقط';
     }
     if (kind !== 'create') return 'التعليقات لا تُعدَّل بعد نشرها';
-    if (!auth.can('news.view')) return DENIED;
+    if (after.threadId) {
+      const thread = (list?.('reviewThreads') || []).find((t: any) => t.id === after.threadId);
+      if (!thread || thread.entityId !== after.target?.id || after.target?.kind !== (thread.collection === 'news' ? 'news' : 'bulletinStory')) return 'المراجعة والرد لا يخصان النص نفسه';
+      const target = (list?.(thread.collection) || []).find((r: any) => r.id === thread.entityId && !r.deletedAt);
+      if (!target) return 'النص المستهدف غير موجود';
+      const news = thread.collection === 'news';
+      if (news && !auth.can('news.view')) return DENIED;
+      const allowed = news ? (auth.can('news.review') || auth.can('news.edit_any') || canEditNewsContent(p => auth.can(p), auth.user.id, target)) : (auth.can('bulletins.edit') || auth.can('bulletins.approve'));
+      if (!allowed) return DENIED;
+    } else if (!auth.can('news.view')) return DENIED;
     return commentError(after);
   },
   bulletins: bulletinsPolicy,
   bulletinStories: bulletinStoriesPolicy,
   bulletinFormats: (input) => require('bulletins.manage')(input) || (input.after && !input.after.deletedAt ? formatError(input.after) : null),
-  onAir: ({ auth, kind, after, list }) => {
+  onAir: ({ auth, kind, before, after, list }) => {
     if (!canControlOnAir(auth.user, auth.can)) return 'تشغيل وضع الهواء للمخرج والكنترول فقط';
     if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;
     if (!['LIVE', 'ENDED'].includes(after?.status)) return 'حالة البث غير صالحة';
     const episode = findShow(String(after?.episodeId), (c) => list?.(c) || []);
     if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
     if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
+      if (after.status === 'LIVE' && before?.status !== 'LIVE') {
+        const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
+        if (bulletin) {
+          const stories = (list?.('bulletinStories') || []).filter((s: any) => s.bulletinId === bulletin.id);
+          const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date()).find(i => i.severity === 'blocker');
+          if (blocker) return `النشرة غير جاهزة للبث: ${blocker.message}`;
+        }
+      }
     return null;
   },
   cues: ({ auth, kind, before, after }) => {
@@ -420,6 +467,10 @@ export const POLICIES: Record<CollectionName, Policy> = {
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any): boolean {
   switch (collection) {
+    case 'reviewThreads':
+      return data?.collection === 'news' ? auth.can('news.view') : canRead(auth, 'bulletinStories', data);
+    case 'comments':
+      return !data?.threadId || (data.target?.kind === 'news' ? auth.can('news.view') : canRead(auth, 'bulletinStories', data));
     case 'auditLogs':
       return auth.can('audit.view');
     case 'wires':

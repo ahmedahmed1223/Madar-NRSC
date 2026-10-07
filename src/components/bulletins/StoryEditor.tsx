@@ -1,5 +1,9 @@
 import { LongTextField } from '../common/TextSizeControls';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { dataStore } from '../../services/dataStore';
+import { ReviewThreads } from '../editor/ReviewThreads';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { confirmDialog } from '../../services/dialogs';
 import { AlertTriangle, CheckCircle2, Film, Lock, Plus, RefreshCw, Send, Undo2, X } from 'lucide-react';
 import type { User } from '../../types';
 import { apiService } from '../../services/api';
@@ -73,9 +77,16 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   const [newsStamp, setNewsStamp] = useState<string | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [initialized, setInitialized] = useState('');
+  const pendingId = useRef<string | undefined>(undefined);
+  const graphicsRequestId = useRef<string | undefined>(undefined);
+  const [sourceSnapshot, setSourceSnapshot] = useState<string | undefined>();
+  const [comparison, setComparison] = useState<{ script: string; stamp: string } | null>(null);
+  const [sourceUndo, setSourceUndo] = useState<{ script: string; stamp?: string; snapshot?: string; applied: string } | null>(null);
 
   useEffect(() => {
-    if (!story) return;
+    if (!story) { setInitialized(''); return; }
     setSlug(story.slug || '');
     setType((story.type as StoryType) || 'READER');
     setAnchorName(story.anchorName || '');
@@ -87,7 +98,10 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
     setDirectorNotes(story.directorNotes || '');
     setReturnNote('');
     setNewsStamp(story.newsUpdatedAt);
+    setSourceSnapshot(story.newsSourceSnapshot);
+    setComparison(null); setSourceUndo(null); pendingId.current = undefined; graphicsRequestId.current = undefined;
     setError(null);
+    setInitialized(story.id || `new:${bulletin.id}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id, isOpen]);
 
@@ -99,10 +113,10 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   const status = story?.status || 'DRAFT';
 
   const payload = (): Partial<BulletinStory> & { bulletinId: string } => ({
-    id: story?.id,
+    id: story?.id || pendingId.current,
     bulletinId: bulletin.id,
     ...(story?.rank !== undefined ? { rank: story.rank } : {}),
-    ...(story?.newsId ? { newsId: story.newsId, newsUpdatedAt: newsStamp } : {}),
+    ...(story?.newsId ? { newsId: story.newsId, newsUpdatedAt: newsStamp, newsSourceSnapshot: sourceSnapshot } : {}),
     ...(story?.wireId ? { wireId: story.wireId } : {}),
     slug: slug.trim(),
     type,
@@ -115,12 +129,25 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
     directorNotes: directorNotes.trim() || undefined,
   });
 
-  const save = (statusChange?: BulletinStory['status'], extra: Partial<BulletinStory> = {}) => {
+  const recovery = useFormDraft(`bulletin-story:${currentUser.id}:${story?.id || bulletin.id}`, isOpen && canEdit && initialized === (story?.id || `new:${bulletin.id}`),
+    { slug, type, script, anchorName, clipMediaId: clipMediaId || '', clipSeconds, manualSeconds, graphics, directorNotes, newsStamp: newsStamp || '', sourceSnapshot: sourceSnapshot ?? '' },
+    value => {
+      setSlug(value.slug); setType(value.type); setScript(value.script); setAnchorName(value.anchorName);
+      setClipMediaId(value.clipMediaId || undefined); setClipSeconds(value.clipSeconds); setManualSeconds(value.manualSeconds);
+      setGraphics(value.graphics); setDirectorNotes(value.directorNotes); setNewsStamp(value.newsStamp || undefined); setSourceSnapshot(value.sourceSnapshot || undefined);
+    });
+  const save = async (statusChange?: BulletinStory['status'], extra: Partial<BulletinStory> = {}) => {
+    if (saving || !canEdit) return;
+    setSaving(true); setError(null);
     try {
       const saved = apiService.saveBulletinStory({ ...payload(), ...(statusChange ? { status: statusChange } : {}), ...extra });
+      pendingId.current = saved.id;
+      const outcome = await dataStore.awaitWrite('bulletinStories', saved.id);
+      if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ القصة بعد؛ بقيت الحقول لإعادة المحاولة');
+      const accepted = apiService.getBulletinStories(bulletin.id).find(s => s.id === saved.id);
       const text =
         statusChange === 'APPROVED'
-          ? 'اعتُمدت القصة للهواء'
+          ? accepted?.status === 'APPROVED' ? 'اعتُمدت القصة للهواء' : 'سُجل اعتمادك؛ القصة بانتظار الخطوة التالية'
           : statusChange === 'READY'
           ? 'أُرسلت القصة لمحرر النشرة للاعتماد'
           : statusChange === 'DRAFT' && status !== 'DRAFT'
@@ -129,41 +156,47 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
           ? 'حُفظت التعديلات وأُعيدت القصة للاعتماد'
           : 'حُفظت القصة';
       onSaved?.(text);
+      recovery.clearDraft();
       onClose();
     } catch (err: any) {
       setError(err?.message || 'تعذر حفظ القصة');
-    }
+    } finally { setSaving(false); }
   };
 
   const refreshFromNews = () => {
     if (!news) return;
-    setScript(anchorCopyFromNews(news as any));
-    setNewsStamp(news.updatedAt);
+    setComparison({ script: anchorCopyFromNews(news), stamp: news.updatedAt });
   };
 
   const setGraphic = (i: number, patch: Partial<StoryGraphic>) => setGraphics(graphics.map((g, j) => (j === i ? { ...g, ...patch } : g)));
 
-  const sendGraphics = () => {
+  const sendGraphics = async () => {
     const lines = graphics.flatMap((g) => g.lines.map((l) => l.trim()).filter(Boolean));
-    if (!lines.length || !story?.id) return;
+    if (!lines.length || !story?.id || saving) return;
+    setSaving(true); setError(null);
     try {
-      apiService.createRequest({
+      const request = apiService.createRequest({
+        id: graphicsRequestId.current,
         type: 'GRAPHICS',
         title: `شارات: ${slug} — ${bulletin.title}`,
         lines,
         dueAt: new Date(`${bulletin.date}T${bulletin.startTime}:00`).toISOString(),
         link: { kind: 'episode', episodeId: bulletin.id, segmentId: story.id, title: `${bulletin.title} — ${slug}` },
       });
+      graphicsRequestId.current = request.id;
+      const result = await dataStore.awaitWrite('requests', request.id);
+      if (!result.ok) throw new Error(result.message || 'لم يؤكد الخادم إرسال الشارات');
+      graphicsRequestId.current = undefined;
       onSaved?.('أُرسلت الشارات لقسم الجرافيك');
     } catch (err: any) {
       setError(err?.message || 'تعذر إرسال الطلب');
-    }
+    } finally { setSaving(false); }
   };
 
   const words = (script.replace(/\[[^\]]*\]/g, ' ').match(/\S+/g) || []).length;
 
   return (
-    <FormPage isOpen={isOpen} onClose={onClose} title={isNew ? 'قصة جديدة في النشرة' : `قصة: ${story?.slug || ''}`} subtitle={bulletin.title} maxWidth="4xl">
+    <FormPage isOpen={isOpen} onClose={() => { if (saving) return false; onClose(); }} draft={recovery} title={isNew ? 'قصة جديدة في النشرة' : `قصة: ${story?.slug || ''}`} subtitle={bulletin.title} maxWidth="4xl">
       {story && (
         <form
           onSubmit={(e) => {
@@ -172,7 +205,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
           }}
           onKeyDown={(e) => {
             // Ctrl+S saves; Ctrl+Enter saves and sends a draft for approval.
-            if (!(e.ctrlKey || e.metaKey) || lockedByOther || document.querySelector('[role=alertdialog]')) return;
+            if (e.defaultPrevented || e.repeat || e.nativeEvent.isComposing || !(e.ctrlKey || e.metaKey) || e.altKey || lockedByOther || document.querySelector('[role=dialog], [role=alertdialog]')) return;
             if (e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
               e.preventDefault();
               save();
@@ -181,10 +214,11 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               save(canEdit && status === 'DRAFT' && script.trim() ? 'READY' : undefined);
             }
           }}
-          aria-keyshortcuts="Control+S Control+Enter"
+          aria-keyshortcuts="Control+S Meta+S Control+Enter Meta+Enter"
           className="space-y-4"
           data-testid="story-editor"
         >
+          <fieldset disabled={saving} className="space-y-4 [&_button]:min-h-11">
           {lockedByOther && lock.holder && (
             <p role="alert" className="flex items-center gap-2 text-xs font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-xl p-3">
               <Lock className="w-4 h-4" /> القصة قيد التحرير الآن لدى {lock.holder.userName}؛ يمكنك القراءة فقط.
@@ -211,6 +245,29 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               )}
             </div>
           )}
+          {comparison && <section aria-label="مقارنة نص الخبر" className="border-y border-slate-200 py-3 space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><h3 className="font-bold">نص النشرة الحالي</h3><p className="whitespace-pre-wrap break-words">{script}</p></div>
+              <div><h3 className="font-bold">آخر نص من غرفة الأخبار</h3><p className="whitespace-pre-wrap break-words">{comparison.script}</p></div>
+            </div>
+            {sourceSnapshot === undefined ? <p>النسخة المستوردة الأصلية غير متاحة لهذه القصة القديمة.</p> : <details><summary>النص المستورد سابقاً</summary><p className="whitespace-pre-wrap break-words">{sourceSnapshot}</p></details>}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="min-h-11 px-3 border rounded-lg" onClick={() => setComparison(null)}>إلغاء المقارنة</button>
+              <button type="button" className="min-h-11 px-3 bg-blue-600 text-white rounded-lg" onClick={async () => {
+                const latest = apiService.getNews().find(n => n.id === story.newsId);
+                if (!latest) { setError('الخبر الأصلي غير متاح'); return; }
+                if (latest.updatedAt !== comparison.stamp) { setComparison({ script: anchorCopyFromNews(latest), stamp: latest.updatedAt }); setError('تغير الخبر مرة أخرى؛ راجع المقارنة الجديدة'); return; }
+                if (!await confirmDialog({ title: 'استبدال نص النشرة', message: 'سيُستبدل نص النشرة بالنص المعروض. يبقى التغيير غير محفوظ حتى تأكيد الحفظ.', confirmLabel: 'استبدال النص' })) return;
+                if (apiService.getNews().find(n => n.id === story.newsId)?.updatedAt !== comparison.stamp) { setError('تغير الخبر أثناء التأكيد؛ افتح المقارنة مجدداً'); setComparison(null); return; }
+                setSourceUndo({ script, stamp: newsStamp, snapshot: sourceSnapshot, applied: comparison.script });
+                setScript(comparison.script); setSourceSnapshot(comparison.script); setNewsStamp(comparison.stamp); setComparison(null);
+              }}>استبدال النص من الخبر</button>
+            </div>
+          </section>}
+          {sourceUndo && <button type="button" className="min-h-11 text-blue-700 flex items-center gap-2" onClick={async () => {
+            if (script !== sourceUndo.applied && !await confirmDialog({ title: 'استعادة النص السابق', message: 'الاستعادة ستستبدل تعديلات النص اللاحقة. متابعة؟', confirmLabel: 'استعادة النص' })) return;
+            setScript(sourceUndo.script); setNewsStamp(sourceUndo.stamp); setSourceSnapshot(sourceUndo.snapshot); setSourceUndo(null);
+          }}><Undo2 className="w-4 h-4" />تراجع عن تحديث النص</button>}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="sm:col-span-2 block text-xs font-bold text-slate-700">
@@ -377,14 +434,15 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
+          <div className="sticky bottom-0 bg-white flex flex-wrap items-center justify-between gap-2 py-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && status === 'DRAFT' && (
                 <button type="button" onClick={() => save('READY')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold">
                   <Send className="w-4 h-4" /> حفظ وإرسال للاعتماد
                 </button>
               )}
-              {approverNow && !lockedByOther && status !== 'APPROVED' && (
+              {approverNow && !lockedByOther && (status !== 'APPROVED' || progress?.next) && (
                 <button type="button" onClick={() => save('APPROVED')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
                   <CheckCircle2 className="w-4 h-4" />
                   {progress && progress.total - progress.done > 1 ? `اعتمادي (${progress.nextName})` : 'حفظ واعتماد للهواء'}
@@ -418,6 +476,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </div>
           </div>
 
+          </fieldset>
           <MediaPicker
             isOpen={pickerOpen}
             onClose={() => setPickerOpen(false)}

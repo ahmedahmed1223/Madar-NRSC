@@ -1,0 +1,76 @@
+import { expect, test } from '@playwright/test';
+import { signIn, openNav } from './helpers';
+test.use({ actionTimeout: 15_000 });
+
+test('global shortcuts respect text entry and dialogs, and Escape restores focus', async ({ browser }) => {
+  const { page, close, errors } = await signIn(browser, 'editor@akhbar.tv');
+  const trigger = page.getByRole('button', { name: 'البحث السريع (Ctrl + K)', exact: true });
+  await trigger.focus();
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await openNav(page, 'الأخبار');
+  const search = page.getByRole('searchbox', { name: 'البحث في الأخبار' });
+  await search.fill('?');
+  await search.press('Control+k');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await search.fill('');
+  expect(errors).toEqual([]);
+  await close();
+});
+
+test('story keyboard saves are confirmed and Escape returns to the opener', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'producer@akhbar.tv');
+  const data = await (await page.request.get('/api/v1/data')).json();
+  const story = data.collections.bulletinStories.find((r: any) => r.d.bulletinId === 'bul-demo-main' && !r.d.killed);
+  await page.goto('/bulletins/bul-demo-main');
+  const opener = page.getByRole('button', { name: `فتح ${story.d.slug}`, exact: true });
+  await opener.focus();
+  await opener.press('Enter');
+  const form = page.getByTestId('story-editor');
+  await expect(form.locator('#story-slug')).toBeFocused();
+  const copy = `حفظ بلوحة المفاتيح ${Date.now()}`;
+  await form.locator('textarea').first().fill(copy);
+  await page.keyboard.press('Control+s');
+  await expect(form).not.toBeVisible();
+  await expect.poll(async () => (await (await page.request.get('/api/v1/data')).json()).collections.bulletinStories.find((r: any) => r.id === story.id)?.d.script).toBe(copy);
+  await expect(opener).toBeFocused();
+  await opener.press('Enter');
+  await page.keyboard.press('Escape');
+  await expect(form).not.toBeVisible();
+  await expect(opener).toBeFocused();
+  await close();
+});
+
+test('tabs support arrow navigation and forms keep shortcuts away from confirmation dialogs', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'producer@akhbar.tv');
+  await page.goto('/bulletins');
+  const work = page.getByRole('tab', { name: 'مساحة العمل', exact: true });
+  await work.focus();
+  await work.press('Home');
+  await expect(page.getByRole('tab', { name: 'نشرات اليوم', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(work).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'مساحة عمل مدير النشرة' })).toBeVisible();
+  await page.goto('/bulletins/bul-demo-main');
+  await page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true }).click();
+  const form = page.locator('#form-page-root');
+  await form.getByLabel('عنوان التكليف', { exact: true }).fill('مسودة تكليف');
+  await page.getByRole('button', { name: 'تجاهل المسودة المحلية', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Control+s');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(form.getByLabel('عنوان التكليف', { exact: true })).toHaveValue('مسودة تكليف');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true })).toBeFocused();
+  await close();
+});

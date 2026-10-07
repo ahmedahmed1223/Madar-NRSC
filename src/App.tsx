@@ -67,6 +67,7 @@ import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDrawer';
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
+import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
 import { routeChanged } from './services/uiEvents';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
@@ -221,8 +222,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+N)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat || e.isComposing || document.querySelector('[role=dialog], [role=alertdialog]') || document.body.classList.contains('form-page-open') || isEditingTarget(e.target)) return;
       // Command Palette (Ctrl+K or Cmd+K)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && matchesShortcutKey(e, 'k')) {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
         return;
@@ -239,14 +241,14 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       }
 
       // Live Lock Toggle (Ctrl+Alt+L)
-      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'l' || e.key === 'L')) {
+      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'l')) {
         e.preventDefault();
         handleToggleLiveLock();
         return;
       }
 
       // Quick New News (Ctrl+Alt+N)
-      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'n' || e.key === 'N')) {
+      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'n')) {
         e.preventDefault();
         handleCreateNewNewsClick();
         return;
@@ -254,7 +256,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  });
 
   // Breaking news ticker items
   // Only published, non-expired breaking stories go on air.

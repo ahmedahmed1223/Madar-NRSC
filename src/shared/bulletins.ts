@@ -110,6 +110,7 @@ export interface BulletinStory {
   newsId?: string;
   /** updatedAt of the newsroom story when its text was taken, to flag later changes. */
   newsUpdatedAt?: string;
+  newsSourceSnapshot?: string;
   wireId?: string;
   status: StoryStatus;
   floated?: boolean;
@@ -340,9 +341,11 @@ export function isApprover(
 /** "2/3 — بانتظار: مدير التحرير" */
 export function approvalProgress(bulletin: (Pick<Bulletin, 'approvalSteps'> & Pick<Bulletin, 'editorName'>) | null | undefined, story: Pick<BulletinStory, 'approvals' | 'status'>) {
   const steps = approvalStepsOf(bulletin);
-  const done = Math.min(story.approvals?.length || 0, steps.length);
-  const next = story.status === 'APPROVED' ? null : nextApprovalStep(bulletin, story);
-  return { total: steps.length, done: story.status === 'APPROVED' ? steps.length : done, next, nextName: next ? approvalStepName(next, bulletin) : '' };
+  const signed = new Set(story.approvals?.map(a => a.stepId));
+  const legacy = story.status === 'APPROVED' && !bulletin?.approvalSteps?.length;
+  const done = legacy ? steps.length : steps.filter(s => signed.has(s.id)).length;
+  const next = legacy ? null : nextApprovalStep(bulletin, story);
+  return { total: steps.length, done, next, nextName: next ? approvalStepName(next, bulletin) : '' };
 }
 
 export function approvalStepsError(steps: any): string | null {

@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
 import { matchesQuery } from '../shared/search';
 import {
   NewsItem,
@@ -934,7 +935,7 @@ export class ApiService {
     }
 
     const newTask: EditorialTask = {
-      id: newId('tsk'),
+      id: task.id || newId('tsk'),
       title: task.title || 'مهمة جديدة',
       description: task.description || '',
       assigneeId: task.assigneeId || currentUser.id,
@@ -957,14 +958,7 @@ export class ApiService {
     setStored(STORAGE_KEYS.TASKS, all);
     this.logActivity('إنشاء مهمة', 'TASK', newTask.id, newTask.title, `تم إسناد مهمة جديدة إلى ${newTask.assigneeName}`);
 
-    // Create Notification for assignee
-    this.addNotification({
-      userId: newTask.assigneeId,
-      title: 'مهمة تحريرية جديدة مسندة إليك',
-      message: `قام ${currentUser.fullName} بإسناد مهمة: "${newTask.title}" إليك.`,
-      type: 'TASK_ASSIGNED',
-      linkUrl: '/tasks',
-    });
+    // Assignment notifications are written by the server after accepting the task.
 
     return newTask;
   }
@@ -1074,10 +1068,28 @@ export class ApiService {
     return [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
-  static addComment(target: CommentTarget, text: string, mentions: string[]): TeamComment {
+  static getReviewThreads(collection: ReviewThread['collection'], entityId: string): ReviewThread[] {
+    return getStored<ReviewThread[]>(COLLECTIONS.reviewThreads.storageKey, []).filter(t => t.collection === collection && t.entityId === entityId);
+  }
+  static createReviewThread(input: Omit<ReviewThread, 'id' | 'createdById' | 'createdAt' | 'resolved'>, id = newId('review')): ReviewThread {
+    const existing = getStored<ReviewThread[]>(COLLECTIONS.reviewThreads.storageKey, []).find(t => t.id === id);
+    if (existing) return existing;
+    const thread = { ...input, id, createdById: this.getCurrentUser().id, createdAt: new Date().toISOString(), resolved: false };
+    const error = reviewThreadError(thread);
+    if (error) throw new Error(error);
+    setStored(COLLECTIONS.reviewThreads.storageKey, [...getStored<ReviewThread[]>(COLLECTIONS.reviewThreads.storageKey, []), thread]);
+    return thread;
+  }
+  static setReviewThreadResolved(id: string, resolved: boolean): void {
+    setStored(COLLECTIONS.reviewThreads.storageKey, getStored<ReviewThread[]>(COLLECTIONS.reviewThreads.storageKey, []).map(t => t.id === id ? { ...t, resolved } : t));
+  }
+  static addComment(target: CommentTarget, text: string, mentions: string[], threadId?: string, id = newId('cmt')): TeamComment {
+    const existing = getStored<TeamComment[]>(COLLECTIONS.comments.storageKey, []).find(c => c.id === id);
+    if (existing) return existing;
     const me = this.getCurrentUser();
     const comment: TeamComment = {
-      id: newId('cmt'),
+      id,
+        ...(threadId ? { threadId } : {}),
       target,
       text: text.trim(),
       mentions: [...new Set(mentions.filter((id) => id !== me.id))],
@@ -1241,10 +1253,11 @@ export class ApiService {
       if (next.status === 'APPROVED') next.status = 'READY';
     }
     if (next.status === 'DRAFT') approvals = [];
-    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') {
+    if (next.status === 'APPROVED' && (before?.status !== 'APPROVED' || nextApprovalStep(bulletin, { approvals }))) {
       const step = nextApprovalStep(bulletin, { approvals });
       if (step) approvals = [...approvals, { stepId: step.id, byId: me.id, byName: me.fullName, at: now }];
-      if (nextApprovalStep(bulletin, { approvals })) next.status = 'READY';
+      // Keep the requested signoff transition: the server records the signature and
+      // returns READY when later steps remain. Sending READY here loses the signoff.
     }
     next.approvals = approvals;
     if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
@@ -1342,12 +1355,14 @@ export class ApiService {
   static createRequest(data: Pick<DeptRequest, 'type' | 'title'> & Partial<DeptRequest>): DeptRequest {
     const me = this.getCurrentUser();
     if (!RbacService.hasPermission(me, 'requests.create')) throw new Error('صلاحياتك لا تسمح بإرسال طلبات للأقسام');
+    const pending = data.id && getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).find(r => r.id === data.id);
+    if (pending) return pending;
     const type = requestTypeOf(data.type);
     if (!type) throw new Error('نوع الطلب غير معروف');
     if (!data.title?.trim()) throw new Error('عنوان الطلب مطلوب');
     const now = new Date().toISOString();
     const req: DeptRequest = {
-      id: newId('req'),
+      id: data.id || newId('req'),
       type: type.id,
       departmentId: type.departmentId,
       title: data.title.trim(),

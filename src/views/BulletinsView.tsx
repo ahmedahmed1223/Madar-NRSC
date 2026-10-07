@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { ManagerWorkQueue } from '../components/bulletins/ManagerWorkQueue';
 import { confirmDialog } from '../services/dialogs';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
@@ -67,7 +68,7 @@ const STATUS_TONE: Record<string, string> = {
 export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) => {
   useLiveData(['bulletins', 'bulletinStories', 'bulletinFormats', 'onAir']);
   const canManage = RbacService.hasPermission(currentUser, 'bulletins.manage');
-  const [tab, setTab] = useState<'DAY' | 'FORMATS'>('DAY');
+  const [tab, setTab] = useState<'DAY' | 'FORMATS' | 'WORK'>('DAY');
   const [date, setDate] = useState(localDateString());
   const [form, setForm] = useState<NewForm | null>(null);
   const [formatDraft, setFormatDraft] = useState<FormatDraft | null>(null);
@@ -209,12 +210,13 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
         )}
       </div>
 
-      <FilterTabs<"DAY" | "FORMATS">
+      <FilterTabs<"DAY" | "FORMATS" | "WORK">
         label="أقسام النشرات"
         active={tab}
         onChange={setTab}
         tabs={[
           { id: 'DAY', label: 'نشرات اليوم', tone: 'blue' },
+            { id: 'WORK', label: 'مساحة العمل', tone: 'blue' },
           { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'violet' },
         ]}
       />
@@ -225,6 +227,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
         </p>
       )}
 
+      {tab === 'WORK' && <ManagerWorkQueue currentUser={currentUser} onOpen={onOpenBulletin} />}
       {tab === 'DAY' && (
         <>
           <div className="flex flex-wrap items-center gap-2">

@@ -127,7 +127,13 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         title: t.title,
         meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' })) : undefined,
         tone: overdue ? ('red' as const) : ('slate' as const),
-        onClick: () => onNavigate('tasks'),
+          onClick: () => {
+            if (t.relatedEntityType === 'BULLETIN') openBulletin(t.relatedEntityId || '');
+            else if (t.relatedEntityType === 'BULLETIN_STORY') {
+              const story = apiService.getBulletins().flatMap(b => apiService.getBulletinStories(b.id)).find(s => s.id === t.relatedEntityId);
+              if (story) { sessionStorage.setItem('madar-open-bulletin-story', story.id); openBulletin(story.bulletinId); } else onNavigate('tasks');
+            } else onNavigate('tasks');
+          },
       };
     });
 

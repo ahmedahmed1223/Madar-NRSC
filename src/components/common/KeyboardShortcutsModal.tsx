@@ -30,15 +30,13 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['Ctrl', 'K'], description: 'فتح لوحة الأوامر والبحث الذكي الفوري', category: 'NAVIGATION' },
   { keys: ['?'], description: 'عرض قائمة اختصارات لوحة المفاتيح', category: 'GENERAL' },
   { keys: ['Esc'], description: 'إغلاق أي نافذة منبثقة أو محادثة فرعية مفتوحة', category: 'GENERAL' },
-  { keys: ['Ctrl', 'Shift', 'D'], description: 'الانتقال المباشر إلى لوحة القيادة المركزية', category: 'NAVIGATION' },
-  { keys: ['Ctrl', 'Shift', 'N'], description: 'الانتقال إلى غرفة الأخبار وقائمة التقارير', category: 'NAVIGATION' },
-  { keys: ['Ctrl', 'Shift', 'P'], description: 'الانتقال إلى دليل البرامج التلفزيونية', category: 'NAVIGATION' },
-  { keys: ['Ctrl', 'Shift', 'E'], description: 'الانتقال إلى جدول الحلقات والرانداون', category: 'NAVIGATION' },
-  { keys: ['Ctrl', 'Shift', 'G'], description: 'الانتقال إلى بنك الضيوف والخبراء', category: 'NAVIGATION' },
+  { keys: ['Tab', 'Shift+Tab'], description: 'التنقل بين الحقول والإجراءات للأمام والخلف', category: 'GENERAL' },
+  { keys: ['←', '→', 'Home', 'End'], description: 'التنقل بين علامات التبويب حين تكون مركزة', category: 'NAVIGATION' },
 
   // Editorial & News
   { keys: ['Ctrl', 'Alt', 'N'], description: 'إنشاء خبر أو تقرير صحفي جديد فوراً', category: 'EDITORIAL' },
-  { keys: ['Ctrl', 'S'], description: 'حفظ مسودة الخبر أو جدول الرانداون الحالي', category: 'EDITORIAL' },
+  { keys: ['Ctrl/Cmd', 'S'], description: 'حفظ الخبر أو قصة النشرة أو تكليف النشرة المفتوح', category: 'EDITORIAL' },
+  { keys: ['Ctrl/Cmd', 'Enter'], description: 'إرسال مسودة الخبر للمراجعة أو قصة النشرة للاعتماد؛ إرسال الرد عند تركيز حقله', category: 'EDITORIAL' },
 
   // Broadcast & Studio
   { keys: ['Ctrl', 'Alt', 'L'], description: 'تبديل قفل البث المباشر المشترك (يمنع حذف البرامج والحلقات لكل المستخدمين)', category: 'BROADCAST' },

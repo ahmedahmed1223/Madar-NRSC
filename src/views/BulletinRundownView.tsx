@@ -1,11 +1,14 @@
 import { arabicDate } from '../shared/dates';
+import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
+import { AssignmentForm } from '../components/bulletins/AssignmentForm';
 import { totalVideoSeconds, videoLines, videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { dataStore } from '../services/dataStore';
 import {
   ArrowDown,
@@ -93,6 +96,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [rowQuery, setRowQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'READY' | 'APPROVED'>('ALL');
   const [editing, setEditing] = useState<Partial<BulletinStory> | null>(null);
+  useEffect(() => {
+    const requested = sessionStorage.getItem('madar-open-bulletin-story');
+    if (!requested) return;
+    const selected = apiService.getBulletinStories(bulletinId).find(s => s.id === requested);
+    if (selected) { sessionStorage.removeItem('madar-open-bulletin-story'); setEditing(selected); }
+  }, [bulletinId]);
   const [addMenu, setAddMenu] = useState(false);
   const [source, setSource] = useState<'NEWS' | 'WIRES' | 'COPY' | null>(null);
   /** Sending copies of this bulletin's stories to another bulletin. */
@@ -108,6 +117,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [metaError, setMetaError] = useState('');
   const [savingFormat, setSavingFormat] = useState(false);
   const [addingSources, setAddingSources] = useState(false);
+  const [generatingHeadlines, setGeneratingHeadlines] = useState(false);
   const [sourceError, setSourceError] = useState('');
   const sourceWrites = useRef(new Map<string, string>());
   const confirmedWrite = async (collection: 'bulletins' | 'bulletinStories' | 'bulletinFormats', id: string) => {
@@ -119,12 +129,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     setMessage({ ok, text });
     window.setTimeout(() => setMessage(null), 4500);
   };
-  const attempt = (fn: () => void, ok?: string) => {
+  const attempt = async (fn: () => void, id: string, collection: 'bulletins' | 'bulletinStories' = 'bulletinStories', ok?: string) => {
     try {
       fn();
+      await confirmedWrite(collection, id);
       if (ok) flash(true, ok);
+      return true;
     } catch (err: any) {
       flash(false, err?.message || 'تعذر تنفيذ العملية');
+      return false;
     }
   };
 
@@ -169,7 +182,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   };
 
   /** Dropping a story rewrites only its rank (between its new neighbours); the move can be undone. */
-  const dropStory = ({ id, index }: DropEvent) => {
+  const dropStory = async ({ id, index }: DropEvent) => {
     const story = all.find((x) => x.id === id);
     if (!story) return;
     const others = visible.filter((x) => x.id !== id);
@@ -177,11 +190,11 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     const after = others[index];
     const rank = rankBetween(before?.rank, after?.rank);
     const previous = story.rank;
-    attempt(() => apiService.saveBulletinStory({ id, bulletinId: story.bulletinId, rank }));
+    if (!await saveStoryConfirmed(story, { rank })) return;
     notify({
       type: 'success',
       message: `نُقلت «${story.slug}» إلى الموضع ${index + 1}`,
-      action: { label: 'تراجع', run: () => attempt(() => apiService.saveBulletinStory({ id, bulletinId: story.bulletinId, rank: previous })) },
+      action: { label: 'تراجع', run: () => { void toggle(story, { rank: previous }, 'أُعيد ترتيب القصة'); } },
     });
   };
 
@@ -204,14 +217,18 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     if (await saveStoryConfirmed(s, patch)) flash(true, text);
   };
 
-  const makeHeadlines = () =>
-    attempt(() => {
+  const makeHeadlines = async () => {
+    if (generatingHeadlines) return;
+    setGeneratingHeadlines(true);
+    try {
       const text = headlinesFrom(all);
       if (!text) throw new Error('لا قصص كافية لتوليد العناوين');
       const existing = all.find((s) => s.type === 'HEADLINES' && !s.killed);
-      if (existing) apiService.saveBulletinStory({ id: existing.id, bulletinId: bulletin.id, script: text });
-      else apiService.saveBulletinStory({ bulletinId: bulletin.id, type: 'HEADLINES', slug: 'العناوين', script: text, rank: rankBetween(undefined, all[0]?.rank) });
-    }, 'وُلّدت العناوين من أولى قصص النشرة');
+      const saved = existing ? apiService.saveBulletinStory({ id: existing.id, bulletinId: bulletin.id, script: text }) : apiService.saveBulletinStory({ bulletinId: bulletin.id, type: 'HEADLINES', slug: 'العناوين', script: text, rank: rankBetween(undefined, all[0]?.rank) });
+      await confirmedWrite('bulletinStories', saved.id);
+      flash(true, 'وُلّدت العناوين من أولى قصص النشرة');
+    } catch (e: any) { flash(false, e.message || 'تعذر تأكيد حفظ العناوين'); } finally { setGeneratingHeadlines(false); }
+  };
 
   // --- Pull from sources -------------------------------------------------------
   const news = apiService
@@ -251,6 +268,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       script: anchorCopyFromNews(n as any),
       newsId: n.id,
       newsUpdatedAt: n.updatedAt,
+      newsSourceSnapshot: anchorCopyFromNews(n),
       clipMediaId: video?.id,
       clipSeconds: clipTotal || (video?.durationSeconds ? Math.round(video.durationSeconds) : undefined),
       directorNotes: notes,
@@ -489,6 +507,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         </div>
       </div>
 
+      <AssignmentForm bulletin={bulletin} stories={all} />
+      <ReadinessPanel issues={evaluateBulletinReadiness(bulletin, all, apiService.getNews(), apiService.getMedia(), new Date())} stories={all} users={users} onOpen={setEditing} />
       {message && (
         <p role="status" className={`text-xs font-bold rounded-xl p-2.5 border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
           {message.text}
@@ -526,7 +546,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           >
             <Copy className="w-4 h-4" /> نسخ إلى نشرة أخرى
           </button>
-          <button type="button" onClick={makeHeadlines} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" disabled={generatingHeadlines} onClick={makeHeadlines} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
             <Sparkles className="w-4 h-4" /> توليد العناوين
           </button>
         </div>
@@ -671,10 +691,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     <div className="flex items-center justify-center gap-0.5">
                       {canEdit && (
                         <span className="hidden sm:contents">
-                          <button type="button" disabled={idx === 0} onClick={() => attempt(() => apiService.moveBulletinStory(s.id, -1))} aria-label={`تقديم ${s.slug}`} className="p-1 text-slate-500 hover:text-slate-700 disabled:opacity-30">
+                          <button type="button" disabled={idx === 0} onClick={() => attempt(() => apiService.moveBulletinStory(s.id, -1), s.id)} aria-label={`تقديم ${s.slug}`} className="p-1 text-slate-500 hover:text-slate-700 disabled:opacity-30">
                             <ArrowUp className="w-3.5 h-3.5" />
                           </button>
-                          <button type="button" disabled={idx === all.length - 1} onClick={() => attempt(() => apiService.moveBulletinStory(s.id, 1))} aria-label={`تأخير ${s.slug}`} className="p-1 text-slate-500 hover:text-slate-700 disabled:opacity-30">
+                          <button type="button" disabled={idx === all.length - 1} onClick={() => attempt(() => apiService.moveBulletinStory(s.id, 1), s.id)} aria-label={`تأخير ${s.slug}`} className="p-1 text-slate-500 hover:text-slate-700 disabled:opacity-30">
                             <ArrowDown className="w-3.5 h-3.5" />
                           </button>
                           <button type="button" onClick={() => toggle(s, { floated: !s.floated }, s.floated ? 'عادت القصة للتوقيت' : 'أصبحت القصة عائمة خارج التوقيت')} aria-label={s.floated ? `إرجاع ${s.slug}` : `تعويم ${s.slug}`} title={s.floated ? 'إرجاع للتوقيت' : 'تعويم (احتياط)'} className={`p-1 ${s.floated ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -700,7 +720,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       {canEdit && (approver || s.writerId === currentUser.id || can('bulletins.manage')) && (
-                        <button type="button" onClick={async () => (await confirmDialog(`حذف «${s.slug}» نهائياً من النشرة؟`)) && attempt(() => apiService.deleteBulletinStory(s.id), 'حُذفت القصة')} aria-label={`حذف ${s.slug}`} className="p-1 text-slate-300 hover:text-rose-600">
+                        <button type="button" onClick={async () => (await confirmDialog(`حذف «${s.slug}» نهائياً من النشرة؟`)) && attempt(() => apiService.deleteBulletinStory(s.id), s.id, 'bulletinStories', 'حُذفت القصة')} aria-label={`حذف ${s.slug}`} className="p-1 text-slate-300 hover:text-rose-600">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -719,24 +739,41 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       <StoryEditor bulletin={bulletin} story={editing} currentUser={currentUser} onClose={() => setEditing(null)} onSaved={(t) => flash(true, t)} />
 
       {/* Source picker */}
-      <FormPage isOpen={!!sendTo} onClose={() => setSendTo(null)} title="نسخ قصص إلى نشرة أخرى" subtitle="تصل كمسودات في آخر النشرة الهدف، ويُعاد اعتمادها هناك" maxWidth="2xl">
+      <FormPage isOpen={!!sendTo} onClose={() => { if (addingSources) return false; setSendTo(null); }} title="نسخ قصص إلى نشرة أخرى" subtitle="تصل كمسودات في آخر النشرة الهدف، ويُعاد اعتمادها هناك" maxWidth="2xl">
         {sendTo && (
           <form
             className="space-y-3"
-            onSubmit={(e) => {
+              onSubmit={async (e) => {
               e.preventDefault();
               const target = others.find((b) => b.id === sendTo.target);
               if (!target || !sendTo.ids.length) return;
-              attempt(() => {
-                const n = apiService.copyStoriesToBulletin(sendTo.ids, target.id);
+                if (addingSources) return;
+                setAddingSources(true);
+                try {
+                  let n = 0;
+                  for (const id of sendTo.ids) {
+                    const key = `send:${target.id}:${id}`;
+                    let copiedId = sourceWrites.current.get(key);
+                    if (!copiedId || !apiService.getBulletinStories(target.id).some(s => s.id === copiedId)) {
+                      const before = new Set(apiService.getBulletinStories(target.id).map(s => s.id));
+                      apiService.copyStoriesToBulletin([id], target.id);
+                      copiedId = apiService.getBulletinStories(target.id).find(s => !before.has(s.id))?.id;
+                      if (!copiedId) throw new Error('تعذر إنشاء النسخة');
+                      sourceWrites.current.set(key, copiedId);
+                    }
+                    await confirmedWrite('bulletinStories', copiedId);
+                    sourceWrites.current.delete(key); n++;
+                    setSendTo(current => current ? { ...current, ids: current.ids.filter(x => x !== id) } : null);
+                  }
                 setSendTo(null);
                 notify({ type: 'success', message: `نُسخت ${n} قصة إلى «${target.title}»` });
-              });
+                } catch (error: any) { notify({ type: 'error', message: error.message || 'تعذر تأكيد النسخ؛ أعد محاولة القصص المتبقية' }); }
+                finally { setAddingSources(false); }
             }}
           >
             <label className="block text-xs font-bold text-slate-700">
               النشرة الهدف
-              <select required value={sendTo.target} onChange={(e) => setSendTo({ ...sendTo, target: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm bg-white">
+              <select disabled={addingSources} required value={sendTo.target} onChange={(e) => setSendTo({ ...sendTo, target: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm bg-white">
                 <option value="">اختر النشرة…</option>
                 {others
                   .filter((b) => b.status !== 'DONE')
@@ -750,10 +787,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-slate-700">القصص ({sendTo.ids.length} من {all.length})</span>
               <span className="flex gap-2">
-                <button type="button" onClick={() => setSendTo({ ...sendTo, ids: all.map((x) => x.id) })} className="text-blue-700 font-bold">
+                <button type="button" disabled={addingSources} onClick={() => setSendTo({ ...sendTo, ids: all.map((x) => x.id) })} className="text-blue-700 font-bold">
                   تحديد الكل
                 </button>
-                <button type="button" onClick={() => setSendTo({ ...sendTo, ids: [] })} className="text-slate-500 font-bold">
+                <button type="button" disabled={addingSources} onClick={() => setSendTo({ ...sendTo, ids: [] })} className="text-slate-500 font-bold">
                   إلغاء التحديد
                 </button>
               </span>
@@ -765,6 +802,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     <input
                       type="checkbox"
                       checked={sendTo.ids.includes(x.id)}
+                      disabled={addingSources}
                       onChange={(e) => setSendTo({ ...sendTo, ids: e.target.checked ? [...sendTo.ids, x.id] : sendTo.ids.filter((i) => i !== x.id) })}
                     />
                     <span className="font-bold text-slate-800">{x.slug}</span>
@@ -775,10 +813,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               ))}
             </ul>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setSendTo(null)} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+              <button type="button" disabled={addingSources} onClick={() => setSendTo(null)} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">
                 إلغاء
               </button>
-              <button type="submit" disabled={!sendTo.target || !sendTo.ids.length} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold">
+              <button type="submit" disabled={addingSources || !sendTo.target || !sendTo.ids.length} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold">
                 نسخ {sendTo.ids.length} قصة
               </button>
             </div>
@@ -930,7 +968,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   type="button"
                   onClick={async () => {
                     if (!(await confirmDialog(`حذف «${bulletin.title}»؟`))) return;
-                    attempt(() => apiService.deleteBulletin(bulletin.id));
+                    if (!await attempt(() => apiService.deleteBulletin(bulletin.id), bulletin.id, 'bulletins')) return;
                     setMeta(null);
                     onBack();
                   }}

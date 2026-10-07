@@ -29,6 +29,7 @@ export const COLLECTIONS = {
   editLocks: { storageKey: 'nrcs_edit_locks_v1', kind: 'list' },
   /** Team comments with @mentions (append-only; author stamped by the server). */
   comments: { storageKey: 'nrcs_comments_v1', kind: 'list' },
+  reviewThreads: { storageKey: 'madar_review_threads_v1', kind: 'list' },
   /** Live broadcast state per episode (id = episodeId); timings are stamped by the server. */
   onAir: { storageKey: 'nrcs_onair_v1', kind: 'list' },
   /** On-air alerts from the director/control room to departments. */

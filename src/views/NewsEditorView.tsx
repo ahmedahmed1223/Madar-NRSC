@@ -1,4 +1,5 @@
 import { notify } from '../services/notify';
+import { ReviewThreads } from '../components/editor/ReviewThreads';
 import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
@@ -616,7 +617,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   // Keyboard: Ctrl+S saves and stays in the editor; Ctrl+Enter sends a new story for review.
   const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
   shortcutRef.current = (e: KeyboardEvent) => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey || showCommentModal || document.querySelector('[role=alertdialog]')) return;
+    if (e.defaultPrevented || e.repeat || e.isComposing || !(e.ctrlKey || e.metaKey) || e.altKey || showCommentModal || document.body.classList.contains('form-page-open') || document.querySelector('[role=dialog], [role=alertdialog]')) return;
     if (e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
       e.preventDefault();
       if (canEditContent && lock.status !== 'acquiring') saveContent(true);
@@ -846,7 +847,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={handleSaveDraft}
               disabled={saving || lock.status === 'acquiring'}
               title="حفظ (Ctrl+S)"
-              aria-keyshortcuts="Control+S"
+              aria-keyshortcuts="Control+S Meta+S"
               className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
@@ -866,7 +867,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               type="button"
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
               title="Ctrl+Enter"
-              aria-keyshortcuts="Control+Enter"
+              aria-keyshortcuts="Control+Enter Meta+Enter"
               className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
             >
               <Send className="w-4 h-4" />
@@ -1810,6 +1811,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         }
       />
 
+      {newsItem?.id && <ReviewThreads collection="news" entityId={newsItem.id} text={content} version={newsItem.updatedAt || 'legacy'} canPost={!saving && (canEditContent || can('news.review'))} />}
       <RequestFormPage
         isOpen={!!requestDraft}
         onClose={() => setRequestDraft(null)}

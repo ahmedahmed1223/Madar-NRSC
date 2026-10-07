@@ -35,6 +35,12 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
   };
 
   useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      event.preventDefault();
+      cancel();
+    };
+    window.addEventListener('keydown', onEscape);
     const t = setTimeout(() => {
       if (prompt) {
         inputRef.current?.focus();
@@ -46,6 +52,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
     const back = opener.current;
     return () => {
       clearTimeout(t);
+      window.removeEventListener('keydown', onEscape);
       document.body.style.overflow = prev;
       back?.focus?.();
     };
