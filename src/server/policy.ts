@@ -1,4 +1,5 @@
 import { prefsError } from '../shared/notifications';
+import { normalizeProductionName, productionPersonError } from '../shared/productionPeople';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { reviewThreadError } from '../shared/reviewThreads';
 import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
@@ -339,6 +340,16 @@ export const POLICIES: Record<CollectionName, Policy> = {
   tasks: tasksPolicy,
   media: mediaPolicy,
   categories: referencedPolicy('categoryId', 'القسم'),
+  productionPeople: ({ auth, kind, before, after, list }) => {
+    if (!auth.can('system.settings')) return DENIED;
+    if (kind === 'delete' || after?.deletedAt) return 'عطّل الاسم بدلاً من حذفه';
+    const invalid = productionPersonError(after);
+    if (invalid) return invalid;
+    if (before && before.id !== after.id) return 'لا يمكن تغيير معرف الاسم';
+    const name = normalizeProductionName(after.name);
+    if (list?.('productionPeople').some(p => p.id !== after.id && normalizeProductionName(p.name) === name)) return 'الاسم موجود بالفعل في قوائم الإنتاج';
+    return null;
+  },
   sources: referencedPolicy('sourceId', 'المصدر'),
   programTypes: require('system.settings'),
   settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),

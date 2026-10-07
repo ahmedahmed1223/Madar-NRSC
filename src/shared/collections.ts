@@ -5,6 +5,7 @@
  */
 export const COLLECTIONS = {
   users: { storageKey: 'nrcs_users_v1', kind: 'list' },
+  productionPeople: { storageKey: 'nrcs_production_people_v1', kind: 'list' },
   roles: { storageKey: 'nrcs_custom_roles_v2', kind: 'list' },
   news: { storageKey: 'nrcs_news_v1', kind: 'list' },
   stories: { storageKey: 'nrcs_stories_v1', kind: 'list' },

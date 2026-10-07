@@ -1693,6 +1693,20 @@ export class ApiService {
     setStored(COLLECTIONS.diary.storageKey, all.map((e) => (e.id === id ? { ...e, deletedAt: new Date().toISOString() } : e)));
   }
 
+  static getProductionPeople(): import('../shared/productionPeople').ProductionPerson[] {
+    return getStored(COLLECTIONS.productionPeople.storageKey, []);
+  }
+
+  static saveProductionPerson(data: Partial<import('../shared/productionPeople').ProductionPerson>): import('../shared/productionPeople').ProductionPerson {
+    const all = this.getProductionPeople();
+    const now = new Date().toISOString();
+    const idx = data.id ? all.findIndex(p => p.id === data.id) : -1;
+    const next = { ...(idx >= 0 ? all[idx] : { id: data.id || newId('person'), roles: ['PRESENTER'], active: true, createdAt: now }), ...data, name: data.name?.trim(), updatedAt: now } as import('../shared/productionPeople').ProductionPerson;
+    if (idx >= 0) all[idx] = next; else all.push(next);
+    setStored(COLLECTIONS.productionPeople.storageKey, all);
+    return next;
+  }
+
   // --- RESOURCES & BOOKINGS ---
   static getResources(includeInactive = true): Resource[] {
     return getStored<Resource[]>(COLLECTIONS.resources.storageKey, []).filter((r) => !r.deletedAt && (includeInactive || r.isActive !== false));

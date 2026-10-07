@@ -635,7 +635,11 @@ export class SyncService {
             if (!after.assigneeId) after.assigneeId = after.bookedById;
           }
         }
-        if (collection === 'notificationPrefs') after = { ...after, updatedAt: new Date().toISOString() };
+          if (collection === 'productionPeople') {
+            const now = new Date().toISOString();
+            after = { ...after, name: typeof after.name === 'string' ? after.name.trim() : after.name, createdAt: before?.createdAt ?? now, updatedAt: now };
+          }
+          if (collection === 'notificationPrefs') after = { ...after, updatedAt: new Date().toISOString() };
 
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;

@@ -1,0 +1,21 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { createTestServer, loginAgent } from '../helpers';
+let server: Awaited<ReturnType<typeof createTestServer>>;
+beforeEach(async () => { server = await createTestServer(); });
+afterEach(() => server.close());
+const person = { id: 'person-test', name: 'أحمد علي', roles: ['PRESENTER'], active: true, createdAt: 'forged', updatedAt: 'forged' };
+it('restricts writes, stamps timestamps and rejects deletion and duplicate normalized names', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const writer = await loginAgent(server.app, 'journalist@akhbar.tv');
+  const send = (agent: any, id: string, d: any, baseV?: number, op = 'upsert') => agent.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{ c: 'productionPeople', op, id, d, baseV }] });
+  expect((await send(writer, person.id, person)).body.results[0].ok).toBe(false);
+  expect((await send(admin, person.id, person)).body.results[0].ok).toBe(true);
+  const row = server.db.getRow('productionPeople' as any, person.id)!;
+  expect(row.d.createdAt).not.toBe('forged'); expect(row.d.updatedAt).not.toBe('forged');
+  expect((await send(admin, 'duplicate', { ...person, id: 'duplicate', name: ' أَحـمد  علي ' })).body.results[0].ok).toBe(false);
+  expect((await send(admin, person.id, { ...row.d, active: false }, row.v)).body.results[0].ok).toBe(true);
+  expect((await send(admin, person.id, { ...row.d, name: 'تغيير قديم' }, row.v)).body.results[0].code).toBe('CONFLICT');
+  const saved = server.db.getRow('productionPeople' as any, person.id)!;
+  expect((await send(admin, person.id, null, saved.v, 'delete')).body.results[0].ok).toBe(false);
+  expect((await send(admin, person.id, { ...saved.d, deletedAt: new Date().toISOString() }, saved.v)).body.results[0].ok).toBe(false);
+});
