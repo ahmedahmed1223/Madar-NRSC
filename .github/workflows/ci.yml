@@ -48,3 +48,5 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'X-NRCS-Client: web' \
             -d '{"email":"ci-admin@example.com","password":"CiAdminPassword2026"}' http://127.0.0.1:3100/api/v1/auth/login)
           test "$code" = "200"
+      - name: Offline air and prompter workflows
+        run: npx playwright test tests/e2e/offline-air-preparation.spec.ts tests/e2e/offline-air-shell.spec.ts tests/e2e/offline-air-store.spec.ts tests/e2e/offline-air-drafts.spec.ts tests/e2e/prompter-controls.spec.ts tests/e2e/production-lists-settings.spec.ts tests/e2e/production-name-fields.spec.ts tests/e2e/air-text-display.spec.ts

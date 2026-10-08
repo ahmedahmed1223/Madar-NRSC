@@ -1,0 +1,20 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { createTestServer, loginAgent } from '../helpers';
+let server: Awaited<ReturnType<typeof createTestServer>>;
+beforeEach(async () => { server = await createTestServer(); }); afterEach(() => server.close());
+it('imports separate records idempotently and rejects altered retries and ordinary writes', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const id = server.db.listCollection('bulletins')[0].id;
+  const packet = (await admin.get(`/api/v1/air-offline/packet/${id}`)).body.packet;
+  const body = { sessionId: 'local-session', packetId: packet.packetId, dbId: packet.dbId, showId: id, preparedAt: packet.preparedAt, proof: packet.proof, events: [{ id: 'event-1', sequence: 1, action: 'START', at: Date.now(), segmentId: packet.show.segments[0].id }] };
+  const original = server.db.listCollection('onAir');
+  const send = (value: any) => admin.post('/api/v1/air-offline/sessions').set('X-NRCS-Client', 'web').send(value);
+  expect((await send(body)).status).toBe(200);
+  expect((await send(body)).body.record.id).toBe('local-session');
+  expect((await send({ ...body, events: [{ ...body.events[0], at: Date.now() + 1 }] })).status).toBe(409);
+  expect((await send({ ...body, sessionId: 'bad-db', dbId: 'other' })).status).toBe(403);
+  expect((await send({ ...body, sessionId: 'bad-order', events: [{ ...body.events[0], sequence: 2 }] })).status).toBe(400);
+  expect(server.db.listCollection('onAir')).toEqual(original);
+  const direct = await admin.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{ c: 'offlineAirSessions', id: 'illegal', op: 'upsert', d: body }] });
+  expect(direct.body.results[0].ok).toBe(false);
+});

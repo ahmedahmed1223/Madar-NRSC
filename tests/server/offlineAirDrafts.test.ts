@@ -1,0 +1,27 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { createTestServer, loginAgent } from '../helpers';
+let server: Awaited<ReturnType<typeof createTestServer>>;
+beforeEach(async () => { server = await createTestServer(); }); afterEach(() => server.close());
+it('requires an owned lock and base version and changes only script through ordinary policy', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const me = (await admin.get('/api/v1/auth/me')).body.user;
+  const settings = server.db.getRow('settings', 'singleton')!;
+  server.db.writeRow('settings', 'singleton', { ...settings.d, allowOfflineScriptEdits: true }, 0, me.id);
+  const story = server.db.listCollection('bulletinStories')[0];
+  const body = { collection: 'bulletinStories', id: story.id, segmentId: story.id, baseV: story.v, script: 'نسخة محلية مراجعة', userId: me.id, dbId: server.db.dbId };
+  const apply = (value: any) => admin.post('/api/v1/air-offline/apply-draft').set('X-NRCS-Client', 'web').send(value);
+  expect((await apply(body)).status).toBe(409);
+  const lock = { id: `bulletinStories:${story.id}`, collection: 'bulletinStories', entityId: story.id, heartbeat: Date.now() };
+  const locked = await admin.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{ c: 'editLocks', id: lock.id, op: 'upsert', d: lock }] });
+  expect(locked.body.results[0].ok).toBe(true);
+  const result = await apply(body);
+  expect(result.status).toBe(200);
+  const saved = server.db.getRow('bulletinStories', story.id)!;
+  expect(saved.d.script).toBe(body.script); expect(saved.d.slug).toBe(story.d.slug); expect(saved.d.rank).toBe(story.d.rank);
+  expect((await apply(body)).status).toBe(409);
+  expect((await apply({ ...body, collection: 'users' })).status).toBe(400);
+  expect((await apply({ ...body, baseV: saved.v, userId: 'another-user' })).status).toBe(403);
+  expect((await apply({ ...body, baseV: saved.v, dbId: 'another-db' })).status).toBe(403);
+  server.db.writeRow('settings', 'singleton', { ...settings.d, allowOfflineScriptEdits: false }, 0, me.id);
+  expect((await apply({ ...body, baseV: saved.v })).status).toBe(403);
+});

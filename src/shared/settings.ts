@@ -5,6 +5,7 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
   for (const key of ['onAirDisplayMode', 'studioDisplayMode'] as const) {
     if (settings[key] !== undefined && !['OPERATIONAL', 'TEXT'].includes(settings[key]!)) return 'وضع العرض غير صالح';
   }
+  if (settings.allowOfflineScriptEdits !== undefined && typeof settings.allowOfflineScriptEdits !== 'boolean') return 'خيار التعديل المحلي غير صالح';
   if (typeof settings.organizationName !== 'string' || !settings.organizationName.trim() || settings.organizationName.length > 120) return 'اسم المؤسسة مطلوب وبحد أقصى 120 حرفاً';
   if (typeof settings.defaultTimezone !== 'string' || !validZone(settings.defaultTimezone)) return 'المنطقة الزمنية غير معروفة';
   if (settings.defaultSegmentDurationSeconds !== undefined && (!Number.isInteger(settings.defaultSegmentDurationSeconds) || settings.defaultSegmentDurationSeconds < 10 || settings.defaultSegmentDurationSeconds > 3600)) return 'مدة الفقرة بين 10 و3600 ثانية';

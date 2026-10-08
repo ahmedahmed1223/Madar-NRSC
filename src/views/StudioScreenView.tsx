@@ -1,4 +1,7 @@
 import { guestKey, guestRoleName, questionKindName, segmentGuests, segmentQuestions } from '../shared/episodePlan';
+import { airDisplayDefault, type AirDisplayMode } from '../shared/airDisplay';
+import { AirDisplayControls } from '../components/onair/AirDisplayControls';
+import { AirScriptPanel } from '../components/onair/AirScriptPanel';
 import React, { useRef, useState } from 'react';
 import { Maximize2 } from 'lucide-react';
 import type { User } from '../types';
@@ -15,7 +18,9 @@ const lowerThirdsFromStory = (seg: any): string[] => (seg?.graphics || []).flatM
 
 /** Big, glanceable display for the studio floor and presenters. */
 export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser, initialEpisodeId }) => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests'], 500);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'settings'], 500);
+  const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
+  const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'studio');
   const ref = useRef<HTMLDivElement>(null);
   const live = apiService.getOnAirStates().filter((s) => s.status === 'LIVE');
   const [episodeId, setEpisodeId] = useState<string>(initialEpisodeId || live[0]?.episodeId || '');
@@ -72,6 +77,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
       </div>
 
       <div ref={ref} className="theme-fixed bg-black text-white rounded-2xl min-h-[70vh] p-6 sm:p-10 flex flex-col gap-6 overflow-auto">
+        <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
         {cue && (
           <div className={`rounded-2xl px-6 py-4 text-center text-2xl sm:text-4xl font-black ${cue.level === 'urgent' ? 'bg-red-600 animate-pulse' : cue.level === 'standby' ? 'bg-amber-500 text-black' : 'bg-sky-600'}`} role="alert">
             {cue.message}
@@ -101,6 +107,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             </div>
           )}
         </div>
+        {displayMode === 'TEXT' && state?.status !== 'ENDED' && <AirScriptPanel segmentId={seg?.id || episode?.rundown?.[0]?.id} script={seg ? seg.scriptText : episode?.rundown?.[0]?.scriptText} live={state?.status === 'LIVE'} />}
         {questions.length > 0 && (
           <div className="border-t border-slate-800 pt-4 space-y-2" aria-label="أسئلة الفقرة">
             {questions.map((q: any) => (

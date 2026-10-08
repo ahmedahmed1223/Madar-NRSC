@@ -66,7 +66,12 @@ export default function AppShell() {
     } catch {
       // unsent edits stay queued in this browser for the next sign-in
     }
-    await authClient.logout().catch(() => undefined);
+    try {
+      if (!await authClient.logout()) return;
+    } catch {
+      setNotice('تعذر إكمال تسجيل الخروج؛ تحقق من الاتصال والتخزين المحلي ثم أعد المحاولة');
+      return;
+    }
     dataStore.stop();
     setIsChangingPassword(false);
     setNotice(null);

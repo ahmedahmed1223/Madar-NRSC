@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, LayoutTemplate, Plus, Radio, Trash2, Edit2, ArrowUp, ArrowDown, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
+import { ProductionNameField } from '../components/common/ProductionNameField';
 import { RbacService } from '../services/rbacService';
 import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
@@ -459,17 +460,12 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
               </label>
               <label className="block text-xs font-bold text-slate-700">
                 المذيعون (افصل بفاصلة)
-                <input list="bulletin-presenters" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
-                <datalist id="bulletin-presenters">
-                  {presenters.map((u) => (
-                    <option key={u.id} value={u.fullName} />
-                  ))}
-                </datalist>
+                <ProductionNameField kind="PRESENTER" label="المذيعون (افصل بفاصلة)" multiple value={form.anchors} onChange={anchors => setForm({ ...form, anchors })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
               </label>
             </div>
             <label className="block text-xs font-bold text-slate-700">
               الاستوديو
-              <input value={form.studioName} onChange={(e) => setForm({ ...form, studioName: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
+              <ProductionNameField kind="STUDIO" label="الاستوديو" value={form.studioName} onChange={studioName => setForm({ ...form, studioName })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
             </label>
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <button type="button" onClick={() => setForm(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
@@ -525,9 +521,10 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
               </label>
               <label className="block text-xs font-bold text-slate-700">
                 المذيعون
-                <input list="bulletin-presenters" value={formatDraft.anchorsText} onChange={(e) => setFormatDraft({ ...formatDraft, anchorsText: e.target.value })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
+                <ProductionNameField kind="PRESENTER" label="المذيعون" multiple value={formatDraft.anchorsText} onChange={anchorsText => setFormatDraft({ ...formatDraft, anchorsText })} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
               </label>
             </div>
+            <label className="block text-xs font-bold text-slate-700">الاستوديو<ProductionNameField kind="STUDIO" label="الاستوديو" value={formatDraft.studioName || ''} onChange={studioName => setFormatDraft({ ...formatDraft, studioName })} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white" /></label>
             <ApprovalChainEditor value={formatDraft.approvalSteps} onChange={(approvalSteps) => setFormatDraft({ ...formatDraft, approvalSteps })} editorName={formatDraft.editorName} />
             <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
               <legend className="px-1 text-xs font-bold text-slate-700">الجدولة (اختيارية)</legend>

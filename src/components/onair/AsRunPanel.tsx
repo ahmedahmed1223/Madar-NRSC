@@ -9,6 +9,8 @@ import { arabicDate, addDaysIso, localDateString } from '../../shared/dates';
 import { mmss } from '../../shared/bulletins';
 import { ExportMenu, docContext } from '../common/ExportMenu';
 import { asRunDoc } from '../../services/documents/builders';
+import { dataStore } from '../../services/dataStore';
+import { COLLECTIONS } from '../../shared/collections';
 
 const addDays = addDaysIso;
 const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
@@ -17,12 +19,14 @@ const tone = (n: number | null) => (n === null || Math.abs(n) < 30 ? 'text-slate
 
 /** What actually aired on a day, segment by segment, against the plan. */
 export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories'], 5000);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'offlineAirSessions'], 5000);
   const [day, setDay] = useState(localDateString());
   const shows = asRunForDay(apiService.getOnAirStates(), apiService.getAirShows(), day);
+  const offline = dataStore.get<any[]>(COLLECTIONS.offlineAirSessions.storageKey, []).filter(row => localDateString(new Date(row.importedAt)) === day);
 
   return (
     <div className="space-y-4" data-testid="asrun">
+      {offline.length > 0 && <section aria-label="سجلات التشغيل المحلي المستوردة" className="border-b border-slate-200 pb-4"><h3 className="font-bold">سجلات تشغيل محلي مستوردة</h3>{offline.map(row => <details key={row.id} className="py-2"><summary className="cursor-pointer min-h-11">{row.showId} · {row.actorName} · استيراد {clock(row.importedAt)}</summary><p className="text-sm">الأوقات مُبلّغ عنها من الجهاز المحلي، وليست أوامر بث مشتركة.</p><ol className="text-sm space-y-1">{row.events.map((event: any) => <li key={event.id}>{event.sequence}. {event.action} · {event.segmentId} · {clock(new Date(event.at).toISOString())}</li>)}</ol></details>)}</section>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setDay(addDays(day, -1))} aria-label="اليوم السابق" className="p-2 rounded-lg border border-slate-200 bg-white">

@@ -1,5 +1,7 @@
 import type { User } from '../types';
 import { apiFetch } from './http';
+import { listPacketMetadata, purgeUser } from './offlineAirStore';
+import { confirmDialog } from './dialogs';
 
 export interface SessionInfo {
   user: User;
@@ -17,6 +19,10 @@ export const authClient = {
   },
 
   setSession(next: SessionInfo | null) {
+    if (!next && session?.user.id && typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('madar-offline-air');
+      channel.postMessage({ type: 'logout', userId: session.user.id }); channel.close();
+    }
     session = next;
   },
 
@@ -43,12 +49,20 @@ export const authClient = {
     return session;
   },
 
-  async logout(): Promise<void> {
-    try {
-      await apiFetch('/api/v1/auth/logout', { method: 'POST' });
-    } finally {
-      session = null;
+  async logout(): Promise<boolean> {
+    const userId = session?.user.id;
+    if (userId && typeof indexedDB !== 'undefined') {
+      const saved = (await listPacketMetadata()).filter(row => row.userId === userId);
+      if (saved.length && !await confirmDialog({ title: 'نسخ الهواء المحلية', message: 'سيحذف تسجيل الخروج نسخ الهواء المشفرة والتشغيل المحلي على هذا الجهاز. صدّر النسخ من شاشة الهواء قبل المتابعة للاحتفاظ بالسجلات غير المستوردة.', confirmLabel: 'حذف النسخ وتسجيل الخروج', cancelLabel: 'البقاء', danger: true })) return false;
+      await purgeUser(userId);
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('madar-offline-air');
+        channel.postMessage({ type: 'logout', userId }); channel.close();
+      }
     }
+    await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+    session = null;
+    return true;
   },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {

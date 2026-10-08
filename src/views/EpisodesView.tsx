@@ -4,6 +4,7 @@ import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
+import { ProductionNameField } from '../components/common/ProductionNameField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { studioConflictsFor } from '../shared/schedule';
 import { arabicDate, localDateString } from '../shared/dates';
@@ -89,6 +90,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [presenterName, setPresenterName] = useState(currentUser.fullName);
   const [producerName, setProducerName] = useState(currentUser.fullName);
   const [studioName, setStudioName] = useState('');
+  const [directorName, setDirectorName] = useState('');
 
   // Episode numbers run per program (next = highest number in that program + 1).
   const nextEpisodeNumber = (progId: string) =>
@@ -116,11 +118,12 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const [saving, setSaving] = useState(false);
   const draft = useFormDraft(`episode:${currentUser.id}:new`, isAddModalOpen,
     { programId, title, episodeNumber, seasonNumber, broadcastDate, startTime, durationMinutes,
-      presenterName, producerName, studioName, description, startMode, copyFromId }, value => {
+      presenterName, producerName, studioName, directorName, description, startMode, copyFromId }, value => {
       setProgramId(value.programId); setTitle(value.title); setEpisodeNumber(value.episodeNumber);
       setSeasonNumber(value.seasonNumber); setBroadcastDate(value.broadcastDate); setStartTime(value.startTime);
       setDurationMinutes(value.durationMinutes); setPresenterName(value.presenterName);
       setProducerName(value.producerName); setStudioName(value.studioName); setDescription(value.description);
+      setDirectorName(value.directorName || '');
       setStartMode(value.startMode); setCopyFromId(value.copyFromId);
     });
   const programTemplate = programs.find((p) => p.id === programId)?.template;
@@ -183,6 +186,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     setSeasonNumber(1);
     setBroadcastDate(localDateString());
     setDescription('');
+    setDirectorName('');
     setIsAddModalOpen(true);
   };
 
@@ -236,6 +240,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       presenterName: presenterName || selProg?.presenterName,
       producerName: producerName || selProg?.producerName,
       studioName: studioName || selProg?.studioName,
+      directorName,
       description,
       status: 'PLANNING',
       topics: structure.topics,
@@ -632,17 +637,21 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </div>
             <div>
               <label htmlFor="episode-studio-input" className="block text-xs font-bold text-slate-700 mb-1">الاستوديو المخصص</label>
-              <input
+              <ProductionNameField kind="STUDIO" label="الاستوديو المخصص"
                 id="episode-studio-input"
                 type="text"
                 value={studioName}
-                onChange={(e) => setStudioName(e.target.value)}
+                onChange={setStudioName}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
           </div>
 
           <div>
+            <div className="grid sm:grid-cols-2 gap-3 mb-3">
+              <label className="block text-xs font-bold text-slate-700">مقدم الحلقة<ProductionNameField kind="PRESENTER" label="مقدم الحلقة" id="episode-presenter-input" value={presenterName} onChange={setPresenterName} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white" /></label>
+              <label className="block text-xs font-bold text-slate-700">مخرج الحلقة<ProductionNameField kind="DIRECTOR" label="مخرج الحلقة" id="episode-director-input" value={directorName} onChange={setDirectorName} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white" /></label>
+            </div>
             <label htmlFor="episode-desc-input" className="block text-xs font-bold text-slate-700 mb-1">مقدمة ووصف الحلقة</label>
             <textarea
               id="episode-desc-input"

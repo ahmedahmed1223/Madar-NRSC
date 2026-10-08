@@ -2,6 +2,8 @@ node_modules/
 .npm-cache/
 .impeccable-runtime/
 build/
+!src/build/
+!src/build/offlineAirManifest.ts
 dist/
 coverage/
 .DS_Store

@@ -33,6 +33,7 @@ export const COLLECTIONS = {
   reviewThreads: { storageKey: 'madar_review_threads_v1', kind: 'list' },
   /** Live broadcast state per episode (id = episodeId); timings are stamped by the server. */
   onAir: { storageKey: 'nrcs_onair_v1', kind: 'list' },
+  offlineAirSessions: { storageKey: 'madar_offline_air_sessions_v1', kind: 'list' },
   /** On-air alerts from the director/control room to departments. */
   cues: { storageKey: 'nrcs_cues_v1', kind: 'list' },
   /** Requests between departments (montage, graphics, studio, ...). */

@@ -440,6 +440,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     return rosterEntryError(after);
   },
   wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
+  offlineAirSessions: () => 'السجل المحلي يستورد عبر المسار المخصص ولا يعدل أو يحذف',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;
     if (!target || !['news', 'episodes', 'bulletinStories'].includes(target.collection) || target.id !== `${target.collection}:${target.entityId}`) {

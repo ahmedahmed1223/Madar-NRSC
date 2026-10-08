@@ -7,6 +7,7 @@ import { confirmDialog } from '../../services/dialogs';
 import { AlertTriangle, CheckCircle2, Film, Lock, Plus, RefreshCw, Send, Undo2, X } from 'lucide-react';
 import type { User } from '../../types';
 import { apiService } from '../../services/api';
+import { ProductionNameField } from '../common/ProductionNameField';
 import { RbacService } from '../../services/rbacService';
 import { useEditLock } from '../../hooks/useNewsEditLock';
 import { FormPage } from '../common/FormPage';
@@ -276,12 +277,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </label>
             <label className="block text-xs font-bold text-slate-700">
               المذيع
-              <input list="story-anchors" readOnly={!canEdit} value={anchorName} placeholder={bulletin.anchors[0] || ''} onChange={(e) => setAnchorName(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
-              <datalist id="story-anchors">
-                {bulletin.anchors.map((a) => (
-                  <option key={a} value={a} />
-                ))}
-              </datalist>
+              <ProductionNameField kind="PRESENTER" label="المذيع" fallbackNames={bulletin.anchors} readOnly={!canEdit} value={anchorName} placeholder={bulletin.anchors[0] || ''} onChange={setAnchorName} className="mt-1 w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs" />
             </label>
           </div>
 

@@ -556,6 +556,7 @@ export interface AuditLog {
 export interface SystemSettings {
   onAirDisplayMode?: 'OPERATIONAL' | 'TEXT';
   studioDisplayMode?: 'OPERATIONAL' | 'TEXT';
+  allowOfflineScriptEdits?: boolean;
   organizationName: string;
   organizationNameEn: string;
   logoUrl: string;

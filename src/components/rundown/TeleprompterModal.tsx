@@ -13,11 +13,11 @@ import {
   ChevronLeft,
   Clock,
   FlipHorizontal,
-  Volume2,
 } from 'lucide-react';
 import { RundownSegment } from '../../types';
 import { formatSecondsToTime } from '../../shared/rundown';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
+import { prompterScrollDelta, prompterShortcut } from '../../shared/prompterControls';
 
 interface TeleprompterModalProps {
   isOpen: boolean;
@@ -36,26 +36,33 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   episodeId,
 }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [followDirector, setFollowDirector] = useState(true);
   const liveVersion = useLiveData(['onAir'], 0);
   const liveSegmentId = episodeId ? apiService.getOnAir(episodeId) : null;
   const followId = liveSegmentId?.status === 'LIVE' ? liveSegmentId.currentSegmentId : null;
   useEffect(() => {
-    if (!isOpen || !followId) return;
+    if (!isOpen || !followId || !followDirector) return;
     const idx = segments.findIndex((s) => s.id === followId);
     if (idx >= 0) setCurrentSegmentIndex(idx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [followId, isOpen, liveVersion]);
+  }, [followId, isOpen, liveVersion, followDirector, segments]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [scrollSpeed, setScrollSpeed] = useState(2); // 1 to 5
+  const [scrollSpeed, setScrollSpeed] = useState(48); // pixels per second
   const [fontSize, setFontSize] = useState(36); // px
   const [isMirrored, setIsMirrored] = useState(false);
   const [colorTheme, setColorTheme] = useState<'yellow' | 'white' | 'cyan'>('yellow');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [displayError, setDisplayError] = useState('');
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   const activeSegment = segments[currentSegmentIndex] || segments[0];
+  useEffect(() => {
+    if (currentSegmentIndex >= segments.length) setCurrentSegmentIndex(Math.max(0, segments.length - 1));
+  }, [currentSegmentIndex, segments.length]);
 
   // Timer for elapsed reading time
   useEffect(() => {
@@ -72,9 +79,13 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
   // Smooth auto-scroll loop
   useEffect(() => {
-    const scrollStep = () => {
+    let previous: number | null = null;
+    const scrollStep = (now: number) => {
       if (isPlaying && isOpen && scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop += scrollSpeed * 0.8;
+        const el = scrollContainerRef.current;
+        el.scrollTop += prompterScrollDelta(scrollSpeed, previous === null ? 0 : now - previous);
+        previous = now;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) { setIsPlaying(false); return; }
       }
       animationFrameRef.current = requestAnimationFrame(scrollStep);
     };
@@ -99,6 +110,9 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
   // Reset scroll and timer on segment change
   const handleSelectSegment = (idx: number) => {
+    if (idx < 0 || idx >= segments.length) return;
+    setFollowDirector(false);
+    setIsPlaying(false);
     setCurrentSegmentIndex(idx);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
@@ -117,32 +131,94 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   const handleTogglePlay = () => {
     setIsPlaying((prev) => !prev);
   };
+  const handleClose = () => {
+    if (document.fullscreenElement === modalRef.current) void document.exitFullscreen().catch(() => {});
+    onClose();
+  };
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement === modalRef.current) await document.exitFullscreen();
+      else if (modalRef.current?.requestFullscreen) await modalRef.current.requestFullscreen();
+      else throw new Error();
+      setDisplayError('');
+    } catch { setDisplayError('تعذر ملء الشاشة في هذا المتصفح'); }
+  };
+  useEffect(() => {
+    const changed = () => setFullscreen(document.fullscreenElement === modalRef.current);
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    scrollContainerRef.current?.focus();
+    const hidden = () => { if (document.hidden) setIsPlaying(false); };
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      document.body.style.overflow = overflow;
+      previous?.focus();
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, [isOpen]);
+  useEffect(() => {
+    setIsPlaying(false);
+    setElapsedSeconds(0);
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+  }, [activeSegment?.id]);
 
   // Keyboard controls: Space to play/pause, Arrows to switch segment
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
+      if (e.defaultPrevented) return;
+      if (e.key === 'Tab') {
+        const items = Array.from(modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, [tabindex="0"]') || []).filter(el => el.getClientRects().length);
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+        return;
+      }
+      const target = e.target as HTMLElement;
+      const action = prompterShortcut({ key: e.key, tagName: target.tagName, editable: target.isContentEditable, composing: e.isComposing, modified: e.ctrlKey || e.metaKey || e.altKey });
+      if (!action) return;
+      e.preventDefault(); e.stopPropagation();
+      if (e.repeat && ['PLAY', 'FULLSCREEN', 'MIRROR', 'CLOSE'].includes(action)) return;
+      if (action === 'FASTER') setScrollSpeed(s => Math.min(180, s + 6));
+      if (action === 'SLOWER') setScrollSpeed(s => Math.max(6, s - 6));
+      if (action === 'LARGER') setFontSize(f => Math.min(72, f + 2));
+      if (action === 'SMALLER') setFontSize(f => Math.max(22, f - 2));
+      if (action === 'RESET') handleResetScroll();
+      if (action === 'FULLSCREEN') void toggleFullscreen();
+      if (action === 'MIRROR') setIsMirrored(m => !m);
+      if (action === 'PAGE_UP' || action === 'PAGE_DOWN') {
+        setIsPlaying(false);
+        const el = scrollContainerRef.current;
+        if (el) el.scrollBy({ top: el.clientHeight * 0.75 * (action === 'PAGE_DOWN' ? 1 : -1) });
+      }
+      if (action === 'PLAY' && activeSegment) {
         e.preventDefault();
         setIsPlaying((prev) => !prev);
-      } else if (e.code === 'ArrowRight') {
+      } else if (action === 'PREVIOUS') {
         e.preventDefault();
         if (currentSegmentIndex > 0) {
           handleSelectSegment(currentSegmentIndex - 1);
         }
-      } else if (e.code === 'ArrowLeft') {
+      } else if (action === 'NEXT') {
         e.preventDefault();
         if (currentSegmentIndex < segments.length - 1) {
           handleSelectSegment(currentSegmentIndex + 1);
         }
-      } else if (e.code === 'Escape') {
-        onClose();
+      } else if (action === 'CLOSE') {
+        handleClose();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const el = modalRef.current;
+    el?.addEventListener('keydown', handleKeyDown);
+    return () => el?.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, currentSegmentIndex, segments.length, onClose]);
 
   if (!isOpen) return null;
@@ -160,42 +236,45 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   }[colorTheme];
 
   return (
-    <div className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col select-none" dir="rtl">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="الملقّن" className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-amber-300" dir="rtl">
       {/* Studio Prompter Top Bar */}
-      <div className="h-16 px-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">
           <span className="px-2.5 py-1 bg-red-600 text-white font-mono text-xs font-bold rounded-md">
-            PROMPTER LIVE
+            الملقّن
           </span>
-          <div className="truncate">
+          <div className="min-w-0 truncate">
             <h2 className="text-sm font-bold text-slate-100">{episodeTitle}</h2>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-zinc-300">
               الفقرة {currentSegmentIndex + 1} من {segments.length}: {activeSegment?.title || 'فقرة مجهولة'}
             </div>
           </div>
         </div>
 
         {/* Prompter Controls */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Color theme switch */}
-          <div className="hidden sm:flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+          <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
             <button
               type="button"
               onClick={() => setColorTheme('yellow')}
               className={`w-6 h-6 rounded-md bg-amber-400 ${colorTheme === 'yellow' ? 'ring-2 ring-white' : 'opacity-70'}`}
               title="أصفر استوديو كلاسيكي"
+              aria-label="لون النص أصفر" aria-pressed={colorTheme === 'yellow'}
             />
             <button
               type="button"
               onClick={() => setColorTheme('white')}
               className={`w-6 h-6 rounded-md bg-white ${colorTheme === 'white' ? 'ring-2 ring-blue-500' : 'opacity-70'}`}
               title="أبيض عالي التباين"
+              aria-label="لون النص أبيض" aria-pressed={colorTheme === 'white'}
             />
             <button
               type="button"
               onClick={() => setColorTheme('cyan')}
               className={`w-6 h-6 rounded-md bg-cyan-400 ${colorTheme === 'cyan' ? 'ring-2 ring-white' : 'opacity-70'}`}
               title="سماوي هادئ"
+              aria-label="لون النص سماوي" aria-pressed={colorTheme === 'cyan'}
             />
           </div>
 
@@ -207,6 +286,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               isMirrored ? 'bg-amber-700 text-white' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
             }`}
             title={isMirrored ? 'إلغاء وضع المرآة للزجاج' : 'تفعيل وضع المرآة لعاكس الكاميرا'}
+            aria-label="المرآة (M)" aria-pressed={isMirrored}
           >
             <FlipHorizontal className="w-4 h-4" />
           </button>
@@ -219,57 +299,46 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               onClick={() => setFontSize((f) => Math.max(22, f - 4))}
               className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
               title="تصغير الخط"
+              aria-label="تصغير الخط"
             >
               -
             </button>
-            <span className="w-6 text-center font-mono">{fontSize}</span>
+            <output aria-label="حجم الخط" className="w-6 text-center font-mono">{fontSize}</output>
             <button
               type="button"
               onClick={() => setFontSize((f) => Math.min(64, f + 4))}
               className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
               title="تكبير الخط"
+              aria-label="تكبير الخط"
             >
               +
             </button>
           </div>
 
           {/* Speed Controls */}
-          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-            <span className="text-slate-500 text-[11px]">السرعة:</span>
-            <button
-              type="button"
-              onClick={() => setScrollSpeed((s) => Math.max(1, s - 1))}
-              className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
-            >
-              -
-            </button>
-            <span className="w-4 text-center font-mono">{scrollSpeed}x</span>
-            <button
-              type="button"
-              onClick={() => setScrollSpeed((s) => Math.min(6, s + 1))}
-              className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
-            >
-              +
-            </button>
-          </div>
+          <label className="flex items-center gap-2 text-sm flex-1 min-w-48">سرعة التمرير<input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
+          <button type="button" aria-label="ملء الشاشة (F)" title="ملء الشاشة (F)" className="p-2 bg-zinc-800 rounded-md" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
+          {followId && <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={followDirector} onChange={e => setFollowDirector(e.target.checked)}/>متابعة المخرج</label>}
 
           {/* Close Prompter */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-500 hover:text-red-300 rounded-lg transition-colors"
             title="خروج من شاشة الملقن (Esc)"
+            aria-label="إغلاق الملقّن"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
       </div>
+      {displayError && <p role="alert" className="px-3 py-2 text-red-300">{displayError}</p>}
 
       {/* Prompter Main Content & Segments Rail */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Segments Navigation Rail */}
         <div className="w-64 bg-slate-950 border-l border-slate-900 flex flex-col shrink-0 hidden md:flex">
-          <div className="p-3 border-b border-slate-900 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="p-3 border-b border-slate-900 text-xs font-bold text-zinc-300">
             تسلسل فقرات الحلقة ({segments.length})
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -278,21 +347,22 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               return (
                 <button
                   key={seg.id || idx}
+                  aria-current={isActive ? 'true' : undefined}
                   type="button"
                   onClick={() => handleSelectSegment(idx)}
                   className={`w-full text-right p-2.5 rounded-xl text-xs transition-all ${
                     isActive
                       ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 font-bold'
-                      : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200'
+                      : 'text-zinc-300 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-[11px] text-slate-500">#{seg.orderIndex || idx + 1}</span>
-                    <span className="font-mono text-[10px] text-slate-500">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
+                    <span className="font-mono text-xs text-zinc-300">#{seg.orderIndex || idx + 1}</span>
+                    <span className="font-mono text-xs text-zinc-300">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
                   </div>
                   <div className="truncate text-xs">{seg.title}</div>
                   {seg.presenterName && (
-                    <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                    <div className="text-xs text-zinc-300 mt-0.5 truncate">
                       المقدم: {seg.presenterName}
                     </div>
                   )}
@@ -303,16 +373,17 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
         </div>
 
         {/* Center Prompter Reading View */}
-        <div className="flex-1 flex flex-col bg-black relative">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-black relative">
           {/* Eyeline Marker (Horizontal line across reading area) */}
           <div className="absolute top-1/3 left-0 right-0 h-14 border-y border-red-500/20 bg-red-500/5 pointer-events-none z-10 flex items-center justify-between px-4">
-            <span className="text-[10px] font-mono text-red-400/60 uppercase">▲ خط نظر الكاميرا / EYELINE</span>
-            <span className="text-[10px] font-mono text-red-400/60 uppercase">EYELINE ▲</span>
+            <span aria-hidden="true" className="text-xs text-red-300">خط القراءة</span>
           </div>
 
           {/* Reading Text Container */}
           <div
             ref={scrollContainerRef}
+            tabIndex={0} role="region" aria-label="نص الملقّن"
+            onWheel={() => setIsPlaying(false)} onTouchStart={() => setIsPlaying(false)} onPointerDown={() => setIsPlaying(false)}
             className={`flex-1 overflow-y-auto px-6 sm:px-16 py-32 transition-transform duration-100 ${
               isMirrored ? 'scale-x-[-1]' : ''
             }`}
@@ -336,7 +407,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
                 {/* Script Body */}
                 <div
-                  style={{ fontSize: `${fontSize}px`, lineHeight: 1.7 }}
+                  style={{ fontSize: `${fontSize}px`, lineHeight: 1.7, overflowWrap: 'anywhere' }}
                   className={`font-sans font-medium text-right leading-relaxed ${themeTextColor}`}
                 >
                   {(activeSegment.scriptText || activeSegment.script) ? (
@@ -368,9 +439,9 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           </div>
 
           {/* Bottom Playback Control Bar */}
-          <div className="h-16 px-6 bg-slate-950 border-t border-slate-900 flex items-center justify-between shrink-0 z-20">
+          <div className="p-3 bg-zinc-950 border-t border-zinc-700 flex flex-wrap gap-2 items-center justify-between shrink-0 z-20">
             {/* Segment switch buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full md:w-auto">
               <button
                 type="button"
                 disabled={currentSegmentIndex === 0}
@@ -378,8 +449,9 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-30 rounded-lg text-xs text-slate-300 font-semibold transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
-                الفقرة السابقة
+                <span className="hidden sm:inline">الفقرة السابقة</span><span className="sr-only sm:hidden">الفقرة السابقة</span>
               </button>
+              <select aria-label="الفقرة المعروضة" value={currentSegmentIndex} onChange={e => handleSelectSegment(Number(e.target.value))} disabled={!segments.length} className="bg-zinc-800 text-white min-h-11 min-w-0 flex-1 md:w-48 text-sm rounded-md px-2">{segments.map((seg, idx) => <option key={seg.id} value={idx}>{idx + 1}. {seg.title}</option>)}</select>
 
               <button
                 type="button"
@@ -387,7 +459,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 onClick={() => handleSelectSegment(currentSegmentIndex + 1)}
                 className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-30 rounded-lg text-xs text-slate-300 font-semibold transition-colors"
               >
-                الفقرة التالية
+                <span className="hidden sm:inline">الفقرة التالية</span><span className="sr-only sm:hidden">الفقرة التالية</span>
                 <ChevronLeft className="w-4 h-4" />
               </button>
             </div>
@@ -399,6 +471,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 onClick={handleResetScroll}
                 className="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl transition-colors"
                 title="إعادة التمرير للبداية"
+                aria-label="إعادة التمرير للبداية"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -406,6 +479,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               <button
                 type="button"
                 onClick={handleTogglePlay}
+                disabled={!activeSegment}
                 className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold shadow-md transition-all ${
                   isPlaying
                     ? 'bg-amber-700 hover:bg-amber-800 text-black'
@@ -415,12 +489,12 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 {isPlaying ? (
                   <>
                     <Pause className="w-4 h-4 fill-current" />
-                    إيقاف مؤقت (Space)
+                    إيقاف مؤقت
                   </>
                 ) : (
                   <>
                     <Play className="w-4 h-4 fill-current" />
-                    بدء التمرير التلقائي (Space)
+                    بدء التمرير
                   </>
                 )}
               </button>

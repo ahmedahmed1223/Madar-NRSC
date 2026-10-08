@@ -1,4 +1,8 @@
 import { arabicDate } from '../shared/dates';
+import { airDisplayDefault, type AirDisplayMode } from '../shared/airDisplay';
+import { AirDisplayControls } from '../components/onair/AirDisplayControls';
+import { OfflineAirPreparation } from '../components/onair/OfflineAirPreparation';
+import { AirScriptPanel } from '../components/onair/AirScriptPanel';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { dataStore } from '../services/dataStore';
 import { confirmDialog } from '../services/dialogs';
@@ -44,7 +48,9 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
 };
 
 const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, initialShowId }) => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media'], 1000);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings'], 1000);
+  const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
+  const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
   const today = localDateString();
   // Programme episodes and news bulletins both run here.
@@ -228,6 +234,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               <p className="text-sm text-slate-500">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا توجد فقرات في الرانداون.'}</p>
             )}
 
+            <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
+            {displayMode === 'TEXT' && state?.status !== 'ENDED' && <AirScriptPanel segmentId={timing?.current?.id || rundown[0]?.id} script={timing?.current ? timing.current.scriptText : rundown[0]?.scriptText} live={live} />}
             {timing?.next && (
               <p className="text-xs text-slate-300 border-t border-slate-800 pt-3">
                 التالي: <strong className="text-white">{timing.next.title}</strong> ({formatClock(timing.next.durationSeconds || 0)})
@@ -266,6 +274,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             )}
           </section>
 
+          <OfflineAirPreparation key={episodeId} showId={episodeId} userId={currentUser.id}/>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Rundown with live states */}
             <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl overflow-hidden" aria-label="الرانداون">

@@ -26,6 +26,7 @@ import { Program, ProgramType, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { apiService } from '../services/api';
+import { ProductionNameField } from '../components/common/ProductionNameField';
 
 interface ProgramsViewProps {
   programs: Program[];
@@ -435,11 +436,11 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label htmlFor="program-presenter-input" className="block text-xs font-bold text-slate-700 mb-1">مقدم البرنامج الرئيسي</label>
-              <input
+                <ProductionNameField kind="PRESENTER" label="مقدم البرنامج الرئيسي"
                 id="program-presenter-input"
                 type="text"
                 value={presenterName}
-                onChange={(e) => setPresenterName(e.target.value)}
+                  onChange={setPresenterName}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>
@@ -546,11 +547,11 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             </div>
             <div>
               <label htmlFor="program-studio-input" className="block text-xs font-bold text-slate-700 mb-1">الاستوديو</label>
-              <input
+                <ProductionNameField kind="STUDIO" label="الاستوديو"
                 id="program-studio-input"
                 type="text"
                 value={studioName}
-                onChange={(e) => setStudioName(e.target.value)}
+                  onChange={setStudioName}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             </div>

@@ -13,6 +13,9 @@ import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, CopilotMode, isAiConfigured, runCopilot } from './ai';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
+import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
+import { importOfflineSession } from './offlineAirSessions';
+import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
 import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
 import path from 'path';
 import fs from 'fs';
@@ -40,7 +43,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.21.0';
+export const APP_VERSION = '3.23.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -450,6 +453,35 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.get('/api/v1/data', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
+  });
+
+  app.get('/api/v1/air-offline/packet/:showId', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try { res.json({ success: true, packet: prepareOfflinePacket(db, req.auth!, req.params.showId, APP_VERSION) }); }
+    catch (error) {
+      if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  });
+  app.get('/api/v1/air-offline/state/:showId', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const packet = prepareOfflinePacket(db, req.auth!, req.params.showId, APP_VERSION);
+      res.json({ success: true, dbId: db.dbId, userId: req.auth!.user.id, state: packet.confirmedState, show: packet.show });
+    } catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
+  });
+  app.post('/api/v1/air-offline/sessions', requireAuth, (req, res) => {
+    try { res.json({ success: true, record: importOfflineSession(db, req.auth!, req.body) }); }
+    catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
+  });
+  app.get('/api/v1/air-offline/draft-target/:collection/:id', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try { res.json({ success: true, row: offlineDraftTarget(db, req.auth!, req.params.collection, req.params.id), dbId: db.dbId, userId: req.auth!.user.id }); }
+    catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
+  });
+  app.post('/api/v1/air-offline/apply-draft', requireAuth, (req, res) => {
+    try { res.json({ success: true, result: applyOfflineDraft(db, sync, req.auth!, req.body, req.ip) }); }
+    catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
   });
 
   app.get('/api/v1/data/changes', requireAuth, (req, res) => {

@@ -3,10 +3,12 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 import pkg from './package.json';
+import { offlineAirManifest } from './src/build/offlineAirManifest';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), offlineAirManifest()],
+    build: { rollupOptions: { input: { app: path.resolve(__dirname, 'index.html'), offlineAir: path.resolve(__dirname, 'offline-air.html') } } },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },

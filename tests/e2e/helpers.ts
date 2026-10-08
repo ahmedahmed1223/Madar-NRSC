@@ -3,8 +3,8 @@ import { expect, type Browser, type Page } from '@playwright/test';
 export const DEMO_PASSWORD = 'Madar@Demo2026';
 
 /** Signs in as a demo colleague in a fresh browser context; page errors fail the test. */
-export async function signIn(browser: Browser, email: string, opts: { viewport?: { width: number; height: number } } = {}) {
-  const context = await browser.newContext({ viewport: opts.viewport });
+export async function signIn(browser: Browser, email: string, opts: { viewport?: { width: number; height: number }; bypassCSP?: boolean } = {}) {
+  const context = await browser.newContext({ viewport: opts.viewport, bypassCSP: opts.bypassCSP });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

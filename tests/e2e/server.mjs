@@ -1,6 +1,9 @@
 // Starts the built server on a fresh demo database for the browser tests.
 import fs from 'fs';
 import path from 'path';
+import { build } from 'esbuild';
+
+await build({ entryPoints: ['tests/e2e/offline-test-entry.ts'], bundle: true, format: 'esm', platform: 'browser', outfile: 'dist/offline-store-test.js' });
 
 const dataDir = path.resolve('tests/e2e/.data');
 fs.rmSync(dataDir, { recursive: true, force: true });
