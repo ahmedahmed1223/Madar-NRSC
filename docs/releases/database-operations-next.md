@@ -50,6 +50,8 @@ Prepared 2026-10-09. Version 3.24.0 integrates database operations and safety im
 
 ## Implementation Decisions
 
+Release integration verification on main (2026-10-09): TypeScript, 295/295 tests across 61 files and production build passed for version 3.24.0. The 12 focused browser journeys passed in 59.9 seconds. Package and lockfile versions, server health, rehearsal reports and the first What's New entry were updated together. No live restore/reset or remote publication was performed.
+
 - Work in the existing feature branch to preserve its administration groundwork; no separate checkout isolation, but all tests use temporary data.
 - Require matching schema migrations and required columns; older snapshots need a matching-version recovery procedure.
 - Block shared `LIVE` and defensive `RUNNING`/`PAUSED` states; conservative legacy-state rejection is possible.
