@@ -9,6 +9,7 @@ import type { NewsroomDatabase } from './db';
 import { logger, getRecentErrors } from './logger';
 import { backupStatus } from './databaseDiagnostics';
 import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
+import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
 import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
@@ -727,6 +728,59 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- Database administration ---------------------------------------------
 
   const dbAdmin = requirePermission('system.database_manage');
+  const confirmations = new DatabaseConfirmations();
+  const confirmationFailures = new ConfirmationFailures();
+  const currentDatabaseActor = (req: Request) => {
+    const auth = req.auth!;
+    const session = db.getSession(auth.sessionId);
+    const user = db.getRow('users', auth.user.id)?.d as User | undefined;
+    if (!session || Date.parse(session.expiresAt) <= Date.now() || !user || user.isActive === false || user.deletedAt) throw new HttpError(401, 'انتهت صلاحية الجلسة');
+    const current = buildAuthContext(db, user, auth.sessionId);
+    if (!current.can('system.database_manage')) throw new HttpError(403, 'ليس لديك صلاحية إدارة قاعدة البيانات');
+    return current;
+  };
+  const requireAirEnded = (req: Request) => {
+    const active = db.listCollection('onAir').filter(row => ['LIVE', 'RUNNING', 'PAUSED'].includes(String(row.d?.status)));
+    if (active.length) throw new HttpError(409, 'توجد جلسة بث نشطة؛ أنهِ جميع جلسات الهواء قبل الاستعادة أو إعادة التهيئة', 'AIR_ACTIVE');
+    if (req.body?.localAirEnded !== true) throw new HttpError(400, 'أكد انتهاء جلسات الهواء المحلية غير المتصلة أيضاً', 'LOCAL_AIR_CONFIRMATION');
+  };
+  const authorizeDestructive = (req: Request, action: 'restore' | 'reset', sha256?: string) => {
+    const auth = currentDatabaseActor(req);
+    const token = req.body?.confirmationToken;
+    if (typeof token !== 'string' || !token) throw new HttpError(401, 'أعد تأكيد هويتك لإتمام العملية', 'CONFIRMATION_REQUIRED');
+    requireAirEnded(req);
+    if (!confirmations.consume(token, { actorId: auth.user.id, sessionId: auth.sessionId, action, sha256 })) throw new HttpError(401, 'انتهى التأكيد أو تغيرت النسخة؛ أعد تأكيد هويتك', 'CONFIRMATION_INVALID');
+  };
+  app.post('/api/v1/db/confirm-operation', dbAdmin, wrap(async (req, res) => {
+    const action = req.body?.action;
+    if (action !== 'restore' && action !== 'reset') throw new HttpError(400, 'نوع العملية غير صالح');
+    if (action === 'reset' && !config.allowDbReset) throw new HttpError(403, 'إعادة التهيئة معطلة على الخادم', 'DISABLED');
+    const initial = currentDatabaseActor(req);
+    const keys = [`actor:${initial.user.id}`, `ip:${req.ip}`];
+    if (confirmationFailures.blocked(keys)) throw new HttpError(429, 'محاولات تأكيد كثيرة؛ حاول بعد 15 دقيقة', 'RATE_LIMITED');
+    const cred = db.getCredentials(initial.user.id);
+    const password = typeof req.body?.password === 'string' && req.body.password.length <= 200 ? req.body.password : '';
+    const valid = cred && password && await verifyPassword(password, cred.passwordHash);
+    const auth = currentDatabaseActor(req);
+    const currentCred = db.getCredentials(auth.user.id);
+    let counter: number | null = null;
+    if (valid && currentCred?.totpEnabled && currentCred.totpSecret) counter = verifyTotp(currentCred.totpSecret, String(req.body?.totp || ''), currentCred.totpLastCounter);
+    if (!valid || !currentCred || currentCred.passwordHash !== cred?.passwordHash || (currentCred.totpEnabled && counter === null) || confirmationFailures.blocked(keys)) {
+      confirmationFailures.record(keys);
+      audit(auth.user, 'DB_CONFIRM_FAILED', 'DATABASE', 'newsroom', 'SECURITY', 'فشل تأكيد هوية مدير قاعدة البيانات', req.ip);
+      throw new HttpError(401, 'تعذر تأكيد الهوية؛ تحقق من كلمة المرور ورمز المصادقة إن كان مفعلاً', 'CONFIRMATION_AUTH_FAILED');
+    }
+    if (counter !== null) db.setTotpLastCounter(auth.user.id, counter);
+    let sha256: string | undefined;
+    if (action === 'restore') {
+      if (typeof req.body?.fileName !== 'string') throw new HttpError(400, 'اسم النسخة مطلوب');
+      try { sha256 = (await db.verifyBackup(req.body.fileName)).sha256; }
+      catch { throw new HttpError(400, 'تعذر التحقق من النسخة المختارة'); }
+    }
+    currentDatabaseActor(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: confirmations.issue({ actorId: auth.user.id, sessionId: auth.sessionId, action, sha256 }) });
+  }));
   const databaseWork = async <T,>(work: () => Promise<T>): Promise<T> => {
     try { return await databaseOperationLock(db).run(work); }
     catch (error) {
@@ -813,7 +867,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     wrap(async (req, res) => {
       if (!config.allowDbReset) throw new HttpError(403, 'إعادة تهيئة قاعدة البيانات معطلة في بيئة الإنتاج (ALLOW_DB_RESET)', 'DISABLED');
       await databaseWork(async () => {
+      authorizeDestructive(req, 'reset');
       await db.createBackup('prerestore', config.backupRetention);
+      currentDatabaseActor(req); requireAirEnded(req);
       db.deleteCollections(DEMO_COLLECTIONS.map(([c]) => c) as CollectionName[]);
       db.setMeta('demo_seeded', '0');
       db.setMeta('demo_removed', '0');
@@ -876,7 +932,14 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (typeof fileName !== 'string' || !fileName) throw new HttpError(400, 'اسم ملف النسخة الاحتياطية مطلوب');
       const actor = req.auth!.user;
       try {
-        await databaseWork(() => db.restoreBackup(fileName, config.backupRetention));
+        await databaseWork(async () => {
+          if (typeof req.body?.confirmationToken !== 'string') throw new HttpError(401, 'أعد تأكيد هويتك لإتمام العملية', 'CONFIRMATION_REQUIRED');
+          let sha256: string;
+          try { sha256 = (await db.verifyBackup(fileName)).sha256; }
+          catch { throw new HttpError(400, 'تعذر التحقق من النسخة المختارة'); }
+          authorizeDestructive(req, 'restore', sha256);
+          await db.restoreBackup(fileName, config.backupRetention, sha256, () => { currentDatabaseActor(req); requireAirEnded(req); });
+        });
       } catch (err: any) {
         if (err instanceof HttpError) throw err;
         throw new HttpError(400, 'تعذرت استعادة النسخة الاحتياطية');

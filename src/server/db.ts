@@ -865,7 +865,7 @@ export class NewsroomDatabase {
   }
 
   /** Replace the live database with a validated backup (a safety backup is taken first). */
-  async restoreBackup(fileName: string, retention = 20, expectedHash?: string) {
+  async restoreBackup(fileName: string, retention = 20, expectedHash?: string, beforeReplace?: () => void) {
     await withStableBackup(this, fileName, path.join(this.dataDir, 'rehearsals'), async (source, sha256) => {
     if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
     const probe = new Database(source, { readonly: true, fileMustExist: true });
@@ -874,6 +874,7 @@ export class NewsroomDatabase {
       this.checkBackupSchema(probe);
     } finally { probe.close(); }
     await this.createBackup('prerestore', retention);
+    beforeReplace?.();
     this.db.close();
     try {
       for (const suffix of ['-wal', '-shm']) {
