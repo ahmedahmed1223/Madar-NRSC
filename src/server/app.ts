@@ -6,7 +6,9 @@ import type { AuditLog, Episode, User } from '../types/index';
 import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
-import { logger } from './logger';
+import { logger, getRecentErrors } from './logger';
+import { backupStatus } from './databaseDiagnostics';
+import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
 import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
@@ -725,6 +727,54 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- Database administration ---------------------------------------------
 
   const dbAdmin = requirePermission('system.database_manage');
+  const databaseWork = async <T,>(work: () => Promise<T>): Promise<T> => {
+    try { return await databaseOperationLock(db).run(work); }
+    catch (error) {
+      if (error instanceof DatabaseOperationBusy) throw new HttpError(409, 'عملية قاعدة بيانات أخرى قيد التنفيذ؛ حاول بعد انتهائها', 'DATABASE_BUSY');
+      throw error;
+    }
+  };
+  app.post('/api/v1/db/backups/rehearse', dbAdmin, wrap(async (req, res) => {
+    const fileName = req.body?.fileName;
+    if (typeof fileName !== 'string') throw new HttpError(400, 'اسم النسخة مطلوب');
+    const result = await databaseWork(async () => {
+      try { return await rehearseBackup(db, fileName, path.join(config.dataDir, 'rehearsals')); }
+      catch { throw new HttpError(400, 'تعذرت تجربة الاستعادة؛ تحقق من سلامة النسخة وتوافق إصدارها'); }
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: result });
+  }));
+  app.get('/api/v1/db/errors', dbAdmin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: getRecentErrors() });
+  });
+  app.get('/api/v1/db/backup-status', dbAdmin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: backupStatus(db, config.backupIntervalHours) });
+  });
+  app.get('/api/v1/db/diagnostics', dbAdmin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: { version: APP_VERSION, generatedAt: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()), ready: !draining && db.isHealthy(),
+      backup: backupStatus(db, config.backupIntervalHours), errors: getRecentErrors() } });
+  });
+  app.post('/api/v1/db/backups/verify', dbAdmin, wrap(async (req, res) => {
+    try {
+      if (typeof req.body?.fileName !== 'string') throw new Error();
+      const data = await db.verifyBackup(req.body.fileName);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, data });
+    } catch { throw new HttpError(400, 'تعذر التحقق: النسخة غير موجودة أو تالفة أو غير متوافقة'); }
+  }));
+  app.get('/api/v1/db/backups/download', dbAdmin, (req, res) => {
+    let source: string;
+    try {
+      if (typeof req.query.fileName !== 'string') throw new Error();
+      source = db.backupFilePath(req.query.fileName);
+    } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
+    res.setHeader('Cache-Control', 'no-store');
+    res.download(source, path.basename(source));
+  });
 
   app.get('/api/v1/db/stats', dbAdmin, (_req, res) => {
     res.json({
@@ -762,11 +812,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     dbAdmin,
     wrap(async (req, res) => {
       if (!config.allowDbReset) throw new HttpError(403, 'إعادة تهيئة قاعدة البيانات معطلة في بيئة الإنتاج (ALLOW_DB_RESET)', 'DISABLED');
+      await databaseWork(async () => {
       await db.createBackup('prerestore', config.backupRetention);
       db.deleteCollections(DEMO_COLLECTIONS.map(([c]) => c) as CollectionName[]);
       db.setMeta('demo_seeded', '0');
       db.setMeta('demo_removed', '0');
       await seedDatabase(db, config);
+      });
       audit(req.auth!.user, 'DB_RESET', 'DATABASE', 'newsroom', 'SECURITY', 'إعادة تهيئة بيانات المحتوى', req.ip);
       changeBus.emit('rev', db.currentRev());
       res.json({ success: true, message: 'تمت إعادة تهيئة قاعدة البيانات بنجاح', data: db.stats() });
@@ -808,7 +860,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     '/api/v1/db/backups',
     dbAdmin,
     wrap(async (req, res) => {
-      const backup = await db.createBackup(undefined, config.backupRetention);
+      let backup;
+      try { backup = await databaseWork(() => db.createBackup(undefined, config.backupRetention)); }
+      catch (error) { if (error instanceof HttpError) throw error; logger.error('manual backup failed'); throw new HttpError(500, 'فشل إنشاء النسخة الاحتياطية؛ تحقق من مساحة القرص وصلاحيات التخزين'); }
       audit(req.auth!.user, 'DB_BACKUP', 'DATABASE', backup.fileName, 'INFO', `إنشاء نسخة احتياطية ${backup.fileName}`, req.ip);
       res.json({ success: true, message: 'تم إنشاء نسخة احتياطية بنجاح', data: backup });
     })
@@ -822,9 +876,10 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (typeof fileName !== 'string' || !fileName) throw new HttpError(400, 'اسم ملف النسخة الاحتياطية مطلوب');
       const actor = req.auth!.user;
       try {
-        await db.restoreBackup(fileName, config.backupRetention);
+        await databaseWork(() => db.restoreBackup(fileName, config.backupRetention));
       } catch (err: any) {
-        throw new HttpError(400, err?.message || 'تعذرت استعادة النسخة الاحتياطية');
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(400, 'تعذرت استعادة النسخة الاحتياطية');
       }
       audit(actor, 'DB_RESTORE', 'DATABASE', fileName, 'SECURITY', `استعادة قاعدة البيانات من ${fileName}`, req.ip);
       changeBus.emit('rev', db.currentRev());

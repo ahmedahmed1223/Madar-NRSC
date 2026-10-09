@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { CollectionName, EntityRow, SETTLED_NEWS_STATUSES, isCollectionName } from '../shared/collections';
 import { logger } from './logger';
+import { withStableBackup } from './databaseRecovery';
 
 export interface DbBackupFileInfo {
   fileName: string;
@@ -787,7 +788,13 @@ export class NewsroomDatabase {
     const stamp = now.toISOString().replace(/[:.]/g, '-');
     const fileName = `newsroom_backup_${stamp}${kind ? `_${kind}` : ''}.sqlite`;
     const target = path.join(this.backupsDir, fileName);
-    await this.db.backup(target);
+    try {
+      await this.db.backup(target);
+      this.setMeta('backup_last_attempt', JSON.stringify({ at: now.toISOString(), status: 'ok' }));
+    } catch (error) {
+      this.setMeta('backup_last_attempt', JSON.stringify({ at: now.toISOString(), status: 'failed' }));
+      throw error;
+    }
     this.pruneBackups(retention);
     const stat = fs.statSync(target);
     return { fileName, sizeBytes: stat.size, sizeFormatted: formatSize(stat.size), createdAt: now.toISOString() };
@@ -819,12 +826,16 @@ export class NewsroomDatabase {
       });
   }
 
-  /** Replace the live database with a validated backup (a safety backup is taken first). */
-  async restoreBackup(fileName: string, retention = 20) {
+  backupFilePath(fileName: string) {
     if (!BACKUP_NAME_PATTERN.test(fileName)) throw new Error('اسم ملف النسخة الاحتياطية غير صالح');
     const source = path.join(this.backupsDir, fileName);
     if (!fs.existsSync(source)) throw new Error('ملف النسخة الاحتياطية غير موجود');
+    if (!fs.lstatSync(source).isFile() || fs.lstatSync(source).isSymbolicLink()) throw new Error('ملف النسخة الاحتياطية غير صالح');
+    return source;
+  }
 
+  async verifyBackup(fileName: string) {
+    const source = this.backupFilePath(fileName);
     const probe = new Database(source, { readonly: true, fileMustExist: true });
     try {
       const integrity = probe.pragma('integrity_check', { simple: true });
@@ -834,7 +845,34 @@ export class NewsroomDatabase {
     } finally {
       probe.close();
     }
+    const hash = crypto.createHash('sha256');
+    for await (const chunk of fs.createReadStream(source)) hash.update(chunk);
+    return { valid: true as const, fileName, checkedAt: new Date().toISOString(), sha256: hash.digest('hex') };
+  }
 
+  isKnownCollection(value: string) { return isCollectionName(value); }
+
+  checkBackupSchema(probe: Database.Database) {
+    const versions = (probe.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as { version: number }[]).map(row => row.version);
+    if (JSON.stringify(versions) !== JSON.stringify(MIGRATIONS.map(m => m.version))) throw new Error('Incompatible snapshot');
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+    for (const { name } of tables) {
+      const escaped = name.replace(/"/g, '""');
+      const required = this.db.prepare(`PRAGMA table_info("${escaped}")`).all() as { name: string; type: string; pk: number }[];
+      const actual = probe.prepare(`PRAGMA table_info("${escaped}")`).all() as typeof required;
+      if (!required.every(column => actual.some(c => c.name === column.name && c.type === column.type && c.pk === column.pk))) throw new Error('Incompatible snapshot');
+    }
+  }
+
+  /** Replace the live database with a validated backup (a safety backup is taken first). */
+  async restoreBackup(fileName: string, retention = 20, expectedHash?: string) {
+    await withStableBackup(this, fileName, path.join(this.dataDir, 'rehearsals'), async (source, sha256) => {
+    if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
+    const probe = new Database(source, { readonly: true, fileMustExist: true });
+    try {
+      if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
+      this.checkBackupSchema(probe);
+    } finally { probe.close(); }
     await this.createBackup('prerestore', retention);
     this.db.close();
     try {
@@ -849,6 +887,7 @@ export class NewsroomDatabase {
     this.transaction(() => {
       const rev = this.nextRev();
       this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor'`).run(String(rev));
+    });
     });
   }
 }

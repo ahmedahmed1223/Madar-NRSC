@@ -12,12 +12,14 @@ import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending } from './src/server/delivery';
 import { deliverBackup } from './src/server/backupDelivery';
+import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 
 async function main() {
   const config = loadConfig();
   setLogLevel(config.logLevel);
 
   const db = new NewsroomDatabase(config.dataDir);
+  await cleanupRehearsals(path.join(config.dataDir, 'rehearsals'));
   await seedDatabase(db, config);
   logger.info('database ready', { file: db.filePath, rev: db.currentRev() });
   if (process.env.K_SERVICE) {
@@ -111,11 +113,16 @@ async function main() {
       if (backingUp) return;
       backingUp = true;
       try {
+        await databaseOperationLock(db).run(async () => {
         const file = await db.createBackup('auto', config.backupRetention);
         const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory,
           remote: config.backupRemote, retention: config.backupRetention });
+        db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
         logger.info('complete backup created and delivered', result);
+        });
       } catch (err) {
+        if (err instanceof DatabaseOperationBusy) return;
+        db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
         logger.error('complete backup failed', { error: String(err) });
       } finally { backingUp = false; }
     };
