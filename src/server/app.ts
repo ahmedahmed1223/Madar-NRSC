@@ -11,6 +11,7 @@ import { withRequestCorrelation } from './requestCorrelation';
 import { backupStatus } from './databaseDiagnostics';
 import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
+import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
@@ -729,6 +730,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- Database administration ---------------------------------------------
 
   const dbAdmin = requirePermission('system.database_manage');
+  const checkBackupIncidents = async () => {
+    try {
+      await reconcileBackupIncidents(db, backupStatus(db, config.backupIntervalHours));
+      changeBus.emit('rev', db.currentRev());
+    } catch { logger.warn('backup incident notifications unavailable'); }
+  };
   const confirmations = new DatabaseConfirmations();
   const confirmationFailures = new ConfirmationFailures();
   const currentDatabaseActor = (req: Request) => {
@@ -920,7 +927,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     wrap(async (req, res) => {
       let backup;
       try { backup = await databaseWork(() => db.createBackup(undefined, config.backupRetention)); }
-      catch (error) { if (error instanceof HttpError) throw error; logger.error('manual backup failed'); throw new HttpError(500, 'فشل إنشاء النسخة الاحتياطية؛ تحقق من مساحة القرص وصلاحيات التخزين'); }
+      catch (error) { if (error instanceof HttpError) throw error; logger.error('manual backup failed'); await checkBackupIncidents(); throw new HttpError(500, 'فشل إنشاء النسخة الاحتياطية؛ تحقق من مساحة القرص وصلاحيات التخزين'); }
+      await checkBackupIncidents();
       audit(req.auth!.user, 'DB_BACKUP', 'DATABASE', backup.fileName, 'INFO', `إنشاء نسخة احتياطية ${backup.fileName}`, req.ip);
       res.json({ success: true, message: 'تم إنشاء نسخة احتياطية بنجاح', data: backup });
     })

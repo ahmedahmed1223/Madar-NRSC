@@ -1,6 +1,7 @@
 export interface RecentServerError { id: string; at: string; message: string }
 export interface RecentServerErrors { since: string; entries: RecentServerError[]; journalHealth?: 'ok' | 'degraded' | 'memory' }
 export interface BackupStatus {
+  incidents?: BackupIncident[];
   lastSnapshotAt: string | null;
   lastAttempt: { at: string; status: 'ok' | 'failed' } | null;
   lastDelivery: { at: string; status: 'ok' | 'failed' } | null;
@@ -8,6 +9,7 @@ export interface BackupStatus {
   overdue: boolean;
   count: number;
 }
+export interface BackupIncident { id: 'snapshot-failure' | 'delivery-failure' | 'overdue'; active: boolean; openedAt: string; recoveredAt?: string }
 export interface BackupVerification { valid: true; fileName: string; checkedAt: string; sha256: string }
 export interface BackupRehearsal {
   fileName: string; sha256: string; checkedAt: string; version: string;

@@ -14,6 +14,9 @@ import { pollWires } from './src/server/wires';
 import { deliverPending } from './src/server/delivery';
 import { deliverBackup } from './src/server/backupDelivery';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
+import { reconcileBackupIncidents } from './src/server/backupIncidents';
+import { backupStatus } from './src/server/databaseDiagnostics';
+import { changeBus } from './src/server/sync';
 
 async function main() {
   const config = loadConfig();
@@ -62,6 +65,14 @@ async function main() {
 
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
+  const checkBackupIncidents = async () => {
+    try {
+      await reconcileBackupIncidents(db, backupStatus(db, config.backupIntervalHours));
+      changeBus.emit('rev', db.currentRev());
+    } catch { logger.warn('backup incident notifications unavailable'); }
+  };
+  timers.push(setInterval(checkBackupIncidents, 60000));
+  await checkBackupIncidents();
   timers.push(
     setInterval(() => {
       try {
@@ -127,7 +138,7 @@ async function main() {
         if (err instanceof DatabaseOperationBusy) return;
         db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
         logger.error('complete backup failed', { error: String(err) });
-      } finally { backingUp = false; }
+      } finally { backingUp = false; await checkBackupIncidents(); }
     };
     timers.push(
       setInterval(backup, config.backupIntervalHours * 60 * 60 * 1000)

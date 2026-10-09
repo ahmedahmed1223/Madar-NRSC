@@ -1,5 +1,6 @@
 import type { NewsroomDatabase } from './db';
 import type { BackupStatus } from '../shared/databaseDiagnostics';
+import { backupIncidents } from './backupIncidents';
 
 function attempt(value: string | undefined | null): BackupStatus['lastAttempt'] {
   try {
@@ -11,7 +12,7 @@ function attempt(value: string | undefined | null): BackupStatus['lastAttempt'] 
 export function backupStatus(db: NewsroomDatabase, intervalHours: number): BackupStatus {
   const files = db.listBackups();
   const lastSnapshotAt = files[0]?.createdAt || null;
-  return { lastSnapshotAt, count: files.length, intervalHours,
+  return { lastSnapshotAt, count: files.length, intervalHours, incidents: backupIncidents(db),
     overdue: intervalHours > 0 && (!lastSnapshotAt || Date.now() - Date.parse(lastSnapshotAt) > intervalHours * 3600000),
     lastAttempt: attempt(db.getMeta('backup_last_attempt')), lastDelivery: attempt(db.getMeta('backup_last_delivery')) };
 }

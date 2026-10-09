@@ -15,8 +15,8 @@ export interface NewNotification {
 }
 
 /** Writes one bell notification (system write; the caller emits the revision). */
-export function writeNotification(db: NewsroomDatabase, n: NewNotification) {
-  const id = newId('notif');
+export function writeNotification(db: NewsroomDatabase, n: NewNotification, options?: { id: string; createdAt: string }) {
+  const id = options?.id ?? newId('notif');
   db.writeRow(
     'notifications',
     id,
@@ -30,7 +30,7 @@ export function writeNotification(db: NewsroomDatabase, n: NewNotification) {
       urgent: n.urgent || undefined,
       linkUrl: n.linkUrl,
       isRead: false,
-      createdAt: new Date().toISOString(),
+      createdAt: options?.createdAt ?? new Date().toISOString(),
     },
     db.positionBounds('notifications').min - 1,
     null
