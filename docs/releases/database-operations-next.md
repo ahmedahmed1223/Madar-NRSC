@@ -1,6 +1,6 @@
-# Next Release: Database Operations (Draft)
+# Release 3.24.0: Database Operations
 
-Prepared 2026-10-09. Not published; the released version remains 3.23.0.
+Prepared 2026-10-09. Version 3.24.0 integrates database operations and safety improvements into main. Remote publication is a separate operation.
 
 ## Arabic Release Notes
 

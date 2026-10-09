@@ -62,7 +62,7 @@ export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tem
       const rows = probe.prepare('SELECT collection, COUNT(*) AS count FROM entities WHERE deleted = 0 GROUP BY collection').all() as { collection: string; count: number }[];
       const counts: Record<string, number> = {};
       for (const row of rows) if (db.isKnownCollection(row.collection)) counts[row.collection] = row.count;
-      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '3.23.0', compatible: true, counts,
+      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '3.24.0', compatible: true, counts,
         mediaVerified: false };
     } finally { probe.close(); }
   });
