@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import request from 'supertest';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
+import { cleanupRehearsals } from '../../src/server/databaseRecovery';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
 beforeEach(async () => { server = await createTestServer(); });
@@ -89,4 +90,16 @@ it('keeps the original database usable if atomic replacement fails', async () =>
     expect(server.db.getRow('guests', 'keep-on-failure')?.d.fullName).toBe('احتفظ بي');
     expect(server.db.isHealthy()).toBe(true);
   } finally { promote.mockRestore(); }
+});
+
+it('cleans abandoned rehearsal directories but preserves unrelated data and rejects linked roots', async () => {
+  const root = path.join(server.dir, 'rehearsals');
+  fs.mkdirSync(path.join(root, 'rehearsal-abandoned'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'keep-unrelated'), { recursive: true });
+  await cleanupRehearsals(root);
+  expect(fs.readdirSync(root)).toEqual(['keep-unrelated']);
+  const linked = path.join(server.dir, 'linked-rehearsals');
+  fs.symlinkSync(root, linked, 'junction');
+  await expect(cleanupRehearsals(linked)).rejects.toThrow();
+  expect(fs.readdirSync(root)).toEqual(['keep-unrelated']);
 });

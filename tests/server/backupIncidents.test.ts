@@ -36,12 +36,34 @@ it('keeps delivery failure independent from manual snapshot success and suppress
   expect(notifications().every(r => r.d.message.includes('الكاملة'))).toBe(true);
   await run(server.db, s); expect(notifications().some(r => r.d.title.includes('عاد'))).toBe(false);
 });
-it('rolls back notifications and incident state when storage fails, retrying without duplicates', async () => {
+it('retains incident transitions when notification storage fails, retrying without duplicates', async () => {
   const run = await reconciler(); const write = vi.spyOn(server.db, 'writeRow').mockImplementationOnce(() => { throw new Error('disk full'); });
   await expect(run(server.db, status())).rejects.toThrow();
   expect(notifications()).toHaveLength(0);
   write.mockRestore(); await run(server.db, status());
   const count = notifications().length; await run(server.db, status()); expect(notifications()).toHaveLength(count);
+});
+it('retains failed opening notification when backup recovers before notification storage does', async () => {
+  const run = await reconciler();
+  const write = vi.spyOn(server.db, 'writeRow').mockImplementationOnce(() => { throw new Error('notification unavailable'); });
+  await expect(run(server.db, status())).rejects.toThrow();
+  write.mockRestore();
+  await run(server.db, { ...status(), lastAttempt: { at: new Date().toISOString(), status: 'ok' } });
+  const delivered = notifications();
+  expect(delivered.some(row => row.d.title === 'تنبيه النسخ الاحتياطي')).toBe(true);
+  expect(delivered.some(row => row.d.title === 'عاد النسخ الاحتياطي للعمل')).toBe(true);
+  const before = delivered.length;
+  await run(server.db, { ...status(), lastAttempt: { at: new Date().toISOString(), status: 'ok' } });
+  expect(notifications()).toHaveLength(before);
+});
+it('retains pending recovery when another backup failure occurs before retry', async () => {
+  const run = await reconciler(); await run(server.db, status());
+  const before = notifications().length;
+  const write = vi.spyOn(server.db, 'writeRow').mockImplementationOnce(() => { throw new Error('notification unavailable'); });
+  await expect(run(server.db, { ...status(), lastAttempt: { at: new Date().toISOString(), status: 'ok' } })).rejects.toThrow();
+  write.mockRestore(); await run(server.db, status());
+  expect(notifications().filter(row => row.d.title === 'عاد النسخ الاحتياطي للعمل')).toHaveLength(before);
+  expect(notifications()).toHaveLength(before * 3);
 });
 it('notifies only active authorized managers with nonurgent system notifications', async () => {
   const run = await reconciler(); await run(server.db, status());

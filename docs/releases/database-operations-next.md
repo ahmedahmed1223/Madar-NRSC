@@ -42,9 +42,26 @@ Prepared 2026-10-09. Not published; the released version remains 3.23.0.
 
 - RED/GREEN: isolated rehearsal, retention-one source loss, failed atomic replacement, scoped reauthentication, TOTP replay, active-air race, durable journal, request correlation and incident deduplication.
 - Browser verification covers incorrect-password retry without logout, air conflict, expired confirmation, duplicate execution prevention, conditional TOTP, Escape/focus restoration, rehearsal, selected download and diagnostics.
-- Final pre-review `npm run check`: 290/290 tests across 61 files, TypeScript and production build passed.
-- Final focused browser regression: 12/12 passed in 52.3 seconds; mobile/desktop, day/night, keyboard, axe and overflow checked. Mobile confirmation screenshot inspected: background sticky controls are covered and failed confirmation returns focus to the password field.
+- Final post-review `npm run check`: 295/295 tests across 61 files, TypeScript and production build passed.
+- Final focused browser regression: 12/12 passed in 49.7 seconds; mobile/desktop, day/night, keyboard, axe and overflow checked. Mobile confirmation screenshot inspected: background sticky controls are covered and failed confirmation returns focus to the password field.
+- Independent read-only review found one important incident-retry issue. Fixed using a persistent transition outbox separate from notification insertion; failure followed by success and recovery followed by failure are covered by regression tests. No critical or minor findings were raised.
+- Additional tests prove explicit delegated database permission, revocation, account deactivation, and startup cleanup preserving unrelated directories and rejecting linked roots.
 - No live restoration/reset, merge, push or version change performed.
+
+## Implementation Decisions
+
+- Work in the existing feature branch to preserve its administration groundwork; no separate checkout isolation, but all tests use temporary data.
+- Require matching schema migrations and required columns; older snapshots need a matching-version recovery procedure.
+- Block shared `LIVE` and defensive `RUNNING`/`PAUSED` states; conservative legacy-state rejection is possible.
+- Extend existing server-generated request IDs; background work receives an independent UUID when no request context exists.
+- Use same-volume atomic replacement; platforms refusing replacement abort while retaining the original file.
+- Preserve the signed-in UI only for exact scoped confirmation-error codes; genuine session expiry still logs out.
+- Use a body portal and restore focus after failed confirmation; accessibility and global theme styles were verified.
+- Wait for finite theme animations before contrast tests; assertions cover terminal colors rather than transition frames.
+- Initialize the existing delivery cursor before startup alerts; historical notifications remain intentionally excluded from first-run delivery.
+- Retain existing Tailwind/common Modal instead of introducing a UI dependency; new controls rely on the application's existing theme system.
+
+Historical session contents restored by a database snapshot remain existing behavior. Transport-level exactly-once SMTP delivery across a crash is not guaranteed. Complete-bundle media restoration is outside this slice.
 
 ## Proposed Follow-Up Features (Not Implemented)
 

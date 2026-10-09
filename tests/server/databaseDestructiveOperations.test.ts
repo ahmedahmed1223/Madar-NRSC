@@ -101,3 +101,23 @@ it('rejects air starting during the safety backup and keeps live data', async ()
   expect((await post(admin, 'backups/restore', { fileName, confirmationToken, localAirEnded: true })).status).toBe(409);
   expect(server.db.getRow('onAir', 'late-live')?.d.status).toBe('LIVE');
 });
+
+it('honors explicit delegated database permission and its revocation', async () => {
+  const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+  const cred = server.db.getCredentialsByEmail('journalist@akhbar.tv')!;
+  const row = server.db.getRow('users', cred.userId)!;
+  server.db.writeRow('users', cred.userId, { ...row.d, customPermissions: ['system.database_manage'] }, row.p, 'test');
+  expect((await journalist.get('/api/v1/db/stats')).status).toBe(200);
+  expect((await post(journalist, 'confirm-operation', { action: 'reset', password: DEMO_PASSWORD })).status).toBe(200);
+  server.db.writeRow('users', cred.userId, { ...row.d, customPermissions: ['!system.database_manage'] }, row.p, 'test');
+  expect((await journalist.get('/api/v1/db/stats')).status).toBe(403);
+  expect((await post(journalist, 'confirm-operation', { action: 'reset', password: DEMO_PASSWORD })).status).toBe(403);
+});
+
+it('rejects destructive execution after the authenticated manager is deactivated', async () => {
+  const { admin, fileName, confirmationToken } = await fixture();
+  const cred = server.db.getCredentialsByEmail('admin@akhbar.tv')!;
+  const row = server.db.getRow('users', cred.userId)!;
+  server.db.writeRow('users', cred.userId, { ...row.d, isActive: false }, row.p, 'test');
+  expect((await post(admin, 'backups/restore', { fileName, confirmationToken, localAirEnded: true })).status).toBe(401);
+});
