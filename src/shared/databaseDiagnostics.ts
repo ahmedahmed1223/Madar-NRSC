@@ -1,5 +1,5 @@
 export interface RecentServerError { id: string; at: string; message: string }
-export interface RecentServerErrors { since: string; entries: RecentServerError[] }
+export interface RecentServerErrors { since: string; entries: RecentServerError[]; journalHealth?: 'ok' | 'degraded' | 'memory' }
 export interface BackupStatus {
   lastSnapshotAt: string | null;
   lastAttempt: { at: string; status: 'ok' | 'failed' } | null;
@@ -14,6 +14,7 @@ export interface BackupRehearsal {
   compatible: true; counts: Record<string, number>; mediaVerified: false;
 }
 export interface DatabaseDiagnosticReport {
+  journalHealth: 'ok' | 'degraded' | 'memory';
   version: string; generatedAt: string; uptimeSeconds: number; ready: boolean;
   backup: BackupStatus; errors: RecentServerErrors;
 }

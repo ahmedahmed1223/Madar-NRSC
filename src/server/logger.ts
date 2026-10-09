@@ -1,3 +1,6 @@
+import crypto from 'node:crypto';
+import { ErrorJournal, safeErrorMessage } from './errorJournal';
+import { currentCorrelationId } from './requestCorrelation';
 type Level = 'debug' | 'info' | 'warn' | 'error';
 
 const ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
@@ -5,13 +8,11 @@ const ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 
 let threshold: Level = 'info';
 const since = new Date().toISOString();
 const recentErrors: { id: string; at: string; message: string }[] = [];
-let sequence = 0;
-// Only fixed operational labels are exposed; raw error fields remain server-side.
-const SAFE_ERROR_MESSAGES = new Set(['housekeeping failed', 'wire polling failed', 'scheduled publishing failed',
-  'scheduled bulletins failed', 'notification delivery failed', 'complete backup failed', 'unhandled rejection',
-  'failed to start server', 'gemini request failed', 'unhandled error', 'upload write failed', 'manual backup failed']);
+let journal: ErrorJournal | null = null;
+export function setErrorJournal(value: ErrorJournal | null) { journal = value; }
+export function errorJournalHealth(): 'ok' | 'degraded' | 'memory' { return journal?.health() ?? 'memory'; }
 export function getRecentErrors() {
-  return { since, entries: recentErrors.map(entry => ({ ...entry })) };
+  return { ...(journal?.snapshot() ?? { since, entries: recentErrors.map(entry => ({ ...entry })) }), journalHealth: errorJournalHealth() };
 }
 
 export function setLogLevel(level: Level) {
@@ -20,7 +21,9 @@ export function setLogLevel(level: Level) {
 
 function write(level: Level, msg: string, fields?: Record<string, unknown>) {
   if (level === 'error') {
-    recentErrors.unshift({ id: String(++sequence), at: new Date().toISOString(), message: SAFE_ERROR_MESSAGES.has(msg) ? msg : 'server error' });
+    const entry = { id: currentCorrelationId() ?? crypto.randomUUID(), at: new Date().toISOString(), message: safeErrorMessage(msg) };
+    journal?.append(entry);
+    recentErrors.unshift(entry);
     recentErrors.length = Math.min(recentErrors.length, 100);
   }
   if (ORDER[level] < ORDER[threshold]) return;

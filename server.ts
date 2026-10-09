@@ -2,7 +2,8 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { loadConfig } from './src/server/config';
-import { logger, setLogLevel } from './src/server/logger';
+import { logger, setLogLevel, setErrorJournal } from './src/server/logger';
+import { ErrorJournal } from './src/server/errorJournal';
 import { NewsroomDatabase } from './src/server/db';
 import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
@@ -17,6 +18,8 @@ import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from 
 async function main() {
   const config = loadConfig();
   setLogLevel(config.logLevel);
+  const journal = await ErrorJournal.open(path.join(config.dataDir, 'error-journal'));
+  setErrorJournal(journal);
 
   const db = new NewsroomDatabase(config.dataDir);
   await cleanupRehearsals(path.join(config.dataDir, 'rehearsals'));
@@ -150,7 +153,8 @@ async function main() {
       process.exit(1);
     }, 10_000);
     force.unref();
-    server.close(() => {
+    server.close(async () => {
+      await journal.close();
       db.close();
       logger.info('shutdown complete');
       process.exit(0);

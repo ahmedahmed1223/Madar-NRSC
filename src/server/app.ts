@@ -6,7 +6,8 @@ import type { AuditLog, Episode, User } from '../types/index';
 import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
-import { logger, getRecentErrors } from './logger';
+import { logger, getRecentErrors, errorJournalHealth } from './logger';
+import { withRequestCorrelation } from './requestCorrelation';
 import { backupStatus } from './databaseDiagnostics';
 import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
@@ -119,7 +120,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
         user: req.auth?.user.id,
       });
     });
-    next();
+    withRequestCorrelation(requestId, next);
   });
 
   const apiLimiter = createRateLimiter({
@@ -809,6 +810,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.get('/api/v1/db/diagnostics', dbAdmin, (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, data: { version: APP_VERSION, generatedAt: new Date().toISOString(),
+      journalHealth: errorJournalHealth(),
       uptimeSeconds: Math.floor(process.uptime()), ready: !draining && db.isHealthy(),
       backup: backupStatus(db, config.backupIntervalHours), errors: getRecentErrors() } });
   });
