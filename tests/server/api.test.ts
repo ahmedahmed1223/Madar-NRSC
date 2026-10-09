@@ -256,11 +256,13 @@ describe('backups', () => {
     });
     expect(server.db.getRow('guests', 'gst-after-backup')).not.toBeNull();
 
-    const restored = await admin.post('/api/v1/db/backups/restore').set(H).send({ fileName });
+    const confirmation = await admin.post('/api/v1/db/confirm-operation').set(H).send({ action: 'restore', fileName, password: DEMO_PASSWORD });
+    expect(confirmation.status).toBe(200);
+    const restored = await admin.post('/api/v1/db/backups/restore').set(H).send({ fileName, confirmationToken: confirmation.body.data.token, localAirEnded: true });
     expect(restored.status).toBe(200);
     expect(server.db.getRow('guests', 'gst-after-backup')).toBeNull();
 
-    const evil = await admin.post('/api/v1/db/backups/restore').set(H).send({ fileName: '../../etc/passwd' });
+    const evil = await admin.post('/api/v1/db/backups/restore').set(H).send({ fileName: '../../etc/passwd', confirmationToken: 'invalid', localAirEnded: true });
     expect(evil.status).toBe(400);
     expect(evil.body.error).not.toMatch(/passwd/);
   });

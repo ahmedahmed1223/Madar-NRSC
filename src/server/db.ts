@@ -880,7 +880,8 @@ export class NewsroomDatabase {
       for (const suffix of ['-wal', '-shm']) {
         if (fs.existsSync(this.filePath + suffix)) fs.unlinkSync(this.filePath + suffix);
       }
-      fs.copyFileSync(source, this.filePath);
+      // Same-volume rename never leaves a partially overwritten live database.
+      fs.renameSync(source, this.filePath);
     } finally {
       this.open();
     }

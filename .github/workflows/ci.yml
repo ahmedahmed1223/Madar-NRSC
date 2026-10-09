@@ -50,3 +50,5 @@ jobs:
           test "$code" = "200"
       - name: Offline air and prompter workflows
         run: npx playwright test tests/e2e/offline-air-preparation.spec.ts tests/e2e/offline-air-shell.spec.ts tests/e2e/offline-air-store.spec.ts tests/e2e/offline-air-drafts.spec.ts tests/e2e/prompter-controls.spec.ts tests/e2e/production-lists-settings.spec.ts tests/e2e/production-name-fields.spec.ts tests/e2e/air-text-display.spec.ts
+      - name: Database administration workflows
+        run: npx playwright test tests/e2e/database-operations.spec.ts

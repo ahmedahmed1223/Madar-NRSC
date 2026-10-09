@@ -7,7 +7,7 @@ import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, remove
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger, getRecentErrors, errorJournalHealth } from './logger';
-import { withRequestCorrelation } from './requestCorrelation';
+import { withRequestCorrelation, currentCorrelationId } from './requestCorrelation';
 import { backupStatus } from './databaseDiagnostics';
 import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
@@ -185,7 +185,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       targetEntity,
       targetId,
       severity,
-      details,
+      details: actionType.startsWith('DB_') && currentCorrelationId() ? `${details} · رقم التتبع: ${currentCorrelationId()}` : details,
       ipAddress: ip || 'unknown',
       timestamp: new Date().toISOString(),
     };
@@ -839,10 +839,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.download(source, path.basename(source));
   });
 
-  app.get('/api/v1/db/stats', dbAdmin, (_req, res) => {
+  app.get('/api/v1/db/stats', dbAdmin, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     res.json({
       success: true,
-      data: { ...db.stats(), sqlConsoleEnabled: config.enableSqlConsole, resetEnabled: config.allowDbReset },
+      data: { ...db.stats(), sqlConsoleEnabled: config.enableSqlConsole, resetEnabled: config.allowDbReset,
+        confirmationTotpRequired: db.getCredentials(req.auth!.user.id)?.totpEnabled === true },
     });
   });
 
@@ -875,7 +877,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     dbAdmin,
     wrap(async (req, res) => {
       if (!config.allowDbReset) throw new HttpError(403, 'إعادة تهيئة قاعدة البيانات معطلة في بيئة الإنتاج (ALLOW_DB_RESET)', 'DISABLED');
-      await databaseWork(async () => {
+      try { await databaseWork(async () => {
       authorizeDestructive(req, 'reset');
       await db.createBackup('prerestore', config.backupRetention);
       currentDatabaseActor(req); requireAirEnded(req);
@@ -883,7 +885,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       db.setMeta('demo_seeded', '0');
       db.setMeta('demo_removed', '0');
       await seedDatabase(db, config);
-      });
+      }); } catch (error) {
+        try { audit(req.auth!.user, 'DB_RESET_FAILED', 'DATABASE', 'newsroom', 'SECURITY', 'تعذر إتمام إعادة تهيئة القاعدة', req.ip); }
+        catch { logger.warn('database operation audit unavailable'); }
+        if (error instanceof HttpError) throw error;
+        throw new HttpError(500, 'تعذرت إعادة التهيئة؛ لم يؤكد الخادم اكتمال العملية');
+      }
       audit(req.auth!.user, 'DB_RESET', 'DATABASE', 'newsroom', 'SECURITY', 'إعادة تهيئة بيانات المحتوى', req.ip);
       changeBus.emit('rev', db.currentRev());
       res.json({ success: true, message: 'تمت إعادة تهيئة قاعدة البيانات بنجاح', data: db.stats() });
@@ -951,6 +958,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
           await db.restoreBackup(fileName, config.backupRetention, sha256, () => { currentDatabaseActor(req); requireAirEnded(req); });
         });
       } catch (err: any) {
+        try { audit(actor, 'DB_RESTORE_FAILED', 'DATABASE', 'newsroom', 'SECURITY', 'تعذر إتمام استعادة القاعدة', req.ip); }
+        catch { logger.warn('database operation audit unavailable'); }
         if (err instanceof HttpError) throw err;
         throw new HttpError(400, 'تعذرت استعادة النسخة الاحتياطية');
       }

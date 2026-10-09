@@ -111,15 +111,22 @@ export async function sendPush(db: NewsroomDatabase, config: AppConfig, userId: 
 
 let running: Promise<DeliveryStats> | null = null;
 
+/** Establish the first cursor before new startup notifications are written. */
+export function initializeNotificationDelivery(db: NewsroomDatabase): boolean {
+  const cursor = db.getMeta(CURSOR_KEY);
+  if (cursor !== null && Number.isFinite(Number(cursor))) return false;
+  db.setMeta(CURSOR_KEY, String(db.currentRev()));
+  return true;
+}
+
 /** One delivery pass; concurrent calls share the run. */
 export function deliverPending(db: NewsroomDatabase, config: AppConfig, now = Date.now()): Promise<DeliveryStats> {
   if (running) return running;
   running = (async () => {
     const stats: DeliveryStats = { push: 0, email: 0, skipped: 0 };
     let cursor = Number(db.getMeta(CURSOR_KEY));
-    if (!Number.isFinite(cursor) || db.getMeta(CURSOR_KEY) === null) {
+    if (initializeNotificationDelivery(db)) {
       // First run: start from now, never replay history.
-      db.setMeta(CURSOR_KEY, String(db.currentRev()));
       return stats;
     }
     for (;;) {

@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
 import { matchesQuery } from '../shared/search';
 import {
@@ -2014,7 +2015,7 @@ export class ApiService {
 
   // --- SQLITE DATABASE OPERATIONS (server administration) ---
 
-  static async getDbStats(): Promise<DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean }> {
+  static async getDbStats(): Promise<DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean; confirmationTotpRequired?: boolean }> {
     const res = await apiFetch<{ data: DbStats }>('/api/v1/db/stats');
     return res.data;
   }
@@ -2028,8 +2029,8 @@ export class ApiService {
     }
   }
 
-  static async resetDatabase(): Promise<DbStats> {
-    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/reset', { method: 'POST' });
+  static async resetDatabase(confirmationToken: string, localAirEnded: boolean): Promise<DbStats> {
+    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/reset', { method: 'POST', json: { confirmationToken, localAirEnded }, confirmationErrors: true });
     await dataStore.pull();
     return res.data;
   }
@@ -2042,14 +2043,32 @@ export class ApiService {
     const res = await apiFetch<{ data: DbBackupFileInfo[] }>('/api/v1/db/backups');
     return res.data;
   }
+  static async getBackupStatus(): Promise<BackupStatus> {
+    return (await apiFetch<{ data: BackupStatus }>('/api/v1/db/backup-status')).data;
+  }
+  static async getServerErrors(): Promise<RecentServerErrors> {
+    return (await apiFetch<{ data: RecentServerErrors }>('/api/v1/db/errors')).data;
+  }
+  static async getDatabaseDiagnostics(): Promise<DatabaseDiagnosticReport> {
+    return (await apiFetch<{ data: DatabaseDiagnosticReport }>('/api/v1/db/diagnostics')).data;
+  }
+  static async verifyBackup(fileName: string): Promise<BackupVerification> {
+    return (await apiFetch<{ data: BackupVerification }>('/api/v1/db/backups/verify', { method: 'POST', json: { fileName } })).data;
+  }
+  static async rehearseBackup(fileName: string): Promise<BackupRehearsal> {
+    return (await apiFetch<{ data: BackupRehearsal }>('/api/v1/db/backups/rehearse', { method: 'POST', json: { fileName } })).data;
+  }
+  static async confirmDatabaseOperation(input: { action: 'restore' | 'reset'; fileName?: string; password: string; totp?: string }): Promise<{ token: string; expiresAt: string }> {
+    return (await apiFetch<{ data: { token: string; expiresAt: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: input, confirmationErrors: true })).data;
+  }
 
   static async createBackup(): Promise<DbBackupFileInfo | null> {
     const res = await apiFetch<{ data: DbBackupFileInfo }>('/api/v1/db/backups', { method: 'POST' });
     return res.data;
   }
 
-  static async restoreBackup(fileName: string): Promise<DbStats> {
-    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/backups/restore', { method: 'POST', json: { fileName } });
+  static async restoreBackup(fileName: string, confirmationToken: string, localAirEnded: boolean): Promise<DbStats> {
+    const res = await apiFetch<{ data: DbStats }>('/api/v1/db/backups/restore', { method: 'POST', json: { fileName, confirmationToken, localAirEnded }, confirmationErrors: true });
     await dataStore.pull();
     return res.data;
   }

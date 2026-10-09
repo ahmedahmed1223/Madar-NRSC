@@ -11,7 +11,7 @@ import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
-import { deliverPending } from './src/server/delivery';
+import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
 import { deliverBackup } from './src/server/backupDelivery';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
@@ -65,6 +65,7 @@ async function main() {
 
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
+  if (config.deliverySeconds > 0) initializeNotificationDelivery(db);
   const checkBackupIncidents = async () => {
     try {
       await reconcileBackupIncidents(db, backupStatus(db, config.backupIntervalHours));

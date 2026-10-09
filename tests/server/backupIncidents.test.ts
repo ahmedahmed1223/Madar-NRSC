@@ -52,3 +52,14 @@ it('notifies only active authorized managers with nonurgent system notifications
   const before = notifications().length;
   await run(server.db, status(), Date.now() + 86400001); expect(notifications()).toHaveLength(before);
 });
+it('initializes the notification cursor before startup incidents so enabled channels can receive them', async () => {
+  const delivery = await import('../../src/server/delivery');
+  expect(typeof (delivery as any).initializeNotificationDelivery).toBe('function');
+  const before = server.db.currentRev();
+  (delivery as any).initializeNotificationDelivery(server.db);
+  const run = await reconciler(); await run(server.db, status());
+  expect(Number(server.db.getMeta('notify_delivery_rev'))).toBe(before);
+  expect(server.db.currentRev()).toBeGreaterThan(before);
+  await delivery.deliverPending(server.db, server.config);
+  expect(Number(server.db.getMeta('notify_delivery_rev'))).toBeGreaterThan(before);
+});

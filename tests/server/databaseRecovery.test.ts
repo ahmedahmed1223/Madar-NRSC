@@ -79,3 +79,14 @@ it('preserves an old selected source when pre-restore retention is one', async (
   expect(server.db.dbId).toBe(identity);
   expect(server.db.isHealthy()).toBe(true);
 });
+
+it('keeps the original database usable if atomic replacement fails', async () => {
+  const snapshot = await server.db.createBackup();
+  server.db.writeRow('guests', 'keep-on-failure', { id: 'keep-on-failure', fullName: 'احتفظ بي' }, 0, 'test');
+  const promote = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw new Error('rename denied'); });
+  try {
+    await expect(server.db.restoreBackup(snapshot.fileName, 20)).rejects.toThrow('rename denied');
+    expect(server.db.getRow('guests', 'keep-on-failure')?.d.fullName).toBe('احتفظ بي');
+    expect(server.db.isHealthy()).toBe(true);
+  } finally { promote.mockRestore(); }
+});

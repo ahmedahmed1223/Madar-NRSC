@@ -86,6 +86,8 @@ it('aborts on failed safety backup without modifying live content', async () => 
   // Auditing failure may add an audit row, but content stays intact.
   expect(server.db.listCollection('users').length).toBeGreaterThan(0);
   expect(server.db.currentRev()).toBeGreaterThanOrEqual(before);
+  const audit = server.db.listCollection('auditLogs').find(row => row.d.actionType === 'DB_RESTORE_FAILED');
+  expect(audit?.d.details).toContain(result.headers['x-request-id']);
 });
 
 it('rejects air starting during the safety backup and keeps live data', async () => {
