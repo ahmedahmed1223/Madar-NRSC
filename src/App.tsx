@@ -641,9 +641,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
-  const handleSaveSource = (source: Partial<NewsSource>) => {
-    if (!attempt('حفظ المصدر', () => apiService.saveNewsSource(source))) return;
+  const handleSaveSource = async (source: Partial<NewsSource>) => {
+    const saved = apiService.saveNewsSource(source);
+    const outcome = await dataStore.awaitWrite('sources', saved.id);
+    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ المصدر');
     refreshData();
+    return true;
   };
 
   const handleDeleteSource = (id: string) => {

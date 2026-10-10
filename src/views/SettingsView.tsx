@@ -58,7 +58,7 @@ interface SettingsViewProps {
   newsList?: NewsItem[];
   onSaveCategory: (cat: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
-  onSaveSource: (source: Partial<NewsSource>) => void;
+  onSaveSource: (source: Partial<NewsSource>) => boolean | Promise<boolean>;
   onDeleteSource: (id: string) => void;
   /** Opens «المستخدمون والصلاحيات». */
   onOpenUsers?: () => void;
@@ -424,16 +424,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleAddSource = (e: React.FormEvent) => {
+  const handleAddSource = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSourceName.trim()) return;
-    onSaveSource({
+    try {
+    if (!(await onSaveSource({
       id: `src-${Date.now()}`,
       name: newSourceName.trim(),
       type: newSourceType,
       reliabilityScore: Number(newSourceReliability) || 5,
-    });
+    }))) return;
     setNewSourceName('');
+    } catch (err) {
+      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر حفظ المصدر' });
+    }
   };
 
   return (
