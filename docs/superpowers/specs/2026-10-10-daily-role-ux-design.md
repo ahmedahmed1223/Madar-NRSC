@@ -1,7 +1,7 @@
 # Daily Role UX: Roadmap and Phase One Design
 
 Date: 2026-10-10
-Status: Written specification awaiting user review
+Status: Phase one implemented and verified; later roadmap stages remain required
 Branch: codex/daily-role-ux
 
 ## Intent
@@ -199,5 +199,7 @@ part of writing this specification.
 
 Self-reviewed for scope, duplicate functionality, ownership, offline-save claims,
 timezone consistency, conflict handling, and measurable acceptance criteria.
-No unresolved placeholders. Await written-spec approval before creating the
-phase-one implementation plan.
+No unresolved placeholders. User approved the written specification and phase-one
+plan. Phase one is implemented with independent review fixes; evidence is recorded
+in docs/releases/daily-role-ux-phase-one-verification.md. Stage two has a separate
+written specification awaiting review. No full-roadmap release is claimed.

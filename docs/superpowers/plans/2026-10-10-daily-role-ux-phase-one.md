@@ -1,6 +1,6 @@
 # Daily Role UX Phase One Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Improve personal work queues, private saved news filters and safe list-context restoration without widening access or changing editorial/broadcast state.
 
@@ -55,11 +55,11 @@ Inspect actual router and confirmed-write signatures before edits; keep their ex
 
 **Interfaces:** Export `SavedNewsFilterDefinition` with activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate; `SavedNewsFilter` with server-owned metadata from spec. Export `savedNewsFilterError(value: unknown): string | null`, `sanitizeWorkContext(value: unknown): WorkContext`, and `sanitizeWorkSections(value: unknown): WorkSectionPreferences`. IDs are bounded strings using the repository ID convention; selectedCategory preserves the existing category-name semantics (bounded to 128 characters, no markup/control characters); status/priority/date values are allowlisted. WorkContext has schemaVersion 1, definition, page and optional anchorId, never article data. Section keys are exactly the existing MyWorkPanel section identifiers.
 
-- [ ] Write tests: `accepts_supported_filter`, `rejects_unknown_fields_and_oversized_name`, `rejects_unsupported_status_priority_dates`, `bounds_context_and_excludes_content`, `deduplicates_section_order_and_defaults_new_sections`. Assert 80/200 limits, unknown schema fallback, bounded nonnegative page and no arbitrary fields.
-- [ ] Run `npm test -- tests/savedNewsFilters.test.ts tests/workContext.test.ts`; confirm the tests fail for absent implementation.
-- [ ] Implement the interfaces with strict validation and existing status/priority definitions. Preserve existing news-list page-size/column model unchanged.
-- [ ] Run the same tests; require all pass.
-- [ ] Commit the shared models and tests.
+- [x] Write tests: `accepts_supported_filter`, `rejects_unknown_fields_and_oversized_name`, `rejects_unsupported_status_priority_dates`, `bounds_context_and_excludes_content`, `deduplicates_section_order_and_defaults_new_sections`. Assert 80/200 limits, unknown schema fallback, bounded nonnegative page and no arbitrary fields.
+- [x] Run `npm test -- tests/savedNewsFilters.test.ts tests/workContext.test.ts`; confirm the tests fail for absent implementation.
+- [x] Implement the interfaces with strict validation and existing status/priority definitions. Preserve existing news-list page-size/column model unchanged.
+- [x] Run the same tests; require all pass.
+- [x] Commit the shared models and tests.
 
 ### Task 2: Enforce Private Versioned Filter Persistence
 
@@ -67,11 +67,11 @@ Inspect actual router and confirmed-write signatures before edits; keep their ex
 
 **Interfaces:** Register `savedNewsFilters`. API feature methods create/update/delete accept a typed filter payload and captured base version; return the existing confirmed-operation result. Do not invent a second offline mutation queue. Ownership comes from auth.user.id; createdAt is immutable, updatedAt is server time. Read restrictions cover bootstrap/poll/SSE and conflict responses.
 
-- [ ] Write server tests: `private_bootstrap_and_changes`, `rejects_foreign_mutation_without_current_payload`, `stamps_authenticated_owner_and_time`, `enforces_30_active_filters`, `rejects_invalid_definition`, `stale_update_and_delete_conflict`, `retry_does_not_duplicate`. Include an admin account, forged owner, guessed ID, tombstone and generic-sync entry points. Use existing test DB/auth helpers.
-- [ ] Run `npm test -- tests/server/savedNewsFilters.test.ts`; verify RED.
-- [ ] Implement collection registration, policy, stamping, per-owner count inside the write transaction, and API confirmed wrappers. Reject private unauthorized operations before attaching current data to a response.
-- [ ] Run the server test plus `tests/server/api.test.ts` and `tests/client/recovery.test.ts`; require GREEN.
-- [ ] Commit private persistence.
+- [x] Write server tests: `private_bootstrap_and_changes`, `rejects_foreign_mutation_without_current_payload`, `stamps_authenticated_owner_and_time`, `enforces_30_active_filters`, `rejects_invalid_definition`, `stale_update_and_delete_conflict`, `retry_does_not_duplicate`. Include an admin account, forged owner, guessed ID, tombstone and generic-sync entry points. Use existing test DB/auth helpers.
+- [x] Run `npm test -- tests/server/savedNewsFilters.test.ts`; verify RED.
+- [x] Implement collection registration, policy, stamping, per-owner count inside the write transaction, and API confirmed wrappers. Reject private unauthorized operations before attaching current data to a response.
+- [x] Run the server test plus `tests/server/api.test.ts` and `tests/client/recovery.test.ts`; require GREEN.
+- [x] Commit private persistence.
 
 ### Task 3: Safely Restore and Apply News List Context
 
@@ -79,11 +79,11 @@ Inspect actual router and confirmed-write signatures before edits; keep their ex
 
 **Interfaces:** `useWorkContext(userId: string, scope: string)` returns sanitized context plus save/clear operations. Keep the existing `nrcs_news_context` per-user/per-initial-tab namespace and migrate its bounded metadata to schema 1. Preserve `nrcs-news-list-preferences` untouched. Explicit initialTab partitions remain separate. Anchor restoration waits until authorized results load, runs once per return, and clamps page to the available result count.
 
-- [ ] Write tests for malformed storage, account switch, storage refusal, deleted anchor, empty results, explicit breaking tab, shrinking pages and unavailable category/author references. Assert no body/attachment storage and no restoration of selected bulk IDs or dialogs.
-- [ ] Run `npm test -- tests/workContext.test.ts` and `npx playwright test tests/e2e/daily-work-context.spec.ts --workers=1`; confirm RED on the new behavior using isolated server data.
-- [ ] Implement hook and bounded migration; replace ad hoc JSON context reads in the touched view. Persist the clicked item ID before navigation. Show an unavailable reference chip with removal rather than substituting ALL.
-- [ ] Run those tests and existing `tests/e2e/news-ux.spec.ts`; require GREEN.
-- [ ] Commit context restoration.
+- [x] Write tests for malformed storage, account switch, storage refusal, deleted anchor, empty results, explicit breaking tab, shrinking pages and unavailable category/author references. Assert no body/attachment storage and no restoration of selected bulk IDs or dialogs.
+- [x] Run `npm test -- tests/workContext.test.ts` and `npx playwright test tests/e2e/daily-work-context.spec.ts --workers=1`; confirm RED on the new behavior using isolated server data.
+- [x] Implement hook and bounded migration; replace ad hoc JSON context reads in the touched view. Persist the clicked item ID before navigation. Show an unavailable reference chip with removal rather than substituting ALL.
+- [x] Run those tests and existing `tests/e2e/news-ux.spec.ts`; require GREEN.
+- [x] Commit context restoration.
 
 ### Task 4: Improve My Work Without Duplicating Queues
 
@@ -91,11 +91,11 @@ Inspect actual router and confirmed-write signatures before edits; keep their ex
 
 **Interfaces:** `stationWorkDay(now: Date, timezone: string | undefined): string` uses validZone and a Gregorian ISO day, independent of display calendar/device timezone when station zone is valid; invalid zone uses existing device fallback. `orderWorkSections(keys: string[], preferences: WorkSectionPreferences): string[]` preserves mandatory operational warnings. Use one now value per queue update. Keep current news-review order until stage two.
 
-- [ ] Write pure tests for station midnight, DST, invalid zone and stable ordering. Write browser cases for customized permissions, empty queues, local section preferences, exact news/episode/bulletin-story actions, and inaccessible/deleted targets. Existing general-list destinations must focus a validated item rather than manufacture unsupported routes.
-- [ ] Run `npm test -- tests/myWork.test.ts` and `npx playwright test tests/e2e/daily-work-roles.spec.ts --workers=1`; confirm RED.
-- [ ] Implement section preference controls and native row actions; reuse queue sources/readiness. Add bounded focus metadata only for task/request/diary/booking lists that need it, consuming after load and falling back neutrally for unavailable targets. Do not add role-name switches or hide mandatory warnings.
-- [ ] Run focused tests and `tests/e2e/role-journeys.spec.ts`; require GREEN.
-- [ ] Commit personal work improvements.
+- [x] Write pure tests for station midnight, DST, invalid zone and stable ordering. Write browser cases for customized permissions, empty queues, local section preferences, exact news/episode/bulletin-story actions, and inaccessible/deleted targets. Existing general-list destinations must focus a validated item rather than manufacture unsupported routes.
+- [x] Run `npm test -- tests/myWork.test.ts` and `npx playwright test tests/e2e/daily-work-roles.spec.ts --workers=1`; confirm RED.
+- [x] Implement section preference controls and native row actions; reuse queue sources/readiness. Add bounded focus metadata only for task/request/diary/booking lists that need it, consuming after load and falling back neutrally for unavailable targets. Do not add role-name switches or hide mandatory warnings.
+- [x] Run focused tests and `tests/e2e/role-journeys.spec.ts`; require GREEN.
+- [x] Commit personal work improvements.
 
 ### Task 5: Deliver Accessible Saved Filter Management
 
@@ -103,21 +103,21 @@ Inspect actual router and confirmed-write signatures before edits; keep their ex
 
 **Interfaces:** Component consumes typed definitions/current filter and confirmed API mutation wrappers from Tasks 1-2. It applies via one `onApply(definition: SavedNewsFilterDefinition)` callback. Use existing Modal, dialogs, online status, notifications and lucide buttons.
 
-- [ ] Write browser tests for create/rename/update/pin/delete/reload, 80-character name and field errors, unavailable references, connection loss, failed save/retry, stale concurrent edit, keyboard menu/dialog Escape and trigger focus. Verify account isolation in two sessions.
-- [ ] Run `npx playwright test tests/e2e/saved-news-filters.spec.ts --workers=1`; confirm RED.
-- [ ] Implement picker with overflow menu and management dialogs, pending/confirmed/error states, bounded names and accessible disabled reasons. Preserve previous saved record on failure. Do not claim success for queued/offline writes. Add Arabic help matching shipped behavior only.
-- [ ] Run the same tests at 390px and 1440px, light/dark; add axe and overflow assertions to the cases. Require GREEN.
-- [ ] Commit saved-filter UI and help.
+- [x] Write browser tests for create/rename/update/pin/delete/reload, 80-character name and field errors, unavailable references, connection loss, failed save/retry, stale concurrent edit, keyboard menu/dialog Escape and trigger focus. Verify account isolation in two sessions.
+- [x] Run `npx playwright test tests/e2e/saved-news-filters.spec.ts --workers=1`; confirm RED.
+- [x] Implement picker with overflow menu and management dialogs, pending/confirmed/error states, bounded names and accessible disabled reasons. Preserve previous saved record on failure. Do not claim success for queued/offline writes. Add Arabic help matching shipped behavior only.
+- [x] Run the same tests at 390px and 1440px, light/dark; add axe and overflow assertions to the cases. Require GREEN.
+- [x] Commit saved-filter UI and help.
 
 ### Task 6: Verify Phase One and Preserve Whole-Goal Scope
 
 **Files:** Create `docs/releases/daily-role-ux-phase-one-verification.md`; update this plan checkboxes from actual evidence.
 
-- [ ] Run `$env:PATH='C:\Program Files\Git\usr\bin;'+$env:PATH` in PowerShell, then `npm run check`; require TypeScript, full unit/server suite and production build pass.
-- [ ] Run one serial Playwright command covering new phase-one suites, existing news customization, role journeys, navigation, keyboard, drafts and accessibility; record exact tests/counts and failures, not a blanket full-suite claim.
-- [ ] Use a fresh whole-branch reviewer per executing-plans; resolve all findings with reproduction and regression tests before declaring the phase finished.
-- [ ] Rebuild without e2e helper assets; verify production preview readiness and unchanged live database identity without destructive writes.
-- [ ] Commit verification evidence. Do not publish a release labelled complete: continue to stage-two written design and the remaining roadmap stages before final goal completion.
+- [x] Run `$env:PATH='C:\Program Files\Git\usr\bin;'+$env:PATH` in PowerShell, then `npm run check`; require TypeScript, full unit/server suite and production build pass.
+- [x] Run one serial Playwright command covering new phase-one suites, existing news customization, role journeys, navigation, keyboard, drafts and accessibility; record exact tests/counts and failures, not a blanket full-suite claim.
+- [x] Use a fresh whole-branch reviewer per executing-plans; resolve all findings with reproduction and regression tests before declaring the phase finished.
+- [x] Rebuild without e2e helper assets; verify production preview readiness and unchanged live database identity without destructive writes.
+- [x] Commit verification evidence. Do not publish a release labelled complete: continue to stage-two written design and the remaining roadmap stages before final goal completion.
 
 ## Final Integration After All Stages
 
@@ -125,4 +125,4 @@ The user authorizes implementation through merge, push and release. After all fi
 
 ## Plan Self-Review
 
-Phase-one requirements map to Tasks 1-6. The review-focus cases have explicit test owners. Existing news context is extended rather than duplicated; current page-size/columns remain compatible. Later stages are not claimed delivered by this plan. Await user review and execution-method selection before product edits.
+Phase-one requirements map to Tasks 1-6. The review-focus cases have explicit test owners. Existing news context is extended rather than duplicated; current page-size/columns remain compatible. User approved execution here with one independent final review. All six tasks are verified; see docs/releases/daily-role-ux-phase-one-verification.md. Later stages are not claimed delivered by this plan.
