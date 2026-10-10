@@ -7,6 +7,9 @@ it('accepts supported filters with boundary-length names and search', () => {
   expect(savedNewsFilterError(filter())).toBeNull();
   expect(savedNewsFilterError(filter({ name: 'n'.repeat(80), definition: { ...DEFAULT_NEWS_FILTER, searchQuery: 's'.repeat(200), activeTab: 'UNDER_REVIEW', onlyMine: true } }))).toBeNull();
 });
+it('preserves the existing Arabic category-name filter without silently resetting it', () => {
+  expect(savedNewsFilterError(filter({ definition: { ...DEFAULT_NEWS_FILTER, selectedCategory: 'السياسة' } }))).toBeNull();
+});
 it('rejects unknown fields and oversized names without accepting executable queries', () => {
   for (const value of [filter({ name: '' }), filter({ name: '   ' }), filter({ name: 'n'.repeat(81) }), filter({ query: 'SELECT *' }), filter({ schemaVersion: 2 })]) {
     expect(savedNewsFilterError(value)).not.toBeNull();

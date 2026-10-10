@@ -4,6 +4,8 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { toLocalInputValue } from '../shared/dates';
 import { notify } from '../services/notify';
 import { useNewsListPreferences } from '../hooks/useNewsListPreferences';
+import { useWorkContext } from '../hooks/useWorkContext';
+import { workContextPage, type WorkContext } from '../shared/workContext';
 import { NEWS_COLUMNS, sanitizeNewsListPreferences } from '../shared/newsListPreferences';
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -78,7 +80,9 @@ const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
 
 const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || item.updatedAt;
 
-export const NewsListView: React.FC<NewsListViewProps> = ({
+export const NewsListView: React.FC<NewsListViewProps> = (props) => <NewsListContent key={`${props.currentUser.id}:${props.initialTab || 'ALL'}`} {...props} />;
+
+const NewsListContent: React.FC<NewsListViewProps> = ({
   newsList = [],
   categories = [],
   currentUser,
@@ -95,11 +99,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const PAGE_SIZE = listPreferences.pageSize;
   const showColumn = (key: typeof NEWS_COLUMNS[number]) => listPreferences.columns.includes(key);
   const columnLabels = { category: 'القسم', priority: 'الأولوية', author: 'المصدر والمحرر', updatedAt: 'آخر تحديث' };
-  const contextKey = `nrcs_news_context:${currentUser.id}:${initialTab}`;
-  const savedContext = useMemo(() => {
-    try { return JSON.parse(sessionStorage.getItem(contextKey) || '{}') || {}; } catch { return {}; }
-  }, [contextKey]);
-  const textValue = (key: string, fallback = '') => typeof savedContext[key] === 'string' ? savedContext[key] : fallback;
+  const { context: savedContext, save: saveContext } = useWorkContext(currentUser.id, initialTab);
+  const textValue = (key: string, fallback = '') => typeof savedContext.definition[key] === 'string' ? savedContext.definition[key] : fallback;
   const savedTab = textValue('activeTab', initialTab);
   const [activeTab, setActiveTab] = useState<ListTab>(() => ['ALL', 'BREAKING', 'TRASH', ...Object.keys(STATUS_RANK)].includes(savedTab) ? savedTab as ListTab : initialTab);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -110,7 +111,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
   const [selectedCategory, setSelectedCategory] = useState(() => textValue('selectedCategory', 'ALL'));
   const [selectedPriority, setSelectedPriority] = useState(() => textValue('selectedPriority', 'ALL'));
-  const [onlyMine, setOnlyMine] = useState(savedContext.onlyMine === true);
+  const [onlyMine, setOnlyMine] = useState(savedContext.definition.onlyMine === true);
   const [authorId, setAuthorId] = useState(() => textValue('authorId', 'ALL'));
   const [fromDate, setFromDate] = useState(() => textValue('fromDate'));
   const [toDate, setToDate] = useState(() => textValue('toDate'));
@@ -188,7 +189,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   }), sort, newsSortValue);
 
   const pageCount = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
+  const restoredPosition = useRef(false);
+  const anchorRef = useRef(savedContext.anchorId);
+  const currentPage = !restoredPosition.current ? workContextPage(savedContext, filteredNews.map(item => item.id), PAGE_SIZE) : Math.min(page, pageCount - 1);
   const pagedNews = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   // Selection never includes rows hidden by a filter or tab change.
@@ -197,32 +200,36 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     if (initialFilters.current) { initialFilters.current = false; return; }
     setSelectedIds([]);
     setPage(0);
+    anchorRef.current = undefined;
   }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate]);
 
-  const contextRef = useRef({});
+  const contextRef = useRef<WorkContext>(savedContext);
   const leavingRef = useRef(false);
-  contextRef.current = { activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page };
-  const rememberPosition = () => {
-    try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep navigation available. */ }
+  contextRef.current = { schemaVersion: 1, definition: { activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate }, page: currentPage, anchorId: anchorRef.current };
+  const rememberPosition = (id?: string) => {
+    anchorRef.current = id;
+    saveContext({ ...contextRef.current, anchorId: id });
     leavingRef.current = true;
   };
-  const onEditNews = (id: string) => { rememberPosition(); openNews(id); };
+  const onEditNews = (id: string) => { rememberPosition(id); openNews(id); };
   const onCreateNews = () => { rememberPosition(); createNews(); };
-  const onReviewNews = (id: string, queue: string[]) => { rememberPosition(); openReview(id, queue); };
+  const onReviewNews = (id: string, queue: string[]) => { rememberPosition(id); openReview(id, queue); };
   useEffect(() => {
+    if (restoredPosition.current || !dataStore.isReady()) return;
+    restoredPosition.current = true;
+    setPage(currentPage);
     const scroller = document.getElementById('app-main')?.parentElement;
     if (!scroller) return;
-    const save = () => {
-      if (leavingRef.current) return;
-      try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: scroller.scrollTop })); } catch { /* Storage may be disabled. */ }
-    };
-    const frame = requestAnimationFrame(() => { scroller.scrollTop = Math.max(0, Number(savedContext.scrollTop) || 0); });
-    scroller.addEventListener('scroll', save, { passive: true });
-    return () => { cancelAnimationFrame(frame); save(); scroller.removeEventListener('scroll', save); };
-  }, [contextKey, savedContext]);
+    const frame = requestAnimationFrame(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-news-id]')).find(row => row.dataset.newsId === savedContext.anchorId);
+      if (target) target.scrollIntoView({ block: 'center', inline: 'nearest' });
+      else scroller.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [currentPage, savedContext, newsList]);
   useEffect(() => {
-    try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
+    if (!leavingRef.current) saveContext(contextRef.current);
+  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
 
   const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
     (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
@@ -504,6 +511,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           <div role="status" aria-live="polite" className="text-xs tabular-nums text-slate-600 px-2 py-1">
             {filteredNews.length} نتيجة
           </div>
+          {selectedCategory !== 'ALL' && !categoryOptions.includes(selectedCategory) && <button type="button" aria-label="إزالة القسم غير المتاح" onClick={() => setSelectedCategory('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />القسم المحفوظ غير متاح</button>}
+          {authorId !== 'ALL' && !newsList.some(item => item.authorId === authorId) && <button type="button" aria-label="إزالة الكاتب غير المتاح" onClick={() => setAuthorId('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />الكاتب المحفوظ غير متاح</button>}
           <ExportMenu
             items={[
               {
@@ -640,6 +649,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   return (
                     <tr
                       key={item.id}
+                      data-news-id={item.id}
                       className={`hover:bg-slate-50/80 transition-colors ${
                         isSelected ? 'bg-blue-50/40' : ''
                       }`}

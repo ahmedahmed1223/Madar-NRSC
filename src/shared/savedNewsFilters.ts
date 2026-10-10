@@ -55,7 +55,7 @@ function validField(key: string, value: unknown): boolean {
     case 'selectedPriority': return typeof value === 'string' && priorities.has(value);
     case 'onlyMine': return typeof value === 'boolean';
     case 'searchQuery': return typeof value === 'string' && value.length <= 200;
-    case 'selectedCategory':
+    case 'selectedCategory': return typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\u0000-\u001f<>]/.test(value);
     case 'authorId': return typeof value === 'string' && ENTITY_ID_PATTERN.test(value);
     case 'fromDate':
     case 'toDate': return validDay(value);

@@ -29,3 +29,36 @@ export function sanitizeWorkSections(value: unknown): WorkSectionPreferences {
     ? [...new Set(value.filter((key): key is WorkSectionKey => typeof key === 'string' && WORK_SECTION_KEYS.includes(key as WorkSectionKey)))] : [];
   return { order: [...new Set([...keys(raw.order), ...WORK_SECTION_KEYS])], hidden: keys(raw.hidden) };
 }
+
+type ContextStorage = Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'setItem'>>;
+export const workContextKey = (userId: string, scope: string) => `nrcs_news_context:${userId}:${scope}`;
+
+export function readWorkContext(storage: ContextStorage, userId: string, scope: string): WorkContext {
+  const fallback = () => sanitizeWorkContext({ schemaVersion: 1, definition: { activeTab: scope } });
+  try {
+    const raw = JSON.parse(storage.getItem(workContextKey(userId, scope)) || 'null');
+    if (!isFilterObject(raw)) return fallback();
+    if (raw.schemaVersion === undefined) {
+      return sanitizeWorkContext({ schemaVersion: 1, definition: { activeTab: scope, ...raw }, page: raw.page });
+    }
+    if (raw.schemaVersion !== 1) return fallback();
+    return sanitizeWorkContext({ ...raw, definition: { activeTab: scope, ...(isFilterObject(raw.definition) ? raw.definition : {}) } });
+  } catch { return fallback(); }
+}
+
+export function writeWorkContext(storage: ContextStorage, userId: string, scope: string, value: unknown): boolean {
+  try {
+    if (!storage.setItem) return false;
+    storage.setItem(workContextKey(userId, scope), JSON.stringify(sanitizeWorkContext(value)));
+    return true;
+  } catch { return false; }
+}
+
+export function workContextPage(context: WorkContext, resultIds: string[], pageSize: number): number {
+  const size = Number.isInteger(pageSize) && pageSize > 0 ? pageSize : 50;
+  if (context.anchorId) {
+    const index = resultIds.indexOf(context.anchorId);
+    return index < 0 ? 0 : Math.floor(index / size);
+  }
+  return Math.min(Math.max(0, context.page), Math.max(0, Math.ceil(resultIds.length / size) - 1));
+}
