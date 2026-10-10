@@ -7,7 +7,8 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ENTITY_ID_PATTERN } from '../shared/collections';
 import {
   Plus,
   CheckSquare,
@@ -49,6 +50,8 @@ import { notify } from '../services/notify';
 import { Modal } from '../components/common/Modal';
 
 interface TasksViewProps {
+  focusId?: string | null;
+  onClearFocus?: () => void;
   tasks: EditorialTask[];
   currentUser: User;
   /** Resolves false when the server refused the task (the form then stays open). */
@@ -57,6 +60,8 @@ interface TasksViewProps {
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
+  focusId,
+  onClearFocus,
   tasks = [],
   currentUser,
   onSaveTask,
@@ -64,11 +69,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
 }) => {
   // Assignees may still move their own tasks; creating, reassigning and deleting need tasks.create_assign.
   const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
-  const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>('KANBAN');
+  const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>(focusId ? 'LIST' : 'KANBAN');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<EditorialTask | null>(null);
+  const focusedTask = focusId && ENTITY_ID_PATTERN.test(focusId) ? tasks.find(task => task.id === focusId && !(task as EditorialTask & { deletedAt?: string }).deletedAt) : undefined;
+  useEffect(() => {
+    if (focusId) { setActiveTab('LIST'); setSearchQuery(''); setSelectedStatus('ALL'); }
+  }, [focusId]);
 
   // Form states
   const [title, setTitle] = useState('');
@@ -155,6 +164,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const assigneeOf = (t: EditorialTask) =>
     t.assigneeName || t.assignedToName || apiService.getUsers().find((u) => u.id === (t.assigneeId || t.assignedToId))?.fullName || 'غير مسندة';
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
+    if (focusedTask && t.id !== focusedTask.id) return false;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
@@ -171,6 +181,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {focusId && <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-2 text-sm text-slate-700">
+        <span>{focusedTask ? 'المهمة المحددة' : 'العنصر المطلوب غير متاح؛ يمكنك متابعة العمل من القائمة.'}</span>
+        <button type="button" onClick={onClearFocus} className="min-h-11 px-3 inline-flex items-center gap-2 text-blue-700"><X className="w-4 h-4" />عرض كل المهام</button>
+      </div>}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

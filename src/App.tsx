@@ -858,6 +858,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   setActiveNav('episodes');
                 }}
                 onNavigate={(view: any) => {
+                  if (typeof view === 'string' && view.startsWith('/')) { openLink(view); return; }
+                  setFocusId(null);
                   const map: Record<string, string> = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking' };
                   if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
                   setActiveNav(map[view] || String(view).toLowerCase().replace(/_/g, '-'));
@@ -1041,6 +1043,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'tasks' && (
               <TasksView
+                focusId={focusId}
+                onClearFocus={() => setFocusId(null)}
                 tasks={tasks}
                 currentUser={currentUser}
                 onSaveTask={handleSaveTask}
@@ -1165,7 +1169,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 
             {activeNav === 'requests' && (
-              <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusSegmentId={requestSegmentId} onClearFocus={() => setRequestSegmentId(undefined)} />
+              <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusId={focusId} focusSegmentId={requestSegmentId} onClearFocus={() => { setRequestSegmentId(undefined); setFocusId(null); }} />
             )}
             </Suspense>
             </ViewErrorBoundary>

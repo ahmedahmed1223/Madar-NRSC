@@ -4,6 +4,9 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { arabicDate, localDateString } from '../shared/dates';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
+import { useLiveData } from '../hooks/useLiveData';
+import { apiService } from '../services/api';
+import { stationWorkDay, stationWorkTime } from '../shared/myWork';
 import {
   Newspaper,
   Flame,
@@ -71,15 +74,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onCreateTask = () => {},
   onOpenBulletin,
 }) => {
+  useLiveData(['settings'], 60_000);
+  const referenceTime = Date.now();
+  const stationZone = apiService.getSettings().defaultTimezone;
   const [activeQueueTab, setActiveQueueTab] = useState<'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'PUBLISHED'>('UNDER_REVIEW');
   const [selectedDashboardCategory, setSelectedDashboardCategory] = useState<string>('ALL');
 
   const publishedNewsCount = (newsList || []).filter((n) => n.status === 'PUBLISHED').length;
   const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
-  const todayKey = new Date().toLocaleDateString('en-CA');
+  const todayKey = stationWorkDay(new Date(referenceTime), stationZone);
   // Upcoming = on air now, or scheduled from today on and not yet aired; earliest first.
-  const nowKey = `${todayKey} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+  const nowKey = `${todayKey} ${stationWorkTime(new Date(referenceTime), stationZone)}`;
   const upcomingEpisodes = (episodes || [])
     .filter((e) => e.status === 'ON_AIR' || (!['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status) && `${(e.broadcastDate || '').slice(0, 10)} ${e.endTime || e.startTime || ''}` >= nowKey))
     .sort((a, b) => `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`));
@@ -164,6 +170,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       <MyWorkPanel
+        referenceTime={referenceTime}
         currentUser={currentUser}
         newsList={newsList}
         episodes={episodes}

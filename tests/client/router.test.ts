@@ -13,7 +13,8 @@ describe('screen ⇄ address mapping', () => {
     expect(routeToPath({ nav: 'bulletins' })).toBe('/bulletins');
     expect(routeToPath({ nav: 'diary', focusId: 'd1' })).toBe('/diary/d1');
     // Focus ids only belong in the address of screens that highlight them.
-    expect(routeToPath({ nav: 'tasks', focusId: 't1' })).toBe('/tasks');
+    expect(routeToPath({ nav: 'tasks', focusId: 't1' })).toBe('/tasks/t1');
+    expect(routeToPath({ nav: 'requests', focusId: 'r1' })).toBe('/requests/r1');
   });
 
   it('reads addresses back, round-tripping ids', () => {

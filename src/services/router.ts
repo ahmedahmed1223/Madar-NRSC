@@ -19,7 +19,7 @@ export interface RouteState {
 }
 
 /** Screens whose list highlights an item given in the address. */
-const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires']);
+const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'tasks', 'requests']);
 
 const clean = (id: string) => encodeURIComponent(id);
 
