@@ -9,6 +9,7 @@ it('protects native fields, composition and modified shortcuts', () => {
   expect(prompterShortcut({ key: ' ', tagName: 'INPUT' })).toBeNull();
   expect(prompterShortcut({ key: 'ArrowLeft', tagName: 'SELECT' })).toBeNull();
   expect(prompterShortcut({ key: ' ', tagName: 'BUTTON' })).toBeNull();
+  expect(prompterShortcut({ key: ' ', tagName: 'SUMMARY' })).toBeNull();
   expect(prompterShortcut({ key: 'ArrowUp', composing: true })).toBeNull();
   expect(prompterShortcut({ key: 'ArrowLeft', modified: true })).toBeNull();
   expect(prompterShortcut({ key: 'ArrowLeft' })).toBe('NEXT');

@@ -5,6 +5,11 @@ export interface PronunciationTerm {
   createdBy?: string; createdAt?: string; updatedBy?: string; updatedAt?: string;
 }
 export type PronunciationNote = Pick<PronunciationTerm, 'term' | 'pronunciation' | 'note'>;
+export function pronunciationDraftConflict(original: PronunciationTerm, current?: PronunciationTerm): string | null {
+  if (!current) return 'حذف زميل هذا الاسم؛ المسودة باقية ولا يمكن إعادته تلقائياً';
+  const fields: (keyof PronunciationTerm)[] = ['id', 'term', 'pronunciation', 'note', 'enabled', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'];
+  return fields.some(field => original[field] !== current[field]) ? 'تغير الاسم عند زميل؛ المسودة باقية. ألغِ التحرير وافتح النسخة الحالية للمراجعة' : null;
+}
 export function pronunciationError(value: any): string | null {
   if (!value || typeof value.enabled !== 'boolean') return 'بيانات قاموس النطق غير صالحة';
   for (const [field, max, required] of [['term', 200, true], ['pronunciation', 300, true], ['note', 1000, false]] as const) {

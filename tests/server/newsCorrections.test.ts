@@ -3,6 +3,7 @@ import { createTestServer, loginAgent } from '../helpers';
 import { buildAuthContext } from '../../src/server/auth';
 import { createNewsCorrection } from '../../src/server/newsCorrections';
 import request from 'supertest';
+import { SyncService } from '../../src/server/sync';
 let server: Awaited<ReturnType<typeof createTestServer>>;
 beforeAll(async () => { server = await createTestServer(); });
 afterAll(() => server.close());
@@ -46,6 +47,16 @@ it('notifies only active responsible colleagues with access, once per correction
   expect(alerts).toHaveLength(1); expect(alerts[0].d.userId).toBe(admin.id);
   createNewsCorrection(db, auth, input);
   expect(db.listCollection('notifications')).toHaveLength(before + 1);
+});
+it('never returns hidden correction data through rejected generic writes', () => {
+  const record = server.db.listCollection('newsCorrections')[0];
+  const user = server.db.listCollection('users')[0].d;
+  const auth = { ...buildAuthContext(server.db, user, 'test'), can: () => false };
+  const sync = new SyncService(server.db, server.config.dataDir);
+  for (const op of [{ c: 'newsCorrections', op: 'upsert', id: record.id, baseV: 0, d: {} }, { c: 'newsCorrections', op: 'upsert', id: record.id, baseV: record.v, d: {} }, { c: 'newsCorrections', op: 'delete', id: record.id }]) {
+    const result = sync.apply(auth, [op as any])[0];
+    expect(result.ok).toBe(false); expect(result).not.toHaveProperty('current');
+  }
 });
 it('hides corrections whose referenced news was deleted from synchronization', async () => {
   const admin = await loginAgent(server.app, 'admin@akhbar.tv');

@@ -15,16 +15,18 @@ export function PronunciationSettings() {
   const guard = useRef(false);
   const section = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
+  const original = useRef<PronunciationTerm | null>(null);
   const editing = !!draft;
   useEffect(() => {
-    if (editing) { trigger.current = document.activeElement as HTMLElement; section.current?.querySelector<HTMLInputElement>('form input')?.focus(); }
+    if (editing) { original.current = draft?.id ? { ...draft } as PronunciationTerm : null; trigger.current = document.activeElement as HTMLElement; section.current?.querySelector<HTMLInputElement>('form input')?.focus(); }
     else if (trigger.current?.isConnected) trigger.current.focus();
+    else if (trigger.current) section.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [editing]);
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); if (!draft || guard.current) return;
     const invalid = pronunciationError(draft); if (invalid) { setError(invalid); return; }
     guard.current = true; setBusy(true); setError('');
-    try { await apiService.savePronunciationTerm(draft); setDraft(null); }
+    try { await apiService.savePronunciationTerm(draft, original.current || undefined); setDraft(null); }
     catch (err) { setError(err instanceof Error ? err.message : 'تعذر الحفظ'); }
     finally { guard.current = false; setBusy(false); }
   };

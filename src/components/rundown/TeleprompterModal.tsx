@@ -177,7 +177,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === 'Tab') {
-        const items = Array.from(modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, [tabindex="0"]') || []).filter(el => el.getClientRects().length);
+          const items = Array.from(modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, summary, [tabindex="0"]') || []).filter(el => el.getClientRects().length);
         const first = items[0], last = items[items.length - 1];
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
@@ -239,7 +239,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
   return (
     <div ref={modalRef} role="dialog" aria-modal="true" aria-label="الملقّن" className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-amber-300" dir="rtl">
-      {apiService.getPronunciationTerms().some(t => t.enabled) && <div className="h-32 shrink-0 overflow-auto px-3"><PronunciationPanel notes={matchingPronunciations(activeSegment?.scriptText || activeSegment?.script || '', apiService.getPronunciationTerms())} /></div>}
+      <div className="h-32 shrink-0 overflow-auto px-3"><PronunciationPanel notes={matchingPronunciations(activeSegment?.scriptText || activeSegment?.script || '', apiService.getPronunciationTerms())} /></div>
       {/* Studio Prompter Top Bar */}
       <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">

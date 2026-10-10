@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { matchingPronunciations } from '../src/shared/pronunciation';
+import { matchingPronunciations, pronunciationDraftConflict } from '../src/shared/pronunciation';
 import { offlineAirPacketSchema } from '../src/shared/offlineAir';
 it('matches Arabic words but not embedded substrings and leaves script unchanged', () => {
   const script = 'أَحْمَد، يقدم الخبر من عمان. أعمال مختلفة.';
@@ -10,6 +10,12 @@ it('matches Arabic words but not embedded substrings and leaves script unchanged
   expect(script).toBe('أَحْمَد، يقدم الخبر من عمان. أعمال مختلفة.');
   const terms = Array.from({ length: 201 }, (_, i) => term(`اسم${i}`));
   expect(matchingPronunciations(terms.map(t => t.term).join(' '), terms)).toHaveLength(200);
+});
+it('rejects stale dictionary snapshots and deleted entries even with identical timestamps', () => {
+  const original = { id: 't', term: 'أحمد', pronunciation: 'نطق', note: 'أصل', enabled: true, updatedAt: 'same' };
+  expect(pronunciationDraftConflict(original, { ...original })).toBeNull();
+  expect(pronunciationDraftConflict(original, { ...original, note: 'تعديل الزميل' })).not.toBeNull();
+  expect(pronunciationDraftConflict(original, undefined)).not.toBeNull();
 });
 it('bounds offline reference notes independently of legacy packets', () => {
   const field = offlineAirPacketSchema.shape.pronunciationNotes;

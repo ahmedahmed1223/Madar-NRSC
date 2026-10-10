@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { pronunciationDraftConflict } from '../shared/pronunciation';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
 import { matchesQuery } from '../shared/search';
@@ -1546,9 +1547,14 @@ export class ApiService {
     return getStored(COLLECTIONS.pronunciationTerms.storageKey, []);
   }
 
-  static async savePronunciationTerm(value: Partial<import('../shared/pronunciation').PronunciationTerm>) {
+  static async savePronunciationTerm(value: Partial<import('../shared/pronunciation').PronunciationTerm>, original?: import('../shared/pronunciation').PronunciationTerm) {
     const all = this.getPronunciationTerms();
     const index = all.findIndex(t => t.id === value.id);
+    if (value.id) {
+      if (!original || original.id !== value.id) throw new Error('راجع النسخة الحالية قبل حفظ النطق');
+      const conflict = pronunciationDraftConflict(original, index >= 0 ? all[index] : undefined);
+      if (conflict) throw new Error(conflict);
+    }
     const next = { ...(index >= 0 ? all[index] : { id: newId('term'), note: '', enabled: true }), ...value } as import('../shared/pronunciation').PronunciationTerm;
     if (index >= 0) all[index] = next; else all.push(next);
     setStored(COLLECTIONS.pronunciationTerms.storageKey, all);

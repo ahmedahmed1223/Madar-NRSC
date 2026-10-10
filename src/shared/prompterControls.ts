@@ -4,7 +4,7 @@ export function prompterScrollDelta(pixelsPerSecond: number, milliseconds: numbe
 export function prompterShortcut(input: { key: string; tagName?: string; editable?: boolean; composing?: boolean; modified?: boolean }) {
   if (input.composing || input.modified) return null;
   if (input.key === 'Escape') return 'CLOSE';
-  if (input.editable || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'A'].includes(input.tagName || '')) return null;
+  if (input.editable || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'A', 'SUMMARY'].includes(input.tagName || '')) return null;
   const shortcuts: Record<string, string> = {
     ' ': 'PLAY', ArrowLeft: 'NEXT', ArrowRight: 'PREVIOUS', ArrowUp: 'FASTER', ArrowDown: 'SLOWER',
     '+': 'LARGER', '=': 'LARGER', '-': 'SMALLER', Home: 'RESET', PageDown: 'PAGE_DOWN', PageUp: 'PAGE_UP',

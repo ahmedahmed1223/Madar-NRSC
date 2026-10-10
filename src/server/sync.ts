@@ -500,6 +500,7 @@ export class SyncService {
       return { ok: false, code: 'INVALID', message: 'عملية مزامنة غير صالحة' };
     }
     const collection = op.c;
+    if (collection === 'newsCorrections') return { ok: false, code: 'FORBIDDEN', message: 'سجل التصحيحات يكتب من الخادم فقط' };
     const id = COLLECTIONS[collection].kind === 'singleton' ? SINGLETON_ID : op.id;
     if (typeof id !== 'string' || !ENTITY_ID_PATTERN.test(id)) {
       return { ok: false, code: 'INVALID', message: 'معرّف غير صالح' };
