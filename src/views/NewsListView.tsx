@@ -1,4 +1,5 @@
 import { NewsVideosList } from '../components/news/NewsVideosEditor';
+import { SavedNewsFilters } from '../components/news/SavedNewsFilters';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { toLocalInputValue } from '../shared/dates';
@@ -410,6 +411,15 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         </div>
       )}
 
+      <SavedNewsFilters key={currentUser.id} userId={currentUser.id}
+        definition={{ activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate }}
+        onApply={filter => {
+          setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
+          setSelectedCategory(filter.selectedCategory); setSelectedPriority(filter.selectedPriority);
+          setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
+          setFromDate(filter.fromDate); setToDate(filter.toDate);
+          setPage(0); setSelectedIds([]); anchorRef.current = undefined;
+        }} />
       {/* Filter Toolbar */}
       <div className="py-3 border-y border-slate-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
         {/* Search */}
