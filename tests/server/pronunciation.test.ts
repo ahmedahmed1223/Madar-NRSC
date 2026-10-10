@@ -1,0 +1,30 @@
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { createTestServer, loginAgent } from '../helpers';
+import { pronunciationError } from '../../src/shared/pronunciation';
+import { POLICIES } from '../../src/server/policy';
+import { buildAuthContext } from '../../src/server/auth';
+let server: Awaited<ReturnType<typeof createTestServer>>;
+beforeAll(async () => { server = await createTestServer(); });
+afterAll(() => server.close());
+it('stores bounded dictionary terms with server audit and rejects normalized duplicates', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const send = (id: string, d: any, baseV?: number) => admin.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{ c: 'pronunciationTerms', op: 'upsert', id, d: { id, enabled: true, ...d }, baseV }] });
+  const created = await send('term-a', { term: 'أحمد', pronunciation: 'أَحْمَد', note: '', createdBy: 'forged' });
+  expect(created.body.results[0].ok).toBe(true);
+  expect(created.body.results[0].row.d.createdBy).not.toBe('forged');
+  expect((await send('term-b', { term: 'احمد', pronunciation: 'نطق', note: '' })).body.results[0].ok).toBe(false);
+  expect((await send('term-long', { term: 'x'.repeat(201), pronunciation: 'x', note: '' })).body.results[0].ok).toBe(false);
+  const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+  const denied = await journalist.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{ c: 'pronunciationTerms', op: 'upsert', id: 'term-x', d: { term: 'اسم', pronunciation: 'نطق', note: '', enabled: true } }] });
+  expect(denied.body.results[0].ok).toBe(false);
+});
+it('enforces all exact text limits and the active dictionary cap while allowing disabled entries', () => {
+  const value = { id: 'new', term: 'a'.repeat(200), pronunciation: 'b'.repeat(300), note: 'c'.repeat(1000), enabled: true };
+  expect(pronunciationError(value)).toBeNull();
+  for (const field of ['term', 'pronunciation', 'note']) expect(pronunciationError({ ...value, [field]: (value as any)[field] + 'x' })).not.toBeNull();
+  const user = server.db.listCollection('users').map(r => r.d).find(u => u.role === 'SUPER_ADMIN');
+  const auth = buildAuthContext(server.db, user, 'test');
+  const list = () => Array.from({ length: 2000 }, (_, i) => ({ id: `term-${i}`, term: `اسم ${i}`, enabled: true }));
+  expect(POLICIES.pronunciationTerms({ auth, collection: 'pronunciationTerms', kind: 'create', before: null, after: value, list })).not.toBeNull();
+  expect(POLICIES.pronunciationTerms({ auth, collection: 'pronunciationTerms', kind: 'create', before: null, after: { ...value, enabled: false }, list })).toBeNull();
+});

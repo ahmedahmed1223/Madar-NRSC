@@ -1,5 +1,7 @@
 import { useLiveData } from '../../hooks/useLiveData';
 import { apiService } from '../../services/api';
+import { PronunciationPanel } from './PronunciationPanel';
+import { matchingPronunciations } from '../../shared/pronunciation';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
@@ -37,7 +39,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [followDirector, setFollowDirector] = useState(true);
-  const liveVersion = useLiveData(['onAir'], 0);
+  const liveVersion = useLiveData(['onAir', 'pronunciationTerms'], 0);
   const liveSegmentId = episodeId ? apiService.getOnAir(episodeId) : null;
   const followId = liveSegmentId?.status === 'LIVE' ? liveSegmentId.currentSegmentId : null;
   useEffect(() => {
@@ -237,6 +239,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
   return (
     <div ref={modalRef} role="dialog" aria-modal="true" aria-label="الملقّن" className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-amber-300" dir="rtl">
+      {apiService.getPronunciationTerms().some(t => t.enabled) && <div className="h-32 shrink-0 overflow-auto px-3"><PronunciationPanel notes={matchingPronunciations(activeSegment?.scriptText || activeSegment?.script || '', apiService.getPronunciationTerms())} /></div>}
       {/* Studio Prompter Top Bar */}
       <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">

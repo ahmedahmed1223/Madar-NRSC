@@ -4,6 +4,7 @@
  */
 import { bookingStatusOf, guestKey, isBooked, segmentGuests, segmentQuestions, TALK_SEGMENT_TYPES } from './episodePlan';
 import type { DepartmentId } from './departments';
+import { guestFollowUpWarnings } from './guestFollowUp';
 
 // ---------------------------------------------------------------------------
 // Video workflow
@@ -261,5 +262,6 @@ export function episodeReadiness(episode: any, ctx: ReadinessContext) {
     if (!notReady.length) readySegments++;
     notReady.forEach((i) => blockers.push({ key: i.key, segmentId: seg.id, segmentTitle: seg.title, label: i.label, detail: i.detail, departmentId: i.departmentId }));
   }
-  return { total: segments.length, readySegments, blockers, ready: segments.length > 0 && blockers.length === 0 };
+  const warnings = (episode?.guests || []).flatMap((g: any) => guestFollowUpWarnings(g).map(detail => ({ guestId: guestKey(g), guestName: g.guestName, detail })));
+  return { total: segments.length, readySegments, blockers, warnings, ready: segments.length > 0 && blockers.length === 0 };
 }

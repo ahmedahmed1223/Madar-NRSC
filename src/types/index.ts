@@ -366,6 +366,10 @@ export interface EpisodeGuest {
   backupGuestId?: string;
   backupGuestName?: string;
   contactLog?: ContactLogEntry[];
+  contactOwnerId?: string;
+  technicalCheckAt?: string;
+  technicalCheckStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PASSED' | 'FAILED';
+  technicalCheckNote?: string;
   /** Lower-third lines for the graphics desk. */
   cgName?: string;
   cgTitle?: string;

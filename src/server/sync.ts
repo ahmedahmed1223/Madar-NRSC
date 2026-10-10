@@ -263,7 +263,7 @@ export class SyncService {
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
-    return row.deleted ? true : canRead(auth, row.c, row.d);
+    return row.deleted ? true : canRead(auth, row.c, row.d, (c, id) => this.db.getRow(c, id)?.d);
   }
 
   private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false) {
@@ -467,7 +467,7 @@ export class SyncService {
       } else {
         rows = this.db.listCollection(name);
       }
-      collections[name] = rows.filter((r) => canRead(auth, name, r.d));
+      collections[name] = rows.filter((r) => canRead(auth, name, r.d, (c, id) => this.db.getRow(c, id)?.d));
     }
     return { rev, collections };
   }
@@ -566,6 +566,11 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'pronunciationTerms') {
+          const now = new Date().toISOString();
+          after = { id, term: after.term, pronunciation: after.pronunciation, note: after.note, enabled: after.enabled,
+            createdBy: before?.createdBy || auth.user.id, createdAt: before?.createdAt || now, updatedBy: auth.user.id, updatedAt: now };
+        }
         if (collection === 'requests' && !after.deletedAt) {
           after = stampRequest(before, after, auth);
           if (!before && after.addressedToId) {

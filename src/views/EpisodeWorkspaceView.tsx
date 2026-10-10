@@ -28,6 +28,8 @@ import { RundownTable } from '../components/rundown/RundownTable';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
+import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
+import { matchingPronunciations } from '../shared/pronunciation';
 import { saveFeedback, type SaveState } from '../shared/saveFeedback';
 
 interface EpisodeWorkspaceViewProps {
@@ -268,6 +270,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             {timingOk ? ' — مكتملة' : timingGap < 0 ? ` — ينقص ${mmssOf(timingGap)} دقيقة` : ` — يزيد ${mmssOf(timingGap)} دقيقة`}
           </p>
         )}
+        {readiness.warnings.length > 0 && <div className="mt-3 text-xs text-amber-800"><button type="button" onClick={() => setActiveTab('GUESTS')} className="min-h-11 text-blue-700 underline">متابعة الضيوف ({readiness.warnings.length})</button><ul>{readiness.warnings.map((w, i) => <li key={i}>{w.guestName}: {w.detail}</li>)}</ul></div>}
         {showBlockers && readiness.blockers.length > 0 && (
           <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
             {readiness.blockers.map((b, i) => (
@@ -570,6 +573,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           </div>
 
           <DraftStatus draft={scriptDraft} />
+          <PronunciationPanel notes={matchingPronunciations(introScript, apiService.getPronunciationTerms())} />
           <p role="status" aria-label="حالة حفظ السكريبت" aria-live="polite" className="text-xs text-slate-700">
             {saveFeedback(savingScript, scriptSaveState, introScript !== loadedScriptRef.current)}
           </p>

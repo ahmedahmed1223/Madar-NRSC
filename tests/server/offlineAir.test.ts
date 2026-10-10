@@ -29,3 +29,17 @@ it('requires authentication and prepares ordered confirmed text with authoritati
   for (const segment of packet.show.segments) if (!segment.approved) expect(segment.script).toBe('');
   expect((await admin.get('/api/v1/air-offline/packet/missing')).status).toBe(404);
 });
+it('snapshots only matching written pronunciation notes without changing script or legacy proof', async () => {
+  const bulletin = server.db.listCollection('bulletins')[0];
+  const story = server.db.listCollection('bulletinStories').find(r => r.d.bulletinId === bulletin.id)!;
+  server.db.writeRow('bulletinStories', story.id, { ...story.d, script: 'أحمد يقدم', status: 'APPROVED', approvals: [] }, story.p, null);
+  server.db.writeRow('bulletins', bulletin.id, { ...bulletin.d, approvalSteps: [] }, bulletin.p, null);
+  server.db.writeRow('pronunciationTerms', 'snapshot-term', { id: 'snapshot-term', term: 'أحمد', pronunciation: 'أَحْمَد', note: 'مرجع', enabled: true }, 0, null);
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const packet = (await admin.get(`/api/v1/air-offline/packet/${bulletin.id}`)).body.packet;
+  expect(packet.pronunciationNotes).toEqual([{ term: 'أحمد', pronunciation: 'أَحْمَد', note: 'مرجع' }]);
+  expect(packet.show.segments.find((s: any) => s.id === story.id).script).toBe('أحمد يقدم');
+  const legacy = { ...packet }; delete legacy.pronunciationNotes;
+  expect(offlinePacketError(legacy)).toBeNull();
+  expect(verifyOfflinePacketProof(server.db, packet.userId, legacy)).toBe(true);
+});

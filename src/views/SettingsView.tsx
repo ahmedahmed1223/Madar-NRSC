@@ -49,6 +49,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SourceFeedEditor } from '../components/settings/SourceFeedEditor';
+import { PronunciationSettings } from '../components/settings/PronunciationSettings';
 import { apiService } from '../services/api';
 
 interface SettingsViewProps {
@@ -602,6 +603,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       {section === 'editorial' && <NewsTemplatesSettings />}
+      {section === 'editorial' && <PronunciationSettings />}
       {section === 'production' && <ProductionListsSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}
       {section === 'categories' && (

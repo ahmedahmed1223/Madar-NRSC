@@ -212,6 +212,15 @@ export function hasPermission(
 }
 
 export class ApiService {
+  static getNewsCorrections(): import('../shared/newsCorrections').NewsCorrection[] {
+    return getStored(COLLECTIONS.newsCorrections.storageKey, []);
+  }
+  static async correctionContext(newsId: string): Promise<{ newsVersion: number; newsTitle: string; newsText: string; records: import('../shared/newsCorrections').NewsCorrection[]; historyVersions: number[] }> {
+    return (await apiFetch(`/api/v1/news/${encodeURIComponent(newsId)}/corrections`)).data;
+  }
+  static async registerNewsCorrection(input: import('../shared/newsCorrections').CreateCorrectionInput): Promise<import('../shared/newsCorrections').NewsCorrection> {
+    return (await apiFetch(`/api/v1/news/${encodeURIComponent(input.newsId)}/corrections`, { method: 'POST', json: input })).data;
+  }
   // --- AUTH & CURRENT USER ---
   /** The signed-in user (kept fresh from the synchronised users collection). */
   static getCurrentUser(): User {
@@ -1531,6 +1540,27 @@ export class ApiService {
 
   static getNewsSources(): NewsSource[] {
     return this.getSources();
+  }
+
+  static getPronunciationTerms(): import('../shared/pronunciation').PronunciationTerm[] {
+    return getStored(COLLECTIONS.pronunciationTerms.storageKey, []);
+  }
+
+  static async savePronunciationTerm(value: Partial<import('../shared/pronunciation').PronunciationTerm>) {
+    const all = this.getPronunciationTerms();
+    const index = all.findIndex(t => t.id === value.id);
+    const next = { ...(index >= 0 ? all[index] : { id: newId('term'), note: '', enabled: true }), ...value } as import('../shared/pronunciation').PronunciationTerm;
+    if (index >= 0) all[index] = next; else all.push(next);
+    setStored(COLLECTIONS.pronunciationTerms.storageKey, all);
+    const outcome = await dataStore.awaitWrite('pronunciationTerms', next.id);
+    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ النطق');
+    return this.getPronunciationTerms().find(t => t.id === next.id)!;
+  }
+
+  static async deletePronunciationTerm(id: string): Promise<void> {
+    setStored(COLLECTIONS.pronunciationTerms.storageKey, this.getPronunciationTerms().filter(t => t.id !== id));
+    const outcome = await dataStore.awaitWrite('pronunciationTerms', id);
+    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حذف النطق');
   }
 
   static saveSource(src: Partial<NewsSource>): NewsSource {

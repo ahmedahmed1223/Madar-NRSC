@@ -18,6 +18,7 @@ export const offlineAirPacketSchema = z.object({
   })).max(4001),
   confirmedState: z.record(z.string(), z.unknown()).nullable(),
   canOperate: z.boolean(), canEdit: z.boolean(),
+  pronunciationNotes: z.array(z.object({ term: z.string().min(1).max(200), pronunciation: z.string().min(1).max(300), note: z.string().max(1000) })).max(200).optional(),
 });
 export type OfflineAirPacket = z.infer<typeof offlineAirPacketSchema>;
 export function offlinePacketError(value: unknown): string | null {

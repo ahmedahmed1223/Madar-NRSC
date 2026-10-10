@@ -1,4 +1,5 @@
 import { sanitizeDateSettings } from '../shared/dateFormat';
+import { correctionTarget, createNewsCorrection, NewsCorrectionError } from './newsCorrections';
 import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
@@ -48,7 +49,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.24.1';
+export const APP_VERSION = '3.25.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -193,6 +194,19 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     changeBus.emit('rev', db.currentRev());
   };
 
+  app.get('/api/v1/news/:id/corrections', requireAuth, (req, res) => {
+    try {
+      const { row } = correctionTarget(db, req.auth!, req.params.id);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, data: { newsVersion: row.v, newsTitle: row.d.title || '', newsText: row.d.content || '', records: db.listCollection('newsCorrections').map(r => r.d).filter(r => r.newsId === row.id), historyVersions: db.listHistory('news', row.id).map(h => h.version) } });
+    } catch (error) { if (error instanceof NewsCorrectionError) throw new HttpError(error.status, error.message); throw error; }
+  });
+  app.post('/api/v1/news/:id/corrections', requireAuth, (req, res) => {
+    try {
+      const record = createNewsCorrection(db, req.auth!, { ...req.body, newsId: req.params.id });
+      changeBus.emit('rev', db.currentRev()); res.json({ success: true, data: record });
+    } catch (error) { if (error instanceof NewsCorrectionError) throw new HttpError(error.status, error.message); throw error; }
+  });
   // --- Health ----------------------------------------------------------------
   app.get('/api/v1/admin/runtime', requirePermission('system.settings'), (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');

@@ -14,7 +14,8 @@ for (const width of [390, 1440]) test(`prompter controls and keyboard at ${width
     const story = bootstrap.collections.bulletinStories[0].d;
     const response = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [
       { c: 'bulletins', op: 'upsert', id, d: { ...bulletin, id, title: 'اختبار الملقّن', approvalSteps: [], status: 'PLANNING' } },
-      ...[0, 1].map(index => ({ c: 'bulletinStories', op: 'upsert', id: `${id}-${index}`, d: { ...story, id: `${id}-${index}`, bulletinId: id, rank: index * 1000, slug: `فقرة اختبار ${index}`, script: 'نص قراءة طويل للتحقق من سلاسة التمرير والتحكم. '.repeat(80), type: 'READER', newsId: undefined, status: 'DRAFT', approvals: [], clipMediaId: undefined } })),
+      { c: 'pronunciationTerms', op: 'upsert', id: `pronunciation-${width}`, d: { id: `pronunciation-${width}`, term: `التحقق${width}`, pronunciation: 'التَحَقُّق', note: '', enabled: true } },
+      ...[0, 1].map(index => ({ c: 'bulletinStories', op: 'upsert', id: `${id}-${index}`, d: { ...story, id: `${id}-${index}`, bulletinId: id, rank: index * 1000, slug: `فقرة اختبار ${index}`, script: `التحقق${width} ` + 'نص قراءة طويل للتحقق من سلاسة التمرير والتحكم. '.repeat(80), type: 'READER', newsId: undefined, status: 'DRAFT', approvals: [], clipMediaId: undefined } })),
     ] } });
     expect((await response.json()).results.every((result: any) => result.ok)).toBe(true);
     await page.goto(`/bulletins/${id}`);
@@ -27,6 +28,13 @@ for (const width of [390, 1440]) test(`prompter controls and keyboard at ${width
     const modal = page.getByRole('dialog', { name: 'الملقّن', exact: true });
     await expect(modal).toBeVisible();
     const reader = modal.getByRole('region', { name: 'نص الملقّن' });
+    const beforeReference = await reader.evaluate(el => ({ scroll: el.scrollTop, height: el.clientHeight, text: el.textContent }));
+    const beforeSpeed = await modal.getByLabel('سرعة التمرير', { exact: true }).inputValue();
+    await modal.locator('.pronunciation-panel summary').click();
+    await expect(modal.locator('.pronunciation-panel')).toContainText('التَحَقُّق');
+    expect(await reader.evaluate(el => ({ scroll: el.scrollTop, height: el.clientHeight, text: el.textContent }))).toEqual(beforeReference);
+    await expect(modal.getByLabel('سرعة التمرير', { exact: true })).toHaveValue(beforeSpeed);
+    await modal.locator('.pronunciation-panel summary').click();
     await modal.getByRole('button', { name: 'ملء الشاشة (F)', exact: true }).click();
     await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('aria-label'))).toBe('الملقّن');
     await modal.getByRole('button', { name: 'ملء الشاشة (F)', exact: true }).click();

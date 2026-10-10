@@ -1,7 +1,8 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
-import React, { useState } from 'react';
+import { GuestFollowUp } from './GuestFollowUp';
+import React, { useRef, useState } from 'react';
 import { AlertTriangle, Phone, Plus, Replace, Send, Trash2, UserPlus } from 'lucide-react';
 import type { Episode, EpisodeGuest, Guest, RundownSegment, User } from '../../types';
 import { apiService } from '../../services/api';
@@ -31,7 +32,7 @@ interface Props {
   currentUser: User;
   canEditEpisode: boolean;
   canEditRundown: boolean;
-  onSaveEpisode: (data: Partial<Episode>) => void;
+  onSaveEpisode: (data: Partial<Episode>) => boolean | Promise<boolean>;
   onUpdateRundown: (segments: RundownSegment[]) => void;
 }
 
@@ -59,10 +60,16 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
 
   const bankOf = (id: string) => allGuests.find((g) => g.id === id);
 
-  const saveList = (next: any[]) => onSaveEpisode({ id: episode.id, guests: next.map(clean) });
+  const saveGuard = useRef(false);
+  const saveList = async (next: any[]) => {
+    if (saveGuard.current) return false;
+    saveGuard.current = true;
+    try { return await onSaveEpisode({ id: episode.id, guests: next.map(clean) }); }
+    finally { saveGuard.current = false; }
+  };
 
   const update = (key: string, patch: Partial<EpisodeGuest>) => {
-    saveList(
+    return saveList(
       list.map((g) => {
         if (guestKey(g) !== key) return g;
         const next = { ...g, ...patch };
@@ -272,6 +279,8 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                 </label>
               </div>
 
+              <GuestFollowUp guest={g} users={apiService.getUsers()} canEdit={canEditEpisode} onSave={patch => saveList(list.map(item => guestKey(item) === key ? { ...item, ...patch } : item))} />
+
               <div className="text-xs space-y-1">
                 <span className="font-bold text-slate-600">الفقرات:</span>
                 {segs.length === 0 ? (
@@ -354,9 +363,12 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               {canEditEpisode && dirty && (
                 <button
                   type="button"
-                  onClick={() => {
-                    update(key, { cgName, cgTitle, briefPoints });
-                    setDrafts({ ...drafts, [key]: {} });
+                  onClick={async () => {
+                    try {
+                      if (await update(key, { cgName, cgTitle, briefPoints })) {
+                        setDrafts(prev => ({ ...prev, [key]: { ...prev[key], cgName: prev[key]?.cgName === draft.cgName ? undefined : prev[key]?.cgName, cgTitle: prev[key]?.cgTitle === draft.cgTitle ? undefined : prev[key]?.cgTitle, briefPoints: prev[key]?.briefPoints === draft.briefPoints ? undefined : prev[key]?.briefPoints } }));
+                      }
+                    } catch { notify({ type: 'error', message: 'تعذر حفظ بيانات الضيف؛ المسودة باقية' }); }
                   }}
                   className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold"
                 >
@@ -376,12 +388,15 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                   ))}
                 {canEditEpisode && (
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
                       const note = (draft.note || '').trim();
                       if (!note) return;
-                      update(key, { contactLog: [...(g.contactLog || []), { at: new Date().toISOString(), byName: currentUser.fullName, note }] });
-                      setDrafts({ ...drafts, [key]: { ...draft, note: '' } });
+                      try {
+                        if (await update(key, { contactLog: [...(g.contactLog || []), { at: new Date().toISOString(), byName: currentUser.fullName, note }] })) {
+                          setDrafts(prev => ({ ...prev, [key]: { ...prev[key], note: prev[key]?.note === draft.note ? '' : prev[key]?.note } }));
+                        }
+                      } catch { notify({ type: 'error', message: 'تعذر حفظ ملاحظة التواصل؛ النص باقٍ' }); }
                     }}
                     className="flex gap-1.5"
                   >

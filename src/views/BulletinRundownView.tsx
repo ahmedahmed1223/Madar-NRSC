@@ -624,7 +624,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {(s.graphics || []).length > 0 && <span className="text-[10px] text-purple-700">CG×{s.graphics!.length}</span>}
                       {s.newsId && onOpenNews && (
                         <button type="button" onClick={() => onOpenNews(s.newsId!)} className="text-[10px] text-indigo-700 hover:underline">
-                          الخبر
+                            الخبر {apiService.getNewsCorrections().some(r => r.newsId === s.newsId) ? '· تصحيح مسجل' : ''}
                         </button>
                       )}
                     </div>

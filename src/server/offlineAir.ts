@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { matchingPronunciations } from '../shared/pronunciation';
 import type { NewsroomDatabase } from './db';
 import type { AuthContext } from './auth';
 import { canRead } from './policy';
@@ -57,5 +58,6 @@ export function prepareOfflinePacket(db: NewsroomDatabase, auth: AuthContext, sh
     canEdit: !!db.getRow('settings', 'singleton')?.d.allowOfflineScriptEdits && canEdit,
   };
   packet.proof = crypto.createHmac('sha256', signingKey(db)).update(identity(packet)).digest('hex');
+  packet.pronunciationNotes = matchingPronunciations(packet.show.segments.map(s => s.script).join('\n'), db.listCollection('pronunciationTerms').map(r => r.d).filter(term => canRead(auth, 'pronunciationTerms', term)));
   return offlineAirPacketSchema.parse(packet);
 }

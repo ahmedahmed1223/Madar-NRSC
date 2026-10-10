@@ -5,6 +5,7 @@ import { createLocalSession, reduceLocalSession, localTiming, offlineClockJump, 
 import type { OfflineAirPacket } from '../shared/offlineAir';
 import { plainText } from '../shared/bulletins';
 import { OfflineReconnectPanel } from './OfflineReconnectPanel';
+import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
 import { OfflineViewerControls } from './OfflineViewerControls';
 import { OfflineScriptDrafts, type OfflineScriptDraft } from './OfflineScriptDrafts';
 
@@ -102,7 +103,7 @@ export function OfflineAirApp() {
   const segment = unlocked.packet.show.segments[readingIndex];
   const timing = localTiming(session, now);
   const viewerControls = <OfflineViewerControls onMove={delta => void selectReading(readingIndex + delta)} onFont={delta => setFont(value => Math.max(22, Math.min(60, value + delta)))}/>;
-  const reconnect = <OfflineReconnectPanel packet={unlocked.packet} session={session}/>;
+  const reconnect = <><PronunciationPanel notes={unlocked.packet.pronunciationNotes ?? []} preparedAt={unlocked.packet.preparedAt}/><OfflineReconnectPanel packet={unlocked.packet} session={session}/></>;
   return <main><header><h1>{unlocked.packet.show.title}</h1><span>تشغيل محلي منفصل عن بث الفريق</span>{viewerControls}<button type="button" aria-label="تصدير النسخة المشفرة" title="تصدير النسخة المشفرة" onClick={() => void exportLocal()}><Download size={18}/></button><button type="button" onClick={() => { generation.current++; setUnlocked(null); setSession(null); setDrafts({}); }}><Lock size={18}/> قفل النسخة</button></header>{error && <p role="alert">{error}</p>}{(clockHeld || timing.clockReview) && <section role="alert"><p>تغير وقت الجهاز؛ راجع الساعة قبل استئناف التوقيت المحلي</p><button onClick={async () => {
       if (Date.now() < session.checkpointAt) { setError('صحح الساعة أولاً للحفاظ على ترتيب السجل'); return; }
       if (guard.current) return; guard.current = true;

@@ -499,6 +499,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                           </div>
                         )}
                         <div className="font-bold text-slate-800 text-sm">{seg.title}</div>
+                        {seg.newsId && RbacService.hasPermission(apiService.getCurrentUser(), 'news.view') && apiService.getNewsCorrections().some(r => r.newsId === seg.newsId) && <a href={`/news/${encodeURIComponent(seg.newsId)}`} className="inline-flex min-h-11 items-center text-xs text-rose-700 underline">تصحيح مسجل</a>}
                         {seg.scriptText && (
                           <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
                             {seg.scriptText}

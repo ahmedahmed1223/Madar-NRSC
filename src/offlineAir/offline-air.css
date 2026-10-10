@@ -20,3 +20,7 @@ article { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; padd
 .unlock { max-width: 520px; margin: 12vh auto; }
 .unlock form { display: grid; gap: 20px; }
 .unlock input, select { min-width: 0; max-width: 100%; }
+.pronunciation-panel { margin: 16px 0; padding: 12px; border: 1px solid #52525b; border-radius: 4px; color: #fafafa; background: #18181b; overflow-wrap: anywhere; }
+.pronunciation-panel summary { min-height: 44px; cursor: pointer; }
+.pronunciation-panel input { width: 100%; }
+.pronunciation-panel ul { padding-inline-start: 24px; }

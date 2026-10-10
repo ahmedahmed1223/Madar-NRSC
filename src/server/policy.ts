@@ -1,4 +1,7 @@
 import { prefsError } from '../shared/notifications';
+import { guestFollowUpError } from '../shared/guestFollowUp';
+import { pronunciationError } from '../shared/pronunciation';
+import { normalizeArabic } from '../shared/search';
 import { normalizeProductionName, productionPersonError } from '../shared/productionPeople';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { reviewThreadError } from '../shared/reviewThreads';
@@ -190,6 +193,11 @@ const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (after && !after.deletedAt) {
     const err = episodePlanError(after);
     if (err) return err;
+    for (const guest of after.guests || []) {
+      const previous = (before?.guests || []).find((g: any) => (g.id || g.guestId) === (guest.id || guest.guestId));
+      const followUpError = guestFollowUpError(guest, list?.('users') || [], previous);
+      if (followUpError) return followUpError;
+    }
   }
   // An episode is only declared ready for air when every department has delivered.
   if (after?.status === 'READY_FOR_BROADCAST' && before?.status !== 'READY_FOR_BROADCAST' && !after?.deletedAt) {
@@ -329,6 +337,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   users: usersPolicy,
   roles: rolesPolicy,
   news: newsPolicy,
+  newsCorrections: () => 'سجل التصحيحات يكتب من الخادم فقط ولا يمكن تعديله أو حذفه',
   stories: ({ auth, kind, before, after }) =>
     kind === 'delete' || isSoftDelete(before, after)
       ? auth.can('news.delete') ? null : DENIED
@@ -351,6 +360,16 @@ export const POLICIES: Record<CollectionName, Policy> = {
     return null;
   },
   sources: referencedPolicy('sourceId', 'المصدر'),
+  pronunciationTerms: ({ auth, kind, after, list }) => {
+    if (!auth.can('system.settings')) return DENIED;
+    if (kind === 'delete') return null;
+    const invalid = pronunciationError(after);
+    if (invalid) return invalid;
+    const other = (list?.('pronunciationTerms') || []).filter(p => p.id !== after.id && p.enabled && !p.deletedAt);
+    if (after.enabled && other.some(p => normalizeArabic(p.term) === normalizeArabic(after.term))) return 'الاسم موجود بالفعل في قاموس النطق';
+    if (after.enabled && other.length >= 2000) return 'الحد الأقصى 2000 اسم مفعّل';
+    return null;
+  },
   programTypes: require('system.settings'),
   settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),
   notifications: notificationsPolicy,
@@ -477,8 +496,13 @@ export const POLICIES: Record<CollectionName, Policy> = {
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
-export function canRead(auth: AuthContext, collection: CollectionName, data: any): boolean {
+export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
   switch (collection) {
+    case 'newsCorrections':
+      const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
+      return !!news && !news.deletedAt && auth.can('news.view') && canRead(auth, 'news', news);
+    case 'pronunciationTerms':
+      return any(auth, 'system.settings', 'news.view', 'episodes.view', 'rundown.presenter_teleprompter', 'bulletins.view');
     case 'reviewThreads':
       return data?.collection === 'news' ? auth.can('news.view') : canRead(auth, 'bulletinStories', data);
     case 'comments':

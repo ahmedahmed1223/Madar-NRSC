@@ -2,6 +2,9 @@ import { notify } from '../services/notify';
 import { ReviewThreads } from '../components/editor/ReviewThreads';
 import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
+import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
+import { NewsCorrectionsPanel } from '../components/editor/NewsCorrectionsPanel';
+import { matchingPronunciations } from '../shared/pronunciation';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { ProofreadButton } from '../components/editor/WritingAids';
@@ -792,6 +795,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       )}
 
+      <PronunciationPanel notes={matchingPronunciations(content, apiService.getPronunciationTerms())} />
       {/* Top Header & Actions Bar */}
       <div className="sm:sticky sm:top-16 z-20 bg-white border-b border-slate-200 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1811,6 +1815,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         }
       />
 
+      {newsItem?.id && <NewsCorrectionsPanel newsId={newsItem.id} dirty={isDirty} canRegister={can('news.review') || can('news.edit_any')} />}
       {newsItem?.id && <ReviewThreads collection="news" entityId={newsItem.id} text={content} version={newsItem.updatedAt || 'legacy'} canPost={!saving && (canEditContent || can('news.review'))} />}
       <RequestFormPage
         isOpen={!!requestDraft}
