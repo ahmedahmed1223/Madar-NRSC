@@ -178,6 +178,10 @@ export class DataStore {
     return this.dirty.size + this.inFlight.size;
   }
 
+  isServerOnline() {
+    return this.online;
+  }
+
   private emitStatus() {
     this.emit({ type: 'sync-status', pending: this.pendingCount(), online: this.online });
   }

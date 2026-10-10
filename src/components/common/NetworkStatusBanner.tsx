@@ -1,72 +1,45 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { dataStore } from '../../services/dataStore';
+import { connectionFeedback } from '../../shared/saveFeedback';
 
-/**
- * Shows when this workstation cannot reach the server. Edits made meanwhile are kept
- * on this device and pushed automatically once the connection returns.
- */
 export const NetworkStatusBanner: React.FC = () => {
   const { isOnline: browserOnline } = useOnlineStatus();
-  const [serverOnline, setServerOnline] = useState(true);
+  const [serverOnline, setServerOnline] = useState(dataStore.isServerOnline());
   const [pending, setPending] = useState(dataStore.pendingCount());
-  const [justRecovered, setJustRecovered] = useState(false);
-
-  useEffect(
-    () =>
-      dataStore.subscribe((evt) => {
-        if (evt.type !== 'sync-status') return;
-        setPending(evt.pending);
-        setServerOnline((prev) => {
-          if (!prev && evt.online) {
-            setJustRecovered(true);
-            setTimeout(() => setJustRecovered(false), 4000);
-          }
-          return evt.online;
-        });
-      }),
-    []
-  );
-
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(false);
+  const busy = useRef(false);
+  useEffect(() => dataStore.subscribe(evt => {
+    if (evt.type !== 'sync-status') return;
+    setPending(evt.pending);
+    setServerOnline(evt.online);
+  }), []);
   const online = browserOnline && serverOnline;
-
-  if (online && !justRecovered) return null;
-
-  if (online) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="fixed top-0 inset-x-0 z-50 bg-emerald-700 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-md"
-      >
-        <Wifi className="w-4 h-4" />
-        <span>{pending > 0 ? `عاد الاتصال بالخادم — جارٍ إرسال ${pending} تعديل` : 'عاد الاتصال بالخادم وتمت مزامنة كل التعديلات'}</span>
-      </div>
-    );
-  }
-
+  const retry = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setRetrying(true);
+    setRetryError(false);
+    try { await dataStore.flush(); }
+    catch { setRetryError(true); }
+    finally { busy.current = false; setRetrying(false); }
+  };
   return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className="fixed top-0 inset-x-0 z-50 bg-amber-700 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg"
-    >
-      <div className="flex items-center gap-2 mx-auto">
-        <WifiOff className="w-4 h-4 text-amber-200" />
-        <span>
-          <strong>انقطع الاتصال بالخادم.</strong> تُحفظ تعديلاتك مؤقتاً على هذا الجهاز وتُرسل تلقائياً عند عودة الاتصال
-          {pending > 0 && ` (${pending} بانتظار الإرسال)`}. قد يرفض الخادم ما يتعارض مع تعديلات زملائك في الأثناء.
-        </span>
+    <div className={`shrink-0 border-b px-3 sm:px-4 py-1 text-xs flex flex-wrap items-center gap-x-3 gap-y-1 ${online ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>
+      <div role="status" aria-live="polite" className="flex items-center gap-2 min-w-0">
+        {online ? <Wifi className="w-4 h-4 shrink-0" /> : <WifiOff className="w-4 h-4 shrink-0" />}
+        <span>{connectionFeedback(browserOnline, serverOnline, pending)}</span>
       </div>
-      <button
-        type="button"
-        onClick={() => void dataStore.flush()}
-        className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0"
-      >
-        <RefreshCw className="w-3 h-3" />
-        <span>إعادة المحاولة</span>
-      </button>
+      {!online && <span>تحقق من حالة حفظ كل محرر قبل مغادرته.</span>}
+      {pending > 0 && <button type="button" disabled={!browserOnline || retrying} onClick={() => void retry()}
+        className="min-h-11 px-2 flex items-center gap-1 font-semibold rounded border border-slate-300 disabled:opacity-50"
+        title="إعادة إرسال التعديلات المعلقة">
+        <RefreshCw className={`w-4 h-4 ${retrying ? 'animate-spin' : ''}`} />
+        {retrying ? 'جارٍ إعادة المحاولة...' : 'إعادة محاولة المزامنة'}
+      </button>}
+      {retryError && <span role="alert">تعذرت إعادة المحاولة؛ تحقق من الاتصال.</span>}
     </div>
   );
 };

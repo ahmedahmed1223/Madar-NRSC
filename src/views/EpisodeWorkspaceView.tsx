@@ -28,6 +28,7 @@ import { RundownTable } from '../components/rundown/RundownTable';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
+import { saveFeedback, type SaveState } from '../shared/saveFeedback';
 
 interface EpisodeWorkspaceViewProps {
   episode: Episode;
@@ -156,16 +157,24 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
 
   const [savingScript, setSavingScript] = useState(false);
+  const [scriptSaveState, setScriptSaveState] = useState<SaveState>('idle');
+  const savingScriptRef = useRef(false);
   const handleSaveIntroScript = async () => {
-    if (savingScript) return;
+    if (savingScriptRef.current || !canEditEpisode || lock.status === 'acquiring') return;
+    savingScriptRef.current = true;
     const savedText = introScript;
     setSavingScript(true);
     try {
       if (await onSaveEpisode({ id: episode.id, introScript: savedText })) {
         loadedScriptRef.current = savedText;
         scriptDraft.clearDraft();
+        setScriptSaveState('saved');
+      } else {
+        setScriptSaveState('failed');
       }
-    } finally { setSavingScript(false); }
+    } catch {
+      setScriptSaveState('failed');
+    } finally { savingScriptRef.current = false; setSavingScript(false); }
   };
 
   return (
@@ -550,17 +559,20 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveIntroScript}
-                disabled={savingScript}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                disabled={savingScript || lock.status === 'acquiring'}
+                className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                {savingScript ? 'جارٍ حفظ السكريبت...' : 'حفظ السكريبت'}
+                {savingScript ? 'جارٍ حفظ السكريبت...' : scriptSaveState === 'failed' ? 'إعادة محاولة حفظ السكريبت' : 'حفظ السكريبت'}
               </button>
               )}
             </div>
           </div>
 
           <DraftStatus draft={scriptDraft} />
+          <p role="status" aria-label="حالة حفظ السكريبت" aria-live="polite" className="text-xs text-slate-700">
+            {saveFeedback(savingScript, scriptSaveState, introScript !== loadedScriptRef.current)}
+          </p>
           {canEditEpisode && undoScript !== null && (
             <button type="button" disabled={savingScript} onClick={() => { setIntroScript(undoScript); setUndoScript(null); }}
               className="min-h-11 px-3 text-sm text-blue-700 font-semibold">
