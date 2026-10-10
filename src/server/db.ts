@@ -439,6 +439,14 @@ export class NewsroomDatabase {
   }
 
   /** Soft-delete (tombstone) so other browsers learn about the removal via the change feed. */
+  /** Ownership survives deletion, but private tombstone payloads never leave the server. */
+  savedNewsFilterOwner(id: string): string | null {
+    const row = this.db.prepare('SELECT data FROM entities WHERE collection = ? AND id = ?').get('savedNewsFilters', id) as { data: string } | undefined;
+    if (!row) return null;
+    const data = JSON.parse(row.data);
+    return typeof data?.ownerId === 'string' ? data.ownerId : null;
+  }
+
   deleteRow(collection: CollectionName, id: string, userId: string | null): EntityRow | null {
     const rev = this.nextRev();
     const res = this.db

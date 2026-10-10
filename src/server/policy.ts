@@ -1,4 +1,5 @@
 import { prefsError } from '../shared/notifications';
+import { savedNewsFilterError } from '../shared/savedNewsFilters';
 import { guestFollowUpError } from '../shared/guestFollowUp';
 import { pronunciationError } from '../shared/pronunciation';
 import { normalizeArabic } from '../shared/search';
@@ -490,6 +491,15 @@ export const POLICIES: Record<CollectionName, Policy> = {
   activityLogs: logPolicy,
   auditLogs: logPolicy,
   notificationPrefs: notificationPrefsPolicy,
+  savedNewsFilters: ({ auth, kind, before, after, list }) => {
+    if (before && before.ownerId !== auth.user.id) return DENIED;
+    if (kind === 'delete') return null;
+    if (after?.ownerId !== auth.user.id) return DENIED;
+    const error = savedNewsFilterError(after);
+    if (error) return error;
+    if (kind === 'create' && (list?.('savedNewsFilters') || []).filter(row => row.ownerId === auth.user.id).length >= 30) return 'يمكن حفظ 30 فلترًا كحد أقصى؛ احذف فلترًا قبل إضافة آخر';
+    return null;
+  },
   diary: diaryPolicy,
   resources: resourcesPolicy,
   bookings: bookingsPolicy,
@@ -498,6 +508,8 @@ export const POLICIES: Record<CollectionName, Policy> = {
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
   switch (collection) {
+    case 'savedNewsFilters':
+      return data?.ownerId === auth.user.id;
     case 'newsCorrections':
       const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
       return !!news && !news.deletedAt && auth.can('news.view') && canRead(auth, 'news', news);

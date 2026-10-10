@@ -474,6 +474,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
   });
 
+  app.get('/api/v1/saved-news-filters', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ rows: db.listCollection('savedNewsFilters').filter(row => row.d?.ownerId === req.auth!.user.id) });
+  });
+
   app.get('/api/v1/air-offline/packet/:showId', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try { res.json({ success: true, packet: prepareOfflinePacket(db, req.auth!, req.params.showId, APP_VERSION) }); }

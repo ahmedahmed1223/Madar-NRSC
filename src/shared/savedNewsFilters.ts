@@ -1,4 +1,4 @@
-import { ENTITY_ID_PATTERN } from './collections';
+import { ENTITY_ID_PATTERN, type EntityRow } from './collections';
 import { NEWS_STATUS_LABELS } from './newsWorkflow';
 import type { NewsStatus } from '../types';
 
@@ -23,6 +23,9 @@ export interface SavedNewsFilter {
   createdAt: string;
   updatedAt: string;
 }
+
+export type SavedNewsFilterRow = Omit<EntityRow, 'd'> & { d: SavedNewsFilter };
+export type SavedNewsFilterInput = Pick<SavedNewsFilter, 'id' | 'schemaVersion' | 'name' | 'definition' | 'pinned'>;
 
 export const DEFAULT_NEWS_FILTER: SavedNewsFilterDefinition = {
   activeTab: 'ALL', searchQuery: '', selectedCategory: 'ALL', selectedPriority: 'ALL',

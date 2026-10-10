@@ -263,6 +263,7 @@ export class SyncService {
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
+    if (row.c === 'savedNewsFilters' && row.deleted) return this.db.savedNewsFilterOwner(row.id) === auth.user.id;
     return row.deleted ? true : canRead(auth, row.c, row.d, (c, id) => this.db.getRow(c, id)?.d);
   }
 
@@ -510,6 +511,12 @@ export class SyncService {
       return this.db.transaction(() => {
         const current = this.db.getRow(collection, id);
         const before = current?.d ?? null;
+        if (collection === 'savedNewsFilters') {
+          const owner = this.db.savedNewsFilterOwner(id);
+          if (owner && owner !== auth.user.id) return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا الفلتر' } as SyncOpResult;
+          if (!current && this.db.getRow(collection, id, true)?.deleted && op.op === 'upsert') return { ok: false, code: 'CONFLICT', message: 'حُذف هذا الفلتر؛ أنشئ فلترًا جديدًا بعد مراجعة الإعدادات' } as SyncOpResult;
+          if (current && op.op === 'delete' && op.baseV !== current.v) return { ok: false, code: 'CONFLICT', message: 'تغير الفلتر؛ راجع النسخة الحالية قبل حذفه', current } as SyncOpResult;
+        }
 
         // Story locks: nobody else may change or delete a story while its editor holds the lock.
         if (LOCKABLE_COLLECTIONS.has(collection) && current) {
@@ -567,6 +574,11 @@ export class SyncService {
         let after: any = { ...op.d };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'savedNewsFilters') {
+          const now = new Date().toISOString();
+          after = { ...after, ownerId: auth.user.id, createdAt: before?.createdAt || now, updatedAt: now,
+            name: typeof after.name === 'string' ? after.name.trim() : after.name };
+        }
         if (collection === 'pronunciationTerms') {
           const now = new Date().toISOString();
           after = { id, term: after.term, pronunciation: after.pronunciation, note: after.note, enabled: after.enabled,

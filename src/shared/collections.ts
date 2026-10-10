@@ -52,6 +52,7 @@ export const COLLECTIONS = {
   bulletinFormats: { storageKey: 'nrcs_bulletin_formats_v1', kind: 'list' },
   /** Each colleague's notification channels and wire watch words; id = userId (private). */
   notificationPrefs: { storageKey: 'nrcs_notification_prefs_v1', kind: 'list' },
+  savedNewsFilters: { storageKey: 'madar_saved_news_filters_v1', kind: 'list' },
   /** Planning diary (news agenda): upcoming events, coverage decisions and assignments. */
   diary: { storageKey: 'nrcs_diary_v1', kind: 'list' },
   /** Bookable resources: studios, cameras, SNG/live units, edit suites, crews. */
