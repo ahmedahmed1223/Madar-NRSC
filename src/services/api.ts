@@ -1,6 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { pronunciationDraftConflict } from '../shared/pronunciation';
 import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
+import { savedFilterRequest } from './savedNewsFilterTransport';
 import type { SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
@@ -1549,29 +1550,29 @@ export class ApiService {
     return getStored(COLLECTIONS.pronunciationTerms.storageKey, []);
   }
 
-  static async getSavedNewsFilterRows(): Promise<SavedNewsFilterRow[]> {
-    const result = await apiFetch<{ rows: SavedNewsFilterRow[] }>('/api/v1/saved-news-filters');
+  static async getSavedNewsFilterRows(signal?: AbortSignal): Promise<SavedNewsFilterRow[]> {
+    const result = await savedFilterRequest<{ rows: SavedNewsFilterRow[] }>('/api/v1/saved-news-filters', {}, signal);
     return result.rows;
   }
 
-  static async saveSavedNewsFilter(value: SavedNewsFilterInput, baseV?: number): Promise<SavedNewsFilterRow> {
+  static async saveSavedNewsFilter(value: SavedNewsFilterInput, baseV?: number, signal?: AbortSignal): Promise<SavedNewsFilterRow> {
     const error = savedNewsFilterError(value);
     if (error) throw new Error(error);
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('اتصل بالخادم لحفظ الفلتر');
-    const response = await apiFetch<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
+    const response = await savedFilterRequest<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
       method: 'POST', json: { ops: [{ c: 'savedNewsFilters', op: 'upsert', id: value.id, d: value, baseV }] },
-    });
+    }, signal);
     const result = response.results[0];
     if (!result) throw new Error('لم يؤكد الخادم حفظ الفلتر');
     if (result.ok === false) throw new Error(result.message || 'لم يؤكد الخادم حفظ الفلتر');
     return result.row as SavedNewsFilterRow;
   }
 
-  static async deleteSavedNewsFilter(id: string, baseV: number): Promise<void> {
+  static async deleteSavedNewsFilter(id: string, baseV: number, signal?: AbortSignal): Promise<void> {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('اتصل بالخادم لحذف الفلتر');
-    const response = await apiFetch<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
+    const response = await savedFilterRequest<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
       method: 'POST', json: { ops: [{ c: 'savedNewsFilters', op: 'delete', id, baseV }] },
-    });
+    }, signal);
     const result = response.results[0];
     if (!result) throw new Error('لم يؤكد الخادم حذف الفلتر');
     if (result.ok === false) throw new Error(result.message || 'لم يؤكد الخادم حذف الفلتر');

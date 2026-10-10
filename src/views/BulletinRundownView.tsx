@@ -98,10 +98,14 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'READY' | 'APPROVED'>('ALL');
   const [editing, setEditing] = useState<Partial<BulletinStory> | null>(null);
   useEffect(() => {
-    const requested = sessionStorage.getItem('madar-open-bulletin-story');
-    if (!requested) return;
-    const selected = apiService.getBulletinStories(bulletinId).find(s => s.id === requested);
-    if (selected) { sessionStorage.removeItem('madar-open-bulletin-story'); setEditing(selected); }
+    try {
+      const requested = sessionStorage.getItem('madar-open-bulletin-story');
+      if (!requested) return;
+      const selected = apiService.getBulletinStories(bulletinId).find(s => s.id === requested);
+      if (selected) { sessionStorage.removeItem('madar-open-bulletin-story'); setEditing(selected); }
+    } catch {
+      // The bulletin itself remains usable when browser storage is unavailable.
+    }
   }, [bulletinId]);
   const [addMenu, setAddMenu] = useState(false);
   const [source, setSource] = useState<'NEWS' | 'WIRES' | 'COPY' | null>(null);

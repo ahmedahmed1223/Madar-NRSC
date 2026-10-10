@@ -6,6 +6,7 @@ import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { newId } from '../../shared/ids';
+import { SavedFilterUnknownOutcome } from '../../services/savedNewsFilterTransport';
 import { savedNewsFilterError, type SavedNewsFilterDefinition, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../../shared/savedNewsFilters';
 
 interface Props {
@@ -15,10 +16,17 @@ interface Props {
 }
 
 const control = 'min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50';
+// Confirmed definitions only, for navigation during this tab's offline visit.
+let confirmedCache: { userId: string; rows: SavedNewsFilterRow[] } | null = null;
+const validRows = (rows: SavedNewsFilterRow[], userId: string) => rows.filter(row => row.d?.ownerId === userId && row.id === row.d.id && Number.isInteger(row.v) && row.v > 0 && !savedNewsFilterError(row.d)).slice(0, 30);
 
 export function SavedNewsFilters({ userId, definition, onApply }: Props) {
   const { isOnline } = useOnlineStatus();
-  const [rows, setRows] = useState<SavedNewsFilterRow[]>([]);
+  const [rows, setRows] = useState<SavedNewsFilterRow[]>(() => {
+    if (confirmedCache?.userId === userId) return validRows(confirmedCache.rows, userId);
+    confirmedCache = null;
+    return [];
+  });
   const [selected, setSelected] = useState('');
   const [manage, setManage] = useState(false);
   const [draft, setDraft] = useState<SavedNewsFilterInput | null>(null);
@@ -32,25 +40,33 @@ export function SavedNewsFilters({ userId, definition, onApply }: Props) {
   const nameInput = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const wasPending = useRef(false);
+  const mutation = useRef<AbortController | null>(null);
+  const unknown = useRef(new Set<string>());
+  const rememberRows = (next: SavedNewsFilterRow[]) => {
+    const safe = validRows(next, userId);
+    confirmedCache = { userId, rows: safe };
+    setRows(safe);
+  };
   useLayoutEffect(() => {
     const finished = wasPending.current && !pending;
     wasPending.current = pending;
     if (finished) (draft ? nameInput.current : manage ? reloadButton.current : opener.current)?.focus();
   }, [pending, draft, manage]);
   const closeModal = () => {
-    if (pending) return;
+    if (pending) { mutation.current?.abort(); return; }
     setManage(false); setDraft(null); setError('');
     requestAnimationFrame(() => opener.current?.isConnected && opener.current.focus());
   };
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++loadGeneration.current; }; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++loadGeneration.current; mutation.current?.abort(); }; }, []);
 
   const reload = async () => {
+    if (mutation.current) return;
     const generation = ++loadGeneration.current;
     setLoading(true);
     try {
       const next = await apiService.getSavedNewsFilterRows();
       if (!mounted.current || generation !== loadGeneration.current) return;
-      setRows(next.filter(row => row.d.ownerId === userId));
+      rememberRows(next);
       setError('');
     } catch (e) {
       if (mounted.current && generation === loadGeneration.current) setError(e instanceof Error ? e.message : 'تعذر تحميل الفلاتر');
@@ -74,29 +90,50 @@ export function SavedNewsFilters({ userId, definition, onApply }: Props) {
     if (validation) { setError(validation); return; }
     setPending(true); setError('');
     ++loadGeneration.current;
+    const controller = new AbortController(); mutation.current = controller;
+    const key = `save:${draft.id}`;
     try {
-      const row = await apiService.saveSavedNewsFilter(draft, baseV);
+      let row: SavedNewsFilterRow | undefined;
+      if (unknown.current.has(key)) {
+        const latest = (await apiService.getSavedNewsFilterRows(controller.signal)).find(item => item.id === draft.id);
+        if (latest && latest.d.name === draft.name.trim() && latest.d.pinned === draft.pinned && Object.keys(draft.definition).every(field => latest.d.definition[field] === draft.definition[field])) row = latest;
+        else if ((latest && latest.v !== baseV) || (!latest && baseV !== undefined)) throw new Error('تغيرت النسخة؛ أعد تحميل الفلاتر وراجعها قبل الحفظ');
+      }
+      row ??= await apiService.saveSavedNewsFilter(draft, baseV, controller.signal);
       if (!mounted.current) return;
-      setRows(current => [...current.filter(item => item.id !== row.id), row]);
+      ++loadGeneration.current;
+      rememberRows([...rows.filter(item => item.id !== row.id), row]);
+      unknown.current.delete(key);
       setDraft(null);
       notify({ message: 'حُفظ الفلتر', type: 'success' });
     } catch (e) {
+      if (e instanceof SavedFilterUnknownOutcome) unknown.current.add(key);
       if (mounted.current) setError(`${e instanceof Error ? e.message : 'تعذر الحفظ'}. احتفظنا بالتعديل؛ عند تعارض النسخ أغلق النافذة وأعد تحميل الفلاتر ثم راجع النسخة الحالية.`);
-    } finally { if (mounted.current) { setPending(false); setLoading(false); } }
+    } finally { mutation.current = null; if (mounted.current) { setPending(false); setLoading(false); } }
   };
   const remove = async (row: SavedNewsFilterRow) => {
     if (pending || !isOnline) return;
     if (!await confirmDialog({ title: 'حذف الفلتر', message: `حذف الفلتر «${row.d.name}»؟ لا يحذف الأخبار.`, confirmLabel: 'حذف', danger: true })) return;
     if (!mounted.current) return;
     setPending(true); setError(''); ++loadGeneration.current;
+    const controller = new AbortController(); mutation.current = controller;
+    const key = `delete:${row.id}`;
     try {
-      await apiService.deleteSavedNewsFilter(row.id, row.v);
+      let alreadyDeleted = false;
+      if (unknown.current.has(key)) {
+        const latest = (await apiService.getSavedNewsFilterRows(controller.signal)).find(item => item.id === row.id);
+        alreadyDeleted = !latest;
+        if (latest && latest.v !== row.v) throw new Error('تغيرت النسخة؛ أعد تحميل الفلاتر قبل الحذف');
+      }
+      if (!alreadyDeleted) await apiService.deleteSavedNewsFilter(row.id, row.v, controller.signal);
       if (!mounted.current) return;
-      setRows(current => current.filter(item => item.id !== row.id));
+      ++loadGeneration.current;
+      rememberRows(rows.filter(item => item.id !== row.id));
+      unknown.current.delete(key);
       if (selected === row.id) setSelected('');
       notify({ message: 'حُذف الفلتر', type: 'success' });
-    } catch (e) { if (mounted.current) setError(e instanceof Error ? e.message : 'تعذر حذف الفلتر'); }
-    finally { if (mounted.current) { setPending(false); setLoading(false); } }
+    } catch (e) { if (e instanceof SavedFilterUnknownOutcome) unknown.current.add(key); if (mounted.current) setError(e instanceof Error ? e.message : 'تعذر حذف الفلتر'); }
+    finally { mutation.current = null; if (mounted.current) { setPending(false); setLoading(false); } }
   };
   const sorted = [...rows].sort((a, b) => Number(b.d.pinned) - Number(a.d.pinned) || a.d.name.localeCompare(b.d.name, 'ar'));
   const offlineReason = !isOnline ? 'اتصل بالخادم لحفظ الفلاتر أو حذفها' : '';
@@ -120,6 +157,7 @@ export function SavedNewsFilters({ userId, definition, onApply }: Props) {
     {rows.length >= 30 && <p className="text-xs text-slate-600">وصلت إلى الحد الأقصى: 30 فلترًا. احذف فلترًا لإضافة آخر.</p>}
     {error && !draft && !manage && <p role="alert" className="text-sm text-rose-700">{error} <button type="button" disabled={!isOnline || pending} className={control} onClick={() => void reload()}>إعادة التحميل</button></p>}
     <Modal isOpen={manage || !!draft} onClose={closeModal} title={draft ? baseV === undefined ? 'حفظ فلتر الأخبار' : 'تعديل الفلتر' : 'إدارة الفلاتر'} maxWidth="lg">
+      {pending && <div className="mb-3 flex flex-wrap items-center gap-2"><p role="status" className="text-sm">بانتظار تأكيد الخادم؛ إيقاف الانتظار لا يلغي عملية وصلت إليه.</p><button type="button" className={control} onClick={() => mutation.current?.abort()}>إيقاف الانتظار</button></div>}
       {error && <p role="alert" className="text-sm text-rose-700 mb-3">{error}</p>}
       {offlineReason && <p role="status" className="text-xs text-amber-700 mb-3">{offlineReason}</p>}
       {draft ? <form className="space-y-4" onSubmit={e => { e.preventDefault(); void save(); }}>

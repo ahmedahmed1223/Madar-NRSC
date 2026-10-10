@@ -347,11 +347,11 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-slate-700">تخصيص قائمة الأخبار</summary>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
           <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
-          <select id="news-page-size" value={PAGE_SIZE} onChange={e => { saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
+          <select id="news-page-size" value={PAGE_SIZE} onChange={e => { anchorRef.current = undefined; saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
           <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
             {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
           </fieldset>
-          <button type="button" onClick={() => { saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
+          <button type="button" onClick={() => { anchorRef.current = undefined; saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
         </div>
       </details>
       <NewsArchiveModal
@@ -918,7 +918,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 disabled={currentPage === 0}
-                onClick={() => setPage(currentPage - 1)}
+                onClick={() => { anchorRef.current = undefined; setPage(currentPage - 1); }}
                 className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 السابق
@@ -929,7 +929,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 disabled={currentPage >= pageCount - 1}
-                onClick={() => setPage(currentPage + 1)}
+                onClick={() => { anchorRef.current = undefined; setPage(currentPage + 1); }}
                 className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 التالي
