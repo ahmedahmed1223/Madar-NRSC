@@ -2,6 +2,8 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { pronunciationDraftConflict } from '../shared/pronunciation';
 import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
 import { savedFilterRequest } from './savedNewsFilterTransport';
+import { handoverRequest } from './handoverTransport';
+import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
 import type { SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
@@ -216,6 +218,24 @@ export function hasPermission(
 }
 
 export class ApiService {
+  static async getShiftHandovers(signal?: AbortSignal): Promise<HandoverRow[]> {
+    return (await handoverRequest<{ rows: HandoverRow[] }>('/api/v1/shift-handovers', {}, signal)).rows;
+  }
+  static async getShiftHandover(id: string, signal?: AbortSignal): Promise<HandoverRow> {
+    return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}`, {}, signal)).row;
+  }
+  static async saveShiftHandover(draft: HandoverDraftInput, baseV?: number, signal?: AbortSignal): Promise<HandoverRow> {
+    return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers${baseV === undefined ? '' : `/${encodeURIComponent(draft.id)}`}`, { method: baseV === undefined ? 'POST' : 'PATCH', json: baseV === undefined ? draft : { draft, baseV } }, signal)).row;
+  }
+  static async deleteShiftHandover(id: string, baseV: number, signal?: AbortSignal): Promise<void> {
+    await handoverRequest(`/api/v1/shift-handovers/${encodeURIComponent(id)}`, { method: 'DELETE', json: { baseV } }, signal);
+  }
+  static async publishShiftHandover(id: string, baseV: number, signal?: AbortSignal): Promise<HandoverRow> {
+    return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/publish`, { method: 'POST', json: { baseV } }, signal)).row;
+  }
+  static async acknowledgeShiftHandover(id: string, note: string, signal?: AbortSignal): Promise<HandoverRow> {
+    return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', json: { note } }, signal)).row;
+  }
   static getNewsCorrections(): import('../shared/newsCorrections').NewsCorrection[] {
     return getStored(COLLECTIONS.newsCorrections.storageKey, []);
   }

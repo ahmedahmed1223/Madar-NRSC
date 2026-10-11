@@ -90,3 +90,20 @@ it('never exposes server-only collections through generic bootstrap changes or m
     expect(res.body.results[0]).not.toHaveProperty('current');
   }
 });
+it('reading never acknowledges and explicit receipts require recipient membership and forbid self receipt', async () => {
+  expect((await recipient.get('/api/v1/shift-handovers/published')).body.row.receipts).toEqual([]);
+  expect((await post(recipient, '/published/acknowledge', { note: '' })).status).toBe(403);
+  for (const id of [authorId, recipientId]) server.db.writeRow('roster', `incoming-${id}`, { id: `incoming-${id}`, date: '2026-10-11', shift: 'EVENING', departmentId: 'newsroom', userId: id }, 0, null);
+  expect((await post(author, '/published/acknowledge', { note: '' })).status).toBe(403);
+  expect((await post(recipient, '/published/acknowledge', { note: '', userId: authorId })).status).toBe(400);
+  expect((await post(recipient, '/published/acknowledge', { note: 'a'.repeat(501) })).status).toBe(400);
+  const first = await post(recipient, '/published/acknowledge', { note: 'Received' });
+  expect(first.status).toBe(200);
+  const again = await post(recipient, '/published/acknowledge', { note: 'Do not overwrite' });
+  expect(again.body.receipt).toEqual(first.body.receipt);
+  expect((await recipient.get('/api/v1/shift-handovers/published')).body.row.receipts).toHaveLength(1);
+  server.db.deleteRow('roster', `incoming-${recipientId}`, null);
+  expect((await post(recipient, '/published/acknowledge', { note: '' })).status).toBe(403);
+  expect(server.db.listCollection('handoverReceipts').filter(r => r.d.publicationId === 'published')).toHaveLength(1);
+  expect((await manager.get('/api/v1/shift-handovers/correction')).body.row.receipts).toEqual([]);
+});

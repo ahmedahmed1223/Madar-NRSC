@@ -1,11 +1,12 @@
 import { Router } from 'express';
+import { createHash } from 'crypto';
 import type { AuthContext } from './auth';
 import { requireAuth } from './auth';
 import type { NewsroomDatabase } from './db';
 import type { EntityRow } from '../shared/collections';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { isDepartmentId } from '../shared/departments';
-import { handoverDraftError, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
+import { handoverDraftError, handoverPlainText, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
 import { canRead } from './policy';
 
 class HandoverError extends Error {
@@ -128,6 +129,17 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     const now = new Date().toISOString();
     const published = db.writeRow('shiftHandovers', row.id, { ...row.d, state: 'PUBLISHED', publishedAt: now, updatedAt: now }, row.p, auth.user.id);
     return { row: projectHandover(db, auth, published) };
+  }, true));
+  router.post('/:id/acknowledge', endpoint((auth, req) => {
+    const row = accessibleHandover(db, auth, req.params.id);
+    if (row.d.state !== 'PUBLISHED' || row.d.authorId === auth.user.id || !handoverRosterMembers(db, row.d).includes(auth.user.id)) deny();
+    if (Object.keys(req.body || {}).some(k => k !== 'note') || !handoverPlainText(req.body?.note ?? '', 500)) throw new HandoverError(400, 'ملاحظة الاستلام غير صالحة');
+    const id = `receipt-${createHash('sha256').update(JSON.stringify([row.id, auth.user.id])).digest('hex')}`;
+    const previous = db.getRow('handoverReceipts', id);
+    if (previous) return { receipt: previous.d, row: projectHandover(db, auth, row) };
+    const receipt = { id, publicationId: row.id, userId: auth.user.id, userName: auth.user.fullName, createdAt: new Date().toISOString(), note: req.body?.note || '' };
+    db.writeRow('handoverReceipts', id, receipt, db.positionBounds('handoverReceipts').min - 1, auth.user.id);
+    return { receipt, row: projectHandover(db, auth, row) };
   }, true));
   return router;
 }
