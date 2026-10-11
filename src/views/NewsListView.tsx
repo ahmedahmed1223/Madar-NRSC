@@ -1,5 +1,7 @@
 import { NewsVideosList } from '../components/news/NewsVideosEditor';
 import { SavedNewsFilters } from '../components/news/SavedNewsFilters';
+import { selectReviewDeadlines, submittedForReview, reviewDeadlineLabel } from '../shared/reviewDeadlines';
+import { useLiveData } from '../hooks/useLiveData';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { toLocalInputValue } from '../shared/dates';
@@ -79,7 +81,6 @@ const STATUS_RANK: Record<string, number> = { DRAFT: 0, IN_PROGRESS: 1, NEEDS_RE
 const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
   key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
-const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || item.updatedAt;
 
 export const NewsListView: React.FC<NewsListViewProps> = (props) => <NewsListContent key={`${props.currentUser.id}:${props.initialTab || 'ALL'}`} {...props} />;
 
@@ -96,6 +97,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   onReviewNews: openReview,
   initialTab = 'ALL',
 }) => {
+  useLiveData(['bulletins', 'bulletinStories', 'episodes', 'settings'], 60_000);
   const [listPreferences, saveListPreferences] = useNewsListPreferences(currentUser.id);
   const PAGE_SIZE = listPreferences.pageSize;
   const showColumn = (key: typeof NEWS_COLUMNS[number]) => listPreferences.columns.includes(key);
@@ -232,8 +234,11 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     if (!leavingRef.current) saveContext(contextRef.current);
   }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
 
-  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
-    (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
+  const reviewNow = Date.now();
+  const deadlines = selectReviewDeadlines(filteredNews, apiService.getBulletins(), apiService.getBulletinStories(), apiService.getEpisodes(), apiService.getSettings().defaultTimezone, reviewNow);
+  const newsById = new Map(filteredNews.map(n => [n.id, n]));
+  const reviewQueue = deadlines.map(row => newsById.get(row.newsId)!);
+  const deadlineById = new Map(deadlines.map(row => [row.newsId, row]));
 
   const handleRestore = (id: string) => {
     try {
@@ -394,10 +399,11 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           <h2 className="text-sm font-bold text-slate-800">طابور المراجعة ({reviewQueue.length})</h2>
           {reviewQueue.length === 0 ? <p className="text-sm text-slate-600">لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.</p> : reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => {
             const submitted = submittedForReview(item);
-            const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(submitted)) / 60000)) || 0;
+            const minutes = Math.max(0, Math.floor((reviewNow - Date.parse(submitted)) / 60000)) || 0;
             return <div key={item.id} className="flex flex-wrap items-center gap-2 border-b border-slate-100 py-2">
               <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map(n => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-0 break-words">{item.title}</button>
               <span className="text-xs text-slate-600">{item.authorName}</span>
+              <span className={`text-xs break-words ${deadlineById.get(item.id)?.overdue ? 'text-red-700' : 'text-slate-600'}`}>{reviewDeadlineLabel(deadlineById.get(item.id)!, reviewNow)}{deadlineById.get(item.id)?.destination ? ` · ${deadlineById.get(item.id)!.destination!.title}` : ''}</span>
               <Badge variant={item.priority === 'HIGH' || item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'danger' : 'default'} size="sm">{item.priority === 'HIGH' ? 'عالية' : item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'عاجلة' : 'عادية'}</Badge>
               <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>بانتظار المراجعة: {minutes < 60 ? `${minutes} دقيقة` : `${Math.floor(minutes / 60)} ساعة`}</span>
             </div>;

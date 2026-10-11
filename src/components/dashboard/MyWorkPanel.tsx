@@ -14,6 +14,7 @@ import { isRequestClosed, requestStatusName, requestTypeOf, episodeReadiness } f
 import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
+import { selectReviewDeadlines, reviewDeadlineLabel } from '../../shared/reviewDeadlines';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -90,6 +91,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review');
+  const now = referenceTime ?? Date.now();
 
   const myNews: Row[] = newsList
     .filter((n) => n.authorId === me && ['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION', 'REJECTED'].includes(n.status))
@@ -103,10 +105,8 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     }));
 
   const toReview: Row[] = canReview
-    ? newsList
-        .filter((n) => n.status === 'UNDER_REVIEW' && n.authorId !== me)
-        .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-        .map((n) => ({ id: n.id, title: n.title, meta: n.authorName || 'بانتظار المراجعة', tone: 'amber' as const, onClick: () => onOpenNews(n.id) }))
+    ? selectReviewDeadlines(newsList.filter(n => n.authorId !== me), apiService.getBulletins(), apiService.getBulletinStories(), episodes, apiService.getSettings().defaultTimezone, now)
+        .map((row) => { const n = newsList.find(n => n.id === row.newsId)!; return { id: n.id, title: n.title, meta: `${reviewDeadlineLabel(row, now)}${row.destination ? ` · ${row.destination.title}` : ''}`, tone: row.overdue ? 'red' as const : 'amber' as const, onClick: () => onOpenNews(n.id) }; })
     : [];
 
   const requests = apiService.getRequests();
@@ -124,7 +124,6 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     .filter((r) => r.requesterId === me && !isRequestClosed(r.status))
     .map((r) => ({ id: r.id, title: r.title, meta: `${departmentName(r.departmentId)} · ${requestStatusName(r.status)}`, onClick: () => onNavigate(`/requests/${encodeURIComponent(r.id)}`) }));
 
-  const now = referenceTime ?? Date.now();
   const myTasks: Row[] = tasks
     .filter((t) => (t.assigneeId || t.assignedToId) === me && OPEN_TASK(t))
     .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))
