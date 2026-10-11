@@ -15,6 +15,7 @@ import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
 import { selectReviewDeadlines, reviewDeadlineLabel } from '../../shared/reviewDeadlines';
+import { IncomingHandovers } from '../roster/ShiftHandovers';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -254,6 +255,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
 
   return (
     <div data-testid="my-work" className="space-y-3">
+      <IncomingHandovers currentUser={currentUser} onNavigate={onNavigate} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-blue-600" />

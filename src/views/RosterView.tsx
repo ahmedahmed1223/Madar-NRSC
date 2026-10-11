@@ -9,10 +9,13 @@ import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departmen
 import { onDutyAt, SHIFTS, ShiftId, RosterEntry } from '../shared/roster';
 import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
 import { FilterTabs } from '../components/common/FilterTabs';
+import { ShiftHandovers } from '../components/roster/ShiftHandovers';
 
 interface RosterViewProps {
   users: User[];
   currentUser: User;
+  onNavigate: (url: string) => void;
+  focusId?: string | null;
 }
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -27,7 +30,9 @@ const weekStartOf = (date: string) => {
 };
 
 /** Who is on duty in each department, per day and shift. */
-export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNavigate, focusId }) => {
+  const [tab, setTab] = useState<'roster' | 'handover'>(() => focusId === 'handover' || new URLSearchParams(window.location.search).get('tab') === 'handover' ? 'handover' : 'roster');
+  useEffect(() => { if (focusId === 'handover') setTab('handover'); }, [focusId]);
   const canManage = RbacService.hasPermission(currentUser, 'roster.manage');
   const [entries, setEntries] = useState<RosterEntry[]>(() => apiService.getRoster());
   const [weekStart, setWeekStart] = useState(() => weekStartOf(localDateString()));
@@ -70,8 +75,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
 
   const weekLabel = `${days[0]} — ${days[6]}`;
 
+  if (tab === 'handover') return <div className="space-y-4"><FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={setTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} /><ShiftHandovers currentUser={currentUser} onNavigate={onNavigate} /></div>;
+
   return (
     <div className="space-y-5">
+      <FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={setTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} />
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">

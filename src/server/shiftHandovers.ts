@@ -166,7 +166,7 @@ function alertHandoverRecipients(db: NewsroomDatabase, record: ShiftHandover, ki
     if (!handoverVisible(db, auth, record)) continue;
     const notificationId = `handover-${createHash('sha256').update(JSON.stringify([record.id, id, kind])).digest('hex')}`;
     if (db.getRow('notifications', notificationId, true)) continue;
-    writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: '/roster?tab=handover' }, { id: notificationId, createdAt: new Date(now).toISOString() });
+    writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: '/roster/handover' }, { id: notificationId, createdAt: new Date(now).toISOString() });
     sent++;
   }
   return sent;

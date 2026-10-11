@@ -16,7 +16,7 @@ beforeAll(async () => {
   version = created.body.row.v;
 });
 afterAll(() => server.close());
-const alerts = () => server.db.listCollection('notifications').filter(r => r.d.linkUrl === '/roster?tab=handover');
+const alerts = () => server.db.listCollection('notifications').filter(r => r.d.linkUrl === '/roster/handover');
 it('alerts current eligible recipients once without notes or delivery-consent bypass', async () => {
   expect((await post('/notify-shift/publish', { baseV: version })).status).toBe(200);
   expect((await post('/notify-shift/publish', { baseV: version })).status).toBe(409);

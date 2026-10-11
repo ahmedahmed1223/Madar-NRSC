@@ -37,6 +37,8 @@ export function routeToPath(s: RouteState): string {
       return s.programId ? `/programs/${clean(s.programId)}` : '/programs';
     case 'bulletins':
       return s.bulletinId ? `/bulletins/${clean(s.bulletinId)}` : '/bulletins';
+    case 'roster':
+      return s.focusId === 'handover' ? '/roster/handover' : '/roster';
     default:
       if (FOCUS_SCREENS.has(s.nav) && s.focusId) return `/${s.nav}/${clean(s.focusId)}`;
       return `/${s.nav}`;

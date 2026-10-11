@@ -1130,7 +1130,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               </div>
             )}
 
-            {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} />}
+            {activeNav === 'roster' && <RosterView users={allUsers} currentUser={currentUser} onNavigate={openLink} focusId={focusId} />}
 
             {activeNav === 'bulletins' &&
               (activeBulletinId ? (

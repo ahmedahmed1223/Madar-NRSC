@@ -30,4 +30,8 @@ describe('screen ⇄ address mapping', () => {
     expect(screenTitle('news-editor', 'عنوان')).toBe('عنوان · محرر الخبر · مدار');
     expect(screenTitle('settings')).toBe('الإعدادات · مدار');
   });
+  it('keeps the handover tab in the roster deep link', () => {
+    expect(routeToPath({ nav: 'roster', focusId: 'handover' })).toBe('/roster/handover');
+    expect(parsePath('/roster/handover')).toEqual({ view: 'roster', id: 'handover' });
+  });
 });
