@@ -1,5 +1,6 @@
 import { sanitizeDateSettings } from '../shared/dateFormat';
 import { correctionTarget, createNewsCorrection, NewsCorrectionError } from './newsCorrections';
+import { shiftHandoverRouter } from './shiftHandovers';
 import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
@@ -478,6 +479,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ rows: db.listCollection('savedNewsFilters').filter(row => row.d?.ownerId === req.auth!.user.id) });
   });
+  app.use('/api/v1/shift-handovers', shiftHandoverRouter(db, () => changeBus.emit('rev', db.currentRev())));
 
   app.get('/api/v1/air-offline/packet/:showId', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
