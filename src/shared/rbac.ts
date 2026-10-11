@@ -92,6 +92,9 @@ export const PERMISSION_CATEGORIES: { key: PermissionCategory; labelAr: string; 
 ];
 
 export const ALL_PERMISSIONS: PermissionDefinition[] = [
+  { code: 'handover.view', nameAr: 'قراءة تسليم الوردية', nameEn: 'View Shift Handover', description: 'قراءة التسليم للقسم أو الوردية المعيّنة والاستلام الصريح', category: 'TASKS', categoryNameAr: 'المهام والتنسيق', riskLevel: 'LOW' },
+  { code: 'handover.publish', nameAr: 'نشر تسليم الوردية', nameEn: 'Publish Shift Handover', description: 'كتابة ونشر تسليم الوردية ضمن القسم المسموح', category: 'TASKS', categoryNameAr: 'المهام والتنسيق', riskLevel: 'MEDIUM' },
+  { code: 'handover.manage', nameAr: 'إدارة تسليم الورديات', nameEn: 'Manage Shift Handovers', description: 'الاطلاع عبر الأقسام وإنشاء التصحيحات والتذكير دون انتحال الاستلام', category: 'TASKS', categoryNameAr: 'المهام والتنسيق', riskLevel: 'HIGH' },
   // --- NEWS ---
   {
     code: 'news.view',
@@ -571,6 +574,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'رئيس تحرير',
     isSystemRole: true,
     permissions: [
+      'handover.view', 'handover.publish', 'handover.manage',
       'diary.manage',
       'resources.book',
       'resources.manage',
@@ -619,6 +623,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'محرر صحفي',
     isSystemRole: true,
     permissions: [
+      'handover.view', 'handover.publish',
       'resources.book',
       'bulletins.edit',
       'news.view',
@@ -644,6 +649,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'منتج برامج',
     isSystemRole: true,
     permissions: [
+      'handover.view', 'handover.publish', 'handover.manage',
       'diary.manage',
       'resources.book',
       'resources.manage',
@@ -682,6 +688,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'مذيع ومقدم',
     isSystemRole: true,
     permissions: [
+      'handover.view',
       'news.view',
       'rundown.view',
       'rundown.presenter_teleprompter',
@@ -702,6 +709,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'مراسل ميداني',
     isSystemRole: true,
     permissions: [
+      'handover.view', 'handover.publish',
       'resources.book',
       'bulletins.edit',
       'news.view',
@@ -744,6 +752,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'طاقم فني',
     isSystemRole: true,
     permissions: [
+      'handover.view', 'handover.publish',
       'resources.book',
       'news.view',
       'rundown.view',

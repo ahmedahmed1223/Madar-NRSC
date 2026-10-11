@@ -263,6 +263,7 @@ export class SyncService {
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
+    if (row.c === 'shiftHandovers' || row.c === 'handoverReceipts') return false;
     if (row.c === 'savedNewsFilters' && row.deleted) return this.db.savedNewsFilterOwner(row.id) === auth.user.id;
     return row.deleted ? true : canRead(auth, row.c, row.d, (c, id) => this.db.getRow(c, id)?.d);
   }
@@ -510,6 +511,7 @@ export class SyncService {
     try {
       return this.db.transaction(() => {
         const current = this.db.getRow(collection, id);
+        if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
         if (collection === 'savedNewsFilters') {
           const owner = this.db.savedNewsFilterOwner(id);

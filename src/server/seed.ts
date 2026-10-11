@@ -182,6 +182,9 @@ function seedDemoBulletins(db: NewsroomDatabase) {
 
 /** Permissions added after roles were first stored: granted once to the system roles that need them. */
 const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
+  'handover.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'CREW'],
+  'handover.publish': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER', 'CREW'],
+  'handover.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'roster.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'requests.create': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
   'requests.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],

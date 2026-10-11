@@ -335,6 +335,8 @@ const bookingsPolicy: Policy = ({ auth, kind, before, after }) => {
 const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجلات غير قابلة للتعديل أو الحذف');
 
 export const POLICIES: Record<CollectionName, Policy> = {
+  shiftHandovers: () => 'تسليم الوردية يستخدم المسار المخصص فقط',
+  handoverReceipts: () => 'الاستلام يستخدم المسار المخصص فقط',
   users: usersPolicy,
   roles: rolesPolicy,
   news: newsPolicy,
@@ -508,6 +510,8 @@ export const POLICIES: Record<CollectionName, Policy> = {
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
   switch (collection) {
+    case 'shiftHandovers':
+    case 'handoverReceipts': return false;
     case 'savedNewsFilters':
       return data?.ownerId === auth.user.id;
     case 'newsCorrections':
