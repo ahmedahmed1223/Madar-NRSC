@@ -17,7 +17,7 @@ export interface ShiftHandover extends HandoverDraftInput {
 }
 export type ProjectedReference = ({ available: true; title: string } & HandoverReference) | { available: false };
 export interface HandoverReceipt { id: string; publicationId: string; userId: string; userName: string; createdAt: string; note: string }
-export type HandoverRow = Omit<EntityRow, 'd'> & { d: Omit<ShiftHandover, 'references' | 'lastRemindedAt'> & { references: ProjectedReference[] }; receipts: HandoverReceipt[]; recipients: { userId: string; userName: string; received: boolean }[]; canAcknowledge: boolean; canPublish: boolean; canRemind: boolean };
+export type HandoverRow = Omit<EntityRow, 'd'> & { d: Omit<ShiftHandover, 'references' | 'lastRemindedAt'> & { references: ProjectedReference[] }; receipts: HandoverReceipt[]; recipients: { userId: string; userName: string; received: boolean }[]; canAcknowledge: boolean; canPublish: boolean; canRemind: boolean; lastReminderAt?: string };
 
 const fields = new Set(['id', 'schemaVersion', 'departmentId', 'sourceDate', 'sourceShift', 'recipientDate', 'recipientShift', 'title', 'note', 'references', 'supersedesId']);
 export const handoverPlainText = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { createHash } from 'crypto';
 import type { AuthContext } from './auth';
-import { requireAuth } from './auth';
+import { requireAuth, buildAuthContext } from './auth';
+import { writeNotification } from './notifications';
 import type { NewsroomDatabase } from './db';
 import type { EntityRow } from '../shared/collections';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
@@ -47,6 +48,7 @@ export function projectHandover(db: NewsroomDatabase, auth: AuthContext, row: En
     canAcknowledge: record.state === 'PUBLISHED' && record.authorId !== auth.user.id && handoverRosterMembers(db, row.d).includes(auth.user.id),
     canPublish: record.state === 'DRAFT' && record.authorId === auth.user.id && auth.can('handover.publish') && (canSource(db, auth, row.d) || !!record.supersedesId && auth.can('handover.manage')),
     canRemind: record.state === 'PUBLISHED' && auth.can('handover.manage'),
+    lastReminderAt: auth.can('handover.manage') ? row.d.lastRemindedAt : undefined,
   };
 }
 export function accessibleHandover(db: NewsroomDatabase, auth: AuthContext, id: string): EntityRow {
@@ -128,6 +130,7 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     if (row.d.state !== 'DRAFT') throw new HandoverError(409, 'هذا التسليم منشور بالفعل');
     const now = new Date().toISOString();
     const published = db.writeRow('shiftHandovers', row.id, { ...row.d, state: 'PUBLISHED', publishedAt: now, updatedAt: now }, row.p, auth.user.id);
+    alertHandoverRecipients(db, published.d, 'publication', Date.now());
     return { row: projectHandover(db, auth, published) };
   }, true));
   router.post('/:id/acknowledge', endpoint((auth, req) => {
@@ -141,5 +144,30 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     db.writeRow('handoverReceipts', id, receipt, db.positionBounds('handoverReceipts').min - 1, auth.user.id);
     return { receipt, row: projectHandover(db, auth, row) };
   }, true));
+  router.post('/:id/remind', endpoint((auth, req) => {
+    const row = accessibleHandover(db, auth, req.params.id);
+    if (!auth.can('handover.manage') || row.d.state !== 'PUBLISHED') deny();
+    const now = Date.now();
+    if (row.d.lastRemindedAt && now - Date.parse(row.d.lastRemindedAt) < 600_000) throw new HandoverError(429, 'يمكن التذكير مرة واحدة كل عشر دقائق');
+    const sent = alertHandoverRecipients(db, row.d, `reminder-${now}`, now);
+    const updated = db.writeRow('shiftHandovers', row.id, { ...row.d, lastRemindedAt: new Date(now).toISOString() }, row.p, auth.user.id);
+    return { sent, row: projectHandover(db, auth, updated) };
+  }, true));
   return router;
+}
+
+function alertHandoverRecipients(db: NewsroomDatabase, record: ShiftHandover, kind: string, now: number): number {
+  const acknowledged = new Set(db.listCollection('handoverReceipts').filter(r => r.d.publicationId === record.id).map(r => r.d.userId));
+  let sent = 0;
+  for (const id of handoverRosterMembers(db, record)) {
+    const user = db.getRow('users', id)?.d;
+    if (!user || !user.isActive || user.deletedAt || id === record.authorId || acknowledged.has(id)) continue;
+    const auth = buildAuthContext(db, user, 'notification');
+    if (!handoverVisible(db, auth, record)) continue;
+    const notificationId = `handover-${createHash('sha256').update(JSON.stringify([record.id, id, kind])).digest('hex')}`;
+    if (db.getRow('notifications', notificationId, true)) continue;
+    writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: '/roster?tab=handover' }, { id: notificationId, createdAt: new Date(now).toISOString() });
+    sent++;
+  }
+  return sent;
 }

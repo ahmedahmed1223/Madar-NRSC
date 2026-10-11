@@ -236,6 +236,9 @@ export class ApiService {
   static async acknowledgeShiftHandover(id: string, note: string, signal?: AbortSignal): Promise<HandoverRow> {
     return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', json: { note } }, signal)).row;
   }
+  static async remindShiftHandover(id: string, signal?: AbortSignal): Promise<HandoverRow> {
+    return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/remind`, { method: 'POST', json: {} }, signal)).row;
+  }
   static getNewsCorrections(): import('../shared/newsCorrections').NewsCorrection[] {
     return getStored(COLLECTIONS.newsCorrections.storageKey, []);
   }
