@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, FileText, Tv, Video, Users, CheckSquare, X } from 'lucide-react';
+import { Search, FileText, Tv, Video, Users, CheckSquare, X, History, FilePlus2, ArrowUpLeft } from 'lucide-react';
 import { ApiService } from '../../services/api';
-import { NewsItem, Program, Episode, Guest } from '../../types';
+import { NewsItem, Program, Episode, Guest, User } from '../../types';
 import { statusLabel } from '../../shared/labels';
 import { useLiveData } from '../../hooks/useLiveData';
+import { RbacService } from '../../services/rbacService';
+import { clearRecent, loadRecent, rememberRecent } from '../../services/recentItems';
+import { matchScreens, type RecentEntry, type RecentKind } from '../../shared/commandPalette';
+import { matchesQuery } from '../../shared/search';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -19,6 +23,7 @@ interface CommandPaletteProps {
   programs?: Program[];
   episodes?: Episode[];
   guests?: Guest[];
+  currentUser?: User;
 }
 
 interface Result {
@@ -32,9 +37,33 @@ interface Result {
   open: () => void;
 }
 
+const RECENT_GROUP = 'فتح مؤخراً';
+const ACTIONS_GROUP = 'إجراءات سريعة';
+const SCREENS_GROUP = 'الشاشات';
+const KIND_LOOK: Record<RecentKind, { icon: React.ElementType; tone: string; label: string }> = {
+  news: { icon: FileText, tone: 'text-blue-500', label: 'خبر' },
+  program: { icon: Tv, tone: 'text-emerald-500', label: 'برنامج' },
+  episode: { icon: Video, tone: 'text-purple-500', label: 'حلقة' },
+  guest: { icon: Users, tone: 'text-amber-500', label: 'ضيف' },
+  task: { icon: CheckSquare, tone: 'text-indigo-500', label: 'مهمة' },
+};
+
+/** Current title of a remembered record, or null when it was deleted since. */
+function currentTitle(entry: RecentEntry): string | null {
+  switch (entry.kind) {
+    case 'news': return ApiService.getNewsById(entry.id)?.title ?? null;
+    case 'program': return ApiService.getProgramById(entry.id)?.name ?? null;
+    case 'episode': return ApiService.getEpisodeById(entry.id)?.title ?? null;
+    case 'guest': return ApiService.getGuests().find((g) => g.id === entry.id)?.fullName ?? null;
+    case 'task': return ApiService.getTasks().find((t) => t.id === entry.id)?.title ?? null;
+  }
+}
+
 /**
  * Unified search (Ctrl+K) as an accessible dialog: a combobox with a listbox of results.
  * ↑/↓ move, Enter opens, Escape closes from anywhere inside, and focus stays in the dialog.
+ * With an empty query it lists recently opened records, quick actions and screens; while typing,
+ * matching screens and actions follow the record results.
  */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
@@ -44,6 +73,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectEpisode = () => {},
   onSelectGuest = () => {},
   onSelectTask = () => {},
+  onNavigate,
+  onQuickCreateNews,
+  currentUser,
 }) => {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -53,6 +85,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const dataVersion = useLiveData(['news', 'programs', 'episodes', 'guests', 'tasks']);
+  const userId = currentUser?.id || '';
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,6 +94,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setQuery('');
     setActive(0);
     setGroupFilter('');
+    setRecent(userId ? loadRecent(userId) : []);
     const t = setTimeout(() => inputRef.current?.focus(), 30);
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && !document.querySelector('[role=alertdialog]')) { event.preventDefault(); onClose(); }
@@ -73,20 +108,46 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }, [isOpen]);
 
   const results: Result[] = useMemo(() => {
-    if (!query.trim()) return [];
-    const r = ApiService.globalSearch(query);
-    const pick = (fn: (id: string) => void, id: string) => () => {
-      fn(id);
+    const openers: Record<RecentKind, (id: string) => void> = { news: onSelectNews, program: onSelectProgram, episode: onSelectEpisode, guest: onSelectGuest, task: onSelectTask };
+    const pick = (kind: RecentKind, id: string, title: string) => () => {
+      if (userId) rememberRecent(userId, { kind, id, title });
+      openers[kind](id);
       onClose();
     };
+    const run = (fn: () => void) => () => {
+      fn();
+      onClose();
+    };
+    const can = (permission: string) => !currentUser || RbacService.hasPermission(currentUser, permission);
+    const actions: Result[] = [];
+    if (onQuickCreateNews && can('news.create') && matchesQuery(query, 'خبر جديد', 'انشاء كتابة مسودة')) {
+      actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, tone: 'text-red-600', title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
+    }
+    const screens: Result[] = onNavigate
+      ? matchScreens(query, can).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
+      : [];
+
+    if (!query.trim()) {
+      const recentResults = recent.flatMap((entry): Result[] => {
+        const title = currentTitle(entry);
+        if (title == null) return [];
+        const look = KIND_LOOK[entry.kind];
+        return [{ key: `r-${entry.kind}-${entry.id}`, group: RECENT_GROUP, icon: History, tone: look.tone, title, meta: look.label, open: pick(entry.kind, entry.id, title) }];
+      });
+      return [...recentResults, ...actions, ...screens];
+    }
+
+    const r = ApiService.globalSearch(query);
     return [
-      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick(onSelectNews, n.id) })),
-      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick(onSelectProgram, p.id) })),
-      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick(onSelectEpisode, e.id) })),
-      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick(onSelectGuest, g.id) })),
-      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick(onSelectTask, t.id) })),
+      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
+      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
+      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick('episode', e.id, e.title) })),
+      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick('guest', g.id, g.fullName) })),
+      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick('task', t.id, t.title) })),
+      ...actions,
+      ...screens,
     ];
-  }, [query, dataVersion, onClose, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
+  }, [query, dataVersion, recent, userId, currentUser, onClose, onNavigate, onQuickCreateNews, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
 
   const filteredResults = results.filter(r => !groupFilter || r.group === groupFilter);
   const visibleResults = filteredResults.slice(0, limit);
@@ -168,11 +229,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <div className="px-4 py-2 border-b border-slate-100">
           <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="w-full sm:w-auto min-h-11 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
             <option value="">كل الأنواع</option>
-            {['الأخبار', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'].map(group => <option key={group} value={group}>{group}</option>)}
+            {['الأخبار', 'البرامج', 'الحلقات', 'الضيوف', 'المهام', SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
           </select>
         </div>
         <div className="p-2 overflow-y-auto overscroll-contain min-h-0 flex-1">
-          {!query.trim() ? (
+          {!query.trim() && visibleResults.length === 0 ? (
             <p className="p-8 text-center text-slate-500 text-xs">اكتب كلمة للبحث في المنظومة الإخبارية كلها</p>
           ) : visibleResults.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-sm" role="status">
@@ -188,8 +249,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 return (
                   <React.Fragment key={r.key}>
                     {header && (
-                      <li role="presentation" className="text-[11px] font-bold text-slate-500 mt-2 mb-1 px-2">
-                        {header}
+                      <li role="presentation" className="text-[11px] font-bold text-slate-500 mt-2 mb-1 px-2 flex items-center justify-between gap-2">
+                        <span>{header}</span>
+                        {header === RECENT_GROUP && (
+                          <button type="button" onClick={() => { clearRecent(userId); setRecent([]); inputRef.current?.focus(); }} className="min-h-8 px-2 rounded-md text-[11px] font-semibold text-blue-700 hover:bg-blue-50">
+                            مسح السجل
+                          </button>
+                        )}
                       </li>
                     )}
                     <li
@@ -223,7 +289,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </button>
         )}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="hidden sm:inline">↑↓ للتنقل · Enter للفتح · Esc للإغلاق</span>
+          <span className="hidden sm:inline">{query.trim() ? '↑↓ للتنقل · Enter للفتح · Esc للإغلاق' : 'اكتب للبحث، أو اختر من الوصول السريع بالأسهم وEnter'}</span>
           <span aria-live="polite">{query.trim() ? `${visibleResults.length} من ${filteredResults.length} نتيجة` : ''}</span>
         </div>
       </div>

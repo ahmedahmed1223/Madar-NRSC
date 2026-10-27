@@ -47,3 +47,44 @@ test('global search filters all matches before pagination and exposes remaining 
   expect(errors).toEqual([]);
   await close();
 });
+
+test('empty search offers recent records, quick actions and permitted screens', async ({ browser }) => {
+  const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
+  await page.keyboard.press('Control+k');
+  const dialog = page.getByRole('dialog', { name: 'البحث الموحد' });
+  const list = dialog.getByRole('listbox');
+  await expect(list.getByRole('option', { name: /خبر جديد/ })).toBeVisible();
+  await expect(list.getByText('فتح مؤخراً', { exact: true })).toHaveCount(0);
+
+  const input = dialog.getByRole('combobox', { name: /بحث في الأخبار/ });
+  await input.fill('القمة');
+  const first = list.getByRole('option').first();
+  const title = (await first.locator('span span').first().textContent())!.trim();
+  await first.click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.keyboard.press('Control+k');
+  await expect(list.getByText('فتح مؤخراً', { exact: true })).toBeVisible();
+  await expect(list.getByRole('option').first()).toContainText(title);
+
+  await input.fill('الورديات');
+  await list.getByRole('option', { name: /المناوبات/ }).click();
+  await expect(page).toHaveURL(/\/roster$/);
+
+  await page.keyboard.press('Control+k');
+  await dialog.getByRole('button', { name: 'مسح السجل' }).click();
+  await expect(list.getByText('فتح مؤخراً', { exact: true })).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await page.keyboard.press('Escape');
+  expect(errors).toEqual([]);
+  await close();
+});
+
+test('screens the user may not open stay out of the search', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'journalist@akhbar.tv');
+  await page.keyboard.press('Control+k');
+  const dialog = page.getByRole('dialog', { name: 'البحث الموحد' });
+  await dialog.getByRole('combobox', { name: /بحث في الأخبار/ }).fill('الإعدادات');
+  await expect(dialog.getByRole('listbox').getByRole('option', { name: /الإعدادات/ })).toHaveCount(0);
+  await close();
+});

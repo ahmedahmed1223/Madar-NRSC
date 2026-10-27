@@ -1193,6 +1193,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         onSelectProgram={handleSelectProgram}
         onSelectGuest={() => setActiveNav('guests')}
         onSelectTask={() => setActiveNav('tasks')}
+        currentUser={currentUser}
       />
 
       {/* Global Toast Notifications */}

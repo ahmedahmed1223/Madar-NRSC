@@ -3,6 +3,7 @@ import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSe
 import { departmentIdOf } from '../../shared/departments';
 import { isApprover } from '../../shared/bulletins';
 import { localDateString } from '../../shared/dates';
+import { screenPermission } from '../../shared/commandPalette';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
@@ -148,13 +149,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [isSmallScreen, isMobileOpen]);
 
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
-  const NAV_PERMISSIONS: Record<string, string> = {
-    wires: 'news.view',
-    audit: 'audit.view',
-    users: 'users.view',
-    settings: 'system.settings',
+  const canSeeNav = (id: string) => {
+    const permission = screenPermission(id);
+    return !currentUser || !permission || RbacService.hasPermission(currentUser, permission);
   };
-  const canSeeNav = (id: string) => !currentUser || !NAV_PERMISSIONS[id] || RbacService.hasPermission(currentUser, NAV_PERMISSIONS[id]);
 
   // Open requests waiting on my department.
   const myDepartment = currentUser ? departmentIdOf(currentUser) : null;
