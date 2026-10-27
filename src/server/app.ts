@@ -454,7 +454,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
     res.type(record.mimeType);
-    res.sendFile(filePath);
+    // Server-built path; DATA_DIR may sit under a hidden folder, which Express 5 refuses by default.
+    res.sendFile(filePath, { dotfiles: 'allow' });
   });
 
   // --- Data synchronisation -------------------------------------------------
@@ -840,7 +841,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       source = db.backupFilePath(req.query.fileName);
     } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
     res.setHeader('Cache-Control', 'no-store');
-    res.download(source, path.basename(source));
+    res.download(source, path.basename(source), { dotfiles: 'allow' });
   });
 
   app.get('/api/v1/db/stats', dbAdmin, (req, res) => {

@@ -59,7 +59,7 @@ async function main() {
     );
     app.get('/{*splat}', (_req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(path.join(distPath, 'index.html'), { dotfiles: 'allow' });
     });
   }
 
