@@ -52,8 +52,10 @@ export const APP_VERSION = '3.25.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
-type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
-const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => fn(req, res, next).catch(next);
+/** API routes use named parameters only (no wildcards), so every parameter is a single string. */
+type ApiRequest = Request<Record<string, string>>;
+type AsyncHandler = (req: ApiRequest, res: Response, next: NextFunction) => Promise<unknown>;
+const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => fn(req as ApiRequest, res, next).catch(next);
 
 export class HttpError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -163,6 +165,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.use('/api', createRateLimiter({ windowMs: 60_000, max: config.rateLimitPerMinute * 10,
     key: req => req.ip || 'unknown', message: 'عدد كبير من الطلبات من هذه الشبكة، حاول لاحقاً' }));
   app.use('/api', express.json({ limit: '5mb' }));
+  // Express 5 leaves req.body undefined without a JSON body; handlers validate an empty object instead.
+  app.use('/api', (req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
   app.use('/api', csrfGuard);
   app.use('/api', sessionMiddleware(db, config));
   app.use('/api', apiLimiter);
@@ -402,7 +406,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   );
 
   /** Admin recovery when a user loses their authenticator device. */
-  app.post('/api/v1/users/:id/2fa/reset', requirePermission('users.suspend_delete'), (req, res) => {
+  app.post('/api/v1/users/:id/2fa/reset', requirePermission('users.suspend_delete'), (req: ApiRequest, res) => {
     const target = db.getRow('users', req.params.id)?.d as User | undefined;
     if (!target) throw new HttpError(404, 'المستخدم غير موجود');
     if (target.role === 'SUPER_ADMIN' && req.auth!.user.role !== 'SUPER_ADMIN') {
@@ -440,7 +444,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     })
   );
 
-  app.get('/api/v1/media/files/:id', requirePermission('media.view'), (req, res) => {
+  app.get('/api/v1/media/files/:id', requirePermission('media.view'), (req: ApiRequest, res) => {
     const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
     if (!record) throw new HttpError(404, 'الملف غير موجود');
     const filePath = path.join(uploadsDir(config.dataDir), record.storedName);
@@ -460,7 +464,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
   });
 
-  app.get('/api/v1/air-offline/packet/:showId', requireAuth, (req, res) => {
+  app.get('/api/v1/air-offline/packet/:showId', requireAuth, (req: ApiRequest, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try { res.json({ success: true, packet: prepareOfflinePacket(db, req.auth!, req.params.showId, APP_VERSION) }); }
     catch (error) {
@@ -468,7 +472,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       throw error;
     }
   });
-  app.get('/api/v1/air-offline/state/:showId', requireAuth, (req, res) => {
+  app.get('/api/v1/air-offline/state/:showId', requireAuth, (req: ApiRequest, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
       const packet = prepareOfflinePacket(db, req.auth!, req.params.showId, APP_VERSION);
@@ -479,7 +483,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     try { res.json({ success: true, record: importOfflineSession(db, req.auth!, req.body) }); }
     catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
   });
-  app.get('/api/v1/air-offline/draft-target/:collection/:id', requireAuth, (req, res) => {
+  app.get('/api/v1/air-offline/draft-target/:collection/:id', requireAuth, (req: ApiRequest, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try { res.json({ success: true, row: offlineDraftTarget(db, req.auth!, req.params.collection, req.params.id), dbId: db.dbId, userId: req.auth!.user.id }); }
     catch (error) { if (error instanceof OfflineAirError) throw new HttpError(error.status, error.message); throw error; }
@@ -526,7 +530,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Revision history -----------------------------------------------------
 
-  app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), (req, res) => {
+  app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), (req: ApiRequest, res) => {
     const collection = req.params.collection as CollectionName;
     if (!HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
     res.setHeader('Cache-Control', 'no-store');
@@ -535,7 +539,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Broadcast exports ----------------------------------------------------
 
-  app.get(['/api/v1/episodes/:id/export/mos', '/api/v1/episodes/:id/mos'], requirePermission('rundown.view'), (req, res) => {
+  app.get(['/api/v1/episodes/:id/export/mos', '/api/v1/episodes/:id/mos'], requirePermission('rundown.view'), (req: ApiRequest, res) => {
     const episode = db.getRow('episodes', req.params.id)?.d as Episode | undefined;
     if (!episode || episode.deletedAt) throw new HttpError(404, 'الحلقة غير موجودة');
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
@@ -543,7 +547,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.send(generateEpisodeMosXml(episode));
   });
 
-  app.get('/api/v1/bulletins/:id/mos', requirePermission('rundown.view'), (req, res) => {
+  app.get('/api/v1/bulletins/:id/mos', requirePermission('rundown.view'), (req: ApiRequest, res) => {
     const bulletin = db.getRow('bulletins', req.params.id)?.d as Bulletin | undefined;
     if (!bulletin || bulletin.deletedAt) throw new HttpError(404, 'النشرة غير موجودة');
     const stories = db.listCollection('bulletinStories').map((r) => r.d).filter((s: any) => s?.bulletinId === bulletin.id && !s.deletedAt);

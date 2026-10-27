@@ -2,12 +2,12 @@ import { offlineAirPacketSchema, type OfflineAirPacket } from '../shared/offline
 
 export interface OfflineEncryptedValue {
   version: 1;
-  salt: Uint8Array;
-  iv: Uint8Array;
-  ciphertext: Uint8Array;
+  salt: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  ciphertext: Uint8Array<ArrayBuffer>;
 }
 
-async function deriveKey(secret: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(secret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   if (secret.length < 8) throw new Error('كلمة فتح النسخة يجب ألا تقل عن 8 أحرف');
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
@@ -43,7 +43,7 @@ export interface OfflinePacketMetadata {
 }
 interface StoredPacket extends OfflinePacketMetadata {
   encrypted: OfflineEncryptedValue;
-  local?: { iv: Uint8Array; ciphertext: Uint8Array };
+  local?: { iv: Uint8Array<ArrayBuffer>; ciphertext: Uint8Array<ArrayBuffer> };
 }
 const DATABASE = 'madar-offline-air-v1';
 const STORE = 'packets';

@@ -2,19 +2,19 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
-import pkg from './package.json';
-import { offlineAirManifest } from './src/build/offlineAirManifest';
+import pkg from './package.json' with { type: 'json' };
+import { offlineAirManifest } from './src/build/offlineAirManifest.ts';
 
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss(), offlineAirManifest()],
-    build: { rollupOptions: { input: { app: path.resolve(__dirname, 'index.html'), offlineAir: path.resolve(__dirname, 'offline-air.html') } } },
+    build: { rolldownOptions: { input: { app: path.resolve(import.meta.dirname, 'index.html'), offlineAir: path.resolve(import.meta.dirname, 'offline-air.html') } } },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {
