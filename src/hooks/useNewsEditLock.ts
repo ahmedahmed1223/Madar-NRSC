@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
+import { forgetHeldLock, rememberHeldLock } from '../services/heldLocks';
 import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
 type LockTarget = 'news' | 'episodes' | 'bulletinStories';
@@ -30,6 +31,12 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
 
   useEffect(() => {
     let held = false;
+    const lockId = newsId ? lockIdFor(collection, newsId) : '';
+    // Remembered per tab so the next load can release it if this page goes away without cleanup.
+    const markHeld = (value: boolean) => {
+      held = value;
+      if (value) rememberHeldLock(lockId);
+    };
     let acquiring = false;
     let disposed = false;
     setHolder(null);
@@ -46,6 +53,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
         await previous;
         if (disposed) return;
         setStatus('acquiring');
+        rememberHeldLock(lockId); // the server may grant it after this page is gone
         try {
           const lock = await apiService.acquireEditLock(collection, newsId);
           if (disposed) {
@@ -56,7 +64,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
             }
             return;
           }
-          held = !!lock && lock.userId === me && isLockActive(lock);
+          markHeld(!!lock && lock.userId === me && isLockActive(lock));
+          if (!held) forgetHeldLock(lockId);
           setHolder(held ? null : lock);
           setStatus(held ? 'held' : lock && isLockActive(lock) ? 'locked' : 'none');
         } catch {
@@ -73,7 +82,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       if (disposed || acquiring) return;
       const lock = apiService.getEditLocks().find(l => l.id === lockIdFor(collection, newsId));
       if (lock && isLockActive(lock)) {
-        held = lock.userId === me;
+        markHeld(lock.userId === me);
         setHolder(held ? null : lock);
         setStatus(held ? 'held' : 'locked');
       } else {
@@ -108,17 +117,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       // A request still in flight may be granted after the page is gone, so release then too;
       // this endpoint only removes a lock the server shows as ours.
       if (!held && !acquiring) return;
-      try {
-        fetch('/api/v1/data/locks/release', {
-          method: 'POST',
-          keepalive: true,
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
-          body: JSON.stringify({ id: lockIdFor(collection, newsId) }),
-        });
-      } catch {
-        // ignore
-      }
+      apiService.releaseEditLockOnServer(collection, newsId);
     };
     // pagehide runs only after navigation is accepted, unlike a cancellable beforeunload.
     const onRestore = (event: PageTransitionEvent) => {
@@ -139,6 +138,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       window.removeEventListener('pageshow', onRestore);
       // Also covers a request still in flight: releaseEditLock only removes our own lock or request.
       apiService.releaseEditLock(collection, newsId);
+      forgetHeldLock(lockId);
       held = false;
     };
   }, [collection, newsId, me]);

@@ -1820,7 +1820,31 @@ export class ApiService {
     this.releaseEditLock('news', entityId);
   }
 
+  /**
+   * Asks the server to drop the lock if, and only if, this user holds it. Works while the page is
+   * unloading (keepalive) and before the local data has loaded, when the store cannot write yet.
+   */
+  static releaseEditLockOnServer(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
+    this.releaseLockIdOnServer(lockIdFor(collection, entityId));
+  }
+
+  static releaseLockIdOnServer(id: string): void {
+    try {
+      void fetch('/api/v1/data/locks/release', {
+        method: 'POST',
+        keepalive: true,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
+        body: JSON.stringify({ id }),
+      }).catch(() => undefined);
+    } catch {
+      // the lock simply expires
+    }
+  }
+
   static releaseEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
+    // Leaving right after a reload: the store has not loaded the locks yet, but one may be ours.
+    if (!dataStore.isReady()) return this.releaseEditLockOnServer(collection, entityId);
     const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();
