@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, FileText, Tv, Video, Users, CheckSquare, X, History, FilePlus2, ArrowUpLeft } from 'lucide-react';
 import { ApiService } from '../../services/api';
 import { NewsItem, Program, Episode, Guest, User } from '../../types';
@@ -78,6 +78,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   currentUser,
 }) => {
   const [query, setQuery] = useState('');
+  // The box stays responsive while a large archive is searched: results follow the typing.
+  const searchTerm = useDeferredValue(query);
   const [active, setActive] = useState(0);
   const [groupFilter, setGroupFilter] = useState('');
   const [limit, setLimit] = useState(40);
@@ -120,14 +122,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     };
     const can = (permission: string) => !currentUser || RbacService.hasPermission(currentUser, permission);
     const actions: Result[] = [];
-    if (onQuickCreateNews && can('news.create') && matchesQuery(query, 'خبر جديد', 'انشاء كتابة مسودة')) {
+    if (onQuickCreateNews && can('news.create') && matchesQuery(searchTerm, 'خبر جديد', 'انشاء كتابة مسودة')) {
       actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, tone: 'text-red-600', title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
     }
     const screens: Result[] = onNavigate
-      ? matchScreens(query, can).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
+      ? matchScreens(searchTerm, can).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
       : [];
 
-    if (!query.trim()) {
+    if (!searchTerm.trim()) {
       const recentResults = recent.flatMap((entry): Result[] => {
         const title = currentTitle(entry);
         if (title == null) return [];
@@ -137,7 +139,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       return [...recentResults, ...actions, ...screens];
     }
 
-    const r = ApiService.globalSearch(query);
+    const r = ApiService.globalSearch(searchTerm);
     return [
       ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
       ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
@@ -147,7 +149,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ...actions,
       ...screens,
     ];
-  }, [query, dataVersion, recent, userId, currentUser, onClose, onNavigate, onQuickCreateNews, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
+  }, [searchTerm, dataVersion, recent, userId, currentUser, onClose, onNavigate, onQuickCreateNews, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
 
   const filteredResults = results.filter(r => !groupFilter || r.group === groupFilter);
   const visibleResults = filteredResults.slice(0, limit);
