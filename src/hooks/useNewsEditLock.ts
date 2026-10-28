@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
-import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, lockIdFor } from '../shared/collections';
+import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
 type LockTarget = 'news' | 'episodes' | 'bulletinStories';
 
@@ -49,7 +49,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
         try {
           const lock = await apiService.acquireEditLock(collection, newsId);
           if (disposed) {
-            if (lock?.userId === me) {
+            // The screen closed while we waited; the answer may still be unconfirmed (no owner yet).
+            if (isOwnLock(lock, me)) {
               apiService.releaseEditLock(collection, newsId);
               await dataStore.settle();
             }
@@ -134,7 +135,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       unsubscribe();
       window.removeEventListener('pagehide', onUnload);
       window.removeEventListener('pageshow', onRestore);
-      if (held) apiService.releaseEditLock(collection, newsId);
+      // Also covers a request still in flight: releaseEditLock only removes our own lock or request.
+      apiService.releaseEditLock(collection, newsId);
       held = false;
     };
   }, [collection, newsId, me]);
