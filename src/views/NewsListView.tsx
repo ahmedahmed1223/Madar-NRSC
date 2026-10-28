@@ -404,9 +404,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       )}
 
       {/* Filter Toolbar */}
-      <div className="py-3 border-y border-slate-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+      <div className="py-3 border-y border-slate-200 flex flex-col 2xl:flex-row items-stretch 2xl:items-center justify-between gap-3">
         {/* Search */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 2xl:min-w-72">
           <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="news-list-search-input"

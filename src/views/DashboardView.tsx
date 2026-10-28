@@ -131,7 +131,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse" />
               مركز العمليات الإخبارية والإنتاج المباشر
             </span>
-            <StationClock className="px-2.5 py-1 rounded-full bg-white border border-slate-200" />
+            {/* The top bar already shows the clock and date from lg up. */}
+            <StationClock className="px-2.5 py-1 rounded-full bg-white border border-slate-200 lg:hidden" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
             مرحباً، {currentUser.fullName}

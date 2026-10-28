@@ -241,6 +241,24 @@ html.reduce-motion .animate-spin {
   animation: spin 1.5s linear infinite !important;
 }
 
+/* A flex summary loses the browser's disclosure marker; draw one so it reads as expandable. */
+details > summary.flex::after {
+  content: '';
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: 0.6rem;
+  margin-block-end: 0.2rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+details[open] > summary.flex::after {
+  margin-block-end: -0.2rem;
+  transform: rotate(-135deg);
+}
+
 /* Touch controls retain their visual size with a finger-sized hit area. */
 @media (pointer: coarse) {
   main button:not([data-compact]),

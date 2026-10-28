@@ -13,7 +13,7 @@ import { CommentThread } from '../components/comments/CommentThread';
 import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { apiService } from '../services/api';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { NewsVideosEditor } from '../components/news/NewsVideosEditor';
 import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
 import {
@@ -103,11 +103,19 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   // Version of the story this editor is based on; a different server copy means someone else saved.
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>(newsItem?.updatedAt);
   const loadedSnapshotRef = useRef<string>('');
+  const headlineRef = useRef<HTMLTextAreaElement>(null);
 
   const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
   const lock = useNewsEditLock(newsItem?.id);
   const lockedByOther = lock.status === 'locked';
   const [title, setTitle] = useState('');
+  // The headline wraps instead of scrolling sideways, so the editor always sees all of it.
+  useLayoutEffect(() => {
+    const el = headlineRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [title]);
   const [shortTitle, setShortTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
@@ -1045,25 +1053,30 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
 
               <div className="relative">
-                <input
+                <textarea
                   id="news-headline-input"
-                  type="text"
+                  ref={headlineRef}
+                  rows={1}
                   required
                   value={title}
+                  onKeyDown={(e) => {
+                    // A headline is one line of copy: Enter does not break it (Ctrl/Cmd+Enter still sends).
+                    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) e.preventDefault();
+                  }}
                   onChange={(e) => {
-                    setTitle(e.target.value);
+                    setTitle(e.target.value.replace(/\s*[\r\n]+\s*/g, ' '));
                     if (contentError?.field === 'title') setContentError(null);
                   }}
                   aria-invalid={contentError?.field === 'title' || undefined}
                   aria-describedby={contentError?.field === 'title' ? 'news-content-error' : undefined}
                   placeholder="اكتب عنواناً جذاباً ودقيقاً يصف جوهر الحدث..."
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 aria-[invalid=true]:border-rose-500 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="block w-full resize-none overflow-hidden leading-snug pl-10 pr-4 py-3 bg-white border border-slate-300 aria-[invalid=true]:border-rose-500 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
                 {title && (
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
+                    className="absolute left-3 top-2.5 p-1.5 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان"
                     aria-label="مسح العنوان"
                   >

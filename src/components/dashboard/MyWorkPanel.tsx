@@ -10,6 +10,7 @@ import { isRequestClosed, requestStatusName, requestTypeOf, episodeReadiness } f
 import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
+import { addDaysIso, arabicDate } from '../../shared/dates';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -41,7 +42,19 @@ const TONES: Record<NonNullable<Row['tone']>, string> = {
   emerald: 'bg-emerald-50 text-emerald-700',
 };
 
-const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }> = ({ icon: Icon, title, rows, empty, more, testId }) => (
+interface CardProps { icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }
+
+const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testId }) => rows.length === 0 ? (
+  // Nothing waiting: one slim line, so cards with work in them lead and take the space.
+  <section data-testid={testId} className="self-start bg-white/70 border border-slate-200 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 min-w-0">
+    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+      <Icon className="w-4 h-4 text-slate-500" />
+      {title}
+      <span className="text-[11px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">0</span>
+    </h3>
+    {empty && <p className="text-[11px] text-slate-500">{empty}</p>}
+  </section>
+) : (
   <section data-testid={testId} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col min-w-0">
     <div className="flex items-center justify-between gap-2 mb-2">
       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -198,7 +211,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       .map((e) => ({
         id: e.id,
         title: e.title,
-        meta: `${e.date === today ? 'اليوم' : e.date}${e.startTime ? ` ${e.startTime}` : ''}`,
+        meta: `${e.date === today ? 'اليوم' : e.date === addDaysIso(today, 1) ? 'غداً' : arabicDate(e.date)}${e.startTime ? ` ${e.startTime}` : ''}`,
         tone: (e.priority === 'HIGH' ? 'red' : e.date === today ? 'amber' : 'slate') as Row['tone'],
         onClick: () => onNavigate('diary'),
       })),
@@ -217,6 +230,20 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
 
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
+  const candidates: (CardProps | false)[] = [
+    RbacService.hasPermission(currentUser, 'news.create') && { testId: 'my-news', icon: FileEdit, title: 'أخباري قيد العمل', rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news') },
+    canReview && { testId: 'my-review', icon: FileSearch, title: 'بانتظار مراجعتي', rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news') },
+    { testId: 'my-dept-requests', icon: Inbox, title: `طلبات واردة لقسم ${departmentName(myDept)}`, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests') },
+    { testId: 'my-sent-requests', icon: Send, title: 'طلباتي المرسلة', rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests') },
+    { testId: 'my-tasks', icon: CheckSquare, title: 'مهامي', rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks') },
+    { testId: 'my-episodes', icon: Tv, title: 'الحلقات القادمة وجاهزيتها', rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes') },
+    (bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) && { testId: 'my-bulletins', icon: Radio, title: 'قصص النشرات', rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins') },
+    planRows.length > 0 && { testId: 'my-plan', icon: CalendarDays, title: 'تغطياتي وحجوزاتي', rows: planRows, empty: '', more: () => onNavigate('diary') },
+    { testId: 'my-mentions', icon: AtSign, title: 'إشارات إليّ (7 أيام)', rows: mentions, empty: 'لم يُشر إليك أحد مؤخراً' },
+  ];
+  const shown = candidates.filter((c): c is CardProps => !!c);
+  const cards = [...shown.filter((c) => c.rows.length > 0), ...shown.filter((c) => c.rows.length === 0)];
+
   return (
     <div data-testid="my-work" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -233,19 +260,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {RbacService.hasPermission(currentUser, 'news.create') && (
-          <Card testId="my-news" icon={FileEdit} title="أخباري قيد العمل" rows={myNews} empty="لا توجد مسودات أو أخبار معادة إليك" more={() => onNavigate('news')} />
-        )}
-        {canReview && <Card testId="my-review" icon={FileSearch} title="بانتظار مراجعتي" rows={toReview} empty="لا أخبار تنتظر المراجعة" more={() => onNavigate('news')} />}
-        <Card testId="my-dept-requests" icon={Inbox} title={`طلبات واردة لقسم ${departmentName(myDept)}`} rows={deptInbox} empty="لا طلبات مفتوحة لقسمك" more={() => onNavigate('requests')} />
-        <Card testId="my-sent-requests" icon={Send} title="طلباتي المرسلة" rows={sent} empty="لا طلبات مفتوحة أرسلتها" more={() => onNavigate('requests')} />
-        <Card testId="my-tasks" icon={CheckSquare} title="مهامي" rows={myTasks} empty="لا مهام مفتوحة مسندة إليك" more={() => onNavigate('tasks')} />
-        <Card testId="my-episodes" icon={Tv} title="الحلقات القادمة وجاهزيتها" rows={todayEpisodes} empty="لا حلقات خلال اليومين القادمين" more={() => onNavigate('episodes')} />
-        {(bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) && (
-          <Card testId="my-bulletins" icon={Radio} title="قصص النشرات" rows={bulletinRows} empty="لا قصص نشرات تنتظرك" more={() => onNavigate('bulletins')} />
-        )}
- {planRows.length > 0 && <Card testId="my-plan" icon={CalendarDays} title="تغطياتي وحجوزاتي" rows={planRows} empty="" more={() => onNavigate('diary')} />}
-        <Card testId="my-mentions" icon={AtSign} title="إشارات إليّ (7 أيام)" rows={mentions} empty="لم يُشر إليك أحد مؤخراً" />
+        {cards.map((card) => <Card key={card.testId} {...card} />)}
       </div>
     </div>
   );
