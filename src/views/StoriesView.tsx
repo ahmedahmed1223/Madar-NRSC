@@ -320,7 +320,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
-                  بدأت: {new Date(story.startedAt).toLocaleDateString(appLocale(), zoneOptions())}
+                  بدأت: {new Date(story.startedAt).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
 
                 <button

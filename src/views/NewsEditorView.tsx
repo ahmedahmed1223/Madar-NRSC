@@ -1108,7 +1108,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       type="button"
                       onClick={() => setTickerChoice(!showTickerPreview)}
                       aria-pressed={showTickerPreview}
-                      aria-controls="news-ticker-preview"
                       className="min-h-6 px-2 rounded-md text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 aria-pressed:bg-slate-800 aria-pressed:text-white"
                     >
                       معاينة الشريط

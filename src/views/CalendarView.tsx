@@ -259,7 +259,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             return (
               <div
                 key={day.date}
-                className={`rounded-2xl border flex flex-col min-h-[520px] transition-all ${
+                className={`rounded-2xl border flex flex-col md:min-h-[520px] transition-all ${
                   day.isToday
                     ? 'bg-blue-50/40 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
                     : 'bg-white border-slate-200 shadow-2xs'
