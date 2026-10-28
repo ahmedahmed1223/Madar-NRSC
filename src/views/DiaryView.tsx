@@ -133,7 +133,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                   <span className="block font-normal text-[11px] text-slate-500">{arabicDate(day)}</span>
                 </p>
                 {canManage && (
-                  <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                  <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
                     <Plus className="w-3.5 h-3.5" />
                   </button>
                 )}

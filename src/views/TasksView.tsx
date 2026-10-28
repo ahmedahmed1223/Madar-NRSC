@@ -315,7 +315,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             onClick={() => handleOpenEdit(t)}
                             aria-label={`تعديل المهمة: ${t.title}`}
                             title="تعديل المهمة"
-                            className="p-1 text-slate-500 hover:text-slate-800 rounded"
+                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -326,7 +326,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             onClick={() => onDeleteTask(t.id)}
                             aria-label={`حذف المهمة: ${t.title}`}
                             title="حذف المهمة"
-                            className="p-1 text-red-600 hover:text-red-700 rounded"
+                            className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

@@ -257,7 +257,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                               type="button"
                               onClick={() => setAdding(key)}
                               aria-label={`إضافة مناوب ${s.name} يوم ${date}`}
-                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
+                              className="inline-flex items-center justify-center gap-1 min-h-7 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
                             >
                               <Plus className="w-3 h-3" />
                             </button>

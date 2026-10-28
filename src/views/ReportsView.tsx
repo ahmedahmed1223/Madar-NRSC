@@ -256,7 +256,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <Tv className="w-5 h-5 text-purple-600" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">
-            {readyEpisodes + completedEpisodes} / {totalEpisodes}
+            {readyEpisodes + completedEpisodes} من {totalEpisodes}
           </div>
           <p className="text-[11px] text-purple-600 font-semibold">
             {readyEpisodes} حلقة جاهزة للبث المباشر اليوم

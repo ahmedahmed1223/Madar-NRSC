@@ -5,6 +5,11 @@
 @theme {
   /* Muted text one step darker than Tailwind's slate-500 so it reads at 4.5:1 on the page grey. */
   --color-slate-500: oklch(50% 0.046 257.417);
+  /*
+   * Timecodes and IDs stay monospaced, but Arabic letters inside them take the UI's Arabic face
+   * instead of a system monospace fallback (DejaVu, Courier New) that draws Arabic poorly.
+   */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'IBM Plex Sans Arabic', 'Cairo', 'Courier New', monospace;
   --animate-pulse: live-pulse 2.6s ease-in-out infinite;
   @keyframes live-pulse {
     0%,

@@ -179,7 +179,8 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               key={tag.id}
               type="button"
               onClick={() => setSelectedAction(tag.id)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+              aria-pressed={selectedAction === tag.id}
+              className={`min-h-7 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
                 selectedAction === tag.id
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'

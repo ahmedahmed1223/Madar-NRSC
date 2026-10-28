@@ -58,7 +58,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                   <button
                     type="button"
                     onClick={item.onClick}
-                    className="hover:text-blue-600 transition-colors font-medium cursor-pointer flex items-center gap-1"
+                    className="min-h-6 px-1 rounded-md hover:text-blue-600 hover:bg-slate-100 transition-colors font-medium cursor-pointer flex items-center gap-1"
                   >
                     {item.icon}
                     {item.label}

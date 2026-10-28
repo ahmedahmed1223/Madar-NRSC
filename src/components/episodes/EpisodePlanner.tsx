@@ -359,11 +359,11 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
         {[
-          { label: 'المدة المخططة', value: `${formatSecondsToTime(totalSeconds).slice(0, 5)} / ${formatSecondsToTime(plannedSeconds).slice(0, 5)}`, warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
+          { label: 'المدة المخططة', value: `${formatSecondsToTime(totalSeconds).slice(0, 5)} من ${formatSecondsToTime(plannedSeconds).slice(0, 5)}`, warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
           { label: 'المحاور', value: String(topics.length), warn: topics.length === 0 },
-          { label: 'الضيوف المؤكدون', value: `${bookedGuests} / ${guestsInShow.size}`, warn: bookedGuests < guestsInShow.size },
-          { label: 'حوارات لها أسئلة', value: `${talkWithQuestions} / ${talk.length}`, warn: talkWithQuestions < talk.length },
-          { label: 'التقارير الجاهزة', value: `${reportsReady} / ${reports.length}`, warn: reportsReady < reports.length },
+          { label: 'الضيوف المؤكدون', value: `${bookedGuests} من ${guestsInShow.size}`, warn: bookedGuests < guestsInShow.size },
+          { label: 'حوارات لها أسئلة', value: `${talkWithQuestions} من ${talk.length}`, warn: talkWithQuestions < talk.length },
+          { label: 'التقارير الجاهزة', value: `${reportsReady} من ${reports.length}`, warn: reportsReady < reports.length },
         ].map((c) => (
           <div key={c.label} className={`p-3 rounded-xl border ${c.warn ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
             <div className="text-[11px] font-bold text-slate-500">{c.label}</div>

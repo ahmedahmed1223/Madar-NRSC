@@ -904,7 +904,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 السابق
               </button>
               <span className="px-2 font-mono">
-                {currentPage + 1} / {pageCount}
+                {currentPage + 1} من {pageCount}
               </span>
               <button
                 type="button"

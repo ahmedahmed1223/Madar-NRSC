@@ -1,7 +1,7 @@
 import { countLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { findStudioConflicts } from '../shared/schedule';
-import { addDaysIso, localDateString } from '../shared/dates';
+import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import {
   Calendar as CalendarIcon,
@@ -62,11 +62,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const days = [];
     for (let i = 0; i < 7; i++) {
       const isoStr = addDaysIso(saturdayIso, i);
-      const [, mm, dd] = isoStr.split('-').map(Number);
       days.push({
         name: arabicDays[i],
         date: isoStr,
-        displayDate: `${dd} / ${mm}`,
+        displayDate: arabicDate(isoStr),
         isToday: isoStr === todayStr,
       });
     }
@@ -275,7 +274,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   }`}
                 >
                   <div className="text-xs font-black">{day.name}</div>
-                  <div className="text-[11px] font-mono mt-0.5 opacity-90">{day.displayDate}</div>
+                  <div className="text-[11px] tabular-nums mt-0.5 opacity-90">{day.displayDate}</div>
                 </div>
 
                 {/* Day Episodes list */}
