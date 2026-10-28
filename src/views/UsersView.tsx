@@ -331,47 +331,47 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       </div>
 
       {/* KPI Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
             <span className="text-[11px] text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 items-center justify-center">
             <UsersIcon className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
-            <div className="text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
             <span className="text-[11px] text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 items-center justify-center">
             <UserCheck className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
-            <div className="text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
+            <div className="text-xl sm:text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
             <span className="text-[11px] text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
-            <div className="text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
+            <div className="text-xl sm:text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
             <span className="text-[11px] text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center">
             <KeyRound className="w-5 h-5" />
           </div>
         </div>
@@ -431,7 +431,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="الدور"
                 value={selectedRoleFilter}
                 onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">كافة الأدوار التحريرية</option>
                 {roles.map((r) => (
@@ -445,7 +445,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="القسم"
                 value={selectedDepartmentFilter}
                 onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
-                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">كافة الأقسام</option>
                 {DEPARTMENTS.map((dept) => (
@@ -459,7 +459,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="حالة الحساب"
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value as any)}
-                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">كافة الحالات</option>
                 <option value="ACTIVE">نشط ومصرح فقط</option>
@@ -470,7 +470,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="التحقق بخطوتين"
                 value={twoFactorFilter}
                 onChange={(e) => setTwoFactorFilter(e.target.value as any)}
-                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">التحقق بخطوتين: الكل</option>
                 <option value="ON">مفعّل</option>
@@ -485,7 +485,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                   if (key !== sort.key) toggleSort(key, dir);
                   else if (dir !== sort.dir) toggleSort(key);
                 }}
-                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="name:asc">الاسم (أ-ي)</option>
                 <option value="name:desc">الاسم (ي-أ)</option>

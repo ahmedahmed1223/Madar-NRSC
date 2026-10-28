@@ -125,7 +125,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
         {days.map((day) => {
           const list = visible.filter((e) => e.date === day);
           return (
-            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
+            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 md:min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
                   {dayName(day)}
