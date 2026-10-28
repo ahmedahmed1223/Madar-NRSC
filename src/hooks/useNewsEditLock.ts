@@ -105,14 +105,16 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       disposed = true;
       clearInterval(heartbeat);
       unsubscribe();
-      if (!held) return;
+      // A request still in flight may be granted after the page is gone, so release then too;
+      // this endpoint only removes a lock the server shows as ours.
+      if (!held && !acquiring) return;
       try {
-        fetch('/api/v1/data/sync', {
+        fetch('/api/v1/data/locks/release', {
           method: 'POST',
           keepalive: true,
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
-          body: JSON.stringify({ ops: [{ c: 'editLocks', op: 'delete', id: lockIdFor(collection, newsId) }] }),
+          body: JSON.stringify({ id: lockIdFor(collection, newsId) }),
         });
       } catch {
         // ignore

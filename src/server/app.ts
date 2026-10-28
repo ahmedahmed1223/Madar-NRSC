@@ -509,6 +509,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, rev: db.currentRev(), dbId: db.dbId, results });
   });
 
+  /**
+   * Releases an edit lock only if the caller holds it. Pages call this as they unload, even while
+   * their own lock request is unanswered, without risking a colleague's lock (editors may delete
+   * other people's locks through /data/sync, which is a deliberate takeover, not a release).
+   */
+  app.post('/api/v1/data/locks/release', requireAuth, (req, res) => {
+    const id = req.body?.id;
+    if (typeof id !== 'string' || !/^(news|episodes|bulletinStories):[^\s]{1,200}$/.test(id)) throw new HttpError(400, 'معرّف القفل غير صالح');
+    const lock = db.getRow('editLocks', id);
+    const released = !!lock && !lock.deleted && lock.d?.userId === req.auth!.user.id;
+    if (released) sync.apply(req.auth!, [{ c: 'editLocks', op: 'delete', id } as SyncOp], req.ip);
+    res.json({ success: true, released });
+  });
+
   /** Server-Sent Events: tells browsers a new revision exists so they pull changes immediately. */
   app.get('/api/v1/data/stream', requireAuth, (req, res) => {
     streams.add(res);
