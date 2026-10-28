@@ -358,7 +358,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'TODO')}
-                            className="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
+                            className="min-h-7 text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
                           >
                             ← مطلوبة
                           </button>
@@ -367,7 +367,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'IN_PROGRESS')}
-                            className="text-[11px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
+                            className="min-h-7 text-[11px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
                           >
                             قيد التنفيذ
                           </button>
@@ -376,7 +376,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'COMPLETED')}
-                            className="text-[11px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
+                            className="min-h-7 text-[11px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
                           >
                             إنجاز ✓
                           </button>
