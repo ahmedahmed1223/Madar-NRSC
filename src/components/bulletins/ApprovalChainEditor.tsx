@@ -66,7 +66,7 @@ export const ApprovalChainEditor: React.FC<{
       <ol className="space-y-1">
         {steps.map((s, i) => (
           <li key={s.id} className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-            <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+            <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
             <span className="flex-1 font-bold text-slate-700">{approvalStepName(s, { editorName })}</span>
             <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`تقديم الخطوة ${i + 1}`} className="p-0.5 text-slate-500 hover:text-slate-700 disabled:opacity-30">
               <ArrowUp className="w-3.5 h-3.5" />

@@ -494,7 +494,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       {/* Title & Script excerpt */}
                       <td className="py-3.5 px-4">
                         {seg.topicId && topics.some((t) => t.id === seg.topicId) && (
-                          <div className="text-[10px] font-bold text-indigo-700">
+                          <div className="text-[11px] font-bold text-indigo-700">
                             محور {topics.findIndex((t) => t.id === seg.topicId) + 1}: {topics.find((t) => t.id === seg.topicId)?.title}
                           </div>
                         )}
@@ -576,7 +576,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                             <span
                               key={item.key}
                               title={`${departmentName(item.departmentId)}: ${item.detail}`}
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                              className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md border ${
                                 item.state === 'ready'
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : item.state === 'pending'
@@ -596,7 +596,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                                   link: { kind: 'segment', episodeId, segmentId: seg.id, title: `${episodeRecord?.title || 'حلقة'} — ${seg.title}` },
                                 })
                               }
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
+                              className="text-[11px] font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
                               title="طلب مونتاج أو جرافيك أو استديو لهذه الفقرة"
                             >
                               + طلب

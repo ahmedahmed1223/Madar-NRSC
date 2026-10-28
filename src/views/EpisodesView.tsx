@@ -531,7 +531,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-[11px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -602,13 +602,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           {/* Duration Presets & End Time Calculation */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-blue-700 font-bold">المدة الموصى بها:</span>
+              <span className="text-[11px] text-blue-700 font-bold">المدة الموصى بها:</span>
               {DURATION_PRESETS.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => handleDurationChange(m)}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-mono transition-all ${
+                  className={`text-[11px] px-2 py-0.5 rounded-md font-mono transition-all ${
                     durationMinutes === m
                       ? 'bg-blue-600 text-white font-bold shadow-2xs'
                       : 'bg-white text-blue-800 hover:bg-blue-100 border border-blue-200'
@@ -681,7 +681,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${startMode === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
                   <span className="block text-xs font-bold">{o.name}</span>
-                  <span className={`block text-[10px] ${startMode === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                  <span className={`block text-[11px] ${startMode === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
                 </button>
               ))}
             </div>

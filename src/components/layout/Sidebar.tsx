@@ -270,7 +270,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-extrabold text-white text-sm block leading-tight tracking-tight">
                   {APP_NAME}
                 </span>
-                <span className="text-[10px] text-slate-400 block leading-tight">
+                <span className="text-[11px] text-slate-400 block leading-tight">
                   {APP_TAGLINE}
                 </span>
               </div>
@@ -317,7 +317,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
               {group.label && !isCollapsed && (
-                <div className="px-3 pt-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wide">{group.label}</div>
+                <div className="px-3 pt-3 pb-1 text-[11px] font-bold text-slate-400 tracking-wide">{group.label}</div>
               )}
               {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
         {items.map((item) => {
@@ -352,7 +352,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="flex-1 text-right truncate">{item.label}</span>
                   {item.badge && (
                     <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                      className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
                         item.badgeColor || 'bg-slate-800 text-slate-300'
                       }`}
                     >

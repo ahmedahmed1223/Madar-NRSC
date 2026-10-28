@@ -222,12 +222,12 @@ export const NewsVideosList: React.FC<{ videos: NewsVideo[] }> = ({ videos }) =>
           const href = v.kind === 'link' ? v.url : m?.fileUrl || m?.url;
           return (
             <li key={v.id} className="flex items-start gap-2 text-xs">
-              <span className="w-5 h-5 shrink-0 rounded-md bg-slate-900 text-white text-[10px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
+              <span className="w-5 h-5 shrink-0 rounded-md bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-slate-800">
                   {v.title || 'مقطع'}
                   {v.seconds ? <span className="font-mono font-normal text-slate-500 mr-1.5">{formatClipDuration(v.seconds)}</span> : null}
-                  <span className="mr-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">{VIDEO_KIND_NAMES[v.kind]}</span>
+                  <span className="mr-1.5 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">{VIDEO_KIND_NAMES[v.kind]}</span>
                 </p>
                 {v.kind === 'location' ? (
                   <p className="text-slate-700 select-all">📍 {v.location}</p>

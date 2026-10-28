@@ -65,7 +65,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
                   {m.title || m.fileName}
                 </a>
                 {isVideo && (
-                  <span className={`text-[10px] font-bold ${isVideoReady(m.videoStatus) ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  <span className={`text-[11px] font-bold ${isVideoReady(m.videoStatus) ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {videoStatusName(m.videoStatus)}
                     {m.editorName ? ` · ${m.editorName}` : ''}
                   </span>

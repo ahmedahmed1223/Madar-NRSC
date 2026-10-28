@@ -194,7 +194,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="text-right text-xs font-bold text-red-700 hover:text-red-800 bg-white/60 hover:bg-white px-3 py-2 rounded-lg border border-red-100 transition-colors flex items-center justify-between gap-4"
               >
                 <span className="truncate max-w-[250px]">{crit.title}</span>
-                <span className="text-[10px] bg-red-100 px-1.5 py-0.5 rounded text-red-600 shrink-0">{getStatusLabel(crit.status)}</span>
+                <span className="text-[11px] bg-red-100 px-1.5 py-0.5 rounded text-red-600 shrink-0">{getStatusLabel(crit.status)}</span>
               </button>
             ))}
           </div>
@@ -333,7 +333,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                   <div className="flex items-center gap-4 self-end sm:self-center">
                     <div className="text-left font-mono text-xs">
-                      <span className="text-slate-500 block text-[10px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
+                      <span className="text-slate-500 block text-[11px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
                       <strong className="text-slate-800 font-bold">{ep.startTime} - {ep.endTime}</strong>
                     </div>
                     <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700">
@@ -376,7 +376,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     }`}
                   >
                     {getStatusLabel(tab)}
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${isActive ? 'bg-white/60' : 'bg-slate-200 text-slate-600'}`}>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[11px] ${isActive ? 'bg-white/60' : 'bg-slate-200 text-slate-600'}`}>
                       {count}
                     </span>
                   </button>
@@ -402,7 +402,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 >
                   <span>كافة الأقسام</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
                       selectedDashboardCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
                     }`}
                   >
@@ -437,7 +437,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       />
                       <span>{cat.nameAr}</span>
                       <span
-                        className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold"
+                        className="text-[11px] px-1.5 py-0.2 rounded-full font-mono font-bold"
                         style={{
                             backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'var(--color-slate-100)',
                             color: isSelected ? '#ffffff' : 'var(--color-slate-800)',
@@ -565,7 +565,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span>المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
-                    <span className="font-mono text-[10px]">
+                    <span className="font-mono text-[11px]">
                       {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
                         <span className="text-rose-700 font-bold">
                           متأخرة منذ {Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000))} يوم

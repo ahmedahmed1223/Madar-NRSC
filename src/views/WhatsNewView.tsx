@@ -30,7 +30,7 @@ export const WhatsNewView: React.FC<{ currentUser: User }> = ({ currentUser }) =
             <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-xs font-bold font-mono" dir="ltr">
               v{r.version}
             </span>
-            {idx === 0 && <span className="px-2 py-0.5 rounded-md bg-emerald-700 text-white text-[10px] font-bold">الإصدار الحالي</span>}
+            {idx === 0 && <span className="px-2 py-0.5 rounded-md bg-emerald-700 text-white text-[11px] font-bold">الإصدار الحالي</span>}
             <h2 className="text-sm font-bold text-slate-900">{r.title}</h2>
             <time className="text-[11px] text-slate-500 mr-auto" dateTime={r.date}>
               {new Date(`${r.date}T12:00:00`).toLocaleDateString(appLocale(), { ...zoneOptions(), dateStyle: 'long' })}
@@ -39,7 +39,7 @@ export const WhatsNewView: React.FC<{ currentUser: User }> = ({ currentUser }) =
           <ul className="space-y-2">
             {r.items.map((it, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-slate-700 leading-relaxed">
-                <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${KIND[it.kind].cls}`}>{KIND[it.kind].label}</span>
+                <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded-md border text-[11px] font-bold ${KIND[it.kind].cls}`}>{KIND[it.kind].label}</span>
                 <span>{it.text}</span>
               </li>
             ))}

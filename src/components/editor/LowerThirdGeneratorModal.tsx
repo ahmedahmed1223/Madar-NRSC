@@ -261,7 +261,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             معاينة شارة البث على شاشة التلفزيون
           </label>
           <div className="relative h-28 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden p-3 flex flex-col justify-end border border-slate-700 shadow-inner">
-            <div className="absolute top-2 left-3 flex items-center gap-1.5 text-[10px] font-mono text-red-400 font-bold">
+            <div className="absolute top-2 left-3 flex items-center gap-1.5 text-[11px] font-mono text-red-400 font-bold">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               LIVE 1080p50 HD
             </div>
@@ -273,7 +273,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                   <div className="text-white text-xs font-black tracking-wide">
                     {guestName || 'اسم الضيف الكريم'}
                   </div>
-                  <div className="text-blue-400 text-[10px] font-semibold mt-0.5">
+                  <div className="text-blue-400 text-[11px] font-semibold mt-0.5">
                     {[guestTitle, guestOrg].filter(Boolean).join(' - ') || 'الوظيفة أو التخصص والمؤسسة'}
                   </div>
                 </>
@@ -285,7 +285,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                     {headlineText || 'العنوان الرئيسي للموضوع'}
                   </div>
                   {subHeadlineText && (
-                    <div className="text-slate-300 text-[10px] mt-0.5">{subHeadlineText}</div>
+                    <div className="text-slate-300 text-[11px] mt-0.5">{subHeadlineText}</div>
                   )}
                 </>
               )}
@@ -296,7 +296,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     {reporterName || 'مراسلنا الميداني'}
                   </div>
-                  <div className="text-slate-300 text-[10px] mt-0.5">
+                  <div className="text-slate-300 text-[11px] mt-0.5">
                     {[locationCity, locationCountry].filter(Boolean).join(' - ') || 'العاصمة - الدولة'}
                   </div>
                 </>
@@ -304,7 +304,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
 
               {activeTab === 'BREAKING' && (
                 <div className="text-red-400 text-xs font-black flex items-center gap-1.5">
-                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-[10px]">عاجل</span>
+                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-[11px]">عاجل</span>
                   <span className="text-white">{breakingText || 'نص الخبر العاجل'}</span>
                 </div>
               )}

@@ -342,7 +342,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded">
                             {hl.type}
                           </span>
                           <strong className="text-xs text-slate-800 font-bold">{hl.title}</strong>

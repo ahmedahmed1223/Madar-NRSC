@@ -306,7 +306,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFullName('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -350,13 +350,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           {/* Quick Organization Presets */}
           <div className="flex flex-wrap gap-1">
-            <span className="text-[10px] text-slate-500 font-bold">مقترحات جهات:</span>
+            <span className="text-[11px] text-slate-500 font-bold">مقترحات جهات:</span>
             {ORG_PRESETS.map((org) => (
               <button
                 key={org}
                 type="button"
                 onClick={() => setOrganization(org)}
-                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
               >
                 {org}
               </button>
@@ -380,7 +380,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   key={sp}
                   type="button"
                   onClick={() => setSpecialty(sp)}
-                  className={`text-[10px] px-2 py-0.5 rounded-full transition-all ${
+                  className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
                     specialty === sp
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
@@ -430,7 +430,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setAvatarUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

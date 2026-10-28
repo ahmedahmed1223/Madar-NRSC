@@ -313,7 +313,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             >
                               {ep.startTime || '20:00'}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">
+                            <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">
                               {ep.durationMinutes || 45} د
                             </span>
                           </div>
@@ -322,7 +322,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             {ep.title}
                           </h4>
 
-                          <div className="text-[10px] text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
+                          <div className="text-[11px] text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
                             <div className="font-semibold text-blue-700 truncate">{ep.programName}</div>
                             <div className="truncate">{ep.studioName || 'استوديو الأخبار'}</div>
                             {isConflict && <div className="font-bold text-rose-700">تعارض في الاستوديو</div>}

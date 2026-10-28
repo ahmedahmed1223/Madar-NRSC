@@ -170,7 +170,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
           <h3 className="text-sm font-bold text-slate-800">ضيوف الحلقة وحجزهم</h3>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {counts.map((c) => (
-              <span key={c.id} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${TONE[c.id]}`}>
+              <span key={c.id} className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${TONE[c.id]}`}>
                 {c.name}: {c.n}
               </span>
             ))}

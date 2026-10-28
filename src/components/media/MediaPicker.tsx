@@ -137,7 +137,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
                 </div>
                 <div className="p-2 space-y-0.5">
                   <span className="block text-xs font-bold text-slate-800 truncate">{m.title || m.fileName}</span>
-                  <span className="block text-[10px] text-slate-500">
+                  <span className="block text-[11px] text-slate-500">
                     {m.mediaType === 'VIDEO' ? videoStatusName(m.videoStatus) : m.mediaType}
                   </span>
                 </div>

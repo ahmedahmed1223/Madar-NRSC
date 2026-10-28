@@ -603,7 +603,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 disabled={!canEditEpisode || savingScript}
                 onClick={() => changeScript(introScript ? `${introScript}\n\n${preset.text}` : preset.text)}
                 title={`إضافة ${preset.label} إلى النص`}
-                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
               >
                 +{preset.label}
               </button>

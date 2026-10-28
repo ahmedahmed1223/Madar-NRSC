@@ -49,7 +49,7 @@ function Choice<K extends keyof DateTimeSettings>({
               }`}
             >
               <span className="block">{o.label}</span>
-              {o.hint && <span className="block text-[10px] font-normal text-slate-500 tabular-nums">{o.hint}</span>}
+              {o.hint && <span className="block text-[11px] font-normal text-slate-500 tabular-nums">{o.hint}</span>}
             </button>
           );
         })}

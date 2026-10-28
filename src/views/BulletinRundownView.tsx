@@ -423,7 +423,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'على الهواء' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-700' : '' },
           ].map((c) => (
             <div key={c.label}>
-              <div className="text-[10px] text-slate-500 font-sans">{c.label}</div>
+              <div className="text-[11px] text-slate-500 font-sans">{c.label}</div>
               <div className={`text-sm sm:text-lg font-black ${c.tone || ''}`} dir="ltr">
                 {c.value}
               </div>
@@ -614,16 +614,16 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {s.slug}
                     </button>
                     <div className="flex flex-wrap gap-1 mt-0.5">
-                      <span className="sm:hidden text-[10px] font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
-                      {s.floated && <span className="text-[10px] font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
-                      {s.killed && <span className="text-[10px] font-bold text-rose-500">مستبعدة</span>}
-                      {changed && <span className="text-[10px] font-bold text-blue-700">تحدّث الخبر</span>}
-                      {isUnderEmbargo(news) && <span className="text-[10px] font-bold text-rose-700">⚠ الخبر محظور حتى {embargoLabel(news!.embargoUntil)}</span>}
-                      {lock && <span className="text-[10px] font-bold text-amber-700">يحررها {lock.userName}</span>}
+                      <span className="sm:hidden text-[11px] font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
+                      {s.floated && <span className="text-[11px] font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
+                      {s.killed && <span className="text-[11px] font-bold text-rose-500">مستبعدة</span>}
+                      {changed && <span className="text-[11px] font-bold text-blue-700">تحدّث الخبر</span>}
+                      {isUnderEmbargo(news) && <span className="text-[11px] font-bold text-rose-700">⚠ الخبر محظور حتى {embargoLabel(news!.embargoUntil)}</span>}
+                      {lock && <span className="text-[11px] font-bold text-amber-700">يحررها {lock.userName}</span>}
                       {s.clipMediaId && <Film className="w-3 h-3 text-blue-500" aria-label="لقطة" />}
-                      {(s.graphics || []).length > 0 && <span className="text-[10px] text-purple-700">CG×{s.graphics!.length}</span>}
+                      {(s.graphics || []).length > 0 && <span className="text-[11px] text-purple-700">CG×{s.graphics!.length}</span>}
                       {s.newsId && onOpenNews && (
-                        <button type="button" onClick={() => onOpenNews(s.newsId!)} className="text-[10px] text-indigo-700 hover:underline">
+                        <button type="button" onClick={() => onOpenNews(s.newsId!)} className="text-[11px] text-indigo-700 hover:underline">
                           الخبر
                         </button>
                       )}
@@ -640,7 +640,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                         (o) => o.id === s.status || (!lock && !s.killed && !storyStatusError(s, { ...s, status: o.id }, bulletin, actor))
                       );
                       if (options.length < 2) {
-                        return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>;
+                        return <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>;
                       }
                       return (
                         <select
@@ -663,7 +663,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                                   : `أُعيدت «${s.slug}» مسودة`
                             );
                           }}
-                          className={`text-[10px] font-bold ps-1 pe-4 sm:ps-1.5 sm:pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
+                          className={`text-[11px] font-bold ps-1 pe-4 sm:ps-1.5 sm:pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
                         >
                           {options.map((o) => (
                             <option key={o.id} value={o.id}>
@@ -676,7 +676,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     {(() => {
                       const pr = approvalProgress(bulletin, s);
                       return pr.total > 1 && s.status !== 'DRAFT' ? (
-                        <span className="block text-[10px] text-slate-500 mt-0.5" title={pr.next ? `بانتظار: ${pr.nextName}` : 'اكتمل الاعتماد'}>
+                        <span className="block text-[11px] text-slate-500 mt-0.5" title={pr.next ? `بانتظار: ${pr.nextName}` : 'اكتمل الاعتماد'}>
                           {pr.done}/{pr.total}
                           {pr.next && s.status === 'READY' ? ` · ${pr.nextName}` : ''}
                         </span>
@@ -860,13 +860,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     <input type="checkbox" checked={on} onChange={() => setPicked(on ? picked.filter((x) => x !== item.id) : [...picked, item.id])} className="mt-0.5" />
                     <span className="flex-1 min-w-0">
                       <span className="font-bold text-slate-800 block">{source === 'COPY' ? item.slug : item.title}</span>
-                      <span className="text-[10px] text-slate-500">
+                      <span className="text-[11px] text-slate-500">
                         {source === 'NEWS' && `${NEWS_STATUS[item.status] || item.status} · ${item.authorName || ''}`}
                         {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}`}
                         {source === 'COPY' && `${storyTypeOf(item.type).code} · ${mmss(storyTiming(item).total)}`}
                       </span>
-                      {already && <span className="text-[10px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}
-                      {source === 'NEWS' && isUnderEmbargo(item) && <span className="text-[10px] font-bold text-rose-700 mr-2">محظور حتى {embargoLabel(item.embargoUntil)}</span>}
+                      {already && <span className="text-[11px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}
+                      {source === 'NEWS' && isUnderEmbargo(item) && <span className="text-[11px] font-bold text-rose-700 mr-2">محظور حتى {embargoLabel(item.embargoUntil)}</span>}
                     </span>
                   </label>
                 </li>

@@ -377,7 +377,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setName('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-[11px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -417,7 +417,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -464,21 +464,21 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setBroadcastDays([...daysOfWeek])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   يومياً
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   أيام العمل
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الجمعة', 'السبت'])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   عطلة الأسبوع
                 </button>
@@ -534,7 +534,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     key={d}
                     type="button"
                     onClick={() => setDurationMinutes(d)}
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
                       durationMinutes === d
                         ? 'bg-blue-600 text-white font-bold'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -564,7 +564,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCoverImageUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

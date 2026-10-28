@@ -259,13 +259,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   </Badge>
 
                   {story.categoryName && (
-                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                       {story.categoryName}
                     </span>
                   )}
 
                   {story.locationName && (
-                    <span className="text-[10px] text-slate-500 flex items-center gap-0.5">
+                    <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
                       <MapPin className="w-3 h-3 text-slate-500" />
                       {story.locationName}
                     </span>
@@ -310,7 +310,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               {story.keywords && story.keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-4">
                   {story.keywords.map((kw, i) => (
-                    <span key={i} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                    <span key={i} className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                       #{kw}
                     </span>
                   ))}
@@ -362,7 +362,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -430,7 +430,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setLocationName('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-[11px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -451,7 +451,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     key={loc}
                     type="button"
                     onClick={() => setLocationName(loc)}
-                    className="text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 px-1.5 py-0.5 rounded"
+                    className="text-[11px] bg-slate-100 hover:bg-indigo-50 text-slate-600 px-1.5 py-0.5 rounded"
                   >
                     {loc}
                   </button>
@@ -466,7 +466,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setKeywordsInput('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-[11px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -486,12 +486,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             <div className="flex items-center justify-between mb-1">
               <label htmlFor="stories-view-field-7" className="block text-xs font-bold text-slate-700">شرح وتفاصيل التغطية</label>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500">{description.length} حرف</span>
+                <span className="text-[11px] text-slate-500">{description.length} حرف</span>
                 {description && (
                   <button
                     type="button"
                     onClick={() => setDescription('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-[11px] text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>

@@ -271,7 +271,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}>{r.title}</span>
                         {r.meta && <span className="text-[11px] text-slate-500 block truncate">{r.meta}</span>}
                       </span>
-                      {r.badge && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
+                      {r.badge && <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
                     </li>
                   </React.Fragment>
                 );

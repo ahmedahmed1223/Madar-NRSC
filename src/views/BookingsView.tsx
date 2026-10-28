@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, ChevronLeft, ChevronRight, Pencil, Plus, Power, Settings2, Trash2, X } from 'lucide-react';
+import { CalendarRange, ChevronLeft, ChevronRight, Pencil, Plus, Power, Settings2, Trash2 } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
@@ -9,6 +9,7 @@ import { notify, tryAction } from '../services/notify';
 import { useLiveData } from '../hooks/useLiveData';
 import { BookingForm } from '../components/planning/BookingForm';
 import { FormPage } from '../components/common/FormPage';
+import { Modal } from '../components/common/Modal';
 import { arabicDate, localDateString } from '../shared/dates';
 import { Booking, bookingsOnDay, bookingStatusOf, Resource, RESOURCE_KINDS, resourceKindName, shiftDay } from '../shared/planning';
 
@@ -144,7 +145,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[900px]">
-              <div className="flex border-b border-slate-100 text-[10px] text-slate-500">
+              <div className="flex border-b border-slate-100 text-[11px] text-slate-500">
                 <div className="w-40 shrink-0" />
                 <div className="flex-1 grid grid-cols-24" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                   {HOURS.map((h) => (
@@ -160,7 +161,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                   <div key={r.id} className="flex border-b border-slate-100 last:border-0">
                     <div className="w-40 shrink-0 p-2 text-xs">
                       <p className="font-bold text-slate-800 truncate">{r.name}</p>
-                      <p className="text-[10px] text-slate-500">{resourceKindName(r.kind)}</p>
+                      <p className="text-[11px] text-slate-500">{resourceKindName(r.kind)}</p>
                     </div>
                     <div className="flex-1 relative h-14">
                       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
@@ -186,7 +187,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                             type="button"
                             onClick={() => setViewing(b)}
                             title={`${b.title} — ${fmtTime(b.start)}–${fmtTime(b.end)} — ${b.bookedByName || ''}`}
-                            className={`absolute top-1.5 bottom-1.5 rounded-lg border px-1.5 text-[10px] font-bold text-right overflow-hidden whitespace-nowrap z-20 ${bookingStatusOf(b.status).tone} ${
+                            className={`absolute top-1.5 bottom-1.5 rounded-lg border px-1.5 text-[11px] font-bold text-right overflow-hidden whitespace-nowrap z-20 ${bookingStatusOf(b.status).tone} ${
                               focusId === b.id ? 'ring-2 ring-blue-500' : ''
                             }`}
                             style={{ insetInlineStart: `${s}%`, width: `${Math.max(e - s, 1.5)}%` }}
@@ -209,17 +210,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
 
       {/* Booking details */}
       {viewing && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4" onClick={() => setViewing(null)}>
-          <div role="dialog" aria-label="تفاصيل الحجز" className="bg-white rounded-2xl p-5 w-full max-w-md space-y-3 text-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h2 className="font-bold text-slate-900">{viewing.title}</h2>
-                <p className="text-xs text-slate-500">{resName(viewing.resourceId)}</p>
-              </div>
-              <button type="button" onClick={() => setViewing(null)} aria-label="إغلاق">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Modal isOpen onClose={() => setViewing(null)} title={viewing.title} subtitle={resName(viewing.resourceId)} maxWidth="md">
+          <div className="space-y-3 text-sm">
             <dl className="text-xs space-y-1.5 text-slate-700">
               <div>
                 <dt className="inline font-bold">الموعد: </dt>
@@ -252,7 +244,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                     if (!(await confirmDialog('إلغاء هذا الحجز؟'))) return;
                     if (tryAction('إلغاء الحجز', () => apiService.cancelBooking(viewing.id), 'أُلغي الحجز')) setViewing(null);
                   }}
-                  className="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50"
+                  className="min-h-11 px-3 py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50"
                 >
                   إلغاء الحجز
                 </button>
@@ -262,14 +254,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                     setEditing(viewing);
                     setViewing(null);
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  className="min-h-11 inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
                 >
                   <Pencil className="w-3.5 h-3.5" /> تعديل
                 </button>
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
 
       {editing && <BookingForm isOpen onClose={() => setEditing(null)} currentUser={currentUser} users={users} booking={editing} />}

@@ -155,10 +155,10 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
               ) : (
                 filteredPermissions.map((perm, idx) => {
                   const riskBadge = {
-                    LOW: <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
-                    MEDIUM: <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
-                    HIGH: <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
-                    CRITICAL: <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold border border-red-200">حرج / سيادي</span>,
+                    LOW: <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
+                    MEDIUM: <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
+                    HIGH: <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
+                    CRITICAL: <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold border border-red-200">حرج / سيادي</span>,
                   }[perm.riskLevel];
 
                   return (
@@ -173,7 +173,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{perm.nameAr}</span>
-                            <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
+                            <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
                               ({perm.code})
                             </span>
                           </div>

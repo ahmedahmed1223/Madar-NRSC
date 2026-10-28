@@ -296,7 +296,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   className={`p-2 rounded-lg border text-right ${type === t.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
                   <span className="block text-[11px] font-black font-mono">{t.code}</span>
-                  <span className="block text-[10px]">{t.name}</span>
+                  <span className="block text-[11px]">{t.name}</span>
                 </button>
               ))}
             </div>

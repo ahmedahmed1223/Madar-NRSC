@@ -174,7 +174,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.fullName && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.fullName}</p>}
           </div>
 
           <div>
@@ -211,7 +211,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 dir="ltr"
               />
             </div>
-            {errors.email && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.email}</p>}
+            {errors.email && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.email}</p>}
           </div>
 
           {!userToEdit && (
@@ -235,8 +235,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   dir="ltr"
                 />
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
-              {errors.initialPassword && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
+              <p className="text-[11px] text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
+              {errors.initialPassword && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
             </div>
           )}
 
@@ -299,7 +299,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.jobTitle && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
+            {errors.jobTitle && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
           </div>
 
           <div>

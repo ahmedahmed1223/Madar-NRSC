@@ -129,7 +129,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
                   {dayName(day)}
-                  {day === today && <span className="ms-1 text-[10px] text-blue-700">(اليوم)</span>}
+                  {day === today && <span className="ms-1 text-[11px] text-blue-700">(اليوم)</span>}
                   <span className="block font-normal text-[11px] text-slate-500">{arabicDate(day)}</span>
                 </p>
                 {canManage && (
@@ -147,22 +147,22 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                     <p className="text-xs font-bold text-slate-900 leading-snug">
                       {e.priority === 'HIGH' && <Flag className="w-3 h-3 text-red-600 inline ms-0.5" aria-label="أولوية عالية" />} {e.title}
                     </p>
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-[11px] text-slate-500">
                       {e.startTime ? `${e.startTime}${e.endTime ? `–${e.endTime}` : ''}` : 'طوال اليوم'} · {diaryKindName(e.kind)}
                     </p>
                     {e.location && (
-                      <p className="text-[10px] text-slate-500 flex items-center gap-0.5">
+                      <p className="text-[11px] text-slate-500 flex items-center gap-0.5">
                         <MapPin className="w-3 h-3" /> {e.location}
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
                       {e.assigneeIds.length > 0 && (
-                        <span className="text-[10px] text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
+                        <span className="text-[11px] text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
                           <UsersIcon className="w-3 h-3" /> {e.assigneeIds.length === 1 ? userName(e.assigneeIds[0]) : `${e.assigneeIds.length} مكلفين`}
                         </span>
                       )}
-                      {produced > 0 && <span className="text-[10px] text-emerald-700 font-bold">{produced} خبر</span>}
+                      {produced > 0 && <span className="text-[11px] text-emerald-700 font-bold">{produced} خبر</span>}
                     </div>
                   </button>
                 );

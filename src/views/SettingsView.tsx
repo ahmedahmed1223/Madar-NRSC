@@ -777,7 +777,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {/* Live Preview Card */}
               <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   معاينة حية للشارة والبطاقة
                 </div>
                 <div className="flex items-center gap-3">
@@ -907,7 +907,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </span>
                             )}
                             <span
-                              className="text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border"
+                              className="text-[11px] font-mono px-1.5 py-0.5 rounded font-bold border"
                               style={{
                                 backgroundColor: `${color}15`,
                                 color: color,
@@ -1042,7 +1042,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     setNewSourceName(srcPreset);
                     setNewSourceType(srcPreset.includes('وكالة') ? 'وكالة أنباء عالمية' : 'مراسل خاص');
                   }}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
+                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
                 >
                   +{srcPreset}
                 </button>
@@ -1058,7 +1058,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <strong className="text-slate-800 block">{src.name}</strong>
                   <span className="text-[11px] text-slate-500">{src.type}</span>
                   {src.feedUrl && (
-                    <span className={`block text-[10px] font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
+                    <span className={`block text-[11px] font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
                       {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
                     </span>
                   )}
@@ -1299,7 +1299,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Live Preview */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-500 block uppercase">
+              <span className="text-[11px] font-bold text-slate-500 block uppercase">
                 معاينة الشارة بعد التعديل:
               </span>
               <span

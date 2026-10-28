@@ -155,7 +155,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
               {q.isAsked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
             </button>
             <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
                 {q.parentId && <CornerDownLeft className="w-3 h-3 text-purple-500" />}
                 <span className={`px-1.5 py-0.5 rounded ${KIND_TONE[q.kind || 'MAIN']}`}>{questionKindName(q.kind)}</span>
                 {(guest || q.assignedToName) && <span className="text-purple-700">إلى: {guest?.guestName || q.assignedToName}</span>}

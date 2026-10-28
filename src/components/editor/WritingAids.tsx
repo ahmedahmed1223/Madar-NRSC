@@ -83,7 +83,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               {issues.map((i) => (
                 <li key={key(i)} className="p-2 rounded-xl border border-slate-100 text-xs space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
+                    <span className={`px-1.5 py-0.5 rounded border text-[11px] font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
                     <span className="text-slate-700 flex-1">{i.message}</span>
                   </div>
                   <p className="text-[11px] text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
@@ -99,7 +99,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
+          <p className="text-[11px] text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
         </div>
       )}
     </div>

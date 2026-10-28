@@ -35,7 +35,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             <Bell className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-bold text-slate-800">مركز الإشعارات التحريرية</span>
             {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              <span className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full">
                 {unreadCount}
               </span>
             )}
@@ -79,7 +79,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">{notif.message}</p>
-                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(notif.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(),

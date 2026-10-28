@@ -140,7 +140,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
               </div>
               <div>
                 <h3 className="text-xs font-black text-white">المحادثة الداخلية بين الأقسام</h3>
-                <span className="text-[10px] text-slate-500">رسائل فورية تصل لكل الزملاء المتصلين</span>
+                <span className="text-[11px] text-slate-500">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
 
@@ -188,10 +188,10 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                     : 'bg-slate-900 border-slate-800 text-slate-200'
                 }`}
               >
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
-                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[10px]">
+                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[11px]">
                         عاجل
                       </span>
                     )}

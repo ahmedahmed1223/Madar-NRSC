@@ -84,7 +84,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
               >
                 <span className="block text-xs font-bold text-slate-800">{a.title}</span>
                 <span className="block text-[11px] text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
-                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-[10px] font-bold text-blue-700">لقسمك</span>}
+                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-[11px] font-bold text-blue-700">لقسمك</span>}
               </button>
             ))}
           </nav>

@@ -417,7 +417,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
                   الحلقة القادمة
                 </span>
-                <span className="text-[10px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
+                <span className="text-[11px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
                   {nextEpisode ? `${arabicDate(nextEpisode.broadcastDate)} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
                 </span>
               </div>

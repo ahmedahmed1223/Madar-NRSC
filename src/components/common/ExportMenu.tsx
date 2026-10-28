@@ -88,7 +88,7 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
           {items.map((item) => (
             <div key={item.id} className="p-2 rounded-lg hover:bg-slate-50">
               <div className="text-xs font-bold text-slate-800">{item.label}</div>
-              {item.hint && <div className="text-[10px] text-slate-500">{item.hint}</div>}
+              {item.hint && <div className="text-[11px] text-slate-500">{item.hint}</div>}
               <div className="flex gap-1.5 mt-1.5">
                 {FORMATS.map((f) => {
                   const key = `${item.id}:${f.id}`;
@@ -116,7 +116,7 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
               {error}
             </p>
           )}
-          <p className="text-[10px] text-slate-500 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
+          <p className="text-[11px] text-slate-500 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
         </div>
       )}
     </div>

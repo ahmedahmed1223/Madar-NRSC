@@ -80,7 +80,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                     <div className="flex items-center gap-1.5 font-bold text-slate-800">
                       <History className="w-3.5 h-3.5 text-slate-500" />
                       النسخة {rev.version}
-                      <span className="text-[10px] font-semibold text-slate-500">({STATUS_LABELS[rev.data.status] || rev.data.status})</span>
+                      <span className="text-[11px] font-semibold text-slate-500">({STATUS_LABELS[rev.data.status] || rev.data.status})</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1">
                       {new Date(rev.changedAt).toLocaleString(appLocale(), zoneOptions())} — عدّلها بعد ذلك: {rev.changedByName || 'النظام'}

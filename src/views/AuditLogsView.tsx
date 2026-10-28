@@ -231,7 +231,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{log.userId}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">{log.userId}</div>
                     </td>
                     <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">

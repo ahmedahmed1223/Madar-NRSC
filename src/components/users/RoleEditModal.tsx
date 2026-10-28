@@ -144,7 +144,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 errors.nameAr ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
               }`}
             />
-            {errors.nameAr && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
+            {errors.nameAr && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
           </div>
 
           <div>
@@ -271,7 +271,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 >
                   <span>{cat.labelAr}</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
                       activeCategory === cat.key ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-600'
                     }`}
                   >
@@ -321,7 +321,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-800">{perm.nameAr}</span>
-                        <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
+                        <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
                           ({perm.code})
                         </span>
                       </div>
@@ -329,7 +329,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                     </div>
                   </div>
 
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
                     {riskLabel}
                   </span>
                 </div>

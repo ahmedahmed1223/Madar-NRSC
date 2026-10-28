@@ -47,10 +47,10 @@ const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; mor
       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
         <Icon className="w-4 h-4 text-blue-600" />
         {title}
-        <span className="text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
+        <span className="text-[11px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
       </h3>
       {more && (
-        <button type="button" onClick={more} className="text-[11px] font-bold text-blue-600 hover:underline">
+        <button type="button" onClick={more} className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] font-bold text-blue-600 hover:bg-blue-50 hover:underline">
           عرض الكل
         </button>
       )}
@@ -67,7 +67,7 @@ const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; mor
               className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
             >
               <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
-              {r.meta && <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
+              {r.meta && <span className={`text-[11px] font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
             </button>
           </li>
         ))}

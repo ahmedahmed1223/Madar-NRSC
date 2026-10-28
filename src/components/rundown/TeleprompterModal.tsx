@@ -504,7 +504,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
             <div className="flex items-center gap-2 font-mono text-sm text-slate-300 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
               <Clock className="w-4 h-4 text-amber-400" />
               <span>{formatTimer(elapsedSeconds)}</span>
-              <span className="text-[10px] text-slate-500 font-sans">مدة الإلقاء</span>
+              <span className="text-[11px] text-slate-500 font-sans">مدة الإلقاء</span>
             </div>
           </div>
         </div>

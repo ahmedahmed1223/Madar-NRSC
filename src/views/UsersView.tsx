@@ -336,7 +336,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
             <div className="text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
-            <span className="text-[10px] text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <UsersIcon className="w-5 h-5" />
@@ -347,7 +347,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
             <div className="text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
-            <span className="text-[10px] text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
             <UserCheck className="w-5 h-5" />
@@ -358,7 +358,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
             <div className="text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
-            <span className="text-[10px] text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
@@ -369,7 +369,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
             <div className="text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
-            <span className="text-[10px] text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
             <KeyRound className="w-5 h-5" />
@@ -557,13 +557,13 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                     <div className="p-4 space-y-3.5">
                       {/* Top bar with role & status */}
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${roleBadge.badgeBg}`}>
+                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${roleBadge.badgeBg}`}>
                           {roleBadge.labelAr}
                         </span>
 
                         <div className="flex items-center gap-1.5">
                           {isCurrentActive && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
                               حسابك النشط
                             </span>
                           )}
@@ -721,7 +721,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{user.fullName}</span>
                                   {isCurrent && (
-                                    <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
+                                    <span className="text-[11px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
                                       أنت
                                     </span>
                                   )}
@@ -734,7 +734,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           </td>
 
                           <td className="p-3">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${roleBadge.badgeBg}`}>
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${roleBadge.badgeBg}`}>
                               {roleBadge.labelAr}
                             </span>
                           </td>
@@ -743,7 +743,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
                           <td className="p-3 text-center">
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                                 user.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                               }`}
                             >
@@ -758,7 +758,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 type="button"
                                 onClick={() => handleResetPassword(user)}
                                 disabled={isCurrent}
-                                className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                 title="إصدار كلمة مرور مؤقتة"
                               >
                                 كلمة مرور

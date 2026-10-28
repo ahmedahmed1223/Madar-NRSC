@@ -226,13 +226,13 @@ export const TestingView: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold text-slate-800">{check.name}</span>
-                  <span className="text-[10px] font-semibold text-slate-500">{check.category}</span>
+                  <span className="text-[11px] font-semibold text-slate-500">{check.category}</span>
                 </div>
                 {r.message && <p className="text-xs text-slate-600 mt-1">{r.message}</p>}
               </div>
               <div className="text-left shrink-0">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
-                {r.durationMs !== undefined && <div className="text-[10px] text-slate-500 mt-1 font-mono">{r.durationMs}ms</div>}
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+                {r.durationMs !== undefined && <div className="text-[11px] text-slate-500 mt-1 font-mono">{r.durationMs}ms</div>}
               </div>
             </div>
           );

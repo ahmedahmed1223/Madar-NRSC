@@ -291,11 +291,11 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                           <span className="text-lg font-black font-mono text-slate-800" dir="ltr">
                             {b.startTime}
                           </span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
                         </div>
                         <h3 className="text-sm font-bold text-slate-800 mt-1 line-clamp-2 leading-snug" title={b.title}>{b.title}</h3>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
                         {status === 'ON_AIR' ? 'على الهواء' : status === 'DONE' ? 'أُذيعت' : 'قيد الإعداد'}
                       </span>
                     </div>
@@ -362,15 +362,15 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {f.days.length === 0 ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
                   ) : (
                     DAY_NAMES.map((d, i) => (
-                      <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <span key={d} className={`text-[11px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                         {d}
                       </span>
                     ))
                   )}
-                  {f.autoCreate && <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
+                  {f.autoCreate && <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
                 </div>
               </article>
             ))}
@@ -402,7 +402,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                     className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${form.start === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}
                   >
                     <span className="block text-xs font-bold">{o.name}</span>
-                    <span className={`block text-[10px] ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                    <span className={`block text-[11px] ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
                   </button>
                 ))}
               </div>

@@ -406,11 +406,11 @@ export const DatabaseManagerView: React.FC = () => {
                         <span className="font-mono text-xs font-bold text-slate-800 group-hover:text-indigo-700 truncate">
                           {table.name}
                         </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
+                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
                           {table.rowCount} صف
                         </span>
                       </div>
-                      <div className="text-[10px] text-slate-500 truncate mt-1">
+                      <div className="text-[11px] text-slate-500 truncate mt-1">
                         {table.columns.slice(0, 4).join(', ')}
                         {table.columns.length > 4 && ` +${table.columns.length - 4}`}
                       </div>
@@ -737,7 +737,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-200">
                     {tbl.name}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                  <span className="text-[11px] text-slate-500 font-mono font-semibold">
                     {tbl.rowCount} سجل
                   </span>
                 </div>
@@ -748,7 +748,7 @@ export const DatabaseManagerView: React.FC = () => {
                     {tbl.columns.map((c) => (
                       <span
                         key={c}
-                        className="text-[10px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
+                        className="text-[11px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
                       >
                         {c}
                       </span>

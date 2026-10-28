@@ -110,7 +110,7 @@ export function FilterTabs<K extends string>({
                 <span>{t.label}</span>
                 {t.count !== undefined && (
                   <span
-                    className={`min-w-5 px-1.5 py-px rounded-full text-[10px] font-bold text-center tabular-nums ${
+                    className={`min-w-5 px-1.5 py-px rounded-full text-[11px] font-bold text-center tabular-nums ${
                       on ? ACTIVE_COUNT[tone] : empty ? 'text-slate-500' : 'bg-slate-200/80 text-slate-700'
                     }`}
                   >

@@ -105,6 +105,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   const [videoAssetUrl, setVideoAssetUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
+  // FormPage focuses the field marked data-autofocus; this brings it into view as well.
   useEffect(() => {
     if (!isOpen || !focusField) return;
     const frame = requestAnimationFrame(() => {
@@ -312,7 +313,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               <button
                 type="button"
                 onClick={() => setTitle('')}
-                className="text-[10px] text-slate-500 hover:text-rose-500"
+                className="text-[11px] text-slate-500 hover:text-rose-500"
               >
                 مسح
               </button>
@@ -365,7 +366,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 <Clock className="w-3.5 h-3.5 text-blue-600" />
                 المدة المقررة للبث (دقيقة : ثانية) *
               </label>
-              <span className="text-[10px] text-slate-500">تنسيق MM:SS (مثلاً 02:30)</span>
+              <span className="text-[11px] text-slate-500">تنسيق MM:SS (مثلاً 02:30)</span>
             </div>
 
             <input
@@ -385,13 +386,13 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
 
           {/* Quick Preset Buttons */}
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[10px] text-slate-500 font-bold">تحديد سريع:</span>
+            <span className="text-[11px] text-slate-500 font-bold">تحديد سريع:</span>
             {DURATION_PRESETS.map((p, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => handleApplyDurationPreset(p)}
-                className="text-[10px] font-mono font-bold bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs transition-colors"
+                className="text-[11px] font-mono font-bold bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs transition-colors"
               >
                 {p.label}
               </button>
@@ -473,7 +474,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   </option>
                 ))}
             </select>
-            {segGuests.length > 0 && <p className="text-[10px] text-slate-500">يُضاف الضيوف تلقائياً لقائمة ضيوف الحلقة كمرشحين حتى تأكيد حجزهم.</p>}
+            {segGuests.length > 0 && <p className="text-[11px] text-slate-500">يُضاف الضيوف تلقائياً لقائمة ضيوف الحلقة كمرشحين حتى تأكيد حجزهم.</p>}
           </fieldset>
         )}
 
@@ -494,7 +495,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   }`}
                 >
                   <span className="block text-xs font-bold">{src.name}</span>
-                  <span className={`block text-[10px] ${report.source === src.id ? 'text-blue-100' : 'text-slate-500'}`}>{src.hint}</span>
+                  <span className={`block text-[11px] ${report.source === src.id ? 'text-blue-100' : 'text-slate-500'}`}>{src.hint}</span>
                 </button>
               ))}
             </div>
@@ -514,7 +515,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                     </option>
                   ))}
                 </select>
-                {reporters.length === 0 && <p className="text-[10px] text-rose-600 mt-1">لا يوجد مستخدمون في قسم المراسلين.</p>}
+                {reporters.length === 0 && <p className="text-[11px] text-rose-600 mt-1">لا يوجد مستخدمون في قسم المراسلين.</p>}
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -562,7 +563,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               )
             )}
             {!report.source && <p className="text-[11px] font-bold text-amber-800">اختر مصدر التقرير لإنشاء أمر التكليف (اختياري).</p>}
-            <p className="text-[10px] text-slate-500">بعد وصول المادة: أرفق الفيديو أدناه أو اطلب المونتاج من الرانداون؛ تتحدث جاهزية الفقرة تلقائياً.</p>
+            <p className="text-[11px] text-slate-500">بعد وصول المادة: أرفق الفيديو أدناه أو اطلب المونتاج من الرانداون؛ تتحدث جاهزية الفقرة تلقائياً.</p>
           </fieldset>
         )}
 
@@ -592,7 +593,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setVideoAssetUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -600,6 +601,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
             </div>
             <input
               id="segment-video-input"
+              data-autofocus={focusField === 'segment-video-input' || undefined}
               type="text"
               value={videoAssetUrl}
               onChange={(e) => setVideoAssetUrl(e.target.value)}
@@ -619,6 +621,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Autocue / Script Text with Live Reading Pace Calculator */}
         <LongTextField
           id="segment-script-textarea"
+          data-autofocus={focusField === 'segment-script-textarea' || undefined}
           name="نص المذيع"
           sizeKey="anchor-script"
           label="نص الأوتوكيو / القراءة للمذيع"
@@ -631,7 +634,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 <button
                   type="button"
                   onClick={handleApplySpeechDuration}
-                  className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors"
+                  className="text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors"
                   title="تحديث حقل المدة المقررة وفق زمن قراءة هذا النص"
                 >
                   تطبيق كمدة للفقرة

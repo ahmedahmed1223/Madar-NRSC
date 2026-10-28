@@ -60,7 +60,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
           <Flame className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
           <span className="font-extrabold tracking-wider text-[11px] uppercase">عاجل</span>
           {rawList.length > 1 && (
-            <span className="bg-white/20 text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
+            <span className="bg-white/20 text-[11px] px-1.5 py-0.2 rounded font-mono font-bold">
               {safeIndex + 1}/{rawList.length}
             </span>
           )}

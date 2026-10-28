@@ -38,7 +38,7 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
   const days = overdueDays(task);
   if (!days) return null;
   return (
-    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold whitespace-nowrap">
+    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold whitespace-nowrap">
       متأخرة {countLabel(days, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
     </span>
   );
@@ -358,7 +358,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'TODO')}
-                            className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
+                            className="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
                           >
                             ← مطلوبة
                           </button>
@@ -367,7 +367,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'IN_PROGRESS')}
-                            className="text-[10px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
+                            className="text-[11px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
                           >
                             قيد التنفيذ
                           </button>
@@ -376,7 +376,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'COMPLETED')}
-                            className="text-[10px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
+                            className="text-[11px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
                           >
                             إنجاز ✓
                           </button>
@@ -479,7 +479,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-[11px] text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -496,13 +496,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
             />
             {/* Quick Title Templates */}
             <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className="text-[10px] text-slate-500 font-bold">قوالب مهام:</span>
+              <span className="text-[11px] text-slate-500 font-bold">قوالب مهام:</span>
               {TASK_TEMPLATES.map((tmpl) => (
                 <button
                   key={tmpl}
                   type="button"
                   onClick={() => setTitle(tmpl)}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
                 >
                   {tmpl.slice(0, 20)}...
                 </button>
@@ -577,21 +577,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(2)}
-                  className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
+                  className="text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
                 >
                   +2س
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(6)}
-                  className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                  className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                 >
                   +6س
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(24)}
-                  className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                  className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                 >
                   غداً
                 </button>

@@ -170,7 +170,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
                 return (
                   <th key={d} scope="col" className={`p-3 text-center ${d === today ? 'text-blue-700' : ''}`}>
                     <span className="block font-bold">{DAY_NAMES[new Date(y, m - 1, dd).getDay()]}</span>
-                    <span className="block tabular-nums text-[10px] text-slate-500">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
+                    <span className="block tabular-nums text-[11px] text-slate-500">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
                   </th>
                 );
               })}
@@ -181,7 +181,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser }) =>
               <tr key={s.id} className="border-t border-slate-100 align-top">
                 <th scope="row" className="p-3 text-right">
                   <span className="block font-bold text-slate-800">{s.name}</span>
-                  <span className="block font-mono text-[10px] text-slate-500" dir="ltr">
+                  <span className="block font-mono text-[11px] text-slate-500" dir="ltr">
                     {s.start} – {s.end}
                   </span>
                 </th>

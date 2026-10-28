@@ -666,7 +666,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <td className="py-3.5 px-3 sm:px-4">
                         <div className="flex items-start gap-2">
                           {isUnderEmbargo(item) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
                               محظور حتى {embargoLabel(item.embargoUntil)}
                             </span>
                           )}
@@ -704,13 +704,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               )}
                             </span>
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
-                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
                                 ينشر في {new Date(item.scheduledDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
-                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                                 <Lock className="w-3 h-3" />
                                 يحرره الآن: {lock.userName}
                               </span>
@@ -987,14 +987,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2 font-bold text-slate-800">
                         <span>{log.changedBy.name}</span>
-                        <span className="text-[10px] text-blue-600">({log.changedBy.role})</span>
-                        <span className="text-slate-500 text-[10px]">
+                        <span className="text-[11px] text-blue-600">({log.changedBy.role})</span>
+                        <span className="text-slate-500 text-[11px]">
                           نقل من [{log.fromStatus}] إلى [{log.toStatus}]
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[11px] text-slate-500 font-mono">
                       {new Date(log.timestamp).toLocaleString(appLocale(), zoneOptions())}
                     </span>
                   </div>
@@ -1032,7 +1032,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusComment('')}
-                  className="text-[10px] text-slate-500 hover:text-slate-600"
+                  className="text-[11px] text-slate-500 hover:text-slate-600"
                 >
                   مسح الملاحظة
                 </button>
@@ -1059,7 +1059,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   key={template}
                   type="button"
                   onClick={() => setStatusComment(template)}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
                 >
                   +{template}
                 </button>

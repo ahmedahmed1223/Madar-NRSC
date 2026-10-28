@@ -220,7 +220,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                       <span className="block text-xs font-bold text-slate-800">
                         {a.fullName} <span className="font-normal text-blue-700">— {a.roleName}</span>
                       </span>
-                      <span className="block text-[10px] text-slate-500" dir="ltr">
+                      <span className="block text-[11px] text-slate-500" dir="ltr">
                         {a.email}
                       </span>
                     </button>
@@ -228,7 +228,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 ))}
               </ul>
             )}
-            <p className="mt-2 text-[10px] text-slate-500">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
+            <p className="mt-2 text-[11px] text-slate-500">بيئة تجريبية: تختفي هذه القائمة بعد حذف البيانات التجريبية من الإعدادات.</p>
           </div>
         )}
       </div>

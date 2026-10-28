@@ -67,7 +67,7 @@ export const TextSizeControls: React.FC<{
     <button type="button" onClick={text.smaller} disabled={!text.canSmaller} aria-label={`تصغير خط ${label}`} title="تصغير الخط" className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30">
       <AArrowDown className="w-4 h-4" />
     </button>
-    <span className="min-w-[2.25rem] text-center text-[10px] font-mono text-slate-500" aria-live="polite">
+    <span className="min-w-[2.25rem] text-center text-[11px] font-mono text-slate-500" aria-live="polite">
       {text.size}px
     </span>
     <button type="button" onClick={text.larger} disabled={!text.canLarger} aria-label={`تكبير خط ${label}`} title="تكبير الخط" className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30">

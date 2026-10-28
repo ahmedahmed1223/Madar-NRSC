@@ -918,7 +918,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             </div>
             <div>
               <span className="text-xs text-slate-500 block">زمن الإلقاء المقدر:</span>
-              <strong className="text-sm font-mono text-emerald-700">{textStats.timeFormatted} دقيقة</strong>
+              <strong className="text-sm tabular-nums text-emerald-700">{textStats.timeFormatted} دقيقة</strong>
             </div>
           </div>
 
@@ -926,14 +926,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
           <div>
             <span className="text-xs text-slate-500 block">عدد الكلمات:</span>
-            <span className="font-mono font-bold text-slate-800">{textStats.words} كلمة</span>
+            <span className="tabular-nums font-bold text-slate-800">{textStats.words} كلمة</span>
           </div>
 
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
             <span className="text-xs text-slate-500 block">عدد الأحرف:</span>
-            <span className="font-mono text-slate-700">{textStats.chars} حرف</span>
+            <span className="tabular-nums text-slate-700">{textStats.chars} حرف</span>
           </div>
         </div>
 
@@ -1017,7 +1017,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </label>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-semibold transition-colors ${
+                    className={`text-[11px] tabular-nums px-2 py-0.5 rounded-md font-semibold transition-colors ${
                       title.length === 0
                         ? 'text-slate-500 bg-slate-100'
                         : title.length < 30
@@ -1034,7 +1034,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={handleCopyTitle}
-                      className="text-[11px] text-slate-500 hover:text-blue-600 flex items-center gap-1 bg-slate-100 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
+                      className="text-[11px] text-slate-500 hover:text-blue-600 flex items-center gap-1 bg-slate-100 hover:bg-blue-50 min-h-6 px-2 py-0.5 rounded transition-colors"
                       title="نسخ العنوان"
                     >
                       {copiedTitle ? <Check className="w-3 h-3 text-emerald-700" /> : <Copy className="w-3 h-3" />}
@@ -1063,7 +1063,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان"
                     aria-label="مسح العنوان"
                   >
@@ -1085,7 +1085,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   العنوان المختصر (يستخدم في شريط البث السفلي Ticker والأوتوكيو)
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                     {shortTitle.length} حرف
                   </span>
                   {title && !shortTitle && (
@@ -1115,10 +1115,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setShortTitle('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-rose-600 rounded-full hover:bg-slate-100"
                     title="مسح العنوان المختصر"
+                    aria-label="مسح العنوان المختصر"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -1133,7 +1134,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <div className="text-xs font-bold text-amber-200 truncate flex-1 font-sans">
                     {shortTitle || title}
                   </div>
-                  <span className="text-[10px] text-slate-300 shrink-0 hidden sm:inline">
+                  <span className="text-[11px] text-slate-300 shrink-0 hidden sm:inline">
                     معاينة الشريط
                   </span>
                 </div>
@@ -1147,14 +1148,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   المقدمة والملخص الإخباري
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                     {(summary.match(/\S+/g) || []).length} كلمة
                   </span>
                   {summary && (
                     <button
                       type="button"
                       onClick={() => setSummary('')}
-                      className="text-[11px] text-rose-700 hover:text-rose-800"
+                      className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] text-rose-700 hover:text-rose-800 hover:bg-rose-50"
                       title="مسح الملخص"
                     >
                       مسح
@@ -1186,13 +1187,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Quick Lead Templates */}
               {!summary && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-slate-500 font-bold">بدايات سريعة:</span>
+                  <span className="text-[11px] text-slate-500 font-bold">بدايات سريعة:</span>
                   {LEAD_STARTERS.map((starter, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => setSummary(starter)}
-                      className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors border border-slate-200"
+                      className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors border border-slate-200"
                     >
                       {starter.slice(0, 24)}...
                     </button>
@@ -1271,7 +1272,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setInternalNotes('')}
-                  className="text-[11px] text-rose-700 hover:text-rose-800"
+                  className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] text-rose-700 hover:text-rose-800 hover:bg-rose-50"
                 >
                   مسح
                 </button>
@@ -1285,7 +1286,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[10px] text-slate-500 font-bold">توجيهات نموذجية:</span>
+              <span className="text-[11px] text-slate-500 font-bold">توجيهات نموذجية:</span>
               {DIRECTIVE_PRESETS.map((preset, idx) => (
                 <button
                   key={idx}
@@ -1293,7 +1294,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   onClick={() =>
                     setInternalNotes((prev) => (prev ? `${prev} ${preset}` : preset))
                   }
-                  className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md transition-colors border border-blue-200/50"
+                  className="text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md transition-colors border border-blue-200/50"
                 >
                   {preset}
                 </button>
@@ -1317,7 +1318,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <Flame className="w-5 h-5 text-red-600 animate-pulse" />
                 <div>
                   <span className="text-xs font-bold text-red-900 block">خبر عاجل للبث</span>
-                  <span className="text-[10px] text-red-700 block">يظهر على شريط العاجل عند نشره ولمدة 4 ساعات</span>
+                  <span className="text-[11px] text-red-700 block">يظهر على شريط العاجل عند نشره ولمدة 4 ساعات</span>
                 </div>
               </div>
               <input
@@ -1412,7 +1413,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setLocationName('')}
-                      className="text-[10px] text-slate-500 hover:text-rose-500"
+                      className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] text-slate-500 hover:text-rose-600 hover:bg-rose-50"
                     >
                       مسح
                     </button>
@@ -1437,7 +1438,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       key={loc}
                       type="button"
                       onClick={() => setLocationName(loc)}
-                      className={`text-[10px] px-2 py-0.5 rounded-md transition-all ${
+                      className={`text-[11px] min-h-6 px-2 py-0.5 rounded-md transition-all ${
                         locationName === loc
                           ? 'bg-blue-600 text-white font-bold'
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
@@ -1459,7 +1460,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setEventDate(new Date().toISOString().slice(0, 16))}
-                      className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
+                      className="text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
                     >
                       الآن
                     </button>
@@ -1468,7 +1469,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       onClick={() =>
                         setEventDate(new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16))
                       }
-                      className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                      className="text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                     >
                       -30د
                     </button>
@@ -1507,7 +1508,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center justify-between">
                         <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-[11px] text-slate-500 font-mono">
                           {new Date(log.timestamp).toLocaleString(appLocale(), { ...zoneOptions(),
                             hour: '2-digit',
                             minute: '2-digit',
@@ -1523,7 +1524,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                         </span>
                       </p>
                       {log.comment && (
-                        <p className="text-[10px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
+                        <p className="text-[11px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
                           "{log.comment}"
                         </p>
                       )}
@@ -1569,7 +1570,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setMainImageUrl('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] text-slate-500 hover:text-rose-600 hover:bg-rose-50"
                   >
                     مسح
                   </button>
@@ -1592,13 +1593,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Recent images from the media library */}
               {IMAGE_PRESETS.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
-                <span className="text-[10px] text-slate-500 font-bold">من مكتبة الوسائط:</span>
+                <span className="text-[11px] text-slate-500 font-bold">من مكتبة الوسائط:</span>
                 {IMAGE_PRESETS.map((img) => (
                   <button
                     key={img.label}
                     type="button"
                     onClick={() => setMainImageUrl(img.url)}
-                    className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                    className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
                   >
                     {img.label}
                   </button>
@@ -1613,7 +1614,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     alt="معاينة الصورة"
                     className="w-full h-32 object-cover"
                   />
-                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-[10px] font-mono text-white rounded">
+                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-[11px] font-mono text-white rounded">
                     16:9 Broadcast Frame
                   </div>
                 </div>
@@ -1641,7 +1642,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setKeywords([])}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] text-slate-500 hover:text-rose-600 hover:bg-rose-50"
                 >
                   مسح الكل
                 </button>
@@ -1662,7 +1663,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Trending Suggestions */}
             <div>
-              <span className="text-[10px] text-slate-500 font-bold block mb-1">
+              <span className="text-[11px] text-slate-500 font-bold block mb-1">
                 وسوم مقترحة وشائعة:
               </span>
               <div className="flex flex-wrap gap-1">
@@ -1678,7 +1679,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                         }
                       }}
                       disabled={alreadyAdded}
-                      className={`text-[10px] px-2 py-0.5 rounded-full transition-all flex items-center gap-0.5 ${
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-all flex items-center gap-0.5 ${
                         alreadyAdded
                           ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
                           : 'bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium'
@@ -1739,7 +1740,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
                   dir="ltr"
                 />
-                <p className="text-[10px] text-slate-500 mt-1">ينشر الخادم الخبر تلقائياً في هذا الموعد حتى لو لم يكن أحد متصلاً.</p>
+                <p className="text-[11px] text-slate-500 mt-1">ينشر الخادم الخبر تلقائياً في هذا الموعد حتى لو لم يكن أحد متصلاً.</p>
               </div>
             )}
             <label htmlFor="status-transition-comment" className="block text-sm font-semibold text-slate-700">

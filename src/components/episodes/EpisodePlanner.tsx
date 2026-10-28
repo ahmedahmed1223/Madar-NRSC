@@ -266,14 +266,14 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
           </span>
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-500">{meta.label}</span>
+              <span className="text-[11px] font-bold text-slate-500">{meta.label}</span>
               <span className="text-sm font-bold text-slate-800">{seg.title}</span>
               <span className="text-[11px] font-mono text-slate-500" dir="ltr">
                 {formatSecondsToTime(seg.durationSeconds || 0).slice(3)}
               </span>
               {seg.segmentType !== 'BREAK' && (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
+                  className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
                   title={items.map((i) => `${i.label}: ${i.detail}`).join('\n')}
                 >
                   {ready ? 'جاهزة' : `${items.filter((i) => i.state !== 'ready').length} نواقص`}
@@ -285,13 +285,13 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 {guests.map((g) => {
                   const st = bookingOf(g.guestId);
                   return (
-                    <span key={g.guestId} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
+                    <span key={g.guestId} className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
                       {g.guestName} · {g.role === 'MAIN' ? 'رئيسي' : g.role === 'CALLER' ? 'مداخلة' : 'معقّب'} · {bookingStatusName(st)}
                     </span>
                   );
                 })}
                 {TALK_SEGMENT_TYPES.has(seg.segmentType) && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
+                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
                     {qCount ? `${qCount} سؤال` : 'بلا أسئلة'}
                   </span>
                 )}

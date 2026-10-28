@@ -194,22 +194,22 @@ export const Topbar: React.FC<TopbarProps> = ({
             }
             aria-label={isLiveLockActive ? 'قفل البث المباشر مفعّل' : 'قفل البث المباشر غير مفعّل'}
             aria-pressed={isLiveLockActive}
-            className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex items-center gap-1.5 min-h-6 px-1 rounded-md disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
+            <span className="font-bold text-[11px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
           </button>
           <span className="text-slate-300 hidden lg:inline">|</span>
           <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
             <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span className="tabular-nums">{timeStr || '00:00'}</span>
             <span className="hidden lg:inline font-sans text-[11px] font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
-            {clockLabel && <span className="font-sans text-[10px] text-slate-500">{clockLabel}</span>}
+            {clockLabel && <span className="font-sans text-[11px] text-slate-500">{clockLabel}</span>}
           </div>
           {zoneMismatch && (
             <span
               role="status"
-              className="hidden sm:inline font-sans text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
+              className="hidden sm:inline font-sans text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
               title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
             >
               المحطة {stationTime}
@@ -257,11 +257,12 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           onClick={handleSearchClick}
           aria-label="البحث السريع (Ctrl + K)"
-          className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
+          title="البحث السريع (Ctrl + K)"
+          className="hidden xl:flex shrink-0 items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />
           <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
-          <kbd className="bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[10px] font-mono text-slate-500">
+          <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[11px] font-mono text-slate-500" dir="ltr">
             Ctrl + K
           </kbd>
         </button>
@@ -354,7 +355,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[10px] leading-4 text-center font-bold">
+            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[11px] leading-4 text-center font-bold">
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
@@ -422,7 +423,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
                 {currentUser.fullName}
               </span>
-              <span className="text-[10px] text-blue-600 font-semibold block leading-tight truncate">
+              <span className="text-[11px] text-blue-600 font-semibold block leading-tight truncate">
                 {roleLabels[currentUser.role] || currentUser.jobTitle}
               </span>
             </div>
@@ -438,7 +439,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   <span className="text-[11px] text-slate-500 block" dir="ltr">
                     {currentUser.email}
                   </span>
-                  <span className="text-[10px] text-blue-600 font-semibold block mt-0.5">
+                  <span className="text-[11px] text-blue-600 font-semibold block mt-0.5">
                     {roleLabels[currentUser.role] || currentUser.jobTitle} - {currentUser.department}
                   </span>
                 </div>
