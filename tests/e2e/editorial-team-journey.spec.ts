@@ -37,6 +37,8 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     await reviews.getByLabel('مقتطف من النص', { exact: true }).fill('اكتمال الاستعدادات');
     await reviews.getByLabel('ملاحظة المراجعة', { exact: true }).fill('حدد مصدر التحقق من الاستعدادات');
     await reviews.getByRole('button', { name: 'إضافة الملاحظة', exact: true }).click();
+    // The note shows at once; the field clears only after the server confirms it.
+    await expect(reviews.getByLabel('ملاحظة المراجعة', { exact: true })).toHaveValue('');
     await expect(reviews.getByText('حدد مصدر التحقق من الاستعدادات', { exact: true })).toBeVisible();
     await editor.page.getByRole('button', { name: 'إعادة للكاتب مع ملاحظات', exact: true }).click();
     await editor.page.locator('#status-transition-comment').fill('استكمل توثيق المصدر');

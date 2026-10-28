@@ -98,6 +98,15 @@ export function lockIdFor(collection: CollectionName, entityId: string) {
   return `${collection}:${entityId}`;
 }
 
+/**
+ * Whether this browser may release the lock: one the server stamped with this user, or our own
+ * request still waiting for the server (it has no owner yet). Leaving before the server answers
+ * must still release it, otherwise the lock is granted afterwards and blocks colleagues until it expires.
+ */
+export function isOwnLock(lock: EditLock | null | undefined, userId: string | undefined): boolean {
+  return !!lock && (!lock.userId || (!!userId && lock.userId === userId));
+}
+
 export function isLockActive(lock: EditLock | null | undefined, now = Date.now()): boolean {
   return !!lock && !!lock.expiresAt && new Date(lock.expiresAt).getTime() > now;
 }

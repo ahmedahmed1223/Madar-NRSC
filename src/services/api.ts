@@ -96,7 +96,7 @@ import {
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { defaultPrefs, NotificationPrefs, prefsError } from '../shared/notifications';
 import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
-import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
+import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
   version: number;
@@ -1824,8 +1824,7 @@ export class ApiService {
     const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();
-    const mine = locks.find((l) => l.id === id && l.userId === me);
-    if (!mine) return;
+    if (!isOwnLock(locks.find((l) => l.id === id), me)) return;
     setStored(COLLECTIONS.editLocks.storageKey, locks.filter((l) => l.id !== id));
     void dataStore.flush();
   }
