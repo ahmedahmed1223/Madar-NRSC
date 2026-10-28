@@ -23,6 +23,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
+import { RbacService } from '../services/rbacService';
 import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, Category } from '../types';
 import { AppView } from '../components/layout/Sidebar';
 
@@ -145,22 +146,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Fast Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
+          {/* Only actions this user may take: a button that answers "not allowed" is noise. */}
+          {RbacService.hasPermission(currentUser, 'news.create') && <button
             type="button"
             onClick={onCreateNews}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
           >
             <Plus className="w-4 h-4" />
             خبر صحفي جديد
-          </button>
-          <button
+          </button>}
+          {RbacService.hasPermission(currentUser, 'episodes.create') && <button
             type="button"
             onClick={onCreateEpisode}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all"
           >
             <Video className="w-4 h-4 text-purple-600" />
             إعداد حلقة جديدة
-          </button>
+          </button>}
         </div>
       </div>
 

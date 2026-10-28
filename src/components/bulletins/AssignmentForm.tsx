@@ -22,7 +22,7 @@ export function AssignmentForm({ bulletin, stories }: { bulletin: Bulletin; stor
     { storyId, title, assignee, due }, value => { setStoryId(value.storyId); setTitle(value.title); setAssignee(value.assignee); setDue(value.due); });
   if (!RbacService.hasPermission(apiService.getCurrentUser(), 'tasks.create_assign')) return null;
   return <>
-    <button type="button" className="min-h-11 border rounded-lg px-3 flex items-center gap-2" onClick={() => { pendingId.current = undefined; setError(''); setOpen(true); }}><ClipboardPlus className="w-4 h-4" />تكليف إعداد النشرة</button>
+    <button type="button" className="min-h-11 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-3 flex items-center gap-2 text-sm" onClick={() => { pendingId.current = undefined; setError(''); setOpen(true); }}><ClipboardPlus className="w-4 h-4" />تكليف إعداد النشرة</button>
     <FormPage isOpen={open} draft={recovery} onClose={() => { if (saving) return false; setOpen(false); }} title="تكليف إعداد النشرة">
       <form aria-keyshortcuts="Control+S Meta+S Control+Enter Meta+Enter" onKeyDown={e => {
         if (e.defaultPrevented || e.repeat || e.nativeEvent.isComposing || !(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('[role=dialog], [role=alertdialog]')) return;

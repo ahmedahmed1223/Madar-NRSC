@@ -17,6 +17,7 @@ test('prepares through UI and cancels logout before purging local work', async (
     await expect(selector.locator(`option[value="${id}"]`)).toHaveCount(1);
     await selector.selectOption(id);
     const preparation = page.getByRole('region', { name: 'تجهيز الهواء دون اتصال' });
+    await preparation.locator('summary').click(); // the offline-copy form is collapsed by default
     await preparation.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await preparation.getByRole('checkbox').check();
     await preparation.getByRole('button', { name: 'تجهيز النسخة', exact: true }).click();

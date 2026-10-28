@@ -196,7 +196,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
           <section className="theme-fixed bg-slate-950 text-white rounded-2xl p-5 space-y-4 border border-slate-800" aria-live="polite">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
+                <span className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
                   {live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'لم يبدأ'}
                 </span>
                 <span className="text-sm font-bold">
@@ -231,7 +231,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا توجد فقرات في الرانداون.'}</p>
+              <p className="text-sm text-slate-500">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا يمكن بدء البث قبل إضافة فقرة واحدة على الأقل إلى الرانداون.'}</p>
             )}
 
             <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
@@ -245,7 +245,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             {canControl && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {!live ? (
-                  <button type="button" onClick={start} disabled={!rundown.length} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
+                  <button type="button" onClick={start} disabled={!rundown.length} title={rundown.length ? undefined : 'أضف فقرة إلى الرانداون أولاً'} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
                     <Play className="w-4 h-4" />
                     {state?.status === 'ENDED' ? 'إعادة بدء البث' : 'بدء البث'}
                   </button>
@@ -307,6 +307,12 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   );
                 })}
               </ol>
+              {rundown.length === 0 && (
+                <div className="p-8 text-center space-y-1">
+                  <p className="text-sm font-bold text-slate-700">لا فقرات في هذا الرانداون بعد</p>
+                  <p className="text-xs text-slate-500">أضف الفقرات من مساحة عمل الحلقة أو من رانداون النشرة، ثم عد هنا لبدء البث.</p>
+                </div>
+              )}
             </section>
 
             {/* Alerts to departments */}

@@ -49,8 +49,10 @@ export function OfflineAirPreparation({ showId, userId }: { showId: string; user
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `offline-air-${row.packetId}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { setError('تعذر تصدير النسخة المحلية'); }
   };
-  return <section aria-label="تجهيز الهواء دون اتصال" className="border-t border-slate-200 pt-4 space-y-3">
-    <h3 className="text-base font-bold">نسخة الهواء المحلية</h3>
+  // Collapsed: most shows are never prepared for offline air, and the control board is the first job.
+  return <section aria-label="تجهيز الهواء دون اتصال" className="border-t border-slate-200 pt-2">
+   <details className="space-y-3">
+    <summary className="min-h-11 flex items-center gap-2 cursor-pointer"><h3 className="text-base font-bold">نسخة الهواء المحلية</h3>{saved.length > 0 && <span className="text-xs font-semibold rounded-full bg-emerald-50 text-emerald-800 px-2 py-0.5">{saved.length} محفوظة على هذا الجهاز</span>}</summary>
     <form onSubmit={prepare} className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1 text-sm">كلمة فتح النسخة<input aria-label="كلمة فتح النسخة" type="password" autoComplete="new-password" minLength={8} required disabled={!!progress} value={secret} onChange={event => setSecret(event.target.value)} className="min-h-11 border border-slate-300 rounded-md px-3"/></label>
       <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={consent} disabled={!!progress} onChange={event => setConsent(event.target.checked)}/>أوافق على حفظ نسخة مشفرة على هذا الجهاز</label>
@@ -69,5 +71,6 @@ export function OfflineAirPreparation({ showId, userId }: { showId: string; user
         try { await deletePacket(row.packetId); if (ready?.packetId === row.packetId) setReady(null); await refresh(); } catch { setError('تعذر حذف النسخة'); }
       }}><Trash2 size={18}/></button>
     </div>)}
+   </details>
   </section>;
 }

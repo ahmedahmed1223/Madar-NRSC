@@ -150,7 +150,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [draftVersionChanged, setDraftVersionChanged] = useState(false);
   const [copiedPrompter, setCopiedPrompter] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
-  const [showTickerPreview, setShowTickerPreview] = useState(true);
+  // A secondary preview: closed until the editor asks for it, open from the start for breaking news.
+  const [tickerChoice, setTickerChoice] = useState<boolean | null>(null);
+  const showTickerPreview = tickerChoice ?? isBreaking;
 
   const LOCATION_PRESETS = [
     'الرياض',
@@ -1101,6 +1103,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <span className="text-[11px] tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                     {shortTitle.length} حرف
                   </span>
+                  {(shortTitle || title) && (
+                    <button
+                      type="button"
+                      onClick={() => setTickerChoice(!showTickerPreview)}
+                      aria-pressed={showTickerPreview}
+                      aria-controls="news-ticker-preview"
+                      className="min-h-6 px-2 rounded-md text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 aria-pressed:bg-slate-800 aria-pressed:text-white"
+                    >
+                      معاينة الشريط
+                    </button>
+                  )}
                   {title && !shortTitle && (
                     <button
                       type="button"
@@ -1139,7 +1152,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
               {/* Live Ticker Strap Preview Simulator */}
               {(shortTitle || title) && showTickerPreview && (
-                <div className="theme-fixed mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
+                <div id="news-ticker-preview" className="theme-fixed mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-black text-[11px] rounded tracking-wide shrink-0">
                     <Flame className="w-3 h-3" />
                     شريط الأخبار
@@ -1147,9 +1160,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <div className="text-xs font-bold text-amber-200 truncate flex-1 font-sans">
                     {shortTitle || title}
                   </div>
-                  <span className="text-[11px] text-slate-300 shrink-0 hidden sm:inline">
-                    معاينة الشريط
-                  </span>
                 </div>
               )}
             </div>
