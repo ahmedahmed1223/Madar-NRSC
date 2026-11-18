@@ -1,3 +1,4 @@
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
@@ -136,6 +137,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     }
     return true;
   });
+  const guestPage = useIncremental(filteredGuests, 48, `${searchQuery}|${selectedSpecialty}`);
 
   return (
     <div className="space-y-6">
@@ -198,7 +200,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
       {/* Guests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredGuests.map((guest) => (
+        {guestPage.visible.map((guest) => (
           <div
             key={guest.id}
             className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 flex flex-col justify-between hover:shadow-md transition-all group"
@@ -289,6 +291,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </div>
         ))}
       </div>
+      <ShowMore remaining={guestPage.remaining} onMore={guestPage.showMore} onAll={guestPage.showAll} noun="ضيف" />
 
       {/* Add/Edit Modal */}
       <FormPage

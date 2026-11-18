@@ -1,3 +1,4 @@
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { countLabel } from '../shared/labels';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
@@ -56,6 +57,17 @@ interface TasksViewProps {
   onDeleteTask: (taskId: string) => void;
 }
 
+const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 0, HIGH: 1, NORMAL: 2, MEDIUM: 2, LOW: 3 };
+const dueTime = (t: { dueDate?: string }) => (t.dueDate ? Date.parse(t.dueDate) || Infinity : Infinity);
+
+const cmp = (x: number, y: number) => (x === y ? 0 : x < y ? -1 : 1);
+
+/** Board order: urgent first, then soonest due (no due date last); for finished tasks the latest first. */
+function compareForBoard(a: EditorialTask, b: EditorialTask, finished: boolean) {
+  if (finished) return cmp(Number.isFinite(dueTime(b)) ? dueTime(b) : 0, Number.isFinite(dueTime(a)) ? dueTime(a) : 0);
+  return cmp(PRIORITY_RANK[a.priority as string] ?? 2, PRIORITY_RANK[b.priority as string] ?? 2) || cmp(dueTime(a), dueTime(b));
+}
+
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks = [],
   currentUser,
@@ -67,6 +79,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>('KANBAN');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  // Each kanban column draws a page at a time: years of finished tasks would otherwise fill the board.
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
+  const columnLimit = (status: string) => columnLimits[status] ?? 30;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<EditorialTask | null>(null);
 
@@ -161,6 +176,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
     return true;
   });
+
+  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}`);
 
   const columns: { status: TaskStatus; label: string; color: string }[] = [
     { status: 'TODO', label: 'المهام المطلوبة', color: 'border-slate-300' },
@@ -267,7 +284,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {columns.map((col) => {
-            const colTasks = filteredTasks.filter((t) => t.status === col.status);
+            // Open columns lead with what is urgent and due first; finished work shows the latest first.
+            const colTasks = filteredTasks.filter((t) => t.status === col.status).sort((a, b) => compareForBoard(a, b, col.status === 'COMPLETED'));
 
             return (
               <SortableList
@@ -284,7 +302,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </div>
 
                 <div className="space-y-3 flex-1 overflow-y-auto">
-                  {colTasks.map((t) => (
+                  {colTasks.slice(0, columnLimit(col.status)).map((t) => (
                     <SortableItem
                       key={t.id}
                       id={t.id}
@@ -386,6 +404,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       )}
                     </SortableItem>
                   ))}
+                  <ShowMore remaining={Math.max(0, colTasks.length - columnLimit(col.status))} onMore={() => setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }))} noun="مهمة" className="!py-1" />
                 </div>
               </SortableList>
             );
@@ -407,7 +426,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredTasks.map((t) => (
+              {taskListPage.visible.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50/70">
                   <td className="py-3 px-4 font-bold text-slate-800">{t.title}</td>
                   <td className="py-3 px-3">
@@ -460,6 +479,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               ))}
             </tbody>
           </table>
+          <ShowMore remaining={taskListPage.remaining} onMore={taskListPage.showMore} onAll={taskListPage.showAll} noun="مهمة" className="border-t border-slate-100" />
         </div>
       )}
 

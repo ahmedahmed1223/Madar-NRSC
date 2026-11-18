@@ -1,3 +1,4 @@
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { countLabel } from '../shared/labels';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
@@ -260,6 +261,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     }
     return true;
   }), sort, episodeSortValue);
+  const episodePage = useIncremental(filteredEpisodes, 40, `${selectedProgId}|${selectedStatus}|${searchQuery}|${sort.key}|${sort.dir}`);
 
   return (
     <div className="space-y-6">
@@ -384,7 +386,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredEpisodes.map((ep) => {
+                episodePage.visible.map((ep) => {
                   const sInfo = statusBadgeInfo[ep.status] || { label: ep.status, variant: 'default' };
                   const rundownCount = ep.rundown?.length || 0;
                   const guestsCount = ep.guests?.length || 0;
@@ -495,6 +497,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </tbody>
           </table>
         </div>
+        <ShowMore remaining={episodePage.remaining} onMore={episodePage.showMore} onAll={episodePage.showAll} noun="حلقة" className="border-t border-slate-100" />
       </div>
 
       {/* Add Episode Modal */}

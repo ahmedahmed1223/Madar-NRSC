@@ -1,3 +1,4 @@
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { apiService } from '../services/api';
@@ -189,6 +190,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     }
     return true;
   });
+  const assetPage = useIncremental(filteredAssets, 48, `${searchQuery}|${selectedType}`);
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {
@@ -291,7 +293,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
       {/* Assets Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-        {filteredAssets.map((asset) => (
+        {assetPage.visible.map((asset) => (
           <div
             key={asset.id}
             className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
@@ -415,6 +417,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           </div>
         )}
       </div>
+      <ShowMore remaining={assetPage.remaining} onMore={assetPage.showMore} onAll={assetPage.showAll} noun="مادة" />
 
       {/* Upload Modal */}
       <FormPage
