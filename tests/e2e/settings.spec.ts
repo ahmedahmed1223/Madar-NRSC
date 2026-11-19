@@ -6,8 +6,8 @@ test('administrators see what demo data is left and must confirm before removing
   await openNav(page, 'الإعدادات');
   // Settings are grouped in sections; the choice is remembered.
   const sections = page.getByRole('navigation', { name: 'أقسام الإعدادات' });
-  await sections.getByRole('button', { name: /الأقسام الصحفية/ }).click();
-  await expect(page.getByText('الأقسام الصحفية وألوانها')).toBeVisible();
+  await sections.getByRole('button', { name: /تصنيفات الأخبار/ }).click();
+  await expect(page.getByText('تصنيفات الأخبار وألوانها')).toBeVisible();
   await sections.getByRole('button', { name: /البيانات/ }).click();
   const card = page.getByTestId('demo-data-card');
   await expect(card).toContainText('أخبار');

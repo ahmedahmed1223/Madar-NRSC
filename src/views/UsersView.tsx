@@ -9,7 +9,7 @@ import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
-import { stationName, stationsOf } from '../shared/stations';
+import { stationGroupsOf, stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
@@ -54,6 +54,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // Filters
   const stations = stationsOf(ApiService.getSettings());
+  const stationGroups = stationGroupsOf(ApiService.getSettings());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
@@ -287,7 +288,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
     const matchesRole = selectedRoleFilter === 'ALL' || findUserRole(u, roles)?.id === selectedRoleFilter;
     const knownStation = !!u.stationId && stations.some((st) => st.id === u.stationId);
-    const matchesStation = stationFilter === 'ALL' || (stationFilter === 'NONE' ? !knownStation : u.stationId === stationFilter);
+    const group = stationFilter.startsWith('group:') ? stationGroups.find((g) => `group:${g.id}` === stationFilter) : undefined;
+    const matchesStation =
+      stationFilter === 'ALL' ||
+      (stationFilter === 'NONE' ? !knownStation : group ? !!u.stationId && group.stationIds.includes(u.stationId) : u.stationId === stationFilter);
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
     const matchesStatus =
       selectedStatusFilter === 'ALL'
@@ -477,6 +481,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 {stations.map((st) => (
                   <option key={st.id} value={st.id}>
                     {st.name}
+                  </option>
+                ))}
+                {stationGroups.map((g) => (
+                  <option key={g.id} value={`group:${g.id}`}>
+                    مجموعة {g.name}
                   </option>
                 ))}
                 <option value="NONE">بلا محطة</option>

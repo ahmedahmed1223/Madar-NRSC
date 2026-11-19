@@ -8,12 +8,12 @@ test('database manager creates, verifies and downloads a selected snapshot and s
   const { page, errors, close } = await signIn(browser, 'admin@akhbar.tv', { bypassCSP: true });
   try {
     await page.goto('/database');
-    await expect(page.getByRole('button', { name: 'إنشاء نسخة احتياطية الآن', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'إنشاء نسخة احتياطية الآن', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'نسخة احتياطية كاملة الآن', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'نسخة احتياطية كاملة الآن', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: 'تم إنشاء النسخة الاحتياطية' })).toBeVisible();
     await page.route('**/api/v1/db/backups', route => route.request().method() === 'POST'
       ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'test failure' }) }) : route.continue());
-    await page.getByRole('button', { name: 'إنشاء نسخة احتياطية الآن', exact: true }).click();
+    await page.getByRole('button', { name: 'نسخة احتياطية كاملة الآن', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'فشل إنشاء النسخة الاحتياطية' })).toBeVisible();
     await page.unroute('**/api/v1/db/backups');
     let requests = 0;
@@ -21,7 +21,7 @@ test('database manager creates, verifies and downloads a selected snapshot and s
       if (route.request().method() === 'POST') { requests++; await new Promise(resolve => setTimeout(resolve, 200)); }
       await route.continue();
     });
-    await page.getByRole('button', { name: 'إنشاء نسخة احتياطية الآن', exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+    await page.getByRole('button', { name: 'نسخة احتياطية كاملة الآن', exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
     await expect(page.getByRole('status').filter({ hasText: 'تم إنشاء النسخة الاحتياطية' })).toBeVisible();
     expect(requests).toBe(1);
     await page.unroute('**/api/v1/db/backups');

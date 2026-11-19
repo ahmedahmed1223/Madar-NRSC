@@ -17,6 +17,8 @@ Object.assign(process.env, {
     SESSION_SECRET: 'e2e-session-secret-0123456789abcdef0123456789',
     COOKIE_SECURE: 'false',
     SEED_DEMO_DATA: 'true',
+    // Production refuses demo accounts unless this is set on purpose (browser tests use them).
+    ALLOW_DEMO_IN_PRODUCTION: 'true',
     WIRE_POLL_MINUTES: '0',
     NOTIFY_DELIVERY_SECONDS: '0',
     BACKUP_INTERVAL_HOURS: '0',
