@@ -67,7 +67,7 @@ export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'studio-screen', label: 'شاشة الاستديو' },
   { nav: 'media', label: 'مكتبة الوسائط', keywords: 'صور فيديو' },
   { nav: 'messages', label: 'المراسلات', keywords: 'رسائل محادثة مجموعات دردشة قنوات' },
-  { nav: 'cards', label: 'بطاقات الإنتاج', keywords: 'تكليف تسليم محطات متابعة اليوم', permission: 'cards.view' },
+  { nav: 'cards', label: 'التكليفات', keywords: 'تكليف تسليم محطات متابعة اليوم', permission: 'cards.view' },
   { nav: 'requests', label: 'طلبات الأقسام' },
   { nav: 'tasks', label: 'المهام' },
   { nav: 'bookings', label: 'حجز الموارد' },

@@ -6,7 +6,8 @@
  * along on the same row. The outgoing shift adds its own notes before sending it on.
  */
 import { countLabel, AR } from './arabicPlural';
-import { cardHoldReason, cardState, currentStep, isStepLate, isStepOpen, stepTypeName, type CardStep, type ProductionCard, type StepType } from './productionCards';
+import { departmentName } from './departments';
+import { cardHoldReason, cardState, currentStep, isStepOwnLate, isStepOpen, stepTypeName, type CardStep, type ProductionCard, type StepType } from './productionCards';
 
 export type HandoverSectionKey = 'stuck' | 'dueNext' | 'inProgress' | 'finished';
 
@@ -54,9 +55,11 @@ const between = (iso: string | undefined, from: number, to: number) => {
 };
 
 /** Who holds a step: its assignee, else the station it was addressed to, else nobody yet. */
-export function stepHolder(step: Pick<CardStep, 'assigneeName' | 'assigneeId' | 'stationId'>, stationName?: (id: string) => string): string {
+export function stepHolder(step: Pick<CardStep, 'assigneeName' | 'assigneeId' | 'stationId' | 'departmentId'>, stationName?: (id: string) => string): string {
   if (step.assigneeName) return step.assigneeName;
-  if (step.stationId && stationName) return `محطة ${stationName(step.stationId)} — لم تُستلم`;
+  const department = step.departmentId ? `قسم ${departmentName(step.departmentId)}` : '';
+  if (step.stationId && stationName) return `${department ? `${department} في ` : ''}محطة ${stationName(step.stationId)} — لم تُستلم`;
+  if (department) return `${department} — لم تُستلم`;
   return 'غير مسندة';
 }
 
@@ -99,7 +102,7 @@ export function buildHandover(cards: ProductionCard[], options: HandoverOptions)
 
     // Stuck: one of our steps is blocked or past its time.
     const blocked = ours.find((s) => s.status === 'BLOCKED');
-    const late = ours.find((s) => isStepLate(s, now));
+    const late = ours.find((s) => isStepOwnLate(card, s, now));
     if (blocked) {
       brief.stuck.push(row(`${air}${name(blocked)} متعطلة — ${who(blocked)}: ${blocked.blockedReason || 'بدون سبب مكتوب'}${card.ownerName ? ` (القرار عند ${card.ownerName})` : ''}`));
       continue;

@@ -85,7 +85,7 @@ export const CHAT_REF_KINDS = [
   { id: 'news', name: 'خبر' },
   { id: 'episode', name: 'حلقة' },
   { id: 'bulletin', name: 'نشرة' },
-  { id: 'card', name: 'بطاقة إنتاج' },
+  { id: 'card', name: 'تكليف' },
 ] as const;
 export type ChatRefKind = (typeof CHAT_REF_KINDS)[number]['id'];
 

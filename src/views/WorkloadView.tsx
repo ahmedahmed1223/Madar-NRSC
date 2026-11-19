@@ -706,7 +706,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                 </thead>
                 <tbody>
                   {output.byStation.length === 0 && (
-                    <tr><td colSpan={6} className="p-6 text-center text-slate-500">لم تكتمل بطاقات إنتاج في هذه الفترة.</td></tr>
+                    <tr><td colSpan={6} className="p-6 text-center text-slate-500">لم تكتمل تكليفات في هذه الفترة.</td></tr>
                   )}
                   {output.byStation.map((row) => (
                     <tr key={row.stationId || 'none'} className="border-b border-slate-100 last:border-0">
@@ -878,7 +878,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <div>
             <p className="hidden print-only text-xs">{settings.organizationName} · {printedAt}</p>
             <h2 className="text-lg font-bold text-slate-900">{briefHeading}</h2>
-            <p className="text-xs text-slate-600 no-print">يُعدّه النظام من العمل الموثّق في بطاقات الإنتاج، بطاقة واحدة في كل سطر مع المهمة التي تنتظرها الآن. أضف ملاحظاتك ثم أرسله للمناوبة التالية.</p>
+            <p className="text-xs text-slate-600 no-print">يُعدّه النظام من العمل الموثّق في التكليفات، بطاقة واحدة في كل سطر مع المهمة التي تنتظرها الآن. أضف ملاحظاتك ثم أرسله للمناوبة التالية.</p>
           </div>
 
           {/* The outgoing manager's own notes: written here, sent and printed at the top of the brief. */}

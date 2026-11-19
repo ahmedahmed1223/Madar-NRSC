@@ -14,7 +14,7 @@ import type { Station } from './stations';
 export type WorkSource = 'CARD_STEP' | 'TASK' | 'REQUEST' | 'NEWS' | 'REVIEW';
 
 export const WORK_SOURCE_NAMES: Record<WorkSource, string> = {
-  CARD_STEP: 'مهمة في بطاقة إنتاج',
+  CARD_STEP: 'خطوة في تكليف',
   TASK: 'مهمة تحريرية',
   REQUEST: 'طلب قسم',
   NEWS: 'خبر',

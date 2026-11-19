@@ -79,7 +79,7 @@ interface SettingsViewProps {
 export type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
-  { id: 'stations', label: 'المحطات وبطاقات الإنتاج', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
+  { id: 'stations', label: 'المحطات والتكليفات', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
   { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
   { id: 'production', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات', icon: Users },
   { id: 'airDisplay', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },

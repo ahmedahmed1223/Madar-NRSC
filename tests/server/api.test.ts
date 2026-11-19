@@ -189,19 +189,16 @@ describe('server-side authorization', () => {
     expect(res.body.results[0]).toMatchObject({ ok: false, code: 'INVALID' });
   });
 
-  it('keeps audit logs append-only and stamps the real author and IP', async () => {
+  it('lets only the server write the audit trail', async () => {
     const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
-    const res = await journalist.post('/api/v1/data/sync').set(H).send({
-      ops: [{ c: 'auditLogs', op: 'upsert', id: 'aud-forged', d: { userId: 'usr-1', userName: 'مزور', details: 'x', ipAddress: '1.2.3.4' } }],
-    });
-    const row = res.body.results[0].row;
-    expect(row.d.userId).toBe('usr-3');
-    expect(row.d.ipAddress).not.toBe('1.2.3.4');
-
-    const edit = await journalist.post('/api/v1/data/sync').set(H).send({
-      ops: [{ c: 'auditLogs', op: 'upsert', id: 'aud-forged', d: { details: 'edited' }, baseV: row.v }],
-    });
-    expect(edit.body.results[0].code).toBe('FORBIDDEN');
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    for (const agent of [journalist, admin]) {
+      const res = await agent.post('/api/v1/data/sync').set(H).send({
+        ops: [{ c: 'auditLogs', op: 'upsert', id: 'aud-forged', d: { actionType: 'DB_RESTORE', severity: 'SECURITY', userId: 'usr-1', userName: 'مزور', details: 'x', ipAddress: '1.2.3.4' } }],
+      });
+      expect(res.body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    }
+    expect(server.db.getRow('auditLogs', 'aud-forged')).toBeNull();
   });
 
   it('hides audit logs from users without audit.view', async () => {

@@ -28,8 +28,8 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
   const admin = await signIn(browser, 'admin@akhbar.tv');
   const { page } = admin;
   await page.goto('/settings');
-  await page.getByText('المحطات وبطاقات الإنتاج').first().click();
-  const form = page.getByRole('form', { name: 'المحطات وبطاقات الإنتاج' });
+  await page.getByText('المحطات والتكليفات').first().click();
+  const form = page.getByRole('form', { name: 'المحطات والتكليفات' });
   await expect(form.getByLabel('اسم المحطة 1')).toHaveValue('غزة');
   await expect(form.getByLabel('اسم المحطة 3')).toHaveValue('إسطنبول');
 
@@ -46,7 +46,7 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
 
   // Two main stations are refused before anything is sent.
   await page.reload();
-  await page.getByText('المحطات وبطاقات الإنتاج').first().click();
+  await page.getByText('المحطات والتكليفات').first().click();
   await expect(page.getByLabel('اسم المحطة 4')).toHaveValue('عمّان');
 
   // Colleagues are placed in stations from the user form.
@@ -73,7 +73,7 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
 
 test('a chief editor creates a card across stations and the reporter hands it on from a phone', async ({ browser }) => {
   const editor = await signIn(browser, 'editor@akhbar.tv');
-  await openNav(editor.page, 'بطاقات الإنتاج');
+  await openNav(editor.page, 'التكليفات');
   await editor.page.getByRole('button', { name: 'بطاقة جديدة' }).click();
   await editor.page.getByLabel('عنوان المادة *').fill(TITLE);
   await editor.page.getByLabel('نوع المادة').selectOption('REPORT');
@@ -99,7 +99,7 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await expect(editor.page.getByText('أُنجز 0 من 7')).toBeVisible();
   await editor.page.goBack();
   await expect(editor.page).toHaveURL(/\/cards$/);
-  await expect(editor.page.getByRole('heading', { name: 'بطاقات الإنتاج' })).toBeVisible();
+  await expect(editor.page.getByRole('heading', { name: 'التكليفات' })).toBeVisible();
   expect(editor.errors).toEqual([]);
   await editor.close();
 

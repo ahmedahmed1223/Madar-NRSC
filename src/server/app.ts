@@ -1053,11 +1053,6 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
       await db.createBackup('prerestore', config.backupRetention);
       const removed = removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
-      // The administrator who removed the demo data may still sign in with the published demo password.
-      const own = db.getCredentials(req.auth!.user.id);
-      if (own && !own.mustChangePassword && (await verifyPassword(config.demoUserPassword, own.passwordHash))) {
-        db.setPassword(own.userId, own.email, own.passwordHash, true);
-      }
       const total = Object.values(removed).reduce((a, b) => a + b, 0);
       audit(req.auth!.user, 'DEMO_DATA_REMOVED', 'DATABASE', 'newsroom', 'SECURITY', `حذف البيانات التجريبية (${total} سجلاً)`, req.ip);
       changeBus.emit('rev', db.currentRev());

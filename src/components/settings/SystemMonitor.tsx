@@ -125,7 +125,7 @@ export function SystemMonitor() {
             <h3 className="text-sm font-bold text-slate-900">المحتوى</h3>
             <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2">
               <Stat label="المحطات" value={data.content.stations} />
-              <Stat label="بطاقات إنتاج جارية" value={data.content.openCards} />
+              <Stat label="تكليفات جارية" value={data.content.openCards} />
               <Stat label="بطاقات متعطلة / متأخرة" value={`${data.content.blockedCards} / ${data.content.lateCards}`} tone={data.content.blockedCards ? 'text-rose-700' : ''} />
               <Stat label="تنبيهات لم تُقرأ" value={data.content.notificationsWaiting} />
               <Stat label="الرسائل المحفوظة" value={data.content.messages} />

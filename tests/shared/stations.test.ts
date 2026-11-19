@@ -19,7 +19,8 @@ describe('stations', () => {
     const stations: Station[] = [{ id: 'hq', name: 'الرئيسية', isMain: true }, { id: 'a', name: 'أ', linkedIds: [] }, { id: 'b', name: 'ب', linkedIds: [] }];
     expect(ids(stationScope(stations, 'hq'))).toEqual(['a', 'b', 'hq']);
     expect(ids(stationScope(stations, undefined))).toEqual(['a', 'b', 'hq']);
-    expect(ids(stationScope(stations, 'removed-station'))).toEqual(['a', 'b', 'hq']);
+    // A station that no longer exists is an empty scope, never the whole newsroom.
+    expect(ids(stationScope(stations, 'removed-station'))).toEqual([]);
   });
 
   it('limits a branch to itself, the main station and its links, in both directions', () => {

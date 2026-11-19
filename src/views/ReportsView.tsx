@@ -162,7 +162,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ['إجمالي الضيوف المعتمدين (كل الفترات)', guests.length],
       ['دقة توقيت الرانداون', `${rundownAccuracy.onTime}/${rundownAccuracy.total}`],
       [],
-      ['المحطة', 'أخبار في الفترة', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'بطاقات إنتاج شاركت فيها', 'مهام بطاقات أنجزتها'],
+      ['المحطة', 'أخبار في الفترة', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'تكليفات شاركت فيها', 'خطوات تكليفات أنجزتها'],
       ...stationBreakdown.map((r) => [r.name, r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps]),
     ];
     const categorySlug = selectedCategory === 'ALL' ? 'all' : selectedCategory;
@@ -443,7 +443,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <table className="w-full min-w-[40rem] text-xs">
               <thead>
                 <tr className="text-slate-600 border-b border-slate-200">
-                  {['المحطة', 'أخبار', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'بطاقات إنتاج شاركت فيها', 'مهام بطاقات أنجزتها'].map((h, i) => (
+                  {['المحطة', 'أخبار', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'تكليفات شاركت فيها', 'خطوات تكليفات أنجزتها'].map((h, i) => (
                     <th key={h} scope="col" className={`p-3 font-bold text-right whitespace-nowrap ${i === 0 ? 'sticky right-0 bg-white' : ''}`}>{h}</th>
                   ))}
                 </tr>

@@ -65,7 +65,7 @@ export function StationsSettings() {
   };
 
   return (
-    <form onSubmit={save} className="py-4 space-y-8" aria-label="المحطات وبطاقات الإنتاج">
+    <form onSubmit={save} className="py-4 space-y-8" aria-label="المحطات والتكليفات">
       <fieldset disabled={saving} className="space-y-3">
         <legend className="text-lg font-bold text-slate-900">المحطات</legend>
         <p className="text-sm text-slate-600 max-w-3xl">
@@ -131,7 +131,7 @@ export function StationsSettings() {
       </fieldset>
 
       <fieldset disabled={saving} className="space-y-3">
-        <legend className="text-lg font-bold text-slate-900">أنواع مهام بطاقات الإنتاج</legend>
+        <legend className="text-lg font-bold text-slate-900">أنواع خطوات التكليفات</legend>
         <p className="text-sm text-slate-600 max-w-3xl">
           الوزن (من 1 إلى 10) يعبّر عن ثقل هذا النوع من العمل. نقاط المهمة = الوزن × درجة التعقيد (بسيطة 1، متوسطة 2، معقدة 3)، وبها تُقارن أعباء الأفراد والمحطات.
         </p>

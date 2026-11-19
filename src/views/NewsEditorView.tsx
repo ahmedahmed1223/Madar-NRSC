@@ -768,26 +768,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
   return (
     <div className="space-y-3 sm:space-y-6">
-      {/* Contextual Breadcrumbs */}
-      <div className="hidden sm:block">
-      <Breadcrumbs
-        items={[
-          { label: 'غرفة الأخبار', onClick: onCancel },
-          { label: newsItem ? (newsItem.title ? `تحرير: ${newsItem.title.slice(0, 35)}...` : 'تحرير الخبر') : 'إنشاء مادة إخبارية جديدة' },
-        ]}
-        statusBadge={
-          newsItem
-            ? {
-                label: `الحالة: ${NEWS_STATUS_LABELS[newsItem.status] || newsItem.status}`,
-                variant: newsItem.status === 'PUBLISHED' ? 'success' : newsItem.status === 'APPROVED' ? 'primary' : 'warning',
-              }
-            : undefined
-        }
-        onBack={onCancel}
-        backLabel="العودة لقائمة الأخبار"
-      />
-      </div>
-
       {draftStorageFailed && (
         <p role="alert" className="bg-red-50 border border-red-200 p-3 text-sm text-red-800 rounded-lg">
           تعذر حفظ النسخة المحلية. احفظ تغييراتك قبل تحديث الصفحة أو إغلاقها.
@@ -826,16 +806,16 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       )}
 
       {/* Edit lock: someone else is editing this story */}
-      {lockedByOther && lock.holder && (
+      {lockedByOther && lockHolder && (
         <div role="alert" className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-900">
           <div className="flex items-center gap-2.5">
             <Lock className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
-              <strong className="text-xs font-bold block">هذا الخبر قيد التحرير الآن لدى {lock.holder.userName}</strong>
-              <span className="text-2xs text-amber-700">يمكنك القراءة فقط حتى ينتهي من التحرير. ستُتاح الكتابة تلقائياً عند إغلاقه للخبر.</span>
+              <strong className="text-xs font-bold block">هذا الخبر قيد التحرير الآن لدى {lockHolder.userName}</strong>
+              <span className="text-2xs text-amber-700">{editableStory ? 'يمكنك القراءة فقط حتى ينتهي من التحرير. ستُتاح الكتابة تلقائياً عند إغلاقه للخبر.' : 'يتحدث النص هنا تلقائياً حين يحفظ تعديلاته.'}</span>
             </div>
           </div>
-          {can('news.edit_any') && (
+          {editableStory && lock.status === 'locked' && can('news.edit_any') && (
             <button
               type="button"
               onClick={async () => {
@@ -849,10 +829,37 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       )}
 
-      {!lockedByOther && newsItem?.id && !canEditNewsContent(can, currentUser.id, newsItem) && (
-        <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 font-semibold flex items-center gap-2">
-          <Lock className="w-4 h-4 text-slate-500" />
-          للقراءة فقط: {newsItem.status === 'PUBLISHED' || newsItem.status === 'APPROVED' ? 'تعديل خبر معتمد أو منشور يتطلب صلاحية الاعتماد أو النشر.' : 'لا تملك صلاحية تعديل هذا الخبر.'}
+      {!lockedByOther && newsItem?.id && !editableStory && (
+        <div className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-2xl text-xs text-slate-700 font-semibold flex items-center gap-2">
+          <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          للقراءة فقط:{' '}
+          {reviewMode
+            ? 'راجع النص وحدّد أي مقطع لتضيف عليه ملاحظة للكاتب؛ التعديل لكاتبه أو للمحرر.'
+            : newsItem.status === 'PUBLISHED' || newsItem.status === 'APPROVED'
+            ? 'تعديل خبر معتمد أو منشور يتطلب صلاحية الاعتماد أو النشر.'
+            : 'لا تملك صلاحية تعديل هذا الخبر.'}
+        </div>
+      )}
+
+      {newsItem?.breakingRequest && (
+        <div role="status" className="bg-red-50 border border-red-200 p-3 rounded-2xl text-xs text-red-900 flex flex-wrap items-center justify-between gap-2">
+          <span className="font-semibold flex items-center gap-2">
+            <Flame className="w-4 h-4 text-red-600 shrink-0" />
+            عاجل من الميدان: أرسله {newsItem.breakingRequest.byName} {new Date(newsItem.breakingRequest.at).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}.{' '}
+            {can('news.breaking_push') ? 'قرار بثه لك: فعّل «خبر عاجل للبث» ثم اعتمد الخبر وانشره.' : 'قرار بثه لرئيس التحرير.'}
+          </span>
+          <span className="flex flex-wrap gap-2">
+            {can('news.breaking_push') && canEditContent && !isBreaking && (
+              <button type="button" onClick={() => setIsBreaking(true)} className="min-h-9 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold">
+                تفعيل العاجل للبث
+              </button>
+            )}
+            {(can('news.breaking_push') || can('news.approve')) && (
+              <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => closeBreakingRequest(newsItem.id), 'أُغلق طلب العاجل')} className="min-h-9 px-3 rounded-lg border border-red-300 text-red-800 font-semibold hover:bg-red-100 disabled:opacity-50">
+                إغلاق الطلب
+              </button>
+            )}
+          </span>
         </div>
       )}
 
@@ -884,44 +891,151 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       )}
 
-      {/* Top Header & Actions Bar */}
-      <div className="sm:sticky sm:top-16 z-20 bg-white border-b border-slate-200 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      {/* Top Header & Actions Bar: one back control, the status once, then the decisions */}
+      <div className="sm:sticky sm:top-16 z-20 bg-white border-b border-slate-200 py-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={onCancel}
             className="min-h-11 min-w-11 flex items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
             title="العودة لقائمة الأخبار"
+            aria-label="العودة لقائمة الأخبار"
           >
             <ArrowRight className="w-5 h-5" />
           </button>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-bold text-slate-800">
-              {newsItem ? 'تحرير الخبر' : 'إنشاء خبر جديد'}
+              {reviewMode ? 'مراجعة الخبر' : newsItem ? (ro ? 'قراءة الخبر' : 'تحرير الخبر') : 'إنشاء خبر جديد'}
             </h1>
-            <div className="flex flex-wrap items-center gap-2 mt-0.5">
-              <Badge variant="default" size="sm">
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+              <Badge variant={newsItem?.status === 'PUBLISHED' ? 'success' : newsItem?.status === 'APPROVED' ? 'primary' : newsItem?.status === 'UNDER_REVIEW' ? 'warning' : 'default'} size="sm">
                 الحالة: {newsItem?.status ? NEWS_STATUS_LABELS[newsItem.status] : 'مسودة جديدة'}
               </Badge>
+              {queuePosition && (
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-xs font-bold tabular-nums" aria-label={`الخبر ${queuePosition} في طابور المراجعة`} title="الموضع في طابور المراجعة">
+                  {queuePosition}
+                </span>
+              )}
               {isBreaking && (
                 <Badge variant="danger" size="sm" dot>
                   خبر عاجل
                 </Badge>
               )}
-              <div role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                {saving ? 'جارٍ الحفظ على الخادم...' : saveState === 'failed' ? 'تعذر الحفظ؛ تعديلاتك باقية في المحرر' : saveState === 'saved' && !isDirty ? 'تم الحفظ على الخادم' : lastSaved && isDirty && !draftStorageFailed ? (
-                  <>
-                    <CheckCircle className="w-3 h-3 text-amber-500" />
-                    تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
-                  </>
-                ) : isDirty ? 'تغييرات غير محفوظة' : newsItem?.id ? 'لا توجد تغييرات غير محفوظة' : null}
-              </div>
+              {qualityPassed && newsItem?.qualityCheck && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold" title={newsItem.qualityCheck.note || undefined}>
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  اجتازت التدقيق — {newsItem.qualityCheck.byName}، {new Date(newsItem.qualityCheck.at).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              {reviewClaim && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 text-xs font-bold">
+                  <Hand className="w-3.5 h-3.5" />
+                  {reviewClaim.userId === currentUser.id ? 'تراجعها أنت الآن' : `يراجعها الآن ${reviewClaim.userName}`}
+                </span>
+              )}
+              {reviewMode && <span className="text-xs text-slate-600">زمن الإلقاء: <strong className="text-slate-800">{textStats.label}</strong></span>}
+              {!ro && (
+                <div role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                  {saving ? 'جارٍ الحفظ على الخادم...' : saveState === 'queued' && !isDirty ? 'غير متصل: محفوظ على جهازك وسيُرسل عند عودة الاتصال' : saveState === 'failed' ? 'تعذر الحفظ؛ تعديلاتك باقية في المحرر' : saveState === 'saved' && !isDirty ? 'تم الحفظ على الخادم' : lastSaved && isDirty && !draftStorageFailed ? (
+                    <>
+                      <CheckCircle className="w-3 h-3 text-amber-500" />
+                      تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
+                    </>
+                  ) : isDirty ? 'تغييرات غير محفوظة' : newsItem?.id ? 'لا توجد تغييرات غير محفوظة' : null}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Action Buttons (only what the server will accept) */}
         <div ref={actionBarRef} role="toolbar" aria-label="إجراءات تحرير الخبر" className="fixed sm:static bottom-0 inset-x-0 sm:inset-auto z-30 bg-white border-t sm:border-t-0 border-slate-200 p-3 sm:p-0 flex flex-wrap items-center gap-2 shadow-md sm:shadow-none" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          {reviewMode ? (
+            <>
+              {transitions.includes('APPROVED') && (
+                <button
+                  type="button"
+                  onClick={() => handleTriggerStatusChange('APPROVED')}
+                  title="Ctrl+Enter"
+                  aria-keyshortcuts="Control+Enter Meta+Enter"
+                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {nextReviewId && onNextReview ? 'اعتماد والتالي' : 'اعتماد الخبر للنشر'}
+                </button>
+              )}
+              {mayPassQuality && (
+                <button
+                  type="button"
+                  onClick={() => void handlePassQuality()}
+                  disabled={reviewBusy || isDirty}
+                  title={isDirty ? 'احفظ تعديلاتك أولاً' : 'يسجّل أنك دققت النص، دون اعتماده أو نشره'}
+                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  اجتازت التدقيق
+                </button>
+              )}
+              {transitions.includes('NEEDS_REVISION') && (
+                <button
+                  type="button"
+                  onClick={() => handleTriggerStatusChange('NEEDS_REVISION')}
+                  title="Ctrl+Shift+Enter"
+                  aria-keyshortcuts="Control+Shift+Enter"
+                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                >
+                  <CornerUpLeft className="w-4 h-4" />
+                  إعادة مع سبب
+                </button>
+              )}
+              {!reviewClaim && mayClaim && (
+                <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => claimReview(newsItem!.id), 'الخبر محجوز لمراجعتك (30 دقيقة)')} title="يحجز الخبر لك كي لا يراجعه زميل في الوقت نفسه" className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-lg text-xs font-bold disabled:opacity-50">
+                  <Hand className="w-4 h-4" />
+                  أراجعها الآن
+                </button>
+              )}
+              {reviewClaim?.userId === currentUser.id && (
+                <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => releaseReview(newsItem!.id), 'عاد الخبر إلى طابور المراجعة')} className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50">
+                  إنهاء استلامي
+                </button>
+              )}
+              {reviewClaim && reviewClaim.userId !== currentUser.id && mayClaim && (
+                <button
+                  type="button"
+                  disabled={reviewBusy}
+                  onClick={async () => {
+                    if (await confirmDialog(`يراجع ${reviewClaim.userName} هذا الخبر الآن. تولّي مراجعته؟`)) void runReview(() => claimReview(newsItem!.id), 'تولّيت مراجعة الخبر');
+                  }}
+                  className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 border border-sky-300 text-sky-800 rounded-lg text-xs font-bold disabled:opacity-50"
+                >
+                  <Hand className="w-4 h-4" />
+                  تولّي المراجعة
+                </button>
+              )}
+              {nextReviewId && onNextReview && (
+                <button type="button" onClick={() => onNextReview(nextReviewId)} title="الانتقال إلى الخبر التالي في الطابور دون قرار" className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold">
+                  <SkipForward className="w-4 h-4 rtl:-scale-x-100" />
+                  تخطٍّ
+                </button>
+              )}
+              {canEditContent && (
+                <button type="button" onClick={handleSaveDraft} disabled={saving || lock.status === 'acquiring'} title="حفظ (Ctrl+S)" aria-keyshortcuts="Control+S Meta+S" className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50">
+                  <Save className="w-4 h-4" />
+                  {saving ? 'جارٍ الحفظ...' : saveState === 'failed' ? 'إعادة محاولة الحفظ' : 'حفظ التغييرات'}
+                </button>
+              )}
+              {transitions.includes('REJECTED') && (
+                <button type="button" onClick={() => handleTriggerStatusChange('REJECTED')} className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 text-red-700 hover:bg-red-50 rounded-lg text-xs font-bold">
+                  رفض نهائي
+                </button>
+              )}
+              <button type="button" onClick={() => setIsHistoryOpen(true)} className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-bold">
+                <History className="w-4 h-4" />
+                سجل النسخ
+              </button>
+            </>
+          ) : (
+            <>
           {newsItem?.id && (
             <button
               type="button"
@@ -932,7 +1046,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               سجل النسخ
             </button>
           )}
-
           {canEditContent && (
             <button
               type="button"
@@ -983,21 +1096,20 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   {newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}
                 </button>
               ))}
+            </>
+          )}
         </div>
       </div>
 
-      {nextReviewId && newsItem?.status === 'UNDER_REVIEW' && (
-        <label className="min-h-11 flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={continueReview} onChange={e => setContinueReview(e.target.checked)} className="w-4 h-4 accent-blue-600" />
-          فتح الخبر التالي بعد إنهاء المراجعة
-        </label>
-      )}
       {newsItem?.id && <details className="sm:hidden border-b border-slate-200 py-2">
         <summary className="min-h-11 flex items-center text-sm font-semibold text-slate-700 cursor-pointer">إجراءات إضافية</summary>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setIsHistoryOpen(true)} className="min-h-11 px-3 flex items-center gap-2 text-sm"><History className="w-4 h-4" />سجل النسخ</button>
           {canEditContent && <button type="button" disabled={saving} onClick={() => void saveContent(false)} className="min-h-11 px-3 flex items-center gap-2 text-sm disabled:opacity-50"><Save className="w-4 h-4" />حفظ وإغلاق</button>}
-          {!lockedByOther && transitions.filter(t => t !== primaryTransition && TRANSITION_BUTTONS[t]).map(t => <button key={t} type="button" onClick={() => handleTriggerStatusChange(t)} className="min-h-11 px-3 text-sm font-semibold text-blue-700">{newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}</button>)}
+          {reviewMode && !reviewClaim && mayClaim && <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => claimReview(newsItem.id), 'الخبر محجوز لمراجعتك (30 دقيقة)')} className="min-h-11 px-3 text-sm font-semibold text-sky-700">أراجعها الآن</button>}
+          {reviewMode && reviewClaim?.userId === currentUser.id && <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => releaseReview(newsItem.id), 'عاد الخبر إلى طابور المراجعة')} className="min-h-11 px-3 text-sm font-semibold text-slate-700">إنهاء استلامي</button>}
+          {reviewMode && nextReviewId && onNextReview && <button type="button" onClick={() => onNextReview(nextReviewId)} className="min-h-11 px-3 text-sm font-semibold text-slate-700">تخطٍّ</button>}
+          {!lockedByOther && transitions.filter(t => (reviewMode ? t === 'REJECTED' || t === 'DRAFT' : t !== primaryTransition) && TRANSITION_BUTTONS[t]).map(t => <button key={t} type="button" onClick={() => handleTriggerStatusChange(t)} className="min-h-11 px-3 text-sm font-semibold text-blue-700">{t === 'REJECTED' && reviewMode ? 'رفض نهائي' : newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}</button>)}
         </div>
       </details>}
 

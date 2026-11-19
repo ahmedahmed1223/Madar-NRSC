@@ -360,7 +360,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 ))}
               </select>
             </div>
-            <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في بطاقات الإنتاج. تُدار المحطات من الإعدادات.</p>
+            <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في التكليفات. تُدار المحطات من الإعدادات.</p>
           </div>
         </div>
 

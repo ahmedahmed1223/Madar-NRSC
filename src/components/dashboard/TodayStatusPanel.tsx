@@ -198,7 +198,7 @@ export const TodayStatusPanel: React.FC<TodayStatusPanelProps> = ({ currentUser,
         <div id="today-decide" className="p-4 min-w-0 scroll-mt-20">
           <div className="flex items-center justify-between gap-2 mb-1">
             <h3 className="text-sm font-bold text-slate-900">يحتاج قراري</h3>
-            <button type="button" onClick={() => onNavigate('cards')} className="text-2xs font-bold text-blue-700 hover:underline no-print">بطاقات الإنتاج</button>
+            <button type="button" onClick={() => onNavigate('cards')} className="text-2xs font-bold text-blue-700 hover:underline no-print">التكليفات</button>
           </div>
           {mine.length === 0 ? (
             <p className="text-xs text-slate-500 py-2">لا بطاقات تملك قرارها متعطلة أو متأخرة.</p>

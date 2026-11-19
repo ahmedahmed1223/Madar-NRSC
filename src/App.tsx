@@ -1107,6 +1107,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onUploadMedia={handleUploadMedia}
                 onDeleteMedia={handleDeleteMedia}
+                focusId={focusId}
               />
             )}
 

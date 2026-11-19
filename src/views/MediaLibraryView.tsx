@@ -23,6 +23,8 @@ interface MediaLibraryViewProps {
   /** Resolves false when the item was not saved (the upload page then stays open with what was typed). */
   onUploadMedia: (asset: Partial<MediaAsset>) => void | boolean | Promise<boolean | void>;
   onDeleteMedia: (id: string) => void;
+  /** Library item to open (from an address such as /media/<id>, e.g. a file attached to an assignment). */
+  focusId?: string | null;
 }
 
 const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
@@ -65,6 +67,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   currentUser,
   onUploadMedia,
   onDeleteMedia,
+  focusId,
 }) => {
   const canUpload = RbacService.hasPermission(currentUser, 'media.upload');
   // How many stories/segments use each item (computed once per render).
@@ -80,6 +83,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  useEffect(() => {
+    if (!focusId) return;
+    const asset = mediaAssets.find((a) => a.id === focusId);
+    if (asset) setPreviewAsset(asset);
+    // Only when another item is asked for, not on every library change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
 
   // Upload modal fields
   const [title, setTitle] = useState('');

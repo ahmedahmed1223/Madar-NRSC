@@ -58,9 +58,9 @@ const KIND_LOOK: Record<RecentKind, { icon: React.ElementType; tone: string; lab
   guest: { icon: Users, tone: 'text-amber-500', label: 'ضيف' },
   task: { icon: CheckSquare, tone: 'text-indigo-500', label: 'مهمة' },
   bulletin: { icon: ListVideo, tone: 'text-rose-500', label: 'نشرة' },
-  card: { icon: ClipboardList, tone: 'text-teal-600', label: 'بطاقة إنتاج' },
+  card: { icon: ClipboardList, tone: 'text-teal-600', label: 'تكليف' },
 };
-const RESULT_GROUPS = ['الأخبار', 'النشرات', 'بطاقات الإنتاج', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'];
+const RESULT_GROUPS = ['الأخبار', 'النشرات', 'التكليفات', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'];
 const RESULT_FORMS = { one: 'نتيجة واحدة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجة' };
 
 /** Current title of a remembered record, or null when it was deleted since. */
@@ -178,7 +178,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return [
       ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
       ...bulletins.map((b) => ({ key: `b-${b.id}`, group: 'النشرات', icon: ListVideo, tone: 'text-rose-500', title: b.title, meta: [bulletinKindName(b.kind), `${b.date} ${b.startTime}`, b.editorName && `المحرر: ${b.editorName}`].filter(Boolean).join(' · '), badge: BULLETIN_STATUSES.find((x) => x.id === b.status)?.name, open: pick('bulletin', b.id, b.title) })),
-      ...cards.map((c) => ({ key: `c-${c.id}`, group: 'بطاقات الإنتاج', icon: ClipboardList, tone: 'text-teal-600', title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
+      ...cards.map((c) => ({ key: `c-${c.id}`, group: 'التكليفات', icon: ClipboardList, tone: 'text-teal-600', title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
       ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
       ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick('episode', e.id, e.title) })),
       ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick('guest', g.id, g.fullName) })),
@@ -289,7 +289,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <div className="px-4 py-2 border-b border-slate-100">
           <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="w-full sm:w-auto min-h-11 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
             <option value="">كل الأنواع</option>
-            {[...RESULT_GROUPS.filter((g) => (g !== 'النشرات' && g !== 'بطاقات الإنتاج') || (onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, g === 'النشرات' ? 'bulletins' : 'cards')))), SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
+            {[...RESULT_GROUPS.filter((g) => (g !== 'النشرات' && g !== 'التكليفات') || (onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, g === 'النشرات' ? 'bulletins' : 'cards')))), SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
           </select>
         </div>
         {(hints.length > 0 || (correction && visibleResults.length > 0)) && (

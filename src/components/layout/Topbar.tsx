@@ -143,10 +143,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign', 'cards.manage'].some(can);
   const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
 
-  /** Opens the production cards screen with its «بطاقة جديدة» form. */
+  /** Opens the production cards screen with its «تكليف من قالب» أو «تكليف حر» form. */
   const createCard = () => {
     onNavigate?.('/cards');
-    // The cards screen loads on demand; press its own «بطاقة جديدة» once it is on screen.
+    // The cards screen loads on demand; press its own «تكليف من قالب» أو «تكليف حر» once it is on screen.
     let tries = 0;
     const press = () => {
       const button = document.querySelector<HTMLButtonElement>('[data-tour="card-create"]');
@@ -366,7 +366,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
                 >
                   <ClipboardList className="w-4 h-4 text-blue-600" />
-                  بطاقة إنتاج
+                  تكليف
                 </button>}
                 {can('programs.manage') && <button
                   type="button"

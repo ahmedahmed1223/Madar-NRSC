@@ -228,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     dashboard: { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null },
     messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white', count: messagesBadge },
     tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: tasksBadge },
-    cards: { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: myDecisions > 0 ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800', count: cardsBadge },
+    cards: { id: 'cards', label: 'التكليفات', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: myDecisions > 0 ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800', count: cardsBadge },
     requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800', count: requestsBadge },
     news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800', count: newsBadge },
     wires: { id: 'wires', label: 'المصادر', icon: Rss, badge: null },

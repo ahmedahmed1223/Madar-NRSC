@@ -460,9 +460,9 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
 
   {
     code: 'cards.view',
-    nameAr: 'عرض بطاقات الإنتاج',
+    nameAr: 'عرض التكليفات',
     nameEn: 'View Production Cards',
-    description: 'الاطلاع على بطاقات الإنتاج المشتركة بين المحطات ومن يعمل على كل مادة',
+    description: 'الاطلاع على التكليفات المشتركة بين المحطات ومن يعمل على كل مادة',
     category: 'TASKS',
     categoryNameAr: 'المهام التحريرية',
     riskLevel: 'LOW',
@@ -478,7 +478,7 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
   },
   {
     code: 'cards.manage',
-    nameAr: 'إنشاء بطاقات الإنتاج وتوزيع مهامها',
+    nameAr: 'إنشاء التكليفات وتوزيع خطواتها',
     nameEn: 'Manage Production Cards',
     description: 'إنشاء البطاقات، تكليف الأفراد والمحطات، تحديد المواعيد، اعتماد النص وإغلاق البطاقة',
     category: 'TASKS',

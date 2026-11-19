@@ -74,7 +74,7 @@ const TITLES: Record<string, string> = {
   'studio-screen': 'شاشة الاستديو',
   media: 'مكتبة الوسائط',
   messages: 'المراسلات',
-  cards: 'بطاقات الإنتاج',
+  cards: 'التكليفات',
   workload: 'متابعة الفرق والتكاليف',
   requests: 'طلبات الأقسام',
   tasks: 'المهام',

@@ -157,7 +157,7 @@ test('a role opens only the screens of its job', async ({ browser }) => {
   const nav = editorRole.page.locator('aside nav');
   await expect(nav.getByRole('button', { name: /مكتبة الوسائط/ })).toBeVisible();
   await expect(nav.getByRole('button', { name: /طلبات الأقسام/ })).toBeVisible();
-  await expect(nav.getByRole('button', { name: /بطاقات الإنتاج/ })).toBeVisible();
+  await expect(nav.getByRole('button', { name: /التكليفات/ })).toBeVisible();
   await expect(nav.getByRole('button', { name: /الضيوف/ })).toHaveCount(0);
   await expect(nav.getByRole('button', { name: /المصادر/ })).toHaveCount(0);
   await expect(nav.getByRole('button', { name: /المستخدمون/ })).toHaveCount(0);
