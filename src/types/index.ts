@@ -16,6 +16,7 @@ export type UserRole =
   | 'CREW'
   | 'VIEWER'
   | 'MAIN_STATION_MANAGER'
+  | 'GENERAL_MANAGER'
   | 'STATION_MANAGER'
   | 'DIRECTOR'
   | 'PREPARER'
@@ -41,6 +42,10 @@ export interface User {
   departmentId?: string;
   /** Station (bureau) the colleague works at (see shared/stations). */
   stationId?: string;
+  /** General manager: the stations this person follows (union of their scopes; see shared/stations). */
+  managedStationIds?: string[];
+  /** General manager: station groups (regions) this person follows. */
+  managedGroupIds?: string[];
   staffId?: string;
   bio?: string;
   lastLogin?: string;
@@ -609,6 +614,12 @@ export interface SystemSettings {
   newsTemplates?: { id: string; name: string; body: string }[];
   /** Stations sharing this newsroom: main station, branches and their links (see shared/stations). */
   stations?: import('../shared/stations').Station[];
+  /** Removed stations, kept by name for the history of finished work (written by the server). */
+  stationsArchive?: import('../shared/stations').ArchivedStation[];
+  /** Groups of stations (regions) a general manager can follow (see shared/stations). */
+  stationGroups?: import('../shared/stations').StationGroup[];
+  /** Administrative departments: names, sub-units, heads and stations (see shared/departments). */
+  departments?: import('../shared/departments').Department[];
   /** Kinds of production-card steps and their weights (see shared/productionCards). */
   cardStepTypes?: import('../shared/productionCards').StepType[];
   /** Station-wide date/time conventions (see shared/dateFormat). */

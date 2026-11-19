@@ -106,7 +106,7 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
   const freshApproval = approved && (!before?.scriptApproved || (canManage && scriptChanged));
   if (freshApproval) log.push({ id: newId('log'), kind: 'STEP', text: 'اعتُمد النص', ...by });
   else if (before?.scriptApproved && !approved) log.push({ id: newId('log'), kind: 'STEP', text: scriptChanged ? 'عُدّل النص المعتمد وسُحب اعتماده' : 'سُحب اعتماد النص', ...by });
-  if (before && before.status !== after.status) log.push({ id: newId('log'), kind: 'STEP', text: after.status === 'CLOSED' ? 'أُغلقت البطاقة بعد الإنجاز' : after.status === 'CANCELLED' ? 'أُلغيت البطاقة' : 'أُعيد فتح البطاقة', ...by });
+  if (before && before.status !== after.status) log.push({ id: newId('log'), kind: 'STEP', text: after.status === 'CLOSED' ? 'أُغلق التكليف بعد الإنجاز' : after.status === 'CANCELLED' ? 'أُلغي التكليف' : 'أُعيد فتح التكليف', ...by });
 
   return {
     ...after,
@@ -200,11 +200,11 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
     const prev = previous.get(step.id);
     const name = stepTypeName(stepTypes, step.type);
     if (step.assigneeId && step.assigneeId !== prev?.assigneeId) {
-      push(step.assigneeId, `${urgent ? 'عاجل — ' : ''}مهمة لك في بطاقة إنتاج: ${name}`, after.title);
+      push(step.assigneeId, `${urgent ? 'عاجل — ' : ''}مهمة لك في تكليف: ${name}`, after.title);
       if (prev?.assigneeId) push(prev.assigneeId, `سُحبت منك «${name}»`, `${after.title} — أُسندت إلى ${step.assigneeName || 'زميل'}`);
     } else if (!step.assigneeId && (step.stationId || step.departmentId) && isStepOpen(step) && (!prev || prev.assigneeId || prev.stationId !== step.stationId || prev.departmentId !== step.departmentId)) {
       if (prev?.assigneeId) push(prev.assigneeId, `سُحبت منك «${name}»`, `${after.title} — صارت متاحة لمحطتها`);
-      stationPeople(step).forEach((id) => push(id, `${urgent ? 'عاجل — ' : ''}مهمة متاحة ل${step.departmentId ? 'قسمك' : 'محطتك'}: ${name}`, `${after.title} — استلمها من بطاقات الإنتاج`));
+      stationPeople(step).forEach((id) => push(id, `${urgent ? 'عاجل — ' : ''}مهمة متاحة ل${step.departmentId ? 'قسمك' : 'محطتك'}: ${name}`, `${after.title} — استلمها من التكليفات`));
     }
 
     if (prev && prev.status !== step.status && step.status === 'BLOCKED') {
@@ -219,7 +219,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
         told.add(userId);
         push(userId, title, message, true);
       };
-      tell(decider, 'تعطّل في بطاقة إنتاج يحتاج قرارك');
+      tell(decider, 'تعطّل في تكليف يحتاج قرارك');
       tell(fixer, `مطلوب منك لحل تعطّل: ${name}`);
       followers(step).forEach((id) => tell(id, `تعطّل في محطة تتابعها: ${name}`));
     }
@@ -234,7 +234,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
     if (step.status === 'DONE' && prev?.status !== 'DONE') {
       const handoff = `${after.title} — أنهى ${actorName} «${name}»${step.note ? `: ${step.note}` : ''}`;
       const next = after.steps.slice(index + 1).find(isStepOpen);
-      if (!firstOpen) push(decider, 'بطاقة إنتاج جاهزة', handoff);
+      if (!firstOpen) push(decider, 'تكليف جاهز', handoff);
       // The material reaches the next colleague only when nothing before their step is still open.
       else if (next && next.id === firstOpen.id) pushStep(next, `وصلتك المادة: ${stepTypeName(stepTypes, next.type)}`, handoff);
     }
@@ -246,10 +246,10 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
     const text = `${after.title} — ${actorName}: ${entry.text}`;
     if (entry.decision) {
       const everyone = new Set<string>([decider, after.createdById, ...after.steps.map((s) => s.assigneeId)].filter(Boolean) as string[]);
-      everyone.forEach((id) => push(id, 'قرار في بطاقة إنتاج', text, true));
+      everyone.forEach((id) => push(id, 'قرار في تكليف', text, true));
     } else {
-      push(decider, 'ملاحظة جديدة في بطاقة إنتاج', text);
-      if (firstOpen) pushStep(firstOpen, 'ملاحظة جديدة في بطاقة إنتاج', text);
+      push(decider, 'ملاحظة جديدة في تكليف', text);
+      if (firstOpen) pushStep(firstOpen, 'ملاحظة جديدة في تكليف', text);
     }
   }
 

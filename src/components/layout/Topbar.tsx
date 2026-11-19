@@ -28,6 +28,7 @@ import {
   Flame,
 } from 'lucide-react';
 import { findUserRole } from '../../shared/rbac';
+import { connectionFeedback } from '../../shared/saveFeedback';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
 import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
@@ -270,13 +271,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           role="status"
         >
           <span className={`w-2 h-2 rounded-full ${!syncStatus.online ? 'bg-red-500' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-          {!syncStatus.online ? 'غير متصل' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
+          {connectionFeedback(typeof navigator === 'undefined' || navigator.onLine, syncStatus.online, syncStatus.pending)}
         </div>
 
         {/* Compact sync indicator for narrower screens */}
         <span
           role="status"
-          title={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
+          title={connectionFeedback(typeof navigator === 'undefined' || navigator.onLine, syncStatus.online, syncStatus.pending)}
           aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ المزامنة' : 'متصل بالخادم'}
           className={`2xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
         />

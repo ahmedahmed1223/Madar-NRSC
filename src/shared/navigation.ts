@@ -36,7 +36,7 @@ const DOMAIN_ORDER: Record<string, Domain[]> = {
 };
 
 /** Roles whose daily work is following others: administration comes right after «عملي». */
-const MANAGER_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'MAIN_STATION_MANAGER', 'STATION_MANAGER']);
+const MANAGER_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'MAIN_STATION_MANAGER', 'GENERAL_MANAGER', 'STATION_MANAGER']);
 
 const ROLE_DOMAIN: Record<string, keyof typeof DOMAIN_ORDER> = {
   EDITOR: 'newsroom',

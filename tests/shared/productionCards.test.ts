@@ -116,7 +116,7 @@ describe('who may change a production card', () => {
   it('lets supervisors create cards and rejects malformed ones', () => {
     expect(cardChangeError(null, card(), chief, ctx)).toBeNull();
     expect(cardChangeError(null, card({ title: ' ' }), chief, ctx)).toContain('عنوان');
-    expect(cardChangeError(null, card({ status: 'CLOSED' }), chief, ctx)).toContain('تبدأ جارية');
+    expect(cardChangeError(null, card({ status: 'CLOSED' }), chief, ctx)).toContain('يبدأ جارياً');
     expect(cardChangeError(null, withStep(card(), 's1', { assigneeId: 'ghost' }), chief, ctx)).toContain('المكلف');
     expect(cardChangeError(null, withStep(card(), 's3', { stationId: 'mars' }), chief, ctx)).toContain('محطة');
     expect(cardChangeError(null, withStep(card(), 's1', { status: 'BLOCKED' }), chief, ctx)).toContain('سبب التعطل');
@@ -181,7 +181,7 @@ describe('who may change a production card', () => {
 
   it('freezes closed cards for everyone but supervisors', () => {
     const closed = card({ status: 'CLOSED' });
-    expect(cardChangeError(closed, withStep(closed, 's1', { status: 'IN_PROGRESS' }), reporter, ctx)).toContain('مغلقة');
+    expect(cardChangeError(closed, withStep(closed, 's1', { status: 'IN_PROGRESS' }), reporter, ctx)).toContain('مغلق');
     expect(cardChangeError(closed, { ...closed, status: 'OPEN' }, chief, ctx)).toBeNull();
   });
 

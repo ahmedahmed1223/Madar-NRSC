@@ -532,7 +532,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const actor = { id: auth.user.id, stationId: auth.user.stationId, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
     const ctx = cardContextOf(list?.('settings')[0], list?.('users') || []);
     if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
-      if (!canManage) return 'حذف بطاقات الإنتاج واستعادتها لمسؤولي التكليف';
+      if (!canManage) return 'حذف التكليفات واستعادتها لمسؤولي التكليف';
       // A branch deletes or restores only the cards it governs (its own and those of the branches it follows).
       return !before || canGovernCard(before, actor, ctx.stations) ? null : GOVERN_DENIED;
     }

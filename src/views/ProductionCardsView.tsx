@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ClipboardList, Plus, Radio } from 'lucide-react';
+import { AlertTriangle, ClipboardList, LayoutTemplate, Plus, Radio } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -8,6 +8,13 @@ import { FilterTabs } from '../components/common/FilterTabs';
 import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { CardDetail } from '../components/cards/CardDetail';
 import { CardFormPage } from '../components/cards/CardFormPage';
+import { TemplatesPanel } from '../components/cards/TemplatesPanel';
+import { TemplateFormPage } from '../components/cards/TemplateFormPage';
+import { AssignFromTemplatePage } from '../components/cards/AssignFromTemplatePage';
+import { AssignmentReports } from '../components/cards/AssignmentReports';
+import { templateFromCard, type WorkflowTemplate } from '../shared/workflowTemplates';
+import { promptDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
 import { CARD_STATE_STYLE, STEP_STATUS_STYLE, stationDay, timeOnly, when } from '../components/cards/cardUi';
 import { matchesQuery } from '../shared/search';
 import {
@@ -18,9 +25,12 @@ import {
   cardKindName,
   cardProgress,
   cardState,
+  cardStates,
   currentStep,
-  isStepLate,
+  isCardLate,
   isStepOpen,
+  isStepOwnLate,
+  stepAssigneeLabel,
   stepStatusName,
   stepTypeName,
   stepTypesOf,
@@ -40,16 +50,22 @@ interface ProductionCardsViewProps {
   onOpenEpisode: (episodeId: string) => void;
 }
 
-type Tab = 'MINE' | 'TODAY' | 'ALL';
+type Tab = 'MINE' | 'TODAY' | 'ALL' | 'TEMPLATES' | 'REPORTS';
 const OPEN_STATES: CardState[] = ['BLOCKED', 'LATE', 'IN_PROGRESS', 'NEW', 'READY'];
 
 const SELECT = 'px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white';
 
-/** Production cards shared between stations: my steps, the chief editor's board for today, and every card. */
+/**
+ * Assignments («التكليفات», stored as production cards) shared between stations: my steps, the
+ * board for today, every assignment, the workflow templates they are created from, and reports.
+ */
 export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode }) => {
   const canManage = RbacService.hasPermission(currentUser, 'cards.manage');
   const actor = apiService.cardActor();
   const [cards, setCards] = useState<ProductionCard[]>(() => apiService.getCards());
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>(() => apiService.getWorkflowTemplates());
+  const [templateForm, setTemplateForm] = useState<{ open: boolean; template: WorkflowTemplate | null }>({ open: false, template: null });
+  const [assignForm, setAssignForm] = useState<{ open: boolean; templateId: string | null }>({ open: false, templateId: null });
   const [settings, setSettings] = useState(() => apiService.getSettings());
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
@@ -60,7 +76,6 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [kind, setKind] = useState('ALL');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductionCard | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(
@@ -68,6 +83,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       dataStore.subscribe((evt) => {
         if (evt.type !== 'data-changed') return;
         if (evt.collections.includes('productionCards')) setCards(apiService.getCards());
+        if (evt.collections.includes('workflowTemplates')) setTemplates(apiService.getWorkflowTemplates());
         if (evt.collections.includes('settings')) setSettings(apiService.getSettings());
       }),
     []
@@ -92,10 +108,12 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       for (const step of card.steps) {
         if (!isStepOpen(step)) continue;
         if (step.assigneeId === currentUser.id) rows.push({ card, step, claimable: false });
-        else if (step.stationId && canClaimStep(step, actor)) rows.push({ card, step, claimable: true });
+        // Only steps that are this colleague's kind of work are offered (the server applies the same rule).
+        else if ((step.stationId || step.departmentId) && canClaimStep(step, actor)) rows.push({ card, step, claimable: true });
       }
     }
-    const rank = (r: (typeof rows)[number]) => (r.step.status === 'BLOCKED' ? 0 : isStepLate(r.step, now) ? 1 : r.claimable ? 3 : 2);
+    // Work sent back for rework comes first, then blockers and delays, then the rest; offers last.
+    const rank = (r: (typeof rows)[number]) => (r.step.returnedReason && !r.claimable ? 0 : r.step.status === 'BLOCKED' ? 1 : isStepOwnLate(r.card, r.step, now) ? 2 : r.claimable ? 4 : 3);
     return rows.sort((a, b) => rank(a) - rank(b) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'));
     // actor is rebuilt on every render from the same user and permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,18 +122,20 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const today = stationDay(now);
   const board = useMemo(() => {
     const airing = openCards.filter((c) => c.airAt && stationDay(c.airAt) === today).sort((a, b) => a.airAt!.localeCompare(b.airAt!));
-    const needDecision = openCards.filter((c) => ['BLOCKED', 'LATE'].includes(cardState(c, now))).sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || (a.airAt || a.dueAt || '9').localeCompare(b.airAt || b.dueAt || '9'));
+    const needDecision = openCards.filter((c) => cardState(c, now) === 'BLOCKED' || isCardLate(c, now)).sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || (a.airAt || a.dueAt || '9').localeCompare(b.airAt || b.dueAt || '9'));
     const count = (s: CardState) => openCards.filter((c) => cardState(c, now) === s).length;
-    return { airing, needDecision, ready: count('READY'), late: count('LATE'), blocked: count('BLOCKED'), working: count('IN_PROGRESS') + count('NEW') };
+    // A blocked card past its deadline counts in both «متعطلة» and «متأخرة».
+    const late = openCards.filter((c) => isCardLate(c, now)).length;
+    return { airing, needDecision, ready: count('READY'), late, blocked: count('BLOCKED'), working: count('IN_PROGRESS') + count('NEW') };
   }, [openCards, today, now]);
 
   const filtered = useMemo(
     () =>
       cards
-        .filter((c) => (stateFilter === 'OPEN' ? c.status === 'OPEN' : cardState(c, now) === stateFilter))
+        .filter((c) => (stateFilter === 'OPEN' ? c.status === 'OPEN' : cardStates(c, now).includes(stateFilter)))
         .filter((c) => kind === 'ALL' || c.kind === kind)
         .filter((c) => station === 'ALL' || c.ownerStationId === station || c.steps.some((s) => s.stationId === station))
-        .filter((c) => matchesQuery(query, c.title, c.brief, c.ownerName, c.target?.title, c.steps.map((s) => s.assigneeName || '')))
+        .filter((c) => matchesQuery(query, c.title, c.brief, c.ownerName, c.target?.title, c.templateName, c.steps.map((s) => s.assigneeName || '')))
         .sort((a, b) => OPEN_STATES.indexOf(cardState(a, now)) - OPEN_STATES.indexOf(cardState(b, now)) || (b.updatedAt || '').localeCompare(a.updatedAt || '')),
     [cards, stateFilter, kind, station, query, now]
   );
@@ -127,7 +147,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   };
 
   const cardRow = (card: ProductionCard, extra?: React.ReactNode) => {
-    const state = cardState(card, now);
+    const states = cardStates(card, now);
     const progress = cardProgress(card);
     const waiting = currentStep(card);
     return (
@@ -135,20 +155,24 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${card.priority === 'URGENT' && card.status === 'OPEN' ? 'border-red-300' : 'border-slate-200'}`}>
           <span className="flex flex-wrap items-center gap-2 text-2xs">
             <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">{cardKindName(card.kind)}</span>
-            <span className={`px-2 py-0.5 rounded-md border font-bold ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span>
+            {states.map((state) => (
+              <span key={state} className={`px-2 py-0.5 rounded-md border font-bold ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span>
+            ))}
             {card.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
-            <span className="text-slate-600 tabular-nums">{progress.done}/{progress.total}</span>
+            {card.ownerStationId && <span className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-700">محطة {stationName(stations, card.ownerStationId)}</span>}
+            <span className="text-slate-600 tabular-nums" aria-label={`أُنجز ${progress.done} من ${progress.total}`}>{progress.done}/{progress.total}</span>
             {card.airAt && <span className="text-slate-600 mr-auto">البث {when(card.airAt)}</span>}
           </span>
           <span className="block text-sm font-bold text-slate-900">{card.title}</span>
           <span className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
             {waiting && card.status === 'OPEN' && (
               <span>
-                بانتظار: {stepTypeName(stepTypes, waiting.type)} — {waiting.assigneeName || (waiting.stationId ? `محطة ${stationName(stations, waiting.stationId)}` : 'غير مسندة')}
+                بانتظار: {stepTypeName(stepTypes, waiting.type)} — {stepAssigneeLabel(waiting, stations)}
               </span>
             )}
             {card.dueAt && <span>التسليم {when(card.dueAt)}</span>}
             <span>القرار: {card.ownerName || '—'}</span>
+            {card.templateName && <span>القالب: {card.templateName}</span>}
           </span>
           {extra}
         </button>
@@ -165,11 +189,43 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       currentUser={currentUser}
       onSaved={(_card, text) => {
         refresh();
-        setMessage(text);
-        // A new card appears at the top of «كل البطاقات».
+        notify({ type: 'success', message: text });
+        // A new assignment appears at the top of «كل التكليفات».
         if (!editing) setTab('ALL');
       }}
     />
+  );
+
+  /** «حفظ كقالب»: the chain of this assignment becomes a template to reuse. */
+  const saveAsTemplate = async (card: ProductionCard) => {
+    const name = await promptDialog({ title: 'حفظ كقالب', label: 'اسم القالب', required: true, defaultValue: card.templateName || card.title });
+    if (!name?.trim()) return;
+    // Opens the template page on the draft so the manager reviews who does each step before saving.
+    setTemplateForm({ open: true, template: templateFromCard(card, name) });
+  };
+
+  const templatePages = (
+    <>
+      <TemplateFormPage
+        isOpen={templateForm.open}
+        template={templateForm.template}
+        onClose={() => setTemplateForm({ open: false, template: null })}
+        onSaved={() => {
+          setTemplates(apiService.getWorkflowTemplates());
+          setTab('TEMPLATES');
+        }}
+      />
+      <AssignFromTemplatePage
+        isOpen={assignForm.open}
+        templateId={assignForm.templateId}
+        currentUser={currentUser}
+        onClose={() => setAssignForm({ open: false, templateId: null })}
+        onCreated={(card) => {
+          refresh();
+          onFocus(card.id);
+        }}
+      />
+    </>
   );
 
   // A card has its own address (/cards/<id>): Back returns to the list, and links open it directly.
@@ -185,16 +241,18 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               setFormOpen(true);
             }}
             onOpenTarget={openTarget}
+            onSaveAsTemplate={canManage ? saveAsTemplate : undefined}
           />
         ) : (
           <div className="max-w-xl mx-auto text-center space-y-3 py-16">
-            <p className="text-sm font-bold text-slate-800">هذه البطاقة غير موجودة أو حُذفت.</p>
+            <p className="text-sm font-bold text-slate-800">هذا التكليف غير موجود أو حُذف.</p>
             <button type="button" onClick={() => onFocus(null)} className="min-h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700">
-              العودة إلى البطاقات
+              العودة إلى التكليفات
             </button>
           </div>
         )}
         {form}
+        {templatePages}
       </>
     );
   }
@@ -207,60 +265,73 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ClipboardList className="w-5 h-5 text-blue-600" />
-            بطاقات الإنتاج
+            التكليفات
           </h1>
-          <p className="text-xs text-slate-500 mt-1">بطاقة واحدة ترافق كل مادة بين المحطات: المطلوب، المسؤول عن كل مهمة، مواعيد التسليم والبث، وما اكتمل وما ينقص.</p>
+          <p className="text-xs text-slate-500 mt-1">تكليف واحد يرافق كل مادة بين المحطات والأقسام: المطلوب، المسؤول عن كل مهمة، مواعيد التسليم والبث، وما اكتمل وما ينقص.</p>
         </div>
         {canManage && (
-          <button
-            type="button"
-            data-tour="card-create"
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start"
-          >
-            <Plus className="w-4 h-4" />
-            بطاقة جديدة
-          </button>
+          <div className="flex flex-wrap gap-2 self-start">
+            <button
+              type="button"
+              data-tour="card-create"
+              onClick={() => setAssignForm({ open: true, templateId: null })}
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+            >
+              <LayoutTemplate className="w-4 h-4" />
+              تكليف من قالب
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
+            >
+              <Plus className="w-4 h-4" />
+              تكليف حر
+            </button>
+          </div>
         )}
       </div>
 
-      {message && <p role="status" className="p-3 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">{message}</p>}
-
       <FilterTabs<Tab>
-        label="بطاقات الإنتاج"
+        label="التكليفات"
         active={tab}
         onChange={setTab}
         tabs={[
-          { id: 'MINE', label: 'مهامي', count: mySteps.filter((r) => !r.claimable).length, tone: 'blue' },
+          // The count matches the rows shown: my steps and the ones offered to me.
+          { id: 'MINE', label: 'مهامي', count: mySteps.length, tone: 'blue' },
           { id: 'TODAY', label: 'متابعة اليوم', count: board.needDecision.length, tone: 'amber' },
-          { id: 'ALL', label: 'كل البطاقات', count: openCards.length, tone: 'slate' },
+          { id: 'ALL', label: 'كل التكليفات', count: openCards.length, tone: 'slate' },
+          { id: 'TEMPLATES', label: 'القوالب', count: templates.filter((t) => !t.archived).length, tone: 'violet', secondary: true },
+          ...(canManage ? [{ id: 'REPORTS' as Tab, label: 'التقارير', tone: 'slate' as const, secondary: true }] : []),
         ]}
       />
 
       {tab === 'MINE' && (
         <section className="space-y-2" aria-label="مهامي">
-          {mySteps.length === 0 && empty('لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي بطاقة يظهر هنا.')}
+          {mySteps.length === 0 && empty('لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي تكليف يظهر هنا.')}
           <ul className="space-y-2">
             {mySteps.map(({ card, step, claimable }) => (
               <li key={`${card.id}:${step.id}`}>
-                <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${step.status === 'BLOCKED' ? 'border-rose-300' : card.priority === 'URGENT' ? 'border-red-300' : 'border-slate-200'}`}>
+                <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${step.returnedReason && !claimable ? 'border-violet-300' : step.status === 'BLOCKED' ? 'border-rose-300' : card.priority === 'URGENT' ? 'border-red-300' : 'border-slate-200'}`}>
                   <span className="flex flex-wrap items-center gap-2 text-2xs">
                     <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold">{stepTypeName(stepTypes, step.type)}</span>
                     {claimable ? (
-                      <span className="px-2 py-0.5 rounded-md border border-sky-200 bg-sky-50 text-sky-800 font-bold">متاحة لمحطتك — استلمها</span>
+                      <span className="px-2 py-0.5 rounded-md border border-sky-200 bg-sky-50 text-sky-800 font-bold">{step.departmentId && !step.stationId ? 'متاحة لقسمك — استلمها' : 'متاحة لمحطتك — استلمها'}</span>
                     ) : (
                       <span className={`px-2 py-0.5 rounded-md border font-bold ${STEP_STATUS_STYLE[step.status]}`}>{stepStatusName(step.status)}</span>
                     )}
-                    {isStepLate(step, now) && <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold">متأخرة</span>}
+                    {step.returnedReason && !claimable && <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-800 border border-violet-200 font-bold">معادة للتعديل</span>}
+                    {isStepOwnLate(card, step, now) && <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold">متأخرة</span>}
                     {card.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
                     {step.dueAt && <span className="text-slate-600 mr-auto">التسليم {when(step.dueAt)}</span>}
                   </span>
                   <span className="block text-sm font-bold text-slate-900">{card.title}</span>
                   {step.title && <span className="block text-xs text-slate-600">{step.title}</span>}
-                  {currentStep(card)?.id !== step.id && <span className="block text-2xs text-slate-500">قبلها: {stepTypeName(stepTypes, currentStep(card)!.type)} ({currentStep(card)!.assigneeName || 'غير مسندة'})</span>}
+                  {step.returnedReason && !claimable && <span className="block text-xs font-bold text-violet-800">أعادها {step.returnedByName || 'زميل'}: {step.returnedReason}</span>}
+                  {currentStep(card)?.id !== step.id && <span className="block text-2xs text-slate-500">العمل الآن عند: {stepTypeName(stepTypes, currentStep(card)!.type)} ({stepAssigneeLabel(currentStep(card)!, stations)})</span>}
                 </button>
               </li>
             ))}
@@ -295,7 +366,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                   cardRow(
                     card,
                     <span className="block text-xs font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                      السبب: {cardHoldReason(card, stepTypes, now) || 'تجاوزت موعد التسليم'}
+                      السبب: {cardHoldReason(card, stepTypes, now, stations) || 'تجاوزت موعد التسليم'}
                     </span>
                   )
                 )}
@@ -308,7 +379,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               <Radio className="w-4 h-4 text-blue-600" />
               يُبث اليوم
             </h2>
-            {board.airing.length === 0 ? empty('لا بطاقات بموعد بث اليوم.') : (
+            {board.airing.length === 0 ? empty('لا تكليفات بموعد بث اليوم.') : (
               <div role="region" tabIndex={0} aria-label="جدول ما يُبث اليوم (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
                 <table className="w-full min-w-[34rem] text-xs">
                   <thead>
@@ -321,7 +392,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                   </thead>
                   <tbody>
                     {board.airing.map((card) => {
-                      const state = cardState(card, now);
+                      const states = cardStates(card, now);
                       const waiting = currentStep(card);
                       return (
                         <tr key={card.id} className="border-b border-slate-100 last:border-0">
@@ -329,8 +400,14 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                           <td className="p-3">
                             <button type="button" onClick={() => onFocus(card.id)} className="font-bold text-blue-700 hover:underline text-right">{card.title}</button>
                           </td>
-                          <td className="p-3"><span className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span></td>
-                          <td className="p-3 text-slate-700">{waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${waiting.assigneeName || 'غير مسندة'}` : '—'}</td>
+                          <td className="p-3">
+                            <span className="flex flex-wrap gap-1">
+                              {states.map((state) => (
+                                <span key={state} className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span>
+                              ))}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-700">{waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${stepAssigneeLabel(waiting, stations)}` : '—'}</td>
                         </tr>
                       );
                     })}
@@ -343,9 +420,9 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       )}
 
       {tab === 'ALL' && (
-        <section className="space-y-3" aria-label="كل البطاقات">
+        <section className="space-y-3" aria-label="كل التكليفات">
           <div className="flex flex-wrap items-center gap-2">
-            <input type="search" aria-label="بحث في البطاقات" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث بالعنوان أو الشخص…" className={`${SELECT} w-56 max-w-full`} />
+            <input type="search" aria-label="بحث في التكليفات" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث بالعنوان أو الشخص…" className={`${SELECT} w-56 max-w-full`} />
             <select aria-label="الحالة" value={stateFilter} onChange={(e) => setStateFilter(e.target.value as 'OPEN' | CardState)} className={SELECT}>
               <option value="OPEN">كل الجارية</option>
               {(Object.keys(CARD_STATE_NAMES) as CardState[]).map((s) => (
@@ -365,13 +442,27 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               ))}
             </select>
           </div>
-          {filtered.length === 0 && empty(cards.length === 0 ? 'لا بطاقات بعد. تبدأ البطاقة من «بطاقة جديدة» وترافق المادة حتى البث.' : 'لا بطاقات تطابق التصفية.')}
+          {filtered.length === 0 && empty(cards.length === 0 ? 'لا تكليفات بعد. يبدأ التكليف من «تكليف من قالب» ويرافق المادة حتى البث.' : 'لا تكليفات تطابق التصفية.')}
           <ul className="space-y-2">{page.visible.map((card) => cardRow(card))}</ul>
-          <ShowMore remaining={page.remaining} onMore={page.showMore} noun="بطاقة" />
+          <ShowMore remaining={page.remaining} onMore={page.showMore} noun="تكليف" />
         </section>
       )}
 
+      {tab === 'TEMPLATES' && (
+        <TemplatesPanel
+          templates={templates}
+          cards={cards}
+          canManage={canManage}
+          onUse={(t) => setAssignForm({ open: true, templateId: t.id })}
+          onEdit={(t) => setTemplateForm({ open: true, template: t })}
+          onNew={() => setTemplateForm({ open: true, template: null })}
+        />
+      )}
+
+      {tab === 'REPORTS' && canManage && <AssignmentReports cards={cards} now={now} />}
+
       {form}
+      {templatePages}
     </div>
   );
 };

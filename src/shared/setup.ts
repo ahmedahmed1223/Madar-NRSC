@@ -53,9 +53,17 @@ export function setupProgress(facts: SetupFacts): Record<SetupStepId, boolean> {
     stations: facts.stationsConfigured || confirmed.has('stations'),
     categories: facts.categories > 0,
     team: facts.teamMembers > 1 || confirmed.has('team'),
-    security: (facts.adminTwoFactor && facts.backups) || confirmed.has('security'),
+    // Only done when both are really in place: a review alone is a skip (see setupSkipped), not a completion.
+    security: facts.adminTwoFactor && facts.backups,
     finish: !!facts.setup?.completedAt,
   };
 }
 
 export const setupDoneCount = (progress: Record<SetupStepId, boolean>) => SETUP_STEPS.filter((s) => s.id !== 'finish' && progress[s.id]).length;
+
+/** Steps the administrator moved past without the system showing them done (shown amber: «تُجووزت»). */
+export function setupSkipped(facts: SetupFacts): Partial<Record<SetupStepId, boolean>> {
+  const confirmed = new Set(facts.setup?.confirmed || []);
+  const progress = setupProgress(facts);
+  return { security: confirmed.has('security') && !progress.security };
+}

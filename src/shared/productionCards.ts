@@ -434,7 +434,7 @@ export function canGovernCard(card: Pick<ProductionCard, 'ownerId' | 'ownerStati
   return stationScope(stations, actor.stationId).has(owner.id);
 }
 
-export const GOVERN_DENIED = 'إغلاق البطاقة وإلغاؤها وحذفها لمحطتها المالكة أو المحطة الرئيسية';
+export const GOVERN_DENIED = 'إغلاق التكليف وإلغاؤه وحذفه لمحطته المالكة أو المحطة الرئيسية';
 
 /** Time logged on a step: the sum of its work sessions on top of what was noted before sessions existed. */
 export const timeLogMinutes = (entries?: CardTimeEntry[]) => (entries || []).reduce((sum, e) => sum + (Number.isFinite(e?.minutes) ? e.minutes : 0), 0);
@@ -460,17 +460,17 @@ export const MAX_CHECKLIST = 20;
 
 /** Shape of a card, whoever writes it. */
 export function cardError(card: ProductionCard): string | null {
-  if (!card || typeof card !== 'object') return 'بطاقة غير صالحة';
-  if (typeof card.title !== 'string' || !card.title.trim() || card.title.length > 200) return 'عنوان البطاقة مطلوب وبحد أقصى 200 حرف';
+  if (!card || typeof card !== 'object') return 'تكليف غير صالح';
+  if (typeof card.title !== 'string' || !card.title.trim() || card.title.length > 200) return 'عنوان التكليف مطلوب وبحد أقصى 200 حرف';
   if (!CARD_KINDS.some((k) => k.id === card.kind)) return 'نوع المادة غير معروف';
-  if (card.priority !== 'NORMAL' && card.priority !== 'URGENT') return 'أولوية البطاقة غير معروفة';
-  if (!CARD_STATUSES.some((s) => s.id === card.status)) return 'حالة البطاقة غير معروفة';
+  if (card.priority !== 'NORMAL' && card.priority !== 'URGENT') return 'أولوية التكليف غير معروفة';
+  if (!CARD_STATUSES.some((s) => s.id === card.status)) return 'حالة التكليف غير معروفة';
   if (!optText(card.brief, 5000)) return 'وصف المطلوب بحد أقصى 5000 حرف';
   if (!optText(card.script, 60000)) return 'النص بحد أقصى 60000 حرف';
   for (const key of ['dueAt', 'airAt'] as const) if (card[key] && !isIso(card[key])) return 'موعد التسليم أو البث غير صالح';
   if (card.target !== undefined && card.target !== null) {
     const t = card.target;
-    if (!t || !['news', 'episode', 'bulletin'].includes(t.kind) || typeof t.id !== 'string' || !ID.test(t.id) || typeof t.title !== 'string' || t.title.length > 300) return 'ربط البطاقة بمادة غير صالح';
+    if (!t || !['news', 'episode', 'bulletin'].includes(t.kind) || typeof t.id !== 'string' || !ID.test(t.id) || typeof t.title !== 'string' || t.title.length > 300) return 'ربط التكليف بمادة غير صالح';
   }
   if (card.links !== undefined) {
     if (!Array.isArray(card.links) || card.links.length > 40) return 'الحد الأقصى 40 رابطاً';
@@ -479,7 +479,7 @@ export function cardError(card: ProductionCard): string | null {
     }
   }
   if (card.mediaIds !== undefined && (!Array.isArray(card.mediaIds) || card.mediaIds.length > 100 || card.mediaIds.some((id) => typeof id !== 'string' || !ID.test(id)))) return 'مواد المكتبة المرفقة غير صالحة';
-  if (!Array.isArray(card.steps) || card.steps.length > MAX_CARD_STEPS) return `الحد الأقصى ${MAX_CARD_STEPS} مهمة في البطاقة`;
+  if (!Array.isArray(card.steps) || card.steps.length > MAX_CARD_STEPS) return `الحد الأقصى ${MAX_CARD_STEPS} مهمة في التكليف`;
   const stepIds = new Set<string>();
   for (const step of card.steps) {
     if (!step || typeof step.id !== 'string' || !ID.test(step.id) || stepIds.has(step.id)) return 'معرّف المهمة غير صالح أو مكرر';
@@ -507,7 +507,7 @@ export function cardError(card: ProductionCard): string | null {
     }
   }
   if (card.log !== undefined) {
-    if (!Array.isArray(card.log) || card.log.length > 500) return 'سجل البطاقة ممتلئ';
+    if (!Array.isArray(card.log) || card.log.length > 500) return 'سجل التكليف ممتلئ';
     for (const entry of card.log) {
       if (!entry || typeof entry.id !== 'string' || !ID.test(entry.id) || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 3000) return 'ملاحظة التوثيق مطلوبة وبحد أقصى 3000 حرف';
       if (entry.decision !== undefined && entry.decision !== null && typeof entry.decision !== 'boolean') return 'نوع الملاحظة غير صالح';
@@ -558,7 +558,7 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   const newLog = after.log || [];
   if (newLog.length < oldLog.length || oldLog.some((entry, i) => newLog[i]?.id !== entry.id || newLog[i]?.text !== entry.text)) return 'سجل التوثيق للإضافة فقط ولا يُعدَّل';
   const isOwner = !!before && before.ownerId === actor.id;
-  if (newLog.slice(oldLog.length).some((e) => e.decision) && !actor.canManage && !isOwner) return 'تسجيل القرار لصاحب البطاقة أو مسؤولي التكليف';
+  if (newLog.slice(oldLog.length).some((e) => e.decision) && !actor.canManage && !isOwner) return 'تسجيل القرار لصاحب التكليف أو مسؤولي التكليف';
 
   const scope = stationScope(ctx.stations, actor.stationId);
   const outOfScope = (userId: string) => {
@@ -567,7 +567,7 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   };
 
   if (actor.canManage) {
-    if (!before && after.status !== 'OPEN') return 'البطاقة الجديدة تبدأ جارية';
+    if (!before && after.status !== 'OPEN') return 'التكليف الجديد يبدأ جارياً';
     // A branch closes, cancels and reopens only the cards it governs.
     if (before && before.status !== after.status && !canGovernCard(before, actor, ctx.stations)) return GOVERN_DENIED;
     // Supervisors distribute work inside the stations they follow.
@@ -579,10 +579,10 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     return null;
   }
 
-  if (!actor.canWork) return 'صلاحياتك لا تسمح بالعمل على بطاقات الإنتاج';
-  if (!before) return 'إنشاء بطاقات الإنتاج وتوزيع مهامها لمسؤولي التكليف';
-  if (before.status !== 'OPEN') return 'البطاقة مغلقة؛ يعيد فتحها مسؤول التكليف';
-  if (CARD_LOCKED.some((key) => !same(before[key], after[key]))) return 'تعديل بيانات البطاقة ومواعيدها لمسؤولي التكليف';
+  if (!actor.canWork) return 'صلاحياتك لا تسمح بالعمل على التكليفات';
+  if (!before) return 'إنشاء التكليفات وتوزيع مهامها لمسؤولي التكليف';
+  if (before.status !== 'OPEN') return 'التكليف مغلق؛ يعيد فتحه مسؤول التكليف';
+  if (CARD_LOCKED.some((key) => !same(before[key], after[key]))) return 'تعديل بيانات التكليف ومواعيده لمسؤولي التكليف';
   if (!same(before.scriptApproved ?? false, after.scriptApproved ?? false) && after.scriptApproved) return 'اعتماد النص لمسؤولي التكليف';
   if (before.steps.length !== after.steps.length || before.steps.some((s, i) => after.steps[i]?.id !== s.id)) return 'إضافة المهام وحذفها وترتيبها لمسؤولي التكليف';
 
@@ -614,10 +614,10 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     if (!(after.steps[Math.min(...returned)].returnedReason || '').trim()) return 'اكتب سبب الإعادة إلى الخطوة السابقة';
     const last = Math.max(...returned);
     const reviews = before.steps.some((s, i) => i > last && mine(s) && isStepOpen(s) && REVIEW_STEP_TYPES.includes(s.type));
-    if (!isOwner && !reviews) return 'الإعادة إلى خطوة سابقة لصاحب البطاقة أو لمن يراجع المادة (الجودة أو الاعتماد)';
+    if (!isOwner && !reviews) return 'الإعادة إلى خطوة سابقة لصاحب التكليف أو لمن يراجع المادة (الجودة أو الاعتماد)';
   }
   const worksOnCard = isOwner || after.steps.some(mine);
-  if ((!same(before.script, after.script) || !same(before.links, after.links) || !same(before.mediaIds, after.mediaIds)) && !worksOnCard) return 'يعدّل النص والروابط والمواد من له مهمة في البطاقة';
+  if ((!same(before.script, after.script) || !same(before.links, after.links) || !same(before.mediaIds, after.mediaIds)) && !worksOnCard) return 'يعدّل النص والروابط والمواد من له مهمة في التكليف';
   return null;
 }
 

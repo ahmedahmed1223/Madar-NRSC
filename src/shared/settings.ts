@@ -1,6 +1,7 @@
 import type { SystemSettings } from '../types';
 import { validZone } from './dateFormat';
-import { stationsError } from './stations';
+import { stationGroupsError, stationsArchiveError, stationsError, stationsOf } from './stations';
+import { departmentsError } from './departments';
 import { setupStateError } from './setup';
 import { validateStorage } from './storage';
 import { stepTypesError } from './productionCards';
@@ -23,6 +24,18 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
   }
   if (settings.stations !== undefined) {
     const error = stationsError(settings.stations);
+    if (error) return error;
+  }
+  if (settings.stationGroups !== undefined) {
+    const error = stationGroupsError(settings.stationGroups, stationsOf(settings));
+    if (error) return error;
+  }
+  if (settings.stationsArchive !== undefined) {
+    const error = stationsArchiveError(settings.stationsArchive);
+    if (error) return error;
+  }
+  if (settings.departments !== undefined) {
+    const error = departmentsError(settings.departments, { stationIds: stationsOf(settings).map((s) => s.id) });
     if (error) return error;
   }
   if (settings.cardStepTypes !== undefined) {

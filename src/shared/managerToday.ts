@@ -7,7 +7,7 @@ import { isCardLate, isStepLate, isStepOpen, type CardStep, type ProductionCard 
 import { stationScope, type Station } from './stations';
 
 /** Roles that follow others' work and get «حالة اليوم» at the top of their home screen. */
-export const MANAGER_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MAIN_STATION_MANAGER', 'STATION_MANAGER'] as const;
+export const MANAGER_ROLES = ['SUPER_ADMIN', 'ADMIN', 'GENERAL_MANAGER', 'MAIN_STATION_MANAGER', 'STATION_MANAGER'] as const;
 export const isManagerRole = (role?: string | null) => !!role && (MANAGER_ROLES as readonly string[]).includes(role);
 
 const required = (card: ProductionCard) => (card.steps || []).filter((s) => s.status !== 'SKIPPED');
@@ -17,9 +17,41 @@ export const isCardBlocked = (card: ProductionCard) => card.status === 'OPEN' &&
  * Stations a manager follows: everyone for central management (no station), the main station
  * and administrators; a branch manager follows their own station and those linked with it.
  */
-export function managerScope(user: { role?: string; stationId?: string | null }, stations: Station[], seesAll = false): Set<string> {
+export function managerScope(user: { role?: string; stationId?: string | null; managedStationIds?: string[]; managedGroupIds?: string[] }, stations: Station[], seesAll = false): Set<string> {
   if (seesAll || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'MAIN_STATION_MANAGER') return new Set(stations.map((s) => s.id));
-  return stationScope(stations, user.stationId);
+  // The shared scope rule (own station, links, managed stations and station groups).
+  const scope = new Set(stationScope(stations, { stationId: user.stationId, managedStationIds: user.managedStationIds, managedGroupIds: user.managedGroupIds }));
+  // A manager of several stations (e.g. a general manager) follows each of them too.
+  for (const id of Array.isArray(user.managedStationIds) ? user.managedStationIds : []) if (stations.some((s) => s.id === id)) scope.add(id);
+  return scope;
+}
+
+export interface StationGroup {
+  id: string;
+  name: string;
+  stationIds: string[];
+}
+
+/** Station groups from the settings, when the deployment defines any (read defensively). */
+export function stationGroupsOf(settings: unknown): StationGroup[] {
+  const raw = (settings as { stationGroups?: unknown } | null | undefined)?.stationGroups;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((g): g is StationGroup => !!g && typeof g.id === 'string' && typeof g.name === 'string' && Array.isArray(g.stationIds))
+    .map((g) => ({ id: g.id, name: g.name, stationIds: g.stationIds.filter((x: unknown) => typeof x === 'string') }));
+}
+
+/**
+ * A station filter value: 'ALL', a station id, or 'group:<id>' for a station group.
+ * Returns whether a station id passes it.
+ */
+export function stationFilterMatcher(value: string, groups: StationGroup[]): (stationId?: string | null) => boolean {
+  if (value === 'ALL') return () => true;
+  if (value.startsWith('group:')) {
+    const ids = new Set(groups.find((g) => g.id === value.slice(6))?.stationIds || []);
+    return (id) => !!id && ids.has(id);
+  }
+  return (id) => id === value;
 }
 
 /** Stations a card touches: its steps' stations and its owner's station. */
@@ -133,7 +165,8 @@ export function reviewableNews<T extends { status: string; authorId?: string; de
   ctx: { canReview: boolean; stations: Station[]; stationOf: (userId: string) => string | undefined }
 ): T[] {
   if (!ctx.canReview) return [];
-  const scope = me.role === 'STATION_MANAGER' ? managerScope(me, ctx.stations) : null;
+  const scoped = me.role === 'STATION_MANAGER' || me.role === 'GENERAL_MANAGER';
+  const scope = scoped ? managerScope(me, ctx.stations) : null;
   return news.filter((n) => {
     if (n.deletedAt || n.status !== 'UNDER_REVIEW' || !n.authorId || n.authorId === me.id) return false;
     if (!scope) return true;

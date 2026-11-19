@@ -1476,7 +1476,7 @@ export class ApiService {
 
   static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard {
     const card = this.getCard(id);
-    if (!card) throw new Error('البطاقة غير موجودة');
+    if (!card) throw new Error('التكليف غير موجود');
     return this.saveCard(change(card));
   }
 
@@ -1520,7 +1520,7 @@ export class ApiService {
   }
 
   static deleteCard(id: string): void {
-    if (!this.cardActor().canManage) throw new Error('حذف بطاقات الإنتاج لمسؤولي التكليف');
+    if (!this.cardActor().canManage) throw new Error('حذف التكليفات لمسؤولي التكليف');
     const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
     setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
   }

@@ -117,15 +117,15 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         steps,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url),
       });
-      onSaved(saved, card ? 'حُفظت البطاقة' : 'أُنشئت البطاقة ووصل التكليف للمعنيين');
+      onSaved(saved, card ? 'حُفظ التكليف' : 'أُنشئ التكليف ووصل التنبيه للمعنيين');
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'تعذر حفظ البطاقة');
+      setError(err?.message || 'تعذر حفظ التكليف');
     }
   };
 
   return (
-    <FormPage isOpen={isOpen} onClose={onClose} title={card ? 'تعديل بطاقة الإنتاج' : 'بطاقة إنتاج جديدة'} subtitle="بطاقة واحدة ترافق المادة بين المحطات" maxWidth="4xl">
+    <FormPage isOpen={isOpen} onClose={onClose} title={card ? 'تعديل التكليف' : 'تكليف حر جديد'} subtitle="تكليف واحد يرافق المادة بين المحطات والأقسام" maxWidth="4xl">
       <form onSubmit={submit} className="space-y-5 text-xs">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
@@ -194,7 +194,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         </div>
 
         <fieldset className="space-y-2">
-          <legend className="font-bold text-slate-800 text-sm">مهام البطاقة بالترتيب</legend>
+          <legend className="font-bold text-slate-800 text-sm">مهام التكليف بالترتيب</legend>
           <p className="text-2xs text-slate-500">كل مهمة تُسند لزميل بعينه، أو لمحطة ليستلمها أحد أفرادها. عند إنجاز مهمة يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>
           {!card && (
             <div className="flex flex-wrap items-center gap-2">
@@ -296,7 +296,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         {error && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-700 font-bold">{error}</p>}
         <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl">إلغاء</button>
-          <button type="submit" className="px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl">{card ? 'حفظ البطاقة' : 'إنشاء البطاقة'}</button>
+          <button type="submit" className="px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl">{card ? 'حفظ التكليف' : 'إنشاء التكليف'}</button>
         </div>
       </form>
     </FormPage>

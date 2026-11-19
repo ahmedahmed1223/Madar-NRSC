@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, FileText, Gavel, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, FileText, Gavel, LayoutTemplate, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { apiFetch } from '../../services/http';
 import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import { notify } from '../../services/notify';
 import { navigateTo } from '../../services/uiEvents';
-import { RbacService } from '../../services/rbacService';
 import {
   CARD_STATE_NAMES,
   REVIEW_STEP_TYPES,
@@ -34,7 +33,7 @@ import {
 import { stationName, stationScope, stationsOf } from '../../shared/stations';
 import { minutesLabel } from '../../shared/workload';
 import { AR, countLabel } from '../../shared/arabicPlural';
-import { CARD_STATE_STYLE, INPUT, LABEL, STEP_STATUS_STYLE, when } from './cardUi';
+import { CARD_STATE_STYLE, INPUT, LABEL, STEP_STATUS_STYLE, candidateLabel, cardCandidates, when } from './cardUi';
 
 interface CardDetailProps {
   card: ProductionCard;
@@ -42,6 +41,8 @@ interface CardDetailProps {
   onClose: () => void;
   onEdit: (card: ProductionCard) => void;
   onOpenTarget?: (card: ProductionCard) => void;
+  /** «حفظ كقالب»: turns this assignment's chain of steps into a reusable workflow template. */
+  onSaveAsTemplate?: (card: ProductionCard) => void;
 }
 
 const BTN = 'inline-flex items-center gap-1.5 min-h-11 px-3 py-2 rounded-lg text-xs font-bold';
@@ -51,7 +52,7 @@ const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'ف
 type Panel = { stepId: string; kind: 'done' | 'block' | 'back' | 'reassign' } | null;
 
 /** One production card: its steps and handoffs, the script, the material and the documented trail. */
-export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget }) => {
+export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget, onSaveAsTemplate }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
@@ -104,24 +105,15 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const contributions = cardContributions(card, stepTypes);
   const latestDecision = [...(card.log || [])].reverse().find((e) => e.decision);
 
-  // Colleagues a supervisor can hand work to, with how much open work each already holds.
+  // Colleagues a supervisor can hand work to (in the stations they follow), with how much open work each already holds.
   const people = useMemo(() => {
-    if (!canReassign && !open) return [];
+    if (!open) return [];
     const scope = stationScope(stations, actor.stationId);
-    const load = new Map<string, number>();
-    for (const c of apiService.getCards()) {
-      if (c.status !== 'OPEN') continue;
-      for (const s of c.steps) if (s.assigneeId && isStepOpen(s)) load.set(s.assigneeId, (load.get(s.assigneeId) || 0) + 1);
-    }
-    return apiService
-      .getUsers()
-      .filter((u) => u.isActive !== false && !u.deletedAt && RbacService.hasPermission(u, 'cards.work') && (!u.stationId || scope.has(u.stationId)))
-      .map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, load: load.get(u.id) || 0 }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    return cardCandidates().filter((p) => !p.stationId || scope.has(p.stationId));
     // The list is rebuilt when the card changes; colleagues and settings rarely change meanwhile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card, canReassign, open, actor.stationId]);
-  const personLabel = (p: (typeof people)[number]) => `${p.name} — ${stationName(stations, p.stationId)} — ${p.load ? countLabel(p.load, AR.task) + ' مفتوحة' : 'بلا مهام مفتوحة'}`;
+  }, [card, open, actor.stationId]);
+  const personLabel = (p: (typeof people)[number]) => candidateLabel(p, stations);
 
   const library = useMemo(() => apiService.getMedia().filter((m: any) => !m.deletedAt), [card.mediaIds]);
   const attached = (card.mediaIds || []).map((id) => ({ id, item: library.find((m) => m.id === id) }));
@@ -171,7 +163,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     if (pending.length) return `سُجّل الإنجاز؛ لا يصل التسليم قبل اكتمال «${stepTypeName(stepTypes, pending[0].type)}»`;
     const index = card.steps.findIndex((s) => s.id === step.id);
     const next = card.steps.slice(index + 1).find(isStepOpen);
-    if (!next) return `سُجّل الإنجاز؛ البطاقة جاهزة ووصل التنبيه إلى ${card.ownerName || 'صاحب القرار'}`;
+    if (!next) return `سُجّل الإنجاز؛ التكليف جاهز ووصل التنبيه إلى ${card.ownerName || 'صاحب القرار'}`;
     if (next.assigneeId) return `سُجّل الإنجاز ووصل التنبيه إلى ${next.assigneeName || 'صاحب المهمة التالية'}`;
     if (next.stationId) return `سُجّل الإنجاز ووصل التنبيه إلى زملاء محطة ${stationName(stations, next.stationId)}`;
     return 'سُجّل الإنجاز؛ المهمة التالية لم تُسند بعد';
@@ -240,7 +232,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   };
   const attachMedia = () => {
     if (!mediaPick) return;
-    if (act(() => apiService.updateCard(card.id, (c) => ({ ...c, mediaIds: [...new Set([...(c.mediaIds || []), mediaPick])] })), 'أُرفق الملف بالبطاقة')) {
+    if (act(() => apiService.updateCard(card.id, (c) => ({ ...c, mediaIds: [...new Set([...(c.mediaIds || []), mediaPick])] })), 'أُرفق الملف بالتكليف')) {
       setMediaPick('');
       setMediaQuery('');
     }
@@ -253,7 +245,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     try {
       const material = [script, ...card.steps.map((s) => s.note || ''), ...(card.log || []).filter((e) => e.kind === 'NOTE').map((e) => e.text)].filter(Boolean).join('\n');
       const res = await apiFetch<{ data: { brief: string; gaps: string[] } }>('/api/v1/ai/copilot', { method: 'POST', json: { mode: 'BRIEF', title: card.title, summary: card.brief || '', content: material } });
-      if (!res.data.brief.trim()) throw new Error('لم يُرجع المساعد نصاً؛ أضف معلومات أكثر إلى البطاقة');
+      if (!res.data.brief.trim()) throw new Error('لم يُرجع المساعد نصاً؛ أضف معلومات أكثر إلى التكليف');
       setScript(res.data.brief);
       setGaps(res.data.gaps || []);
       setMessage({ ok: true, text: 'مسودة مقترحة في خانة النص: راجعها وعدّلها ثم احفظها. الاعتماد يبقى للمحرر المسؤول.' });
@@ -279,11 +271,11 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
       <header className="flex items-start gap-3">
         <button type="button" onClick={onClose} className="shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50">
           <ArrowRight className="w-4 h-4" />
-          البطاقات
+          التكليفات
         </button>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-slate-900 leading-8">{card.title}</h1>
-          <p className="text-xs text-slate-500">بطاقة إنتاج — {cardKindName(card.kind)}{card.ownerStationId ? ` — محطة ${stationName(stations, card.ownerStationId)}` : ''}</p>
+          <p className="text-xs text-slate-500">تكليف — {cardKindName(card.kind)}{card.ownerStationId ? ` — محطة ${stationName(stations, card.ownerStationId)}` : ''}</p>
         </div>
       </header>
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-5 text-xs">
@@ -304,7 +296,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
         </div>
 
         {progress.total > 0 && (
-          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-label="تقدم البطاقة" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-label="تقدم التكليف" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
             <div className="h-full bg-emerald-500" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
           </div>
         )}
@@ -338,7 +330,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
 
         <section>
           <h2 className="font-bold text-slate-800 text-sm mb-2">المهام والتسليم</h2>
-          {card.steps.length === 0 && <p className="text-slate-500">لم تُضف مهام لهذه البطاقة بعد.</p>}
+          {card.steps.length === 0 && <p className="text-slate-500">لم تُضف مهام لهذا التكليف بعد.</p>}
           <ol className="space-y-2">
             {card.steps.map((step, index) => {
               const mine = step.assigneeId === actor.id;
@@ -385,6 +377,23 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     </p>
                   )}
                   {step.note && <p className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 whitespace-pre-line">ملاحظة التسليم: {step.note}</p>}
+                  {step.checklist && step.checklist.length > 0 && (
+                    <fieldset className="space-y-0.5">
+                      <legend className="font-bold text-slate-700 mb-1">قائمة التحقق ({step.checklist.filter((c) => c.done).length}/{step.checklist.length})</legend>
+                      {step.checklist.map((item, i) => (
+                        <label key={i} className="flex items-center gap-2 min-h-11 text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4"
+                            checked={!!item.done}
+                            disabled={!may || !stepOpen}
+                            onChange={(e) => setStep(step, { checklist: step.checklist!.map((c, j) => (j === i ? { ...c, done: e.target.checked } : c)) }, e.target.checked ? `تم: ${item.text}` : `أُلغي التأشير: ${item.text}`)}
+                          />
+                          <span className={item.done ? 'line-through text-slate-500' : ''}>{item.text}</span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
 
                   {panelHere === 'done' && (
                     <div className="space-y-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50/60">
@@ -604,7 +613,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     </button>
                   )}
                   {canEditMaterial && (
-                    <button type="button" aria-label="إزالة الملف من البطاقة" onClick={() => act(() => apiService.updateCard(card.id, (c) => ({ ...c, mediaIds: (c.mediaIds || []).filter((m) => m !== id) })), 'أُزيل الملف من البطاقة')} className="mr-auto inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-500 hover:bg-slate-100">
+                    <button type="button" aria-label="إزالة الملف من التكليف" onClick={() => act(() => apiService.updateCard(card.id, (c) => ({ ...c, mediaIds: (c.mediaIds || []).filter((m) => m !== id) })), 'أُزيل الملف من التكليف')} className="mr-auto inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-500 hover:bg-slate-100">
                       <X className="w-4 h-4" />
                     </button>
                   )}
@@ -650,7 +659,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     <option key={m.id} value={m.id}>{m.title || m.originalName || m.fileName} — {MEDIA_TYPE_NAMES[m.mediaType] || 'ملف'}</option>
                   ))}
                 </select>
-                <button type="button" disabled={!mediaPick} onClick={attachMedia} className={`${BTN} bg-blue-600 text-white disabled:opacity-50`}>إرفاق بالبطاقة</button>
+                <button type="button" disabled={!mediaPick} onClick={attachMedia} className={`${BTN} bg-blue-600 text-white disabled:opacity-50`}>إرفاق بالتكليف</button>
               </div>
             </div>
           )}
@@ -678,7 +687,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                 e.preventDefault();
                 if (!note.trim()) return;
                 const text = note;
-                if (act(() => apiService.addCardNote(card.id, text, undefined, decision && canDecide), decision && canDecide ? 'سُجّل القرار ووصل إلى كل من في البطاقة' : 'وُثّقت الملاحظة ووصلت إلى صاحب القرار وصاحب المهمة الحالية')) {
+                if (act(() => apiService.addCardNote(card.id, text, undefined, decision && canDecide), decision && canDecide ? 'سُجّل القرار ووصل إلى كل من في التكليف' : 'وُثّقت الملاحظة ووصلت إلى صاحب القرار وصاحب المهمة الحالية')) {
                   setNote('');
                   setDecision(false);
                 }
@@ -696,7 +705,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
               {canDecide && (
                 <label className="inline-flex items-center gap-2 min-h-11 text-slate-700 cursor-pointer">
                   <input type="checkbox" checked={decision} onChange={(e) => setDecision(e.target.checked)} className="w-4 h-4" />
-                  قرار يصل إلى كل من في البطاقة
+                  قرار يصل إلى كل من في التكليف
                 </label>
               )}
             </form>
@@ -723,15 +732,21 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             {open && (
               <button type="button" onClick={() => onEdit(card)} className={`${BTN} border border-slate-200 text-slate-700`}>
                 <Pencil className="w-3.5 h-3.5" />
-                تعديل البطاقة والمهام
+                تعديل التكليف والمهام
+              </button>
+            )}
+            {onSaveAsTemplate && (
+              <button type="button" onClick={() => onSaveAsTemplate(card)} className={`${BTN} border border-slate-200 text-slate-700`}>
+                <LayoutTemplate className="w-3.5 h-3.5" />
+                حفظ كقالب
               </button>
             )}
             {open && governs && (
               <button
                 type="button"
                 onClick={async () => {
-                  if (state !== 'READY' && !(await confirmDialog({ title: 'إغلاق بطاقة لم تكتمل', message: 'ما زالت في البطاقة مهام لم تُنجز. إغلاقها يخرجها من أعباء الفريق ولا يحتسبها إنتاجاً مكتملاً.', confirmLabel: 'إغلاق على أي حال', cancelLabel: 'تراجع' }))) return;
-                  act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CLOSED' })), 'أُغلقت البطاقة وأُرشفت');
+                  if (state !== 'READY' && !(await confirmDialog({ title: 'إغلاق تكليف لم يكتمل', message: 'ما زالت في التكليف مهام لم تُنجز. إغلاقه يخرجه من أعباء الفريق ولا يحتسبها إنتاجاً مكتملاً.', confirmLabel: 'إغلاق على أي حال', cancelLabel: 'تراجع' }))) return;
+                  act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CLOSED' })), 'أُغلق التكليف وأُرشف');
                 }}
                 // Closing is the obvious next step only once everything is done.
                 className={`${BTN} ${state === 'READY' ? 'bg-emerald-700 text-white' : 'border border-slate-200 text-slate-700'}`}
@@ -742,20 +757,20 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             {open && governs && (
               <button
                 type="button"
-                onClick={async () => (await confirmDialog({ title: 'إلغاء البطاقة', message: 'تتوقف المهام المفتوحة ولا تُحتسب البطاقة في الإنتاج.', confirmLabel: 'إلغاء البطاقة', cancelLabel: 'تراجع', danger: true })) && act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CANCELLED' })), 'أُلغيت البطاقة')}
+                onClick={async () => (await confirmDialog({ title: 'إلغاء التكليف', message: 'تتوقف المهام المفتوحة ولا يُحتسب التكليف في الإنتاج.', confirmLabel: 'إلغاء التكليف', cancelLabel: 'تراجع', danger: true })) && act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CANCELLED' })), 'أُلغي التكليف')}
                 className={`${BTN} border border-slate-200 text-slate-700`}
               >
-                إلغاء البطاقة
+                إلغاء التكليف
               </button>
             )}
             {!open && governs && (
-              <button type="button" onClick={() => act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'OPEN' })), 'أُعيد فتح البطاقة')} className={`${BTN} border border-slate-200 text-slate-700`}>إعادة فتح البطاقة</button>
+              <button type="button" onClick={() => act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'OPEN' })), 'أُعيد فتح التكليف')} className={`${BTN} border border-slate-200 text-slate-700`}>إعادة فتح التكليف</button>
             )}
             {governs ? (
               <button
                 type="button"
                 onClick={async () => {
-                  if (!(await confirmDialog({ title: 'حذف البطاقة', message: `حذف «${card.title}» مع مهامها وسجلها؟`, confirmLabel: 'حذف', cancelLabel: 'تراجع', danger: true }))) return;
+                  if (!(await confirmDialog({ title: 'حذف التكليف', message: `حذف «${card.title}» مع مهامها وسجلها؟`, confirmLabel: 'حذف', cancelLabel: 'تراجع', danger: true }))) return;
                   try {
                     apiService.deleteCard(card.id);
                     onClose();

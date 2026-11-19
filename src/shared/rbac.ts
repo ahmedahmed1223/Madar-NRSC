@@ -908,6 +908,27 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     ],
   },
   {
+    id: 'role-general-manager',
+    roleCode: 'GENERAL_MANAGER',
+    nameAr: 'مدير عام',
+    nameEn: 'General Manager',
+    description: 'يتابع مجموعة من المحطات أو منطقة (تُحدَّد له في بطاقة المستخدم): التكليف، الأعباء والإنتاج، المناوبات، واعتماد المواد فيها',
+    color: '#7c3aed',
+    badgeBg: 'bg-purple-50 text-purple-700 border-purple-200',
+    badgeText: 'مدير عام',
+    isSystemRole: true,
+    // workload.view_all is left out on purpose: it would show every station, past the stations this manager is given.
+    permissions: [
+      'messages.groups',
+      'diary.manage', 'resources.book', 'resources.manage', 'bulletins.edit', 'bulletins.approve', 'bulletins.manage',
+      'news.view', 'news.create', 'news.edit_own', 'news.edit_any', 'news.review', 'news.approve', 'news.publish', 'news.breaking_push',
+      'rundown.view', 'rundown.edit', 'rundown.reorder', 'programs.view', 'episodes.create', 'episodes.edit', 'roster.manage',
+      'guests.view', 'guests.manage', 'media.view', 'media.upload', 'tasks.view', 'tasks.create_assign', 'tasks.intercom_broadcast',
+      'requests.create', 'requests.manage', 'cards.view', 'cards.work', 'cards.manage', 'workload.view',
+      'audit.view', 'reports.export', 'users.view',
+    ],
+  },
+  {
     id: 'role-station-manager',
     roleCode: 'STATION_MANAGER',
     nameAr: 'مدير محطة',

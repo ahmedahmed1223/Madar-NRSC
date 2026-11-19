@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CardStep, ProductionCard } from '../../src/shared/productionCards';
-import { cardInScope, cardsAwaitingMyDecision, isManagerRole, issuesInScope, managerScope, reviewableNews, stationDayStrip } from '../../src/shared/managerToday';
+import { cardInScope, cardsAwaitingMyDecision, isManagerRole, issuesInScope, managerScope, reviewableNews, stationDayStrip, stationFilterMatcher, stationGroupsOf } from '../../src/shared/managerToday';
 import type { Station } from '../../src/shared/stations';
 
 const NOW = Date.parse('2026-11-19T12:00:00Z');
@@ -67,5 +67,21 @@ describe('stories waiting for my review', () => {
   it('counts others\' stories in review, limited to a branch manager\'s scope', () => {
     expect(reviewableNews(news, { id: 'me', role: 'ADMIN' }, { canReview: true, stations, stationOf }).map((n) => n.id)).toEqual(['a', 'b']);
     expect(reviewableNews(news, { id: 'me', role: 'STATION_MANAGER', stationId: 'gaza' }, { canReview: true, stations, stationOf }).map((n) => n.id)).toEqual(['a']);
+  });
+});
+
+describe('station filters and groups', () => {
+  it('reads station groups defensively and filters by station or group', () => {
+    expect(stationGroupsOf(null)).toEqual([]);
+    expect(stationGroupsOf({ stationGroups: [{ id: 'lev', name: 'المشرق', stationIds: ['gaza', 'beirut'] }, { bad: true }] })).toHaveLength(1);
+    const groups = stationGroupsOf({ stationGroups: [{ id: 'lev', name: 'المشرق', stationIds: ['gaza', 'beirut'] }] });
+    expect(stationFilterMatcher('group:lev', groups)('beirut')).toBe(true);
+    expect(stationFilterMatcher('group:lev', groups)('istanbul')).toBe(false);
+    expect(stationFilterMatcher('gaza', groups)('gaza')).toBe(true);
+    expect(stationFilterMatcher('ALL', groups)(undefined)).toBe(true);
+  });
+  it('adds the stations a general manager manages to their scope', () => {
+    expect([...managerScope({ role: 'GENERAL_MANAGER', stationId: 'gaza', managedStationIds: ['beirut'] }, stations)].sort()).toEqual(['beirut', 'gaza', 'istanbul']);
+    expect(isManagerRole('GENERAL_MANAGER')).toBe(true);
   });
 });
