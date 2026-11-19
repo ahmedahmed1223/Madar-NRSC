@@ -9,23 +9,7 @@ import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
-import {
-  Plus,
-  CheckSquare,
-  Clock,
-  User as UserIcon,
-  Search,
-  Filter,
-  AlertCircle,
-  Calendar,
-  CheckCircle2,
-  Trash2,
-  Edit2,
-  ArrowRight,
-  X,
-  Sparkles,
-  Check,
-} from 'lucide-react';
+import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2 } from 'lucide-react';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
@@ -39,7 +23,7 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
   const days = overdueDays(task);
   if (!days) return null;
   return (
-    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold whitespace-nowrap">
+    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-2xs font-bold whitespace-nowrap">
       متأخرة {countLabel(days, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
     </span>
   );
@@ -47,7 +31,6 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
 import { Badge } from '../components/common/Badge';
 import { SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { notify } from '../services/notify';
-import { Modal } from '../components/common/Modal';
 
 interface TasksViewProps {
   tasks: EditorialTask[];
@@ -296,7 +279,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               >
                 <div className={`flex items-center justify-between pb-3 mb-3 border-b-2 ${col.color}`}>
                   <h3 className="text-xs font-bold text-slate-700">{col.label}</h3>
-                  <span className="w-5 h-5 rounded-full bg-white text-slate-700 text-[11px] font-bold flex items-center justify-center shadow-2xs font-mono">
+                  <span className="w-5 h-5 rounded-full bg-white text-slate-700 text-2xs font-bold flex items-center justify-center shadow-2xs font-mono">
                     {colTasks.length}
                   </span>
                 </div>
@@ -355,10 +338,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <h4 className="text-xs font-bold text-slate-800 leading-snug">{t.title}</h4>
 
                       {t.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2">{t.description}</p>
+                        <p className="text-2xs text-slate-500 line-clamp-2">{t.description}</p>
                       )}
 
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-500">
                         <div className="flex items-center gap-1">
                           <UserIcon className="w-3 h-3 text-slate-500" />
                           <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
@@ -376,7 +359,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'TODO')}
-                            className="min-h-7 text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
+                            className="min-h-7 text-2xs px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
                           >
                             ← مطلوبة
                           </button>
@@ -385,7 +368,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'IN_PROGRESS')}
-                            className="min-h-7 text-[11px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
+                            className="min-h-7 text-2xs px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
                           >
                             قيد التنفيذ
                           </button>
@@ -394,7 +377,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQuickStatusChange(t.id, 'COMPLETED')}
-                            className="min-h-7 text-[11px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
+                            className="min-h-7 text-2xs px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
                           >
                             إنجاز ✓
                           </button>
@@ -499,7 +482,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -516,13 +499,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
             />
             {/* Quick Title Templates */}
             <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className="text-[11px] text-slate-500 font-bold">قوالب مهام:</span>
+              <span className="text-2xs text-slate-500 font-bold">قوالب مهام:</span>
               {TASK_TEMPLATES.map((tmpl) => (
                 <button
                   key={tmpl}
                   type="button"
                   onClick={() => setTitle(tmpl)}
-                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
                 >
                   {tmpl.slice(0, 20)}...
                 </button>
@@ -597,21 +580,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(2)}
-                  className="text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
+                  className="text-2xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
                 >
                   +2س
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(6)}
-                  className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                  className="text-2xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                 >
                   +6س
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetDeadlinePreset(24)}
-                  className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                  className="text-2xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                 >
                   غداً
                 </button>

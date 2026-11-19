@@ -14,6 +14,10 @@ import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
+import { cardChangeError, cardContextOf } from '../shared/productionCards';
+import { screensError } from '../shared/screens';
+import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
+import { stationsOf } from '../shared/stations';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -43,7 +47,7 @@ const require =
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
 
-const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId'] as const;
+const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'stationId'] as const;
 
 function changed(before: any, after: any, field: string) {
   return JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after?.[field] ?? null);
@@ -175,6 +179,8 @@ const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     if (notHeld.length) return `لا يمكنك منح صلاحيات لا تملكها: ${notHeld.join('، ')}`;
   }
   if (kind === 'delete') return before?.isSystemRole ? 'لا يمكن حذف الأدوار الأساسية للنظام' : null;
+  const badScreens = screensError(after?.screens);
+  if (badScreens) return badScreens;
   if (before && (before.isSystemRole !== after?.isSystemRole || (before.isSystemRole && before.roleCode !== after?.roleCode))) {
     return 'لا يمكن تغيير رمز أو صفة دور أساسي';
   }
@@ -322,6 +328,8 @@ const bookingsPolicy: Policy = ({ auth, kind, before, after }) => {
   return bookingError(after);
 };
 
+const activeUserIds = (list: PolicyInput['list']) => new Set<string>((list?.('users') || []).filter((u: any) => u.isActive !== false && !u.deletedAt).map((u: any) => u.id));
+
 /** Logs are append-only: identity fields are stamped by the server, edits are rejected. */
 const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجلات غير قابلة للتعديل أو الحذف');
 
@@ -462,18 +470,31 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (kind !== 'delete' && !canHold) return DENIED;
     return null;
   },
-  messages: ({ kind, after }) => {
+  messages: ({ auth, kind, after, list }) => {
     if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
-    if (!(after?.channel === 'general' || isDepartmentId(after?.channel) || ['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel))) return 'قناة غير معروفة';
-    if (typeof after?.text !== 'string' || !after.text.trim() || after.text.length > 2000) return 'نص الرسالة غير صالح';
-    return null;
+    return sendError(after, auth.user.id, {
+      users: activeUserIds(list),
+      stations: new Set(stationsOf(list?.('settings')[0]).map((s) => s.id)),
+      conversations: list?.('conversations') || [],
+    });
   },
+  conversations: ({ auth, kind, before, after, list }) => {
+    if (kind === 'delete' || isSoftDelete(before, after)) return before?.ownerId === auth.user.id ? null : 'يحذف المجموعة منشئها';
+    return conversationChangeError(before, after, auth.user.id, auth.can('messages.groups'), activeUserIds(list));
+  },
+  chatReads: ({ auth, kind, before, after }) => (kind === 'delete' ? (before?.userId === auth.user.id ? null : DENIED) : chatReadsError(after, auth.user.id)),
   activityLogs: logPolicy,
   auditLogs: logPolicy,
   notificationPrefs: notificationPrefsPolicy,
   diary: diaryPolicy,
   resources: resourcesPolicy,
   bookings: bookingsPolicy,
+  productionCards: ({ auth, kind, before, after, list }) => {
+    const canManage = auth.can('cards.manage');
+    if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) return canManage ? null : 'حذف بطاقات الإنتاج واستعادتها لمسؤولي التكليف';
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, canManage, canWork: auth.can('cards.work') };
+    return cardChangeError(before, after, actor, cardContextOf(list?.('settings')[0], list?.('users') || []));
+  },
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
@@ -490,6 +511,14 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'notifications':
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
     case 'notificationPrefs':
+      return data?.userId === auth.user.id;
+    case 'productionCards':
+      return auth.can('cards.view');
+    case 'messages':
+      return canReadMessage(data, auth.user.id);
+    case 'conversations':
+      return Array.isArray(data?.memberIds) && data.memberIds.includes(auth.user.id);
+    case 'chatReads':
       return data?.userId === auth.user.id;
     default:
       return true;

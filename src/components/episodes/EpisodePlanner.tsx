@@ -1,7 +1,7 @@
 import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
-import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
+import { Save, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
 import { apiService, formatSecondsToTime } from '../../services/api';
 import { newId } from '../../shared/ids';
@@ -266,14 +266,14 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
           </span>
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold text-slate-500">{meta.label}</span>
+              <span className="text-2xs font-bold text-slate-500">{meta.label}</span>
               <span className="text-sm font-bold text-slate-800">{seg.title}</span>
-              <span className="text-[11px] font-mono text-slate-500" dir="ltr">
+              <span className="text-2xs font-mono text-slate-500" dir="ltr">
                 {formatSecondsToTime(seg.durationSeconds || 0).slice(3)}
               </span>
               {seg.segmentType !== 'BREAK' && (
                 <span
-                  className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
+                  className={`text-2xs font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
                   title={items.map((i) => `${i.label}: ${i.detail}`).join('\n')}
                 >
                   {ready ? 'جاهزة' : `${items.filter((i) => i.state !== 'ready').length} نواقص`}
@@ -285,21 +285,21 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 {guests.map((g) => {
                   const st = bookingOf(g.guestId);
                   return (
-                    <span key={g.guestId} className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
+                    <span key={g.guestId} className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
                       {g.guestName} · {g.role === 'MAIN' ? 'رئيسي' : g.role === 'CALLER' ? 'مداخلة' : 'معقّب'} · {bookingStatusName(st)}
                     </span>
                   );
                 })}
                 {TALK_SEGMENT_TYPES.has(seg.segmentType) && (
-                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
+                  <span className={`text-2xs font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
                     {qCount ? `${qCount} سؤال` : 'بلا أسئلة'}
                   </span>
                 )}
               </div>
             )}
-            {report && <p className={`text-[11px] ${report.ready ? 'text-emerald-700' : 'text-slate-600'}`}>{report.text}</p>}
+            {report && <p className={`text-2xs ${report.ready ? 'text-emerald-700' : 'text-slate-600'}`}>{report.text}</p>}
             {seg.newsTitle && (
-              <button type="button" onClick={() => seg.newsId && onOpenNews?.(seg.newsId)} className="text-[11px] text-indigo-700 hover:underline flex items-center gap-1">
+              <button type="button" onClick={() => seg.newsId && onOpenNews?.(seg.newsId)} className="text-2xs text-indigo-700 hover:underline flex items-center gap-1">
                 <Newspaper className="w-3 h-3" /> {seg.newsTitle}
               </button>
             )}
@@ -366,7 +366,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
           { label: 'التقارير الجاهزة', value: `${reportsReady} من ${reports.length}`, warn: reportsReady < reports.length },
         ].map((c) => (
           <div key={c.label} className={`p-3 rounded-xl border ${c.warn ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
-            <div className="text-[11px] font-bold text-slate-500">{c.label}</div>
+            <div className="text-2xs font-bold text-slate-500">{c.label}</div>
             <div className="text-lg font-black text-slate-800 font-mono" dir="ltr" style={{ textAlign: 'right' }}>
               {c.value}
             </div>
@@ -470,7 +470,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                   {topic ? `المحور ${idx + 1}: ${topic.title}` : 'خارج المحاور (المقدمة، الفواصل، الختام)'}
                 </h4>
                 {topic?.angle && <p className="text-xs text-slate-600 mt-0.5">الزاوية: {topic.angle}</p>}
-                <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px]">
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-2xs">
                   <span className={`font-mono font-bold ${over ? 'text-rose-700' : 'text-slate-600'}`} dir="ltr">
                     {formatSecondsToTime(actual).slice(3)}
                     {target ? ` / ${formatSecondsToTime(target).slice(3)}` : ''}
@@ -492,7 +492,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                       key={q.type}
                       type="button"
                       onClick={() => setSegmentForm({ segment: null, topicId: topic?.id, type: q.type })}
-                      className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-700"
+                      className="text-2xs font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-700"
                     >
                       + {q.label}
                     </button>
@@ -535,7 +535,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
 
             <SortableList as="ul" id={`seg:${topic?.id || 'loose'}`} accept="segment" className="space-y-1.5 min-h-[2.5rem] rounded-xl">
               {segments.length === 0 ? (
-                <li className="text-[11px] text-slate-500 p-2 border border-dashed border-slate-300 rounded-xl">
+                <li className="text-2xs text-slate-500 p-2 border border-dashed border-slate-300 rounded-xl">
                   لا فقرات بعد — أضف تقريراً أو مقابلة أو نقاشاً، أو اسحب فقرة إلى هنا.
                 </li>
               ) : (

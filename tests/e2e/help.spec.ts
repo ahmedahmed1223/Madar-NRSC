@@ -1,3 +1,4 @@
+import { HELP_ARTICLES } from '../../src/content/help';
 import { expect, test } from '@playwright/test';
 import { openNav, signIn } from './helpers';
 
@@ -5,7 +6,7 @@ test('help exposes comprehensive guides and searches full article contents', asy
   const { page, errors, close } = await signIn(browser, 'producer@akhbar.tv');
   await openNav(page, 'المساعدة');
   const nav = page.getByRole('navigation', { name: 'موضوعات المساعدة' });
-  await expect(nav.getByRole('button')).toHaveCount(32);
+  await expect(nav.getByRole('button')).toHaveCount(HELP_ARTICLES.length);
   for (const title of ['دليل الأدوار والصلاحيات', 'حماية المسودات والتحديث العرضي',
     'جدول البث والتقويم', 'العمل الجماعي وتسليم الورديات', 'حل المشكلات والأسئلة الشائعة',
     'أمان الحساب وحماية المحتوى', 'التقارير وسجل التدقيق وحالة النظام']) {

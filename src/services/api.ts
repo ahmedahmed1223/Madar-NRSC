@@ -6,14 +6,12 @@ import {
   NewsItem,
   Story,
   NewsStatus,
-  NewsPriority,
   Program,
   Episode,
   RundownSegment,
   Guest,
   EditorialTask,
   MediaFile,
-  BreakingNews,
   User,
   UserRole,
   Category,
@@ -73,6 +71,8 @@ export interface WireStatusInfo {
 import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
+import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
+import { cardChangeError, cardContextOf, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
@@ -252,6 +252,7 @@ export class ApiService {
       jobTitle: user.jobTitle || 'صحفي',
       departmentId: user.departmentId || 'newsroom',
       department: user.department || 'غرفة التحرير',
+      stationId: user.stationId,
       staffId: user.staffId || '',
       bio: user.bio || '',
       twoFactorEnabled: user.twoFactorEnabled ?? false,
@@ -1412,6 +1413,62 @@ export class ApiService {
     setStored(COLLECTIONS.requests.storageKey, all.filter((r) => r.id !== id));
   }
 
+  // --- PRODUCTION CARDS ---
+  static getCards(): ProductionCard[] {
+    return getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
+  }
+
+  static getCard(id: string): ProductionCard | undefined {
+    return this.getCards().find((c) => c.id === id);
+  }
+
+  /** What the signed-in colleague may do on cards (the server applies the same rules). */
+  static cardActor(): CardActor {
+    const me = this.getCurrentUser();
+    return { id: me.id, stationId: me.stationId, canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+  }
+
+  /** Creates or replaces a card after checking it with the rules the server enforces. */
+  static saveCard(card: ProductionCard): ProductionCard {
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    const idx = all.findIndex((c) => c.id === card.id);
+    const before = idx === -1 ? null : all[idx];
+    const error = cardChangeError(before, card, this.cardActor(), cardContextOf(this.getSettings(), this.getUsers()));
+    if (error) throw new Error(error);
+    const saved = { ...card, updatedAt: new Date().toISOString() };
+    if (idx === -1) setStored(COLLECTIONS.productionCards.storageKey, [saved, ...all]);
+    else {
+      all[idx] = saved;
+      setStored(COLLECTIONS.productionCards.storageKey, all);
+    }
+    return saved;
+  }
+
+  static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard {
+    const card = this.getCard(id);
+    if (!card) throw new Error('البطاقة غير موجودة');
+    return this.saveCard(change(card));
+  }
+
+  static updateCardStep(cardId: string, stepId: string, changes: Partial<CardStep>): ProductionCard {
+    return this.updateCard(cardId, (card) => ({ ...card, steps: card.steps.map((s) => (s.id === stepId ? { ...s, ...changes } : s)) }));
+  }
+
+  /** Documents work on the card; the server records who wrote it, from which station and when. */
+  static addCardNote(cardId: string, text: string, stepId?: string): ProductionCard {
+    const me = this.getCurrentUser();
+    return this.updateCard(cardId, (card) => ({
+      ...card,
+      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
+    }));
+  }
+
+  static deleteCard(id: string): void {
+    if (!this.cardActor().canManage) throw new Error('حذف بطاقات الإنتاج لمسؤولي التكليف');
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
   // --- TAXONOMY & CONFIG ---
   static getCategories(): Category[] {
     return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
@@ -1900,12 +1957,78 @@ export class ApiService {
     return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
-  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false): void {
+  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): void {
+    const me = this.getCurrentUser();
+    const message = { id: newId('msg'), channel, text: text.trim(), isUrgent, ...(extra.attachments?.length ? { attachments: extra.attachments } : {}), ...(extra.ref ? { ref: extra.ref } : {}) };
+    const error = messageError(message);
+    if (error) throw new Error(error);
     const all = getStored<any[]>(COLLECTIONS.messages.storageKey, []);
-    all.unshift({ id: newId('msg'), channel, text: text.slice(0, 2000), isUrgent });
+    // Shown at once; the server stamps the author, the time and who may read it.
+    all.unshift({ ...message, userId: me.id, userName: me.fullName, userAvatar: me.avatarUrl, timestamp: new Date().toISOString() });
     // keep the local window bounded; the server keeps the full history
-    if (all.length > 500) all.length = 500;
+    if (all.length > 3000) all.length = 3000;
     setStored(COLLECTIONS.messages.storageKey, all);
+  }
+
+  /** Older messages of one conversation than this browser holds (oldest first). */
+  static async loadOlderMessages(channel: string, before: string): Promise<ChatMessage[]> {
+    const res = await apiFetch<{ data: ChatMessage[] }>(`/api/v1/chat/history?channel=${encodeURIComponent(channel)}&before=${encodeURIComponent(before)}`);
+    return res.data;
+  }
+
+  // --- GROUP CONVERSATIONS ---
+  static getConversations(): Conversation[] {
+    const me = this.getCurrentUser().id;
+    return getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []).filter((c) => !c.deletedAt && c.memberIds.includes(me));
+  }
+
+  /** Creates a group or changes its name and members, checked with the rules the server enforces. */
+  static saveConversation(data: Pick<Conversation, 'name' | 'memberIds'> & { id?: string }): Conversation {
+    const me = this.getCurrentUser();
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const idx = data.id ? all.findIndex((c) => c.id === data.id) : -1;
+    const before = idx === -1 ? null : all[idx];
+    const after: Conversation = { ...(before || { id: newId('cnv'), ownerId: me.id, ownerName: me.fullName, createdAt: new Date().toISOString() }), name: data.name.trim(), memberIds: data.memberIds };
+    const active = new Set(this.getUsers().filter((u) => u.isActive !== false && !u.deletedAt).map((u) => u.id));
+    const error = conversationChangeError(before, after, me.id, RbacService.hasPermission(me, 'messages.groups'), active);
+    if (error) throw new Error(error);
+    if (idx === -1) setStored(COLLECTIONS.conversations.storageKey, [after, ...all]);
+    else {
+      all[idx] = after;
+      setStored(COLLECTIONS.conversations.storageKey, all);
+    }
+    return after;
+  }
+
+  static leaveConversation(id: string): void {
+    const me = this.getCurrentUser();
+    const group = this.getConversations().find((c) => c.id === id);
+    if (group) this.saveConversation({ id, name: group.name, memberIds: group.memberIds.filter((m) => m !== me.id) });
+  }
+
+  static deleteConversation(id: string): void {
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const group = all.find((c) => c.id === id);
+    if (!group || group.ownerId !== this.getCurrentUser().id) throw new Error('يحذف المجموعة منشئها');
+    setStored(COLLECTIONS.conversations.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
+  /** Where I have read up to in each conversation (shared by my devices). */
+  static getChatReads(): ChatReads | undefined {
+    const me = this.getCurrentUser().id;
+    return getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []).find((r) => r.id === me);
+  }
+
+  static markChannelRead(channel: string, timestamp: string): void {
+    const me = this.getCurrentUser().id;
+    const all = getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []);
+    const mine = all.find((r) => r.id === me) || { id: me, userId: me, seen: {} };
+    if ((mine.seen[channel] || '') >= timestamp) return;
+    const next: ChatReads = { ...mine, seen: { ...mine.seen, [channel]: timestamp } };
+    if (chatReadsError(next, me)) return;
+    setStored(COLLECTIONS.chatReads.storageKey, [next, ...all.filter((r) => r.id !== me)]);
+    // Reading the conversation is reading its notification; the next message notifies again.
+    this.markNotificationsReadFor(`/messages/${encodeURIComponent(channel)}`);
   }
 
   // --- NOTIFICATIONS ---
@@ -1943,6 +2066,16 @@ export class ApiService {
     const target = all.find((n) => n.id === id && n.userId === me);
     if (!target || target.isRead) return;
     target.isRead = true;
+    setStored(STORAGE_KEYS.NOTIFICATIONS, all);
+  }
+
+  /** Marks my unread notifications that lead to one place as read (the place was just opened). */
+  static markNotificationsReadFor(linkUrl: string): void {
+    const all = this.getNotifications();
+    const me = this.getCurrentUser().id;
+    const mine = all.filter((n) => n.userId === me && !n.isRead && n.linkUrl === linkUrl);
+    if (!mine.length) return;
+    mine.forEach((n) => (n.isRead = true));
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }
 

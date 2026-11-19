@@ -126,7 +126,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, tone: 'text-red-600', title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
     }
     const screens: Result[] = onNavigate
-      ? matchScreens(searchTerm, can).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
+      ? matchScreens(searchTerm, can).filter((s) => !currentUser || RbacService.canOpenScreen(currentUser, s.nav)).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
       : [];
 
     if (!searchTerm.trim()) {
@@ -251,10 +251,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 return (
                   <React.Fragment key={r.key}>
                     {header && (
-                      <li role="presentation" className="text-[11px] font-bold text-slate-500 mt-2 mb-1 px-2 flex items-center justify-between gap-2">
+                      <li role="presentation" className="text-2xs font-bold text-slate-500 mt-2 mb-1 px-2 flex items-center justify-between gap-2">
                         <span>{header}</span>
                         {header === RECENT_GROUP && (
-                          <button type="button" onClick={() => { clearRecent(userId); setRecent([]); inputRef.current?.focus(); }} className="min-h-8 px-2 rounded-md text-[11px] font-semibold text-blue-700 hover:bg-blue-50">
+                          <button type="button" onClick={() => { clearRecent(userId); setRecent([]); inputRef.current?.focus(); }} className="min-h-8 px-2 rounded-md text-2xs font-semibold text-blue-700 hover:bg-blue-50">
                             مسح السجل
                           </button>
                         )}
@@ -271,9 +271,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       <Icon className={`w-4 h-4 shrink-0 ${r.tone}`} aria-hidden />
                       <span className="truncate flex-1 min-w-0">
                         <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}>{r.title}</span>
-                        {r.meta && <span className="text-[11px] text-slate-500 block truncate">{r.meta}</span>}
+                        {r.meta && <span className="text-2xs text-slate-500 block truncate">{r.meta}</span>}
                       </span>
-                      {r.badge && <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
+                      {r.badge && <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
                     </li>
                   </React.Fragment>
                 );
@@ -290,7 +290,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             عرض المزيد من النتائج ({filteredResults.length - visibleResults.length})
           </button>
         )}
-        <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-500">
           <span className="hidden sm:inline">{query.trim() ? '↑↓ للتنقل · Enter للفتح · Esc للإغلاق' : 'اكتب للبحث، أو اختر من الوصول السريع بالأسهم وEnter'}</span>
           <span aria-live="polite">{query.trim() ? `${visibleResults.length} من ${filteredResults.length} نتيجة` : ''}</span>
         </div>

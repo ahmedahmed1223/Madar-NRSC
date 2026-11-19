@@ -1,6 +1,6 @@
 import { confirmDialog } from '../../services/dialogs';
 import React, { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, CheckSquare, CornerDownLeft, Edit2, Plus, Square, Trash2 } from 'lucide-react';
+import { CheckSquare, CornerDownLeft, Edit2, Plus, Square, Trash2 } from 'lucide-react';
 import type { Episode, EpisodeQuestion } from '../../types';
 import { newId } from '../../shared/ids';
 import { FormPage } from '../common/FormPage';
@@ -135,7 +135,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
 
   const renderList = (list: EpisodeQuestion[], segmentId: string) => (
     <SortableList as="ol" id={`q:${segmentId || 'none'}`} className="space-y-1.5 min-h-[2.25rem] rounded-xl">
-      {list.length === 0 && <li className="text-[11px] text-rose-600 p-2 border border-dashed border-rose-200 rounded-xl">لا أسئلة محضّرة لهذه الفقرة — أضف سؤالاً أو اسحب سؤالاً إلى هنا.</li>}
+      {list.length === 0 && <li className="text-2xs text-rose-600 p-2 border border-dashed border-rose-200 rounded-xl">لا أسئلة محضّرة لهذه الفقرة — أضف سؤالاً أو اسحب سؤالاً إلى هنا.</li>}
       {list.map((q, i) => {
         const guest = guests.find((g) => guestKey(g) === q.guestId);
         return (
@@ -155,13 +155,13 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
               {q.isAsked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
             </button>
             <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              <div className="flex flex-wrap items-center gap-1.5 text-2xs font-bold">
                 {q.parentId && <CornerDownLeft className="w-3 h-3 text-purple-500" />}
                 <span className={`px-1.5 py-0.5 rounded ${KIND_TONE[q.kind || 'MAIN']}`}>{questionKindName(q.kind)}</span>
                 {(guest || q.assignedToName) && <span className="text-purple-700">إلى: {guest?.guestName || q.assignedToName}</span>}
               </div>
               <p className={`text-sm font-bold leading-relaxed ${q.isAsked ? 'line-through text-slate-500' : 'text-slate-800'}`}>{q.questionText}</p>
-              {q.notes && <p className="text-[11px] text-slate-500">للمذيع: {q.notes}</p>}
+              {q.notes && <p className="text-2xs text-slate-500">للمذيع: {q.notes}</p>}
             </div>
             {canEdit && (
               <div className="flex items-center shrink-0">
@@ -212,7 +212,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h4 className="text-sm font-bold text-slate-800">{seg.title}</h4>
-                <p className="text-[11px] text-slate-500">{sg.length ? sg.map((g) => g.guestName).join('، ') : 'بلا ضيوف'}</p>
+                <p className="text-2xs text-slate-500">{sg.length ? sg.map((g) => g.guestName).join('، ') : 'بلا ضيوف'}</p>
               </div>
               {canEdit && (
                 <button type="button" onClick={() => open(seg.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
@@ -228,7 +228,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
       {loose.length > 0 && (
         <section aria-label="أسئلة غير مرتبطة بفقرة" className="bg-white border border-dashed border-slate-300 rounded-2xl p-4 space-y-2">
           <h4 className="text-sm font-bold text-slate-700">أسئلة غير مرتبطة بفقرة ({loose.length})</h4>
-          <p className="text-[11px] text-slate-500">عدّل السؤال واختر فقرته ليظهر للمذيع في مكانه.</p>
+          <p className="text-2xs text-slate-500">عدّل السؤال واختر فقرته ليظهر للمذيع في مكانه.</p>
           {renderList(loose, '')}
         </section>
       )}

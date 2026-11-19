@@ -50,7 +50,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
         aria-haspopup="dialog"
         aria-expanded={open}
         title="تدقيق لغوي: الأخطاء الإملائية الشائعة والتكرار والمسافات والترقيم"
-        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold disabled:opacity-40 ${
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-2xs font-bold disabled:opacity-40 ${
           issues.length ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
         }`}
       >
@@ -68,7 +68,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
                   onFix(html ? (result as ReturnType<typeof proofreadHtml>).fixAll() : applyFixes(value, issues));
                   setOpen(false);
                 }}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-2xs font-bold"
               >
                 <Wand2 className="w-3.5 h-3.5" /> إصلاح الكل ({issues.length})
               </button>
@@ -83,15 +83,15 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               {issues.map((i) => (
                 <li key={key(i)} className="p-2 rounded-xl border border-slate-100 text-xs space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[11px] font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
+                    <span className={`px-1.5 py-0.5 rounded border text-2xs font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
                     <span className="text-slate-700 flex-1">{i.message}</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
+                  <p className="text-2xs text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
                   <div className="flex gap-1.5">
-                    <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[11px] font-bold">
+                    <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-2xs font-bold">
                       إصلاح
                     </button>
-                    <button type="button" onClick={() => setIgnored(new Set([...ignored, key(i)]))} className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-600 text-[11px]">
+                    <button type="button" onClick={() => setIgnored(new Set([...ignored, key(i)]))} className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-600 text-2xs">
                       تجاهل
                     </button>
                   </div>
@@ -99,7 +99,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               ))}
             </ul>
           )}
-          <p className="text-[11px] text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
+          <p className="text-2xs text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
         </div>
       )}
     </div>
@@ -166,7 +166,7 @@ export function useAutocomplete(ref: React.RefObject<HTMLTextAreaElement | HTMLI
 
 export const AutocompleteBar: React.FC<{ suggestions: string[]; onPick: (term: string) => void }> = ({ suggestions, onPick }) =>
   suggestions.length ? (
-    <div role="listbox" aria-label="اقتراحات الإكمال" className="flex flex-wrap items-center gap-1 mt-1 text-[11px]">
+    <div role="listbox" aria-label="اقتراحات الإكمال" className="flex flex-wrap items-center gap-1 mt-1 text-2xs">
       <span className="text-slate-500">إكمال (Tab):</span>
       {suggestions.map((t, i) => (
         <button

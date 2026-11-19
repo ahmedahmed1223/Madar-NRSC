@@ -7,17 +7,13 @@ const USER_SORT_KEYS = ['name', 'role', 'department', 'status', 'lastLogin'] as 
 type UserSortKey = (typeof USER_SORT_KEYS)[number];
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
+import { stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
-import {
-  RbacService,
-  RoleDefinition,
-  ALL_PERMISSIONS,
-  PERMISSION_CATEGORIES,
-} from '../services/rbacService';
+import { RbacService, RoleDefinition, ALL_PERMISSIONS } from '../services/rbacService';
 import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
@@ -26,30 +22,18 @@ import {
   UserCheck,
   UserX,
   ShieldCheck,
-  ShieldAlert,
   ShieldOff,
   Plus,
   Search,
-  Filter,
   Grid,
   List,
   Mail,
   Phone,
-  Clock,
   KeyRound,
   Trash2,
   Edit2,
   CheckCircle,
-  XCircle,
-  RotateCcw,
   Download,
-  Upload,
-  UserCog,
-  Radio,
-  Briefcase,
-  Building,
-  Check,
-  Calendar,
 } from 'lucide-react';
 
 interface UsersViewProps {
@@ -64,6 +48,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
 
   // Filters
+  const stations = stationsOf(ApiService.getSettings());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
@@ -259,7 +244,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // Filtering Logic
   const filteredUsers = sortList(users.filter((u) => {
-    const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone);
+    const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone, u.stationId ? stationName(stations, u.stationId) : '');
 
     const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
@@ -336,7 +321,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
             <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
+            <span className="text-2xs text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 items-center justify-center">
             <UsersIcon className="w-5 h-5" />
@@ -347,7 +332,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
             <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
+            <span className="text-2xs text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 items-center justify-center">
             <UserCheck className="w-5 h-5" />
@@ -358,7 +343,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
             <div className="text-xl sm:text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
+            <span className="text-2xs text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
@@ -369,7 +354,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <div>
             <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
             <div className="text-xl sm:text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
+            <span className="text-2xs text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center">
             <KeyRound className="w-5 h-5" />
@@ -557,13 +542,13 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                     <div className="p-4 space-y-3.5">
                       {/* Top bar with role & status */}
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${roleBadge.badgeBg}`}>
+                        <span className={`text-2xs font-bold px-2.5 py-1 rounded-full border ${roleBadge.badgeBg}`}>
                           {roleBadge.labelAr}
                         </span>
 
                         <div className="flex items-center gap-1.5">
                           {isCurrentActive && (
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                            <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
                               حسابك النشط
                             </span>
                           )}
@@ -582,24 +567,24 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-black text-slate-900 truncate">{user.fullName}</h3>
                           {user.fullNameEn && (
-                            <p className="text-[11px] text-slate-500 font-sans truncate" dir="ltr">
+                            <p className="text-2xs text-slate-500 font-sans truncate" dir="ltr">
                               {user.fullNameEn}
                             </p>
                           )}
                           <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{user.jobTitle}</p>
-                          <p className="text-[11px] text-slate-500 truncate">{departmentName(departmentIdOf(user))}</p>
+                          <p className="text-2xs text-slate-500 truncate">{departmentName(departmentIdOf(user))}{user.stationId ? ` — ${stationName(stations, user.stationId)}` : ''}</p>
                         </div>
                       </div>
 
                       {/* Bio excerpt */}
                       {user.bio && (
-                        <p className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 line-clamp-2 leading-relaxed">
+                        <p className="text-2xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 line-clamp-2 leading-relaxed">
                           {user.bio}
                         </p>
                       )}
 
                       {/* Contact Info */}
-                      <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+                      <div className="space-y-1 text-2xs text-slate-500 pt-2 border-t border-slate-100">
                         <div className="flex items-center gap-2 truncate">
                           <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           <span className="truncate font-mono" dir="ltr">
@@ -699,7 +684,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               <div className="overflow-x-auto">
                 <table className="w-full text-right border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 border-b border-slate-200">
+                    <tr className="bg-slate-50 text-2xs font-bold text-slate-500 border-b border-slate-200">
                       <SortTh className="p-3.5" label="المستخدم والبيانات" sortKey="name" sort={sort} onSort={toggleSort} />
                       <SortTh className="p-3.5" label="الدور والصلاحية" sortKey="role" sort={sort} onSort={toggleSort} />
                       <SortTh className="p-3.5" label="القسم" sortKey="department" sort={sort} onSort={toggleSort} />
@@ -721,12 +706,12 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{user.fullName}</span>
                                   {isCurrent && (
-                                    <span className="text-[11px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
+                                    <span className="text-2xs bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
                                       أنت
                                     </span>
                                   )}
                                 </div>
-                                <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
+                                <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                                   {user.email}
                                 </span>
                               </div>
@@ -734,16 +719,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           </td>
 
                           <td className="p-3">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${roleBadge.badgeBg}`}>
+                            <span className={`text-2xs font-bold px-2 py-0.5 rounded-md border ${roleBadge.badgeBg}`}>
                               {roleBadge.labelAr}
                             </span>
                           </td>
 
-                          <td className="p-3 font-medium text-slate-700">{departmentName(departmentIdOf(user))}</td>
+                          <td className="p-3 font-medium text-slate-700">{departmentName(departmentIdOf(user))}{user.stationId ? <span className="block text-2xs font-normal text-slate-500">{stationName(stations, user.stationId)}</span> : null}</td>
 
                           <td className="p-3 text-center">
                             <span
-                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                              className={`text-2xs font-bold px-2 py-0.5 rounded-full ${
                                 user.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                               }`}
                             >
@@ -758,7 +743,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 type="button"
                                 onClick={() => handleResetPassword(user)}
                                 disabled={isCurrent}
-                                className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-2xs font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                 title="إصدار كلمة مرور مؤقتة"
                               >
                                 كلمة مرور

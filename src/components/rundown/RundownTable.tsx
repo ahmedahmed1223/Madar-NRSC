@@ -6,26 +6,7 @@ import {
   Guest,
   NewsItem,
 } from '../../types';
-import {
-  ArrowUp,
-  ArrowDown,
-  Edit2,
-  Trash2,
-  Plus,
-  Clock,
-  Printer,
-  CheckCircle2,
-  Video,
-  FileText,
-  User as UserIcon,
-  AlertCircle,
-  Download,
-  Database,
-  Tv,
-  Radio,
-  Search,
-  X,
-} from 'lucide-react';
+import { ArrowUp, ArrowDown, Edit2, Trash2, Plus, Clock, Printer, CheckCircle2, Video, FileText, User as UserIcon, Download, Database, Tv, Search, X } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
 import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
@@ -271,7 +252,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         {/* Action buttons */}
         <div className="flex items-center flex-wrap gap-2">
           {syncStatusMsg && (
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-fade-in">
+            <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-fade-in">
               {syncStatusMsg}
             </span>
           )}
@@ -393,13 +374,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                   setSearchQuery('');
                   setFilterType('ALL');
                 }}
-                className="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-bold"
+                className="text-2xs text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-bold"
               >
                 إلغاء التصفية
               </button>
             )}
 
-            <div className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+            <div className="text-2xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
               {displayedSegments.length} من {segments.length}
             </div>
           </div>
@@ -494,13 +475,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       {/* Title & Script excerpt */}
                       <td className="py-3.5 px-4">
                         {seg.topicId && topics.some((t) => t.id === seg.topicId) && (
-                          <div className="text-[11px] font-bold text-indigo-700">
+                          <div className="text-2xs font-bold text-indigo-700">
                             محور {topics.findIndex((t) => t.id === seg.topicId) + 1}: {topics.find((t) => t.id === seg.topicId)?.title}
                           </div>
                         )}
                         <div className="font-bold text-slate-800 text-sm">{seg.title}</div>
                         {seg.scriptText && (
-                          <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
+                          <p className="text-2xs text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
                             {seg.scriptText}
                           </p>
                         )}
@@ -550,13 +531,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       <td className="py-3.5 px-3">
                         <div className="space-y-1">
                           {seg.videoAssetUrl && (
-                            <div className="flex items-center gap-1 text-[11px] text-red-600">
+                            <div className="flex items-center gap-1 text-2xs text-red-600">
                               <Video className="w-3 h-3 shrink-0" />
                               <span className="truncate max-w-[120px]">فيديو مرفق</span>
                             </div>
                           )}
                           {seg.newsTitle && (
-                            <div className="flex items-center gap-1 text-[11px] text-blue-600">
+                            <div className="flex items-center gap-1 text-2xs text-blue-600">
                               <FileText className="w-3 h-3 shrink-0" />
                               <span className="truncate max-w-[120px]" title={seg.newsTitle}>
                                 {seg.newsTitle}
@@ -564,7 +545,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                             </div>
                           )}
                           {seg.notes && (
-                            <span className="text-[11px] text-slate-500 italic block">{seg.notes}</span>
+                            <span className="text-2xs text-slate-500 italic block">{seg.notes}</span>
                           )}
                         </div>
                       </td>
@@ -576,7 +557,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                             <span
                               key={item.key}
                               title={`${departmentName(item.departmentId)}: ${item.detail}`}
-                              className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md border ${
+                              className={`text-2xs font-bold px-1.5 py-0.5 rounded-md border ${
                                 item.state === 'ready'
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : item.state === 'pending'
@@ -596,7 +577,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                                   link: { kind: 'segment', episodeId, segmentId: seg.id, title: `${episodeRecord?.title || 'حلقة'} — ${seg.title}` },
                                 })
                               }
-                              className="text-[11px] font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
+                              className="text-2xs font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
                               title="طلب مونتاج أو جرافيك أو استديو لهذه الفقرة"
                             >
                               + طلب

@@ -3,20 +3,10 @@ import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../../shared/departments';
-import { RbacService, RoleDefinition } from '../../services/rbacService';
-import {
-  User as UserIcon,
-  Mail,
-  Phone,
-  Shield,
-  Briefcase,
-  Building,
-  Clock,
-  KeyRound,
-  Sparkles,
-  Check,
-  AlertCircle,
-} from 'lucide-react';
+import { RoleDefinition } from '../../services/rbacService';
+import { apiService } from '../../services/api';
+import { stationsOf } from '../../shared/stations';
+import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check } from 'lucide-react';
 
 interface UserFormModalProps {
   isOpen: boolean;
@@ -43,6 +33,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [role, setRole] = useState<UserRole>('JOURNALIST');
   const [jobTitle, setJobTitle] = useState('');
   const [departmentId, setDepartmentId] = useState<string>('newsroom');
+  const [stationId, setStationId] = useState('');
+  const stations = stationsOf(apiService.getSettings());
   const [staffId, setStaffId] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('/avatar.svg');
@@ -60,6 +52,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole(userToEdit.role || 'JOURNALIST');
       setJobTitle(userToEdit.jobTitle || '');
       setDepartmentId(departmentIdOf(userToEdit));
+      setStationId(userToEdit.stationId || '');
       setStaffId(userToEdit.staffId || '');
       setBio(userToEdit.bio || '');
       setAvatarUrl(userToEdit.avatarUrl || '/avatar.svg');
@@ -73,6 +66,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole('JOURNALIST');
       setJobTitle('');
       setDepartmentId('newsroom');
+      setStationId('');
       setStaffId('');
       setBio('');
       setAvatarUrl('/avatar.svg');
@@ -115,6 +109,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       jobTitle: jobTitle.trim(),
       departmentId,
       department: departmentName(departmentId),
+      stationId: stationId || undefined,
       staffId: staffId.trim(),
       bio: bio.trim(),
       avatarUrl,
@@ -174,7 +169,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.fullName && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.fullName}</p>}
           </div>
 
           <div>
@@ -211,7 +206,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 dir="ltr"
               />
             </div>
-            {errors.email && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.email}</p>}
+            {errors.email && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.email}</p>}
           </div>
 
           {!userToEdit && (
@@ -235,8 +230,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   dir="ltr"
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
-              {errors.initialPassword && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
+              <p className="text-2xs text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
+              {errors.initialPassword && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
             </div>
           )}
 
@@ -299,7 +294,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.jobTitle && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
+            {errors.jobTitle && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
           </div>
 
           <div>
@@ -320,6 +315,29 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="user-form-modal-station" className="block text-xs font-bold text-slate-700 mb-1.5">
+              المحطة
+            </label>
+            <div className="relative">
+              <MapPin className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+              <select id="user-form-modal-station"
+                value={stationId}
+                onChange={(e) => setStationId(e.target.value)}
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+              >
+                <option value="">بدون محطة (إدارة مركزية)</option>
+                {stationId && !stations.some((s) => s.id === stationId) && <option value={stationId}>محطة محذوفة</option>}
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}{station.isMain ? ' (الرئيسية)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في بطاقات الإنتاج. تُدار المحطات من الإعدادات.</p>
           </div>
         </div>
 

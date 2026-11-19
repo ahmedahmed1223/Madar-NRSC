@@ -73,7 +73,7 @@ export const SourceFeedEditor: React.FC<SourceFeedEditorProps> = ({ source, onSa
         جلب البرقيات تلقائياً إلى مكتب البرقيات
       </label>
       {result && (
-        <div className={`p-2 rounded-lg text-[11px] ${result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
+        <div className={`p-2 rounded-lg text-2xs ${result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
           <div className="flex items-center gap-1.5 font-bold">
             {result.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
             {result.text}

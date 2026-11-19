@@ -1,19 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { matchesQuery } from '../shared/search';
 import React, { useState } from 'react';
-import {
-  Shield,
-  Search,
-  Clock,
-  User as UserIcon,
-  Filter,
-  FileText,
-  Radio,
-  AlertTriangle,
-  Info,
-  X,
-  RotateCcw,
-} from 'lucide-react';
+import { Shield, Search, X } from 'lucide-react';
 import { AuditLog } from '../types';
 import { Badge } from '../components/common/Badge';
 
@@ -166,7 +154,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
 
         {/* Action quick tags */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 text-xs">
-          <span className="text-[11px] font-bold text-slate-500 ml-1">تصفية سريعة:</span>
+          <span className="text-2xs font-bold text-slate-500 ml-1">تصفية سريعة:</span>
           {[
             { id: 'ALL', label: 'الكل' },
             { id: 'PUBLISH', label: 'نشر فوري' },
@@ -180,7 +168,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               type="button"
               onClick={() => setSelectedAction(tag.id)}
               aria-pressed={selectedAction === tag.id}
-              className={`min-h-7 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+              className={`min-h-7 px-2.5 py-1 rounded-lg text-2xs font-bold transition-colors ${
                 selectedAction === tag.id
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -232,18 +220,18 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
-                      <div className="text-[11px] text-slate-500 font-mono">{log.userId}</div>
+                      <div className="text-2xs text-slate-500 font-mono">{log.userId}</div>
                     </td>
                     <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">
-                      <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      <span className="bg-slate-100 px-2 py-0.5 rounded text-2xs">
                         {entityName(entityOf(log))}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">
                       {log.details}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-500 text-[11px]" dir="ltr">
+                    <td className="py-3 px-3 font-mono text-slate-500 text-2xs" dir="ltr">
                       {log.ipAddress || '—'}
                     </td>
                   </tr>

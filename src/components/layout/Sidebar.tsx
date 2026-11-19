@@ -3,23 +3,26 @@ import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSe
 import { departmentIdOf } from '../../shared/departments';
 import { isApprover } from '../../shared/bulletins';
 import { localDateString } from '../../shared/dates';
-import { screenPermission } from '../../shared/commandPalette';
+import { unreadByChannel } from '../../shared/chat';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
-  Newspaper, FolderGit2,
+  Newspaper,
+  FolderGit2,
   Flame,
   MonitorPlay,
   BookOpen,
   ArrowLeftRight,
+  ClipboardList,
+  MessagesSquare,
+  Scale,
   CalendarClock,
   Rss,
   Tv,
   Video,
-  ListOrdered,
   Users,
   CheckSquare,
   Calendar,
@@ -32,7 +35,11 @@ import {
   Radio,
   Sparkles,
   UserCog,
-  X, ListVideo, CalendarDays, CalendarRange } from 'lucide-react';
+  X,
+  ListVideo,
+  CalendarDays,
+  CalendarRange,
+} from 'lucide-react';
 import { User } from '../../types';
 
 export type AppView =
@@ -150,8 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
   const canSeeNav = (id: string) => {
-    const permission = screenPermission(id);
-    return !currentUser || !permission || RbacService.hasPermission(currentUser, permission);
+    return !currentUser || RbacService.canOpenScreen(currentUser, id);
   };
 
   // Open requests waiting on my department.
@@ -179,6 +185,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     : 0;
   // Upcoming diary events assigned to me (today onwards).
   const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
+  // Unread direct and group messages, and unread messages in the open channels I have visited.
+  const messagesBadge = currentUser ? [...unreadByChannel(apiService.getMessages(), apiService.getChatReads(), currentUser.id).values()].reduce((sum, n) => sum + n, 0) : 0;
+  // Open production-card steps assigned to me.
+  const cardsBadge = currentUser ? apiService.getCards().filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -213,6 +223,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الفريق',
       items: [
+        { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white' },
+        { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
         { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
@@ -222,6 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الإدارة',
       items: [
+        { id: 'workload', label: 'الأعباء والأداء', icon: Scale, badge: null },
         { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
         { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
         { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
@@ -270,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-extrabold text-white text-sm block leading-tight tracking-tight">
                   {APP_NAME}
                 </span>
-                <span className="text-[11px] text-slate-400 block leading-tight">
+                <span className="text-2xs text-slate-400 block leading-tight">
                   {APP_TAGLINE}
                 </span>
               </div>
@@ -317,7 +330,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
               {group.label && !isCollapsed && (
-                <div className="px-3 pt-3 pb-1 text-[11px] font-bold text-slate-400 tracking-wide">{group.label}</div>
+                <div className="px-3 pt-3 pb-1 text-2xs font-bold text-slate-400 tracking-wide">{group.label}</div>
               )}
               {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
         {items.map((item) => {
@@ -352,7 +365,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="flex-1 text-right truncate">{item.label}</span>
                   {item.badge && (
                     <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                      className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 ${
                         item.badgeColor || 'bg-slate-800 text-slate-300'
                       }`}
                     >
@@ -376,7 +389,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer: organisation, build version and live connection state */}
       {!isCollapsed && (
-        <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400">
+        <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-2xs text-slate-400">
           <div className="flex items-center justify-between text-slate-400 mb-1">
             <span>الإصدار: v{__APP_VERSION__}</span>
             <span className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>

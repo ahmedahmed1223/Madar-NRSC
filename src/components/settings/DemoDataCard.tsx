@@ -95,7 +95,7 @@ export const DemoDataCard: React.FC = () => {
               <input type="checkbox" checked={includeUsers} onChange={(e) => setIncludeUsers(e.target.checked)} className="mt-0.5 accent-rose-600" />
               <span>
                 حذف حسابات المستخدمين التجريبيين أيضاً ({info.users.length}): {info.users.map((u) => u.fullName).join('، ')}.
-                <span className="block text-[11px] mt-0.5">حسابك الحالي لا يُحذف. تأكد أن لديك حساب مدير حقيقي قبل حذفها.</span>
+                <span className="block text-2xs mt-0.5">حسابك الحالي لا يُحذف. تأكد أن لديك حساب مدير حقيقي قبل حذفها.</span>
               </span>
             </label>
           )}

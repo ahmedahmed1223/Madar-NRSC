@@ -46,9 +46,11 @@ import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
 import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from './delivery';
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
+import { adminOverview } from './adminOverview';
+import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.28.0';
+export const APP_VERSION = '4.0.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -68,8 +70,8 @@ function securityHeaders(config: AppConfig) {
   const csp = [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     "img-src 'self' data: blob: https:",
     "media-src 'self' data: blob: https:",
     "connect-src 'self'",
@@ -206,6 +208,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       externalBackup: !!config.backupDirectory, cloudBackup: !!config.backupRemote, secureCookie: config.cookieSecure } });
   });
 
+
+  // What the administrator follows day to day: sessions, storage, people, content and background jobs.
+  app.get('/api/v1/admin/overview', requirePermission('system.settings'), (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: adminOverview(db, config) });
+  });
+
+  // Signs a colleague out of every device (a lost phone, a shared computer left open).
+  app.post('/api/v1/admin/sessions/revoke', requirePermission('users.suspend_delete'), (req: ApiRequest, res) => {
+    const target = db.getRow('users', String(req.body?.userId || ''))?.d as User | undefined;
+    if (!target) throw new HttpError(404, 'المستخدم غير موجود');
+    if (target.role === 'SUPER_ADMIN' && req.auth!.user.role !== 'SUPER_ADMIN') throw new HttpError(403, 'فقط مدير النظام العام ينهي جلسات مدير عام');
+    // My own other devices are signed out; this one stays.
+    db.deleteUserSessions(target.id, target.id === req.auth!.user.id ? req.auth!.sessionId : undefined);
+    audit(req.auth!.user, 'SESSIONS_REVOKED', 'USER', target.id, 'SECURITY', `إنهاء كل جلسات: ${target.fullName}`, req.ip);
+    res.json({ success: true });
+  });
 
   // --- Authentication ------------------------------------------------------
 
@@ -456,6 +475,47 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.type(record.mimeType);
     // Server-built path; DATA_DIR may sit under a hidden folder, which Express 5 refuses by default.
     res.sendFile(filePath, { dotfiles: 'allow' });
+  });
+
+  // --- Messaging: files and older history -------------------------------------
+
+  app.post(
+    '/api/v1/chat/upload',
+    requireAuth,
+    wrap(async (req, res) => {
+      try {
+        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id, CHAT_UPLOAD_TYPES);
+        res.status(201).json({ success: true, data: { id: record.id, name: record.originalName, mimeType: record.mimeType, size: record.sizeBytes } });
+      } catch (err) {
+        if (err instanceof UploadError) throw new HttpError(err.status, err.message);
+        throw err;
+      }
+    })
+  );
+
+  // A file is downloaded by whoever uploaded it and by the people who may read a message carrying it.
+  app.get('/api/v1/chat/files/:id', requireAuth, (req: ApiRequest, res) => {
+    const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
+    const me = req.auth!.user.id;
+    if (!record || !(record.uploadedBy === me || db.messagesWithUpload(record.id).some((m) => canReadMessage(m, me)))) throw new HttpError(404, 'الملف غير موجود');
+    const filePath = path.join(uploadsDir(config.dataDir), record.storedName);
+    if (!fs.existsSync(filePath)) throw new HttpError(404, 'الملف غير موجود');
+    // Inert: never executed or sniffed; documents a browser cannot show are downloaded.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Disposition', `${isInlineChatType(record.mimeType) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
+    res.type(record.mimeType);
+    res.sendFile(filePath, { dotfiles: 'allow' });
+  });
+
+  app.get('/api/v1/chat/history', requireAuth, (req: ApiRequest, res) => {
+    const channel = String(req.query.channel || '');
+    const before = String(req.query.before || '');
+    if (!parseChannel(channel) || !Number.isFinite(Date.parse(before))) throw new HttpError(400, 'طلب غير صالح');
+    const messages = db.messagesBefore(channel, before, 60).filter((m) => canReadMessage(m, req.auth!.user.id));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: messages.reverse() });
   });
 
   // --- Data synchronisation -------------------------------------------------
@@ -726,9 +786,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     requireAuth,
     aiLimiter,
     wrap(async (req, res) => {
-      if (!req.auth!.can('news.create') && !req.auth!.can('news.edit_any')) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
-      if (!isAiConfigured(config)) throw new HttpError(503, 'المساعد الذكي غير مفعّل على الخادم (GEMINI_API_KEY)', 'AI_NOT_CONFIGURED');
       const mode = req.body?.mode as CopilotMode;
+      // Brief drafts are for anyone working on production cards; the other modes belong to the news editor.
+      const allowed = mode === 'BRIEF' ? req.auth!.can('cards.work') : req.auth!.can('news.create') || req.auth!.can('news.edit_any');
+      if (!allowed) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
+      if (!isAiConfigured(config)) throw new HttpError(503, 'المساعد الذكي غير مفعّل على الخادم (GEMINI_API_KEY)', 'AI_NOT_CONFIGURED');
       if (!COPILOT_MODES.includes(mode)) throw new HttpError(400, 'وضع غير مدعوم');
       try {
         const result = await runCopilot(config, {

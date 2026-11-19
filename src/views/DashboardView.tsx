@@ -4,24 +4,7 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { arabicDate, localDateString } from '../shared/dates';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
-import {
-  Newspaper,
-  Flame,
-  Tv,
-  Video,
-  CheckSquare,
-  Users,
-  Clock,
-  ArrowUpRight,
-  TrendingUp,
-  AlertCircle,
-  Plus,
-  Radio,
-  FileCheck,
-  Calendar as CalendarIcon,
-  AlertTriangle,
-  Filter,
-} from 'lucide-react';
+import { Newspaper, Flame, Video, CheckSquare, Users, ArrowUpRight, Plus, Radio, FileCheck, Calendar as CalendarIcon, AlertTriangle, Filter } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 import { RbacService } from '../services/rbacService';
 import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, Category } from '../types';
@@ -197,7 +180,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="text-right text-xs font-bold text-red-700 hover:text-red-800 bg-white/60 hover:bg-white px-3 py-2 rounded-lg border border-red-100 transition-colors flex items-center justify-between gap-4"
               >
                 <span className="truncate max-w-[250px]">{crit.title}</span>
-                <span className="text-[11px] bg-red-100 px-1.5 py-0.5 rounded text-red-600 shrink-0">{getStatusLabel(crit.status)}</span>
+                <span className="text-2xs bg-red-100 px-1.5 py-0.5 rounded text-red-600 shrink-0">{getStatusLabel(crit.status)}</span>
               </button>
             ))}
           </div>
@@ -221,7 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{newsList.length}</span>
             <span className="text-xs text-emerald-700 font-semibold">{publishedNewsCount} منشور</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
+          <div className="mt-2 text-2xs text-slate-500 flex items-center gap-1">
             <FileCheck className="w-3.5 h-3.5 text-amber-500" />
             <span>{pendingReviewNewsCount} قيد المراجعة والتدقيق</span>
           </div>
@@ -242,7 +225,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{activeBreakingCount}</span>
             <span className="text-xs text-red-600 font-semibold">على شريط البث</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-500">
+          <div className="mt-2 text-2xs text-slate-500">
             <span>من إجمالي {breakingNews.length} خبراً عاجلاً مسجلاً</span>
           </div>
         </div>
@@ -262,7 +245,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{episodes.length}</span>
             <span className="text-xs text-purple-600 font-semibold">{programs.length} برامج</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-500">
+          <div className="mt-2 text-2xs text-slate-500">
             <span>{countLabel(todayEpisodes.length, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })} للبث اليوم</span>
           </div>
         </div>
@@ -282,7 +265,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-3xl font-black text-slate-800">{openTasks.length}</span>
             <span className="text-xs text-amber-700 font-semibold">مفتوحة</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-500">
+          <div className="mt-2 text-2xs text-slate-500">
             <span>من إجمالي {tasks.length} مهمة إجمالية</span>
           </div>
         </div>
@@ -336,7 +319,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                   <div className="flex items-center gap-4 self-end sm:self-center">
                     <div className="text-left font-mono text-xs">
-                      <span className="text-slate-500 block text-[11px] font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
+                      <span className="text-slate-500 block text-2xs font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
                       <strong className="text-slate-800 font-bold">{ep.startTime} - {ep.endTime}</strong>
                     </div>
                     <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700">
@@ -379,7 +362,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     }`}
                   >
                     {getStatusLabel(tab)}
-                    <span className={`px-1.5 py-0.5 rounded-md text-[11px] ${isActive ? 'bg-white/60' : 'bg-slate-200 text-slate-600'}`}>
+                    <span className={`px-1.5 py-0.5 rounded-md text-2xs ${isActive ? 'bg-white/60' : 'bg-slate-200 text-slate-600'}`}>
                       {count}
                     </span>
                   </button>
@@ -405,7 +388,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 >
                   <span>كافة الأقسام</span>
                   <span
-                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-2xs px-1.5 py-0.2 rounded-full font-mono ${
                       selectedDashboardCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
                     }`}
                   >
@@ -440,7 +423,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       />
                       <span>{cat.nameAr}</span>
                       <span
-                        className="text-[11px] px-1.5 py-0.2 rounded-full font-mono font-bold"
+                        className="text-2xs px-1.5 py-0.2 rounded-full font-mono font-bold"
                         style={{
                             backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'var(--color-slate-100)',
                             color: isSelected ? '#ffffff' : 'var(--color-slate-800)',
@@ -486,9 +469,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           )}
                           <span className="text-sm font-bold text-slate-800 truncate group-hover:text-blue-700 transition-colors">{news.title}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                        <div className="text-2xs text-slate-500 flex items-center gap-2 flex-wrap">
                           <span
-                            className="px-2 py-0.5 rounded-md text-[11px] font-bold border flex items-center gap-1.5 shrink-0"
+                            className="px-2 py-0.5 rounded-md text-2xs font-bold border flex items-center gap-1.5 shrink-0"
                             style={{
                                 backgroundColor: 'var(--color-slate-50)',
                                 color: 'var(--color-slate-800)',
@@ -566,9 +549,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {TASK_PRIORITY_LABELS[task.priority] || task.priority}
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="flex items-center justify-between text-2xs text-slate-500">
                     <span>المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
-                    <span className="font-mono text-[11px]">
+                    <span className="font-mono text-2xs">
                       {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
                         <span className="text-rose-700 font-bold">
                           متأخرة منذ {Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000))} يوم
@@ -606,11 +589,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span className="text-xs font-bold text-slate-800 block truncate">
                       {guest.fullName}
                     </span>
-                    <span className="text-[11px] text-slate-500 block truncate">
+                    <span className="text-2xs text-slate-500 block truncate">
                       {guest.jobTitle} - {guest.organization}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-500 shrink-0">
+                  <span className="text-2xs text-slate-500 shrink-0">
                     {guest.totalAppearances ? `${guest.totalAppearances} ظهور` : 'جديد'}
                   </span>
                 </div>

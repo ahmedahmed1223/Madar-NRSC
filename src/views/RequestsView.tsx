@@ -4,7 +4,7 @@ import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, CheckCircle2, Inbox, Link2, Plus, Send, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Link2, Plus, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -163,7 +163,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
           const overdue = r.dueAt && !isRequestClosed(r.status) && new Date(r.dueAt).getTime() < Date.now();
           return (
             <article key={r.id} className={`bg-white border rounded-2xl p-4 space-y-2 ${r.priority === 'URGENT' && !isRequestClosed(r.status) ? 'border-red-300' : 'border-slate-200'}`}>
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="flex flex-wrap items-center gap-2 text-2xs">
                 <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold">{type?.name}</span>
                 <span className="text-slate-500">إلى: {departmentName(r.departmentId)}</span>
                 {r.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
@@ -180,7 +180,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   ))}
                 </ul>
               )}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-slate-500">
                 <span>
                   من: {r.requesterName}
                   {r.requesterDepartmentId ? ` (${departmentName(r.requesterDepartmentId)})` : ''}
@@ -199,7 +199,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   </button>
                 )}
               </div>
-              {r.resolution && <p className="text-[11px] text-rose-700">السبب: {r.resolution}</p>}
+              {r.resolution && <p className="text-2xs text-rose-700">السبب: {r.resolution}</p>}
 
               <div className="flex flex-wrap gap-2 pt-1">
                 {isHandler && r.status === 'OPEN' && (!r.addressedToId || r.addressedToId === currentUser.id || canManage) && (

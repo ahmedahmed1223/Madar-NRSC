@@ -226,7 +226,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
           {!isNew && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <div className="flex flex-wrap items-center gap-2 text-2xs">
               <span className={`font-bold px-2 py-0.5 rounded-full ${STATUS_TONE[status]}`}>{storyStatusName(status)}</span>
               {story.writerName && <span className="text-slate-500">كتبها: {story.writerName}</span>}
               {story.approvedByName && <span className="text-emerald-700">اعتمدها: {story.approvedByName}</span>}
@@ -295,12 +295,12 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   title={t.hint}
                   className={`p-2 rounded-lg border text-right ${type === t.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
-                  <span className="block text-[11px] font-black font-mono">{t.code}</span>
-                  <span className="block text-[11px]">{t.name}</span>
+                  <span className="block text-2xs font-black font-mono">{t.code}</span>
+                  <span className="block text-2xs">{t.name}</span>
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">{meta.hint}</p>
+            <p className="text-2xs text-slate-500 mt-1">{meta.hint}</p>
           </div>
 
           {meta.read && (
@@ -310,7 +310,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               sizeKey="anchor-script"
               label={`نص المذيع ${meta.clip ? '(المقدمة / الربط)' : ''}`}
               aside={
-                <span className="text-[11px] font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                <span className="text-2xs font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
                   {words} كلمة · قراءة {mmss(readSeconds(script))}
                 </span>
               }
@@ -345,7 +345,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   )}
                 </p>
               ) : (
-                <p className="text-[11px] text-slate-500">لم تُختر لقطة بعد.</p>
+                <p className="text-2xs text-slate-500">لم تُختر لقطة بعد.</p>
               )}
               <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
                 مدة اللقطة (ثوانٍ)
@@ -445,7 +445,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 </button>
               )}
               {progress && progress.total > 1 && status !== 'DRAFT' && (
-                <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1" aria-label="تقدم الاعتماد">
+                <span className="text-2xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1" aria-label="تقدم الاعتماد">
                   الاعتماد {progress.done}/{progress.total}
                   {progress.next ? ` — بانتظار: ${progress.nextName}` : ''}
                   {(story?.approvals || []).length > 0 && ` (${(story!.approvals || []).map((a) => a.byName).join('، ')})`}

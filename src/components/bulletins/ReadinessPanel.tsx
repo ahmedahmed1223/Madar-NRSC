@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { BulletinStory } from '../../shared/bulletins';
 import type { ReadinessIssue } from '../../shared/bulletinReadiness';

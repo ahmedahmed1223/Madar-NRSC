@@ -152,7 +152,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
           ) : (
             result && (
               <>
-                <p className="text-[11px] text-slate-500">{result.total} خبراً</p>
+                <p className="text-2xs text-slate-500">{result.total} خبراً</p>
                 <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl">
                   {result.items.map((item) => (
                     <li key={item.id}>
@@ -164,7 +164,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                       >
                         <span className="text-sm font-bold text-slate-800 block">{item.title}</span>
                         {item.summary && <span className="text-xs text-slate-500 line-clamp-2 block">{item.summary}</span>}
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-2xs text-slate-500 block">
                           {STATUS_LABELS[item.status] || item.status} · {item.categoryName || '—'} · نُشر {fmt(item.publishDate)} · آخر تعديل {fmt(item.updatedAt)}
                         </span>
                       </button>

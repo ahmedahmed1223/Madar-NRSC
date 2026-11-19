@@ -1,0 +1,18 @@
+/*
+ * Typefaces are served by the app itself (no request to a font service): the newsroom keeps its
+ * look on a slow or closed network, and the installed app works offline.
+ *
+ * IBM Plex Sans Arabic carries the whole interface (its Latin letters and digits are IBM Plex Sans);
+ * IBM Plex Mono draws clocks, timecodes and identifiers.
+ */
+@import "@fontsource/ibm-plex-sans-arabic/arabic-400.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-500.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-600.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-700.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-400.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-500.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-600.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-700.css";

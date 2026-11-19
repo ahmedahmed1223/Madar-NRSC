@@ -1,17 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Keyboard,
-  Search,
-  Command,
-  Radio,
-  FileText,
-  Tv,
-  Video,
-  CheckSquare,
-  Shield,
-  HelpCircle,
-  X,
-} from 'lucide-react';
+import { Keyboard, Search, HelpCircle, X } from 'lucide-react';
 import { Modal } from './Modal';
 
 interface KeyboardShortcutsModalProps {
@@ -141,7 +129,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                    className={`text-2xs font-bold px-2 py-0.5 rounded-md border ${
                       CATEGORY_MAP[item.category].color
                     }`}
                   >
@@ -153,7 +141,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
                 <div className="flex flex-wrap items-center gap-1 font-mono" dir="ltr">
                   {item.keys.map((k, kIdx) => (
                     <React.Fragment key={kIdx}>
-                      <kbd className="min-w-[28px] text-center px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-[11px] font-bold text-slate-800 shadow-2xs">
+                      <kbd className="min-w-[28px] text-center px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-2xs font-bold text-slate-800 shadow-2xs">
                         {k}
                       </kbd>
                       {kIdx < item.keys.length - 1 && <span className="text-slate-500 text-xs">+</span>}
@@ -170,7 +158,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
           <div className="flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-blue-500 shrink-0" />
             <span>
-              نصيحة للمذيعين والمحررين: اضغط <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded-md font-mono text-[11px] font-bold">?</kbd> في أي وقت لعرض هذه الشاشة.
+              نصيحة للمذيعين والمحررين: اضغط <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded-md font-mono text-2xs font-bold">?</kbd> في أي وقت لعرض هذه الشاشة.
             </span>
           </div>
           <button

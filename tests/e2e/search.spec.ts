@@ -59,6 +59,7 @@ test('empty search offers recent records, quick actions and permitted screens', 
   const input = dialog.getByRole('combobox', { name: /بحث في الأخبار/ });
   await input.fill('القمة');
   const first = list.getByRole('option').first();
+  await expect(first).toContainText('القمة');
   const title = (await first.locator('span span').first().textContent())!.trim();
   await first.click();
   await expect(dialog).toHaveCount(0);

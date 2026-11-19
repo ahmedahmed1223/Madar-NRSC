@@ -6,24 +6,7 @@ import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
-import {
-  Search,
-  Plus,
-  FolderGit2,
-  Calendar as CalendarIcon,
-  Link as LinkIcon,
-  ArrowUpRight,
-  X,
-  Sparkles,
-  MapPin,
-  Tag,
-  Edit2,
-  Archive,
-  ExternalLink,
-  FileText,
-  CheckCircle2,
-  AlertCircle,
-} from 'lucide-react';
+import { Search, Plus, FolderGit2, Calendar as CalendarIcon, Link as LinkIcon, ArrowUpRight, X, MapPin, Edit2 } from 'lucide-react';
 import { Story, NewsItem, NewsPriority, Category, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { CoverageHub } from '../components/stories/CoverageHub';
@@ -259,13 +242,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   </Badge>
 
                   {story.categoryName && (
-                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                    <span className="text-2xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                       {story.categoryName}
                     </span>
                   )}
 
                   {story.locationName && (
-                    <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
+                    <span className="text-2xs text-slate-500 flex items-center gap-0.5">
                       <MapPin className="w-3 h-3 text-slate-500" />
                       {story.locationName}
                     </span>
@@ -310,14 +293,14 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               {story.keywords && story.keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-4">
                   {story.keywords.map((kw, i) => (
-                    <span key={i} className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                    <span key={i} className="text-2xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                       #{kw}
                     </span>
                   ))}
                 </div>
               )}
 
-              <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
+              <div className="mt-auto pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-2xs text-slate-500">
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
                   بدأت: {new Date(story.startedAt).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'long', year: 'numeric' })}
@@ -362,7 +345,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -430,7 +413,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setLocationName('')}
-                    className="text-[11px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -451,7 +434,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     key={loc}
                     type="button"
                     onClick={() => setLocationName(loc)}
-                    className="text-[11px] bg-slate-100 hover:bg-indigo-50 text-slate-600 px-1.5 py-0.5 rounded"
+                    className="text-2xs bg-slate-100 hover:bg-indigo-50 text-slate-600 px-1.5 py-0.5 rounded"
                   >
                     {loc}
                   </button>
@@ -466,7 +449,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setKeywordsInput('')}
-                    className="text-[11px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -486,12 +469,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             <div className="flex items-center justify-between mb-1">
               <label htmlFor="stories-view-field-7" className="block text-xs font-bold text-slate-700">شرح وتفاصيل التغطية</label>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-slate-500">{description.length} حرف</span>
+                <span className="text-2xs text-slate-500">{description.length} حرف</span>
                 {description && (
                   <button
                     type="button"
                     onClick={() => setDescription('')}
-                    className="text-[11px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>

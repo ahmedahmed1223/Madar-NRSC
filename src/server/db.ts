@@ -501,6 +501,12 @@ export class NewsroomDatabase {
       .run(collection, id, collection, id, keep);
   }
 
+  /** The state a row had at one earlier version, when it is still kept. */
+  getHistoryVersion(collection: CollectionName, id: string, version: number): any | null {
+    const row = this.db.prepare('SELECT data FROM entity_history WHERE collection = ? AND entity_id = ? AND version = ?').get(collection, id, version) as { data: string } | undefined;
+    return row ? JSON.parse(row.data) : null;
+  }
+
   listHistory(collection: CollectionName, id: string) {
     return (
       this.db
@@ -568,7 +574,37 @@ export class NewsroomDatabase {
     this.db.prepare('DELETE FROM uploads WHERE id = ?').run(id);
   }
 
-  /** Uploads older than `olderThanMs` that no live media record points to. */
+  uploadsSummary(): { files: number; bytes: number } {
+    const row = this.db.prepare('SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM uploads').get() as { files: number; bytes: number };
+    return { files: row.files, bytes: row.bytes };
+  }
+
+  messageSummary(): { count: number; oldestAt?: string } {
+    const row = this.db.prepare(`SELECT COUNT(*) AS count, MIN(json_extract(data, '$.timestamp')) AS oldest FROM entities WHERE collection = 'messages' AND deleted = 0`).get() as { count: number; oldest: string | null };
+    return { count: row.count, oldestAt: row.oldest || undefined };
+  }
+
+  /** Messages that carry an uploaded file (to decide who may download it). */
+  messagesWithUpload(uploadId: string): any[] {
+    const rows = this.db
+      .prepare(`SELECT data FROM entities WHERE collection = 'messages' AND deleted = 0 AND instr(data, ?) > 0 LIMIT 20`)
+      .all(`"id":"${uploadId}"`) as { data: string }[];
+    return rows.map((r) => JSON.parse(r.data)).filter((m) => (m.attachments || []).some((a: any) => a.id === uploadId));
+  }
+
+  /** Messages of one channel sent before a moment, newest first (older history than a browser holds). */
+  messagesBefore(channel: string, beforeIso: string, limit: number): any[] {
+    const rows = this.db
+      .prepare(
+        `SELECT data FROM entities WHERE collection = 'messages' AND deleted = 0
+           AND json_extract(data, '$.channel') = ? AND json_extract(data, '$.timestamp') < ?
+         ORDER BY json_extract(data, '$.timestamp') DESC LIMIT ?`
+      )
+      .all(channel, beforeIso, limit) as { data: string }[];
+    return rows.map((r) => JSON.parse(r.data));
+  }
+
+  /** Uploads older than `olderThanMs` that no live media record or message points to. */
   findOrphanUploads(olderThanMs: number): UploadRecord[] {
     const cutoff = new Date(Date.now() - olderThanMs).toISOString();
     const rows = this.db
@@ -578,6 +614,10 @@ export class NewsroomDatabase {
            AND NOT EXISTS (
              SELECT 1 FROM entities e
              WHERE e.collection = 'media' AND e.deleted = 0 AND instr(e.data, '/api/v1/media/files/' || u.id) > 0
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM entities e
+             WHERE e.collection = 'messages' AND e.deleted = 0 AND instr(e.data, '"id":"' || u.id || '"') > 0
            )`
       )
       .all(cutoff) as { id: string }[];
@@ -664,6 +704,17 @@ export class NewsroomDatabase {
 
   deleteSession(id: string) {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  }
+
+  /** Sessions that have not expired, newest activity first. */
+  listSessions(nowIso: string): { id: string; userId: string; lastSeenAt: string; ip?: string; userAgent?: string }[] {
+    return (this.db.prepare('SELECT id, user_id, last_seen_at, ip, user_agent FROM sessions WHERE expires_at > ? ORDER BY last_seen_at DESC').all(nowIso) as any[]).map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      lastSeenAt: r.last_seen_at,
+      ip: r.ip || undefined,
+      userAgent: r.user_agent || undefined,
+    }));
   }
 
   deleteUserSessions(userId: string, exceptSessionId?: string) {

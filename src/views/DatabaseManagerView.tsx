@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Table as TableIcon,
-  HardDrive,
   FileCode,
   Clock,
   Sparkles,
@@ -21,7 +20,6 @@ import {
   ShieldCheck,
   Archive,
   RefreshCw,
-  Copy,
   X,
 } from 'lucide-react';
 import { DbStats, SqlQueryResult, DbBackupFileInfo } from '../types';
@@ -266,28 +264,28 @@ export const DatabaseManagerView: React.FC = () => {
         {/* Database Metric Badges */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-100">
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">مسار ملف التخزين</span>
+            <span className="text-2xs text-slate-500 block mb-1">مسار ملف التخزين</span>
             <span className="text-xs font-mono font-bold text-indigo-700 truncate block dir-ltr text-right">
               {stats?.filePath || '—'}
             </span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">حجم قاعدة البيانات</span>
+            <span className="text-2xs text-slate-500 block mb-1">حجم قاعدة البيانات</span>
             <span className="text-xs font-mono font-bold text-slate-800">
               {stats?.fileSizeFormatted || '—'}
             </span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">عدد الجداول العلائقية</span>
+            <span className="text-2xs text-slate-500 block mb-1">عدد الجداول العلائقية</span>
             <span className="text-xs font-mono font-bold text-slate-800">
               {stats?.totalTables ?? 0} جداول
             </span>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">إجمالي السجلات المخزنة</span>
+            <span className="text-2xs text-slate-500 block mb-1">إجمالي السجلات المخزنة</span>
             <span className="text-xs font-mono font-bold text-emerald-700">
               {stats?.totalRows || 0} سجل
             </span>
@@ -366,7 +364,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <TableIcon className="w-4 h-4 text-slate-700" />
                   <h2 className="text-sm font-bold text-slate-900">جداول المنظومة ({filteredTables.length})</h2>
                 </div>
-                <span className="text-[11px] text-slate-500">انقر للفحص الفوري</span>
+                <span className="text-2xs text-slate-500">انقر للفحص الفوري</span>
               </div>
 
               <div className="relative mb-3">
@@ -406,11 +404,11 @@ export const DatabaseManagerView: React.FC = () => {
                         <span className="font-mono text-xs font-bold text-slate-800 group-hover:text-indigo-700 truncate">
                           {table.name}
                         </span>
-                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
+                        <span className="text-2xs px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
                           {table.rowCount} صف
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-1">
+                      <div className="text-2xs text-slate-500 truncate mt-1">
                         {table.columns.slice(0, 4).join(', ')}
                         {table.columns.length > 4 && ` +${table.columns.length - 4}`}
                       </div>
@@ -441,7 +439,7 @@ export const DatabaseManagerView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-800 block mb-0.5">
                       {preset.title}
                     </span>
-                    <span className="text-[11px] text-slate-500 block truncate leading-tight">
+                    <span className="text-2xs text-slate-500 block truncate leading-tight">
                       {preset.desc}
                     </span>
                   </button>
@@ -458,7 +456,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <FileCode className="w-4 h-4 text-indigo-600" />
                   <h2 className="text-sm font-bold text-slate-900">محرر استعلامات SQL الحي</h2>
                 </div>
-                <span className="text-[11px] text-slate-500 font-mono">
+                <span className="text-2xs text-slate-500 font-mono">
                   اختصار التنفيذ: <kbd className="px-1.5 py-0.5 bg-slate-100 rounded-md border border-slate-300">Ctrl + Enter</kbd>
                 </span>
               </div>
@@ -536,12 +534,12 @@ export const DatabaseManagerView: React.FC = () => {
               <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <h3 className="text-xs font-bold text-slate-700">نتائج الاستعلام</h3>
                 {queryResult?.error ? (
-                  <span className="text-[11px] text-red-600 font-medium flex items-center gap-1">
+                  <span className="text-2xs text-red-600 font-medium flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     خطأ في الاستعلام
                   </span>
                 ) : (
-                  <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                  <span className="text-2xs text-emerald-700 font-medium flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الاسترجاع بنجاح
                   </span>
@@ -684,7 +682,7 @@ export const DatabaseManagerView: React.FC = () => {
                               type="button"
                               onClick={() => handleRestoreBackup(b.fileName)}
                               disabled={isRestoringBackup || isCreatingBackup || !!verifying}
-                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-[11px] font-bold transition-colors border border-amber-500/30"
+                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30"
                             >
                               استعادة هذه النسخة
                             </button>
@@ -706,7 +704,7 @@ export const DatabaseManagerView: React.FC = () => {
               </table>
             </div>
 
-            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between">
+            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs text-slate-600 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-700" />
                 <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono">data/newsroom.sqlite</strong> مع كل عملية تحرير.</span>
@@ -737,18 +735,18 @@ export const DatabaseManagerView: React.FC = () => {
                   <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-200">
                     {tbl.name}
                   </span>
-                  <span className="text-[11px] text-slate-500 font-mono font-semibold">
+                  <span className="text-2xs text-slate-500 font-mono font-semibold">
                     {tbl.rowCount} سجل
                   </span>
                 </div>
 
                 <div className="space-y-1 text-xs">
-                  <span className="text-[11px] text-slate-500 block mb-1">الأعمدة ({tbl.columns.length}):</span>
+                  <span className="text-2xs text-slate-500 block mb-1">الأعمدة ({tbl.columns.length}):</span>
                   <div className="flex flex-wrap gap-1">
                     {tbl.columns.map((c) => (
                       <span
                         key={c}
-                        className="text-[11px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
+                        className="text-2xs font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
                       >
                         {c}
                       </span>
@@ -762,7 +760,7 @@ export const DatabaseManagerView: React.FC = () => {
                     setActiveTab('console');
                     handleInspectTable(tbl.name);
                   }}
-                  className="w-full mt-2 py-1.5 text-center text-[11px] text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/60 rounded-lg font-bold transition-colors block border border-indigo-200/50"
+                  className="w-full mt-2 py-1.5 text-center text-2xs text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/60 rounded-lg font-bold transition-colors block border border-indigo-200/50"
                 >
                   استعلام بيانات الجدول &larr;
                 </button>

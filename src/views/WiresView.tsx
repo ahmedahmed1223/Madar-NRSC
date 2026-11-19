@@ -152,7 +152,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
               <span
                 key={f.sourceId}
                 title={`${f.feedUrl}\n${f.message}`}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-2xs font-bold border ${
                   f.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'
                 }`}
               >
@@ -248,7 +248,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                 focusWireId === w.id ? 'ring-2 ring-blue-500' : ''
               }`}
             >
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <div className="flex flex-wrap items-center gap-2 text-2xs text-slate-500">
                 {flash && (
                   <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">
                     <Zap className="w-3 h-3" /> عاجل

@@ -14,7 +14,15 @@ export type UserRole =
   | 'REPORTER'
   | 'MEDIA'
   | 'CREW'
-  | 'VIEWER';
+  | 'VIEWER'
+  | 'MAIN_STATION_MANAGER'
+  | 'STATION_MANAGER'
+  | 'DIRECTOR'
+  | 'PREPARER'
+  | 'MONTAGE'
+  | 'QUALITY'
+  | 'MONITOR'
+  | 'REPORTS_EDITOR';
 
 
 export interface User {
@@ -31,6 +39,8 @@ export interface User {
   department: string;
   /** Structured department id (see shared/departments). */
   departmentId?: string;
+  /** Station (bureau) the colleague works at (see shared/stations). */
+  stationId?: string;
   staffId?: string;
   bio?: string;
   lastLogin?: string;
@@ -467,6 +477,8 @@ export interface EditorialTask {
   relatedEntityTitle?: string;
   notes?: string;
   createdAt?: string;
+  /** Stamped by the server when the task is finished. */
+  completedAt?: string;
 }
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'PDF';
@@ -570,6 +582,10 @@ export interface SystemSettings {
   defaultNewsPriority?: NewsPriority;
   breakingDurationHours?: number;
   newsTemplates?: { id: string; name: string; body: string }[];
+  /** Stations sharing this newsroom: main station, branches and their links (see shared/stations). */
+  stations?: import('../shared/stations').Station[];
+  /** Kinds of production-card steps and their weights (see shared/productionCards). */
+  cardStepTypes?: import('../shared/productionCards').StepType[];
   /** Station-wide date/time conventions (see shared/dateFormat). */
   dateTime?: Partial<import('../shared/dateFormat').DateTimeSettings>;
 }

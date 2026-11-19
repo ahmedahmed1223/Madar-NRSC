@@ -12,6 +12,9 @@ export const DEPARTMENTS = [
   { id: 'audio', name: 'الصوت' },
   { id: 'lighting', name: 'الإضاءة' },
   { id: 'archive', name: 'الأرشيف والتوثيق' },
+  { id: 'monitoring', name: 'الرصد والمراقبة' },
+  { id: 'quality', name: 'الجودة' },
+  { id: 'reports', name: 'التقارير' },
 ] as const;
 
 export type DepartmentId = (typeof DEPARTMENTS)[number]['id'];

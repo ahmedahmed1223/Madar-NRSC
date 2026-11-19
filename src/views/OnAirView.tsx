@@ -216,7 +216,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             {timing?.current ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 space-y-1">
-                  <span className="text-[11px] text-slate-500">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
+                  <span className="text-2xs text-slate-500">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
                   <h2 className="text-2xl sm:text-3xl font-black leading-tight">{timing.current.title}</h2>
                   <p className="text-xs text-slate-500">
                     {timing.current.presenterName || ''}
@@ -224,7 +224,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </p>
                 </div>
                 <div className="text-center">
-                  <span className="text-[11px] text-slate-500 block">المتبقي</span>
+                  <span className="text-2xs text-slate-500 block">المتبقي</span>
                   <span className={`text-5xl font-black font-mono ${remainingCls}`} dir="ltr">
                     {formatClock(timing.remaining)}
                   </span>
@@ -269,7 +269,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     </button>
                   </>
                 )}
-                {live && <span className="text-[11px] text-slate-500 self-center">المسطرة أو ← للتالي، → للسابق</span>}
+                {live && <span className="text-2xs text-slate-500 self-center">المسطرة أو ← للتالي، → للسابق</span>}
               </div>
             )}
           </section>
@@ -299,7 +299,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         {actual !== null && <span className={actual > (seg.durationSeconds || 0) ? ' text-red-600' : ' text-emerald-700'}> / {formatClock(actual)}</span>}
                       </span>
                       {canControl && live && !isCurrent && (
-                        <button type="button" onClick={async () => (await confirmDialog(`الانتقال إلى «${seg.title}»؟`)) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold hover:bg-slate-50">
+                        <button type="button" onClick={async () => (await confirmDialog(`الانتقال إلى «${seg.title}»؟`)) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-2xs font-bold hover:bg-slate-50">
                           انتقال
                         </button>
                       )}
@@ -324,7 +324,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               {canControl || RbacService.hasPermission(currentUser, 'tasks.intercom_broadcast') ? (
                 <>
                   <div className="flex flex-wrap gap-1" role="group" aria-label="الأقسام المستهدفة">
-                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${cueTargets.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'}`}>
+                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'}`}>
                       الجميع
                     </button>
                     {DEPARTMENTS.map((d) => (
@@ -333,7 +333,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         type="button"
                         aria-pressed={cueTargets.includes(d.id)}
                         onClick={() => setCueTargets((t) => (t.includes(d.id) ? t.filter((x) => x !== d.id) : [...t, d.id]))}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {d.name}
                       </button>
@@ -341,7 +341,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {CUE_PRESETS.map((p) => (
-                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`px-2 py-2 rounded-lg text-[11px] font-bold border text-right ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`px-2 py-2 rounded-lg text-2xs font-bold border text-right ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                         {p.message}
                       </button>
                     ))}
@@ -358,7 +358,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </form>
                   <div className="space-y-1.5">
                     {myCues.map((c) => (
-                      <div key={c.id} className="text-[11px] p-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <div key={c.id} className="text-2xs p-2 rounded-lg bg-slate-50 border border-slate-100">
                         <strong className="text-slate-800">{c.message}</strong>
                         <span className="text-slate-500"> → {c.targetDepartmentIds.length ? c.targetDepartmentIds.map(departmentName).join('، ') : 'الجميع'}</span>
                         <span className="block text-emerald-700">{c.acks.length ? `استلم: ${c.acks.map((a) => a.userName).join('، ')}` : 'لم يستلمه أحد بعد'}</span>

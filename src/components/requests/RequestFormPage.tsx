@@ -82,7 +82,7 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
               </button>
             ))}
           </div>
-          {target && <p className="mt-1.5 text-[11px] text-slate-500">يصل الطلب إلى مناوبي قسم «{departmentName(target.departmentId)}».</p>}
+          {target && <p className="mt-1.5 text-2xs text-slate-500">يصل الطلب إلى مناوبي قسم «{departmentName(target.departmentId)}».</p>}
         </div>
 
         <div>

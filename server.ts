@@ -17,6 +17,10 @@ import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from 
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
 import { backupStatus } from './src/server/databaseDiagnostics';
 import { changeBus } from './src/server/sync';
+import { recordJob, registerJob, trackJob } from './src/server/jobs';
+
+/** Periodic jobs as the administrator's overview names them. */
+const JOBS = { publish: 'النشر المجدول', bulletins: 'إنشاء النشرات المجدولة', housekeeping: 'التنظيف الدوري', wires: 'جلب البرقيات', delivery: 'إرسال التنبيهات', backup: 'النسخ الاحتياطي' };
 
 async function main() {
   const config = loadConfig();
@@ -65,6 +69,9 @@ async function main() {
 
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
+  registerJob(JOBS.publish, 0.5);
+  registerJob(JOBS.bulletins, 10);
+  registerJob(JOBS.housekeeping, 60);
   if (config.deliverySeconds > 0) initializeNotificationDelivery(db);
   const checkBackupIncidents = async () => {
     try {
@@ -80,16 +87,19 @@ async function main() {
         db.purgeExpiredSessions();
         runRetention(db, config.dataDir, { ...config.retention, wireDays: config.wires.retentionDays });
         db.purgeTombstones(30 * 24 * 60 * 60 * 1000);
-        // Files uploaded but never attached to a media record (abandoned forms).
+        // Files uploaded but never attached to a media record or a message (abandoned forms).
         db.findOrphanUploads(24 * 60 * 60 * 1000).forEach((u) => removeUpload(db, config.dataDir, u.id));
+        recordJob(JOBS.housekeeping);
       } catch (err) {
+        recordJob(JOBS.housekeeping, err);
         logger.error('housekeeping failed', { error: String(err) });
       }
     }, 60 * 60 * 1000)
   );
   // Agency wire feeds.
   if (config.wires.pollMinutes > 0) {
-    const poll = () => pollWires(db, config.wires).catch((err) => logger.error('wire polling failed', { error: String(err) }));
+    registerJob(JOBS.wires, config.wires.pollMinutes);
+    const poll = () => trackJob(JOBS.wires, () => pollWires(db, config.wires)).catch((err) => logger.error('wire polling failed', { error: String(err) }));
     timers.push(setInterval(poll, config.wires.pollMinutes * 60 * 1000));
     setTimeout(poll, 5_000).unref();
   }
@@ -98,7 +108,9 @@ async function main() {
     setInterval(() => {
       try {
         publishDueScheduledNews(db);
+        recordJob(JOBS.publish);
       } catch (err) {
+        recordJob(JOBS.publish, err);
         logger.error('scheduled publishing failed', { error: String(err) });
       }
     }, 30_000)
@@ -108,7 +120,9 @@ async function main() {
   const scheduleBulletins = () => {
     try {
       createScheduledBulletins(db);
+      recordJob(JOBS.bulletins);
     } catch (err) {
+      recordJob(JOBS.bulletins, err);
       logger.error('scheduled bulletins failed', { error: String(err) });
     }
   };
@@ -117,12 +131,14 @@ async function main() {
 
   // E-mail and phone/desktop push for new notifications (per-colleague preferences).
   if (config.deliverySeconds > 0) {
-    const deliver = () => deliverPending(db, config).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
+    registerJob(JOBS.delivery, config.deliverySeconds / 60);
+    const deliver = () => trackJob(JOBS.delivery, () => deliverPending(db, config)).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
     timers.push(setInterval(deliver, config.deliverySeconds * 1000));
     deliver();
   }
 
   if (config.backupIntervalHours > 0) {
+    registerJob(JOBS.backup, config.backupIntervalHours * 60);
     let backingUp = false;
     const backup = async () => {
       if (backingUp) return;
@@ -133,11 +149,13 @@ async function main() {
         const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory,
           remote: config.backupRemote, retention: config.backupRetention });
         db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+        recordJob(JOBS.backup);
         logger.info('complete backup created and delivered', result);
         });
       } catch (err) {
         if (err instanceof DatabaseOperationBusy) return;
         db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
+        recordJob(JOBS.backup, err);
         logger.error('complete backup failed', { error: String(err) });
       } finally { backingUp = false; await checkBackupIncidents(); }
     };

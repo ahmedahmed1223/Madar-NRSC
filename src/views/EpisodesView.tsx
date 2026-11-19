@@ -11,23 +11,7 @@ import { studioConflictsFor } from '../shared/schedule';
 import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
-import {
-  Plus,
-  Video,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  Search,
-  SlidersHorizontal,
-  ChevronRight,
-  ListOrdered,
-  Users,
-  CheckCircle2,
-  Tv,
-  Trash2,
-  X,
-  Sparkles,
-} from 'lucide-react';
+import { Plus, Search, ChevronRight, ListOrdered, Users, Trash2, X } from 'lucide-react';
 import { Episode, Program, EpisodeStatus, User } from '../types';
 import { newId } from '../shared/ids';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
@@ -49,7 +33,6 @@ const episodeSortValue = (e: Episode, key: EpisodeSortKey): unknown =>
     : `${e.broadcastDate} ${e.startTime}`;
 import { structureFromTemplate, templateFromEpisode } from '../shared/episodePlan';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 
 interface EpisodesViewProps {
   /** Changes when another screen asks to create an episode (opens the form at once). */
@@ -402,7 +385,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                         >
                           {ep.title}
                         </button>
-                        <div className="flex flex-wrap items-center gap-x-2 mt-0.5 text-[11px] text-slate-500">
+                        <div className="flex flex-wrap items-center gap-x-2 mt-0.5 text-2xs text-slate-500">
                           <span className="font-semibold text-blue-700">{ep.programName}</span>
                           <span aria-hidden>•</span>
                           <span>{ep.studioName}</span>
@@ -426,14 +409,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       <td className="py-3.5 px-3">
                         <div className="text-slate-700 tabular-nums">
                           <div className="whitespace-nowrap">{arabicDate(ep.broadcastDate)}</div>
-                          <div className="text-[11px] text-slate-500">
+                          <div className="text-2xs text-slate-500">
                             {ep.startTime} - {ep.endTime}
                           </div>
                         </div>
                       </td>
 
                       {/* Team */}
-                      <td className="py-3.5 px-3 text-[11px] hidden xl:table-cell">
+                      <td className="py-3.5 px-3 text-2xs hidden xl:table-cell">
                         <div>تقديم: <strong className="text-slate-800">{ep.presenterName}</strong></div>
                         <div className="text-slate-500">إنتاج: {ep.producerName}</div>
                       </td>
@@ -534,7 +517,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTitle('')}
-                    className="text-[11px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -605,13 +588,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           {/* Duration Presets & End Time Calculation */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-blue-700 font-bold">المدة الموصى بها:</span>
+              <span className="text-2xs text-blue-700 font-bold">المدة الموصى بها:</span>
               {DURATION_PRESETS.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => handleDurationChange(m)}
-                  className={`text-[11px] px-2 py-0.5 rounded-md font-mono transition-all ${
+                  className={`text-2xs px-2 py-0.5 rounded-md font-mono transition-all ${
                     durationMinutes === m
                       ? 'bg-blue-600 text-white font-bold shadow-2xs'
                       : 'bg-white text-blue-800 hover:bg-blue-100 border border-blue-200'
@@ -621,7 +604,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 </button>
               ))}
             </div>
-            <div className="text-[11px] text-blue-900 font-medium">
+            <div className="text-2xs text-blue-900 font-medium">
               نهاية البث التقديرية: <strong className="font-mono text-blue-700">{endTime}</strong>
               {endsNextDay && <span className="text-amber-700 font-bold"> (اليوم التالي)</span>}
             </div>
@@ -684,7 +667,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${startMode === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
                   <span className="block text-xs font-bold">{o.name}</span>
-                  <span className={`block text-[11px] ${startMode === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                  <span className={`block text-2xs ${startMode === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
                 </button>
               ))}
             </div>

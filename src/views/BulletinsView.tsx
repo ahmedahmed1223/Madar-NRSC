@@ -5,7 +5,7 @@ import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
 import React, { useState } from 'react';
-import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, LayoutTemplate, Plus, Radio, Trash2, Edit2, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, Plus, Trash2, Edit2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { ProductionNameField } from '../components/common/ProductionNameField';
@@ -291,19 +291,19 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                           <span className="text-lg font-black font-mono text-slate-800" dir="ltr">
                             {b.startTime}
                           </span>
-                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
+                          <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
                         </div>
                         <h3 className="text-sm font-bold text-slate-800 mt-1 line-clamp-2 leading-snug" title={b.title}>{b.title}</h3>
                       </div>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
+                      <span className={`text-2xs font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
                         {status === 'ON_AIR' ? 'على الهواء' : status === 'DONE' ? 'أُذيعت' : 'قيد الإعداد'}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500 space-y-0.5">
+                    <div className="text-2xs text-slate-500 space-y-0.5">
                       <p>المحرر: <strong className="text-slate-700">{b.editorName || '—'}</strong></p>
                       <p>التقديم: <strong className="text-slate-700">{b.anchors.join('، ') || '—'}</strong></p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2 text-2xs">
                       <span className="font-bold text-slate-700">{live.length} قصة</span>
                       <span className="text-emerald-700 font-bold">{approved} معتمدة</span>
                       {ready > 0 && <span className="text-amber-700 font-bold">{ready} بانتظار الاعتماد</span>}
@@ -340,7 +340,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">{f.name}</h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-2xs text-slate-500">
                       {bulletinKindName(f.kind)} · <span dir="ltr">{f.startTime}</span> · {Math.round(f.plannedSeconds / 60)} دقيقة · {f.stories.length} قصة
                     </p>
                   </div>
@@ -362,15 +362,15 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {f.days.length === 0 ? (
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
+                    <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
                   ) : (
                     DAY_NAMES.map((d, i) => (
-                      <span key={d} className={`text-[11px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <span key={d} className={`text-2xs px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                         {d}
                       </span>
                     ))
                   )}
-                  {f.autoCreate && <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
+                  {f.autoCreate && <span className="text-2xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
                 </div>
               </article>
             ))}
@@ -402,7 +402,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                     className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${form.start === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}
                   >
                     <span className="block text-xs font-bold">{o.name}</span>
-                    <span className={`block text-[11px] ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                    <span className={`block text-2xs ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
                   </button>
                 ))}
               </div>
@@ -563,7 +563,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   {({ handle }) => (
                   <>
                   {handle}
-                  <span className="text-[11px] font-mono text-slate-500 w-5">{i + 1}</span>
+                  <span className="text-2xs font-mono text-slate-500 w-5">{i + 1}</span>
                   <input aria-label={`عنوان القصة ${i + 1}`} value={s.slug} onChange={(e) => setDraftStory(i, { slug: e.target.value })} className="flex-1 min-w-[8rem] px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
                   <select aria-label={`نوع القصة ${i + 1}`} value={s.type} onChange={(e) => setDraftStory(i, { type: e.target.value as StoryType })} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
                     {STORY_TYPES.map((t) => (

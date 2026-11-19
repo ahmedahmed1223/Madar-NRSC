@@ -33,11 +33,16 @@ export function mediaTypeForMime(mime: string): MediaType {
   return 'DOCUMENT';
 }
 
-/** Streams a file to the server (XHR so the UI can show upload progress). */
+/** Streams a file to the media library (XHR so the UI can show upload progress). */
 export function uploadMediaFile(file: File, onProgress?: (percent: number) => void): { promise: Promise<UploadedFile>; abort: () => void } {
+  return uploadFile<UploadedFile>('/api/v1/media/upload', file, onProgress);
+}
+
+/** Streams a file to the server and resolves with what the endpoint answers. */
+export function uploadFile<T>(url: string, file: File, onProgress?: (percent: number) => void): { promise: Promise<T>; abort: () => void } {
   const xhr = new XMLHttpRequest();
-  const promise = new Promise<UploadedFile>((resolve, reject) => {
-    xhr.open('POST', '/api/v1/media/upload');
+  const promise = new Promise<T>((resolve, reject) => {
+    xhr.open('POST', url);
     xhr.withCredentials = true;
     xhr.setRequestHeader('X-NRCS-Client', 'web');
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
@@ -52,7 +57,7 @@ export function uploadMediaFile(file: File, onProgress?: (percent: number) => vo
       } catch {
         // non-JSON error page
       }
-      if (xhr.status >= 200 && xhr.status < 300 && body?.data) resolve(body.data as UploadedFile);
+      if (xhr.status >= 200 && xhr.status < 300 && body?.data) resolve(body.data as T);
       else reject(new Error(body?.error || `فشل رفع الملف (${xhr.status})`));
     };
     xhr.onerror = () => reject(new Error('تعذر الاتصال بالخادم أثناء رفع الملف'));

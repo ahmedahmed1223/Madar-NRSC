@@ -4,28 +4,9 @@ import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
-import {
-  Plus,
-  Tv,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  Video,
-  Edit2,
-  Trash2,
-  Search,
-  Users,
-  CheckCircle2,
-  Star,
-  Eye,
-  X,
-  Sparkles,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { Plus, Video, Edit2, Trash2, Search, Eye, X } from 'lucide-react';
 import { Program, ProgramType, User } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
-import { apiService } from '../services/api';
 import { ProductionNameField } from '../components/common/ProductionNameField';
 
 interface ProgramsViewProps {
@@ -377,7 +358,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setName('')}
-                    className="text-[11px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -417,7 +398,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -464,21 +445,21 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setBroadcastDays([...daysOfWeek])}
-                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   يومياً
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'])}
-                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   أيام العمل
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الجمعة', 'السبت'])}
-                  className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   عطلة الأسبوع
                 </button>
@@ -534,7 +515,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     key={d}
                     type="button"
                     onClick={() => setDurationMinutes(d)}
-                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-2xs px-1.5 py-0.5 rounded font-mono ${
                       durationMinutes === d
                         ? 'bg-blue-600 text-white font-bold'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -564,7 +545,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCoverImageUrl('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

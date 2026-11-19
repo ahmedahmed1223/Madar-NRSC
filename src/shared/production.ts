@@ -36,6 +36,9 @@ export const REQUEST_TYPES = [
   { id: 'FIELD', name: 'تغطية ميدانية', departmentId: 'field' },
   { id: 'DIRECTION', name: 'الإخراج', departmentId: 'direction' },
   { id: 'CONTROL', name: 'الكنترول', departmentId: 'control' },
+  { id: 'QUALITY', name: 'مراجعة جودة', departmentId: 'quality' },
+  { id: 'MONITORING', name: 'رصد ومتابعة', departmentId: 'monitoring' },
+  { id: 'REPORT', name: 'إعداد تقرير', departmentId: 'reports' },
 ] as const satisfies readonly { id: string; name: string; departmentId: DepartmentId }[];
 
 export type RequestType = (typeof REQUEST_TYPES)[number]['id'];
