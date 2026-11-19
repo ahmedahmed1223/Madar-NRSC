@@ -19,7 +19,8 @@ import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
 import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
 import { stationsOf } from '../shared/stations';
-import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
+import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, reviewBookkeepingDenial, transitionDenial } from '../shared/newsWorkflow';
+import { handledChangeError, manualWireError } from '../shared/wires';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -103,6 +104,10 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
     return 'صلاحياتك لا تسمح بتعديل هذا الخبر';
   }
 
+  // Quality pass, review claim and breaking requests: review rights, checked on their own.
+  const bookkeeping = reviewBookkeepingDenial(can, { id: me, name: auth.user.fullName }, kind === 'create' ? null : before, after);
+  if (bookkeeping) return bookkeeping;
+
   if (!!before?.isBreaking !== !!after?.isBreaking && !auth.can('news.breaking_push')) {
     return 'صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها';
   }
@@ -130,6 +135,10 @@ const WORKFLOW_FIELDS = new Set([
   'breakingUntil',
   'slug',
   'scheduledDate',
+  // Review bookkeeping (see reviewBookkeepingDenial): reviewers record these without edit rights.
+  'qualityCheck',
+  'reviewClaim',
+  'breakingRequest',
 ]);
 
 const usersPolicy: Policy = ({ auth, kind, before, after }) => {
@@ -464,7 +473,19 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (after?.deletedAt) return null;
     return rosterEntryError(after);
   },
-  wires: () => 'المصادر تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
+  // Agency items come from the feeds; the desk adds manual observations and marks what it followed up.
+  wires: ({ auth, kind, before, after }) => {
+    if (!auth.can('news.view') && !auth.can('news.create')) return DENIED;
+    if (kind === 'delete' || isSoftDelete(before, after)) {
+      return before?.manual && (before.createdById === auth.user.id || auth.can('system.settings')) ? null : 'مواد الوكالات لا تُحذف يدوياً؛ يحذف مادة الرصد كاتبها';
+    }
+    if (kind === 'create') {
+      if (!auth.can('news.create')) return 'إضافة رصد يدوي لمن يكتب الأخبار';
+      if (after?.createdById !== auth.user.id || after?.createdByName !== auth.user.fullName) return 'بيانات كاتب الرصد غير صالحة';
+      return manualWireError(after);
+    }
+    return handledChangeError(before, after, auth.user.id);
+  },
   offlineAirSessions: () => 'السجل المحلي يستورد عبر المسار المخصص ولا يعدل أو يحذف',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;

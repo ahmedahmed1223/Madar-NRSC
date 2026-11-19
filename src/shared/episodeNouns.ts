@@ -1,4 +1,5 @@
 import type { CountForms } from './arabicPlural';
+import { STORY_TYPES } from './bulletins';
 
 /** Counted nouns of the programme screens, for countLabel (shared/arabicPlural). */
 export const EP_NOUNS = {
@@ -12,3 +13,24 @@ export const EP_NOUNS = {
   clash: { one: 'تعارض واحد', two: 'تعارضان', few: 'تعارضات', many: 'تعارضاً', zero: 'لا تعارضات' },
   show: { one: 'موعد واحد', two: 'موعدان', few: 'مواعيد', many: 'موعداً', zero: 'لا مواعيد' },
 } as const satisfies Record<string, CountForms>;
+
+/** Arabic names of rundown segment types (never show the raw code such as NEWS_ITEM). */
+export const SEGMENT_TYPE_NAMES: Record<string, string> = {
+  INTRO: 'مقدمة',
+  REPORT: 'تقرير مصور',
+  NEWS_ITEM: 'خبر',
+  LIVE_INTERVIEW: 'مقابلة',
+  DISCUSSION: 'نقاش',
+  BREAK: 'فاصل',
+  OUTRO: 'ختام',
+};
+
+/** The type of a segment in words: a bulletin story keeps its own story type («صورة وتصريح»). */
+export function segmentTypeName(seg: { segmentType?: string; storyType?: string } | null | undefined): string {
+  if (!seg) return '';
+  if (seg.storyType) {
+    const story = STORY_TYPES.find((t) => t.id === seg.storyType);
+    if (story) return story.name;
+  }
+  return SEGMENT_TYPE_NAMES[seg.segmentType || ''] || 'فقرة';
+}
