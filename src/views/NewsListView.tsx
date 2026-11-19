@@ -866,12 +866,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
                       {/* Actions stay in view (sticky) while a narrow table scrolls. */}
                       <td className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
-                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5">
-                          {/* Quick Preview */}
+                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5 min-w-[4.75rem] xl:min-w-0">
+                          {/* Quick Preview (on phones the title itself opens it) */}
                           <button
                             type="button"
                             onClick={() => setPreviewNews(item)}
-                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 hidden sm:inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                             title="معاينة وسجل التدقيق"
                           >
                             <Eye className="w-4 h-4" />

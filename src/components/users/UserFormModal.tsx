@@ -1,4 +1,5 @@
 import { FormPage } from '../common/FormPage';
+import { countLabel } from '../../shared/arabicPlural';
 import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
@@ -172,31 +173,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     <FormPage
       isOpen={isOpen}
       onClose={onClose}
-      title={userToEdit ? 'تعديل بيانات المستخدم والصلاحيات' : 'إضافة مستخدم جديد لطاقم الأخبار'}
+      title={userToEdit ? `تعديل حساب ${userToEdit.fullName}` : 'إضافة مستخدم جديد'}
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-5 text-right font-sans" dir="rtl">
-        {/* Avatar Preset Selector */}
-        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <label htmlFor="user-form-modal-field-1" className="block text-xs font-bold text-slate-700 mb-2">
-            الصورة الشخصية والرمز التعريفي:
-          </label>
-          <div className="flex items-center gap-4">
-            <Avatar src={avatarUrl} name={fullName} className="w-16 h-16 rounded-2xl border-2 border-blue-600 shadow-md shrink-0" />
-            <div className="flex-1">
-              <div className="mt-2">
-                <input id="user-form-modal-field-1"
-                  type="text"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="أو الصق رابط صورة مخصص (URL)..."
-                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 font-mono"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Basic Info Fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -392,26 +372,26 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         </div>
 
         {isGeneralManager && (
-          <fieldset className="p-4 rounded-2xl border border-purple-200 bg-purple-50/40 space-y-3" disabled={!canManageOverrides}>
-            <legend className="px-1 text-xs font-bold text-purple-900">ما يتابعه المدير العام</legend>
+          <fieldset className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3" disabled={!canManageOverrides}>
+            <legend className="px-1 text-xs font-bold text-slate-900">ما يتابعه المدير العام</legend>
             <p className="text-2xs text-slate-600">
               يتابع ويكلّف في المحطات والمجموعات المختارة (ومحطته إن كانت له محطة). بلا اختيار: محطته فقط، أو كل المحطات إن لم تكن له محطة.
               {!canManageOverrides && ' يغيّرها من يملك صلاحية إدارة الأدوار.'}
             </p>
             <div role="group" aria-label="المحطات التي يتابعها" className="flex flex-wrap gap-x-5 gap-y-1">
               {stations.map((station) => (
-                <label key={station.id} className="flex items-center gap-2 min-h-9 text-xs">
+                <label key={station.id} className="flex items-center gap-2 min-h-11 sm:min-h-9 text-xs">
                   <input type="checkbox" checked={managedStationIds.includes(station.id)} onChange={() => setManagedStationIds((list) => toggle(list, station.id))} />
                   {station.name}
                 </label>
               ))}
             </div>
             {stationGroups.length > 0 && (
-              <div role="group" aria-label="مجموعات المحطات التي يتابعها" className="flex flex-wrap gap-x-5 gap-y-1 pt-2 border-t border-purple-100">
+              <div role="group" aria-label="مجموعات المحطات التي يتابعها" className="flex flex-wrap gap-x-5 gap-y-1 pt-2 border-t border-slate-200">
                 {stationGroups.map((group) => (
-                  <label key={group.id} className="flex items-center gap-2 min-h-9 text-xs">
+                  <label key={group.id} className="flex items-center gap-2 min-h-11 sm:min-h-9 text-xs">
                     <input type="checkbox" checked={managedGroupIds.includes(group.id)} onChange={() => setManagedGroupIds((list) => toggle(list, group.id))} />
-                    مجموعة {group.name} ({group.stationIds.length} محطات)
+                    مجموعة {group.name} ({countLabel(group.stationIds.length, { one: 'محطة واحدة', two: 'محطتان', few: 'محطات', many: 'محطة', zero: 'بلا محطات' })})
                   </label>
                 ))}
               </div>
@@ -435,6 +415,28 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </div>
         </div>
 
+        {/* Avatar Preset Selector */}
+        <div>
+          <label htmlFor="user-form-modal-field-1" className="block text-xs font-bold text-slate-700 mb-2">
+            الصورة الشخصية (رابط اختياري)
+          </label>
+          <div className="flex items-center gap-4">
+            <Avatar src={avatarUrl} name={fullName} className="w-12 h-12 rounded-xl border border-slate-200 shrink-0" />
+            <div className="flex-1">
+              <div>
+                <input id="user-form-modal-field-1"
+                  type="text"
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  placeholder="https://…"
+                  dir="ltr"
+                  className="w-full min-h-11 text-xs px-3 bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Bio / Description */}
         <div>
           <label htmlFor="user-form-modal-field-13" className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -453,7 +455,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-slate-100/70 rounded-xl">
           {/* 2FA is enrolled by each user from their own account menu; admins can only reset it. */}
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-            <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+            <KeyRound className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
             <span>التحقق بخطوتين:</span>
             <span className={twoFactorEnabled ? 'text-emerald-700' : 'text-slate-500'}>
               {twoFactorEnabled ? 'مفعّل' : 'غير مفعّل (يفعّله المستخدم من قائمة حسابه)'}
@@ -483,21 +485,21 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-          >
-            إلغاء
-          </button>
+        <div className="flex items-center gap-3 pt-3 border-t border-slate-200">
           <button
             type="submit"
             disabled={saving}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+            className="min-h-11 px-5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-1.5"
           >
-            <Check className="w-4 h-4" />
+            <Check className="w-4 h-4" aria-hidden="true" />
             <span>{saving ? 'جارٍ الحفظ...' : userToEdit ? 'حفظ التعديلات' : 'تسجيل المستخدم'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-lg transition-colors"
+          >
+            إلغاء
           </button>
         </div>
       </form>

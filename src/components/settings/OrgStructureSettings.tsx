@@ -112,11 +112,11 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
           <table className="w-full text-sm text-right">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
-                <th scope="col" className="py-2.5 px-3 min-w-44">القسم</th>
-                <th scope="col" className="py-2.5 px-3 min-w-36">رئيس القسم</th>
+                <th scope="col" className="py-2.5 px-3 min-w-36">القسم</th>
                 {stations.map((s) => <th key={s.id} scope="col" className="py-2.5 px-3 text-center whitespace-nowrap">{s.name}</th>)}
                 <th scope="col" className="py-2.5 px-3 text-center whitespace-nowrap">بلا محطة</th>
                 <th scope="col" className="py-2.5 px-3 text-center">المجموع</th>
+                <th scope="col" className="py-2.5 px-3 min-w-36">رئيس القسم</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -132,7 +132,6 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
                         {dept.name}
                       </span>
                     </th>
-                    <td className="py-2 px-3 text-slate-700">{dept.headUserId ? nameOf(dept.headUserId) || 'حساب غير نشط' : <span className="text-slate-500">—</span>}</td>
                     {perStation.map((n, i) => (
                       <td key={stations[i].id} className="py-2 px-3 text-center tabular-nums">
                         {n === null ? <span className="text-slate-500" title="القسم غير موجود في هذه المحطة">—<span className="sr-only">غير موجود</span></span> : <span className={n ? 'font-bold text-slate-900' : 'text-slate-500'}>{n}</span>}
@@ -140,6 +139,7 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
                     ))}
                     <td className="py-2 px-3 text-center tabular-nums"><span className={centralCount ? 'font-bold text-slate-900' : 'text-slate-500'}>{centralCount}</span></td>
                     <td className="py-2 px-3 text-center tabular-nums font-bold text-slate-900">{total}</td>
+                    <td className="py-2 px-3 text-slate-700">{dept.headUserId ? nameOf(dept.headUserId) || 'حساب غير نشط' : <span className="text-slate-500">—</span>}</td>
                   </tr>
                 );
               })}
