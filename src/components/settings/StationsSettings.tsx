@@ -346,7 +346,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         )}
       </fieldset>
 
-      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-50/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
+      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-100/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
           <Save className="w-4 h-4" aria-hidden="true" />
           {saving ? 'جارٍ الحفظ…' : 'حفظ'}

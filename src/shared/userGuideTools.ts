@@ -87,8 +87,9 @@ type Row = { chapter: GuideChapter; entry: GuideEntry };
 const index = createSearchIndex<Row>({
   id: (r) => r.entry.id,
   version: () => 1,
-  title: (r) => [r.entry.title, r.entry.keywords || ''],
-  body: (r) => [r.chapter.title, ...entryText(r.entry)],
+  // Keywords count as body text so an exact title still earns its bonus.
+  title: (r) => [r.entry.title],
+  body: (r) => [r.entry.keywords || '', r.chapter.title, ...entryText(r.entry)],
 });
 
 export interface GuideHit extends Row {

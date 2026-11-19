@@ -309,9 +309,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-300' : 'text-slate-400'}`} aria-hidden="true" />
         {!isCollapsed && (
           <>
-            <span className="flex-1 text-right truncate">{item.label}</span>
+            {/* The count sits right after its label, so the two read as one. */}
+            <span className="min-w-0 text-right truncate">{item.label}</span>
             {item.badge && (
-              <span className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 tabular-nums ${item.badgeColor || 'bg-slate-800 text-slate-300'}`}>{item.badge}</span>
+              <span className={`-ms-1 text-2xs px-1.5 min-w-5 text-center leading-5 rounded-full font-bold shrink-0 tabular-nums ${item.badgeColor || 'bg-slate-800 text-slate-300'}`}>{item.badge}</span>
             )}
           </>
         )}

@@ -102,7 +102,7 @@ export function DepartmentsSettings() {
             const isNew = !(JSON.parse(baseline) as Department[]).some((x) => x.id === d.id);
             return (
               <li key={d.id} className={`border rounded-xl p-4 space-y-2 ${d.archived ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-end">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_9.5rem] items-end">
                   <div>
                     <label htmlFor={`dept-name-${d.id}`} className="block text-xs font-bold text-slate-700 mb-1">
                       اسم القسم {d.archived && <span className="text-amber-800">(مؤرشف)</span>}
@@ -123,7 +123,7 @@ export function DepartmentsSettings() {
                       {people.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
                     </select>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 sm:justify-end">
                     <button
                       type="button"
                       onClick={() => patch(d.id, { archived: d.archived ? undefined : true })}
@@ -165,7 +165,7 @@ export function DepartmentsSettings() {
           </button>
         )}
       </fieldset>
-      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-50/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
+      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-100/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
           <Save className="w-4 h-4" aria-hidden="true" />
           {saving ? 'جارٍ الحفظ…' : 'حفظ الأقسام'}
