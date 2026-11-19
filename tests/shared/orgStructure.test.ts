@@ -29,16 +29,16 @@ describe('station scope', () => {
     expect(ids(stationScope(stations, { stationId: 'gone' }))).toEqual([]);
   });
 
-  it('unions the scopes of a general manager’s stations and groups', () => {
+  it('scopes a general manager to the stations and groups given to them, plus the main station', () => {
     const groups = [{ id: 'south', name: 'الجنوب', stationIds: ['b', 'd'] }];
     expect(ids(stationScope(stations, { managedStationIds: ['a'] }, groups))).toEqual(['a', 'hq']);
-    expect(ids(stationScope(stations, { managedGroupIds: ['south'] }, groups))).toEqual(['b', 'c', 'd', 'hq']);
-    expect(ids(stationScope(stations, { stationId: 'a', managedGroupIds: ['south'] }, groups))).toEqual(['a', 'b', 'c', 'd', 'hq']);
+    expect(ids(stationScope(stations, { managedGroupIds: ['south'] }, groups))).toEqual(['b', 'd', 'hq']);
+    expect(ids(stationScope(stations, { stationId: 'a', managedGroupIds: ['south'] }, groups))).toEqual(['a', 'b', 'd', 'hq']);
     // Nothing given: their own station, as for anyone else.
     expect(ids(stationScope(stations, { stationId: 'a', managedStationIds: [] }, groups))).toEqual(['a', 'hq']);
     // Groups remembered from the settings are used when none are passed.
     rememberStationSettings({ stationGroups: groups });
-    expect(ids(stationScope(stations, { managedGroupIds: ['south'] }))).toEqual(['b', 'c', 'd', 'hq']);
+    expect(ids(stationScope(stations, { managedGroupIds: ['south'] }))).toEqual(['b', 'd', 'hq']);
   });
 
   it('validates groups and what a general manager follows', () => {
