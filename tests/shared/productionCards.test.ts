@@ -8,6 +8,7 @@ import {
   cardProgress,
   cardState,
   currentStep,
+  mergeCardChanges,
   isCardLate,
   stepPoints,
   stepTypesError,
@@ -194,5 +195,60 @@ describe('who may change a production card', () => {
     // An assignment made earlier by someone else is not re-checked when the card is edited.
     const existing = withStep(base, 's1', { assigneeId: 'montage' });
     expect(cardChangeError(existing, { ...existing, title: 'عنوان معدّل' }, gazaChief, restricted)).toBeNull();
+  });
+});
+
+describe('cards that outlive changes around them', () => {
+  it('stay editable after an assignee leaves or a station is removed', () => {
+    const before = card();
+    const later: CardContext = { ...ctx, stations: stations.filter((s) => s.id !== 'istanbul'), users: new Map([...ctx.users].filter(([id]) => id !== 'reporter')) };
+    // The editor still finishes their own step, and a supervisor still edits the card.
+    expect(cardChangeError(before, withStep(before, 's2', { status: 'DONE' }), editor, later)).toBeNull();
+    expect(cardChangeError(before, { ...before, title: 'عنوان معدّل' }, chief, later)).toBeNull();
+    // New assignments must still name people and stations that exist.
+    expect(cardChangeError(before, withStep(before, 's2', { assigneeId: 'reporter' }), chief, later)).toContain('المكلف');
+    expect(cardChangeError(before, withStep(before, 's2', { assigneeId: undefined, stationId: 'istanbul' }), chief, later)).toContain('محطة');
+    expect(cardChangeError(before, { ...before, ownerId: 'reporter' }, chief, later)).toContain('صاحب القرار');
+  });
+});
+
+describe('merging a write based on an older version', () => {
+  const base = card({ script: 'نص أول', log: [{ id: 'l1', kind: 'NOTE', text: 'بداية' }] });
+
+  it('keeps offline work on one step when a colleague changed another part of the card', () => {
+    const mine = { ...withStep(base, 's1', { status: 'DONE', note: 'رُفعت الشهادة', spentMinutes: 90 }), log: [...base.log!, { id: 'l-mine', kind: 'NOTE' as const, text: 'المادة على القرص' }] };
+    const current = { ...withStep(base, 's2', { status: 'IN_PROGRESS', startedAt: '2026-11-19T09:00:00Z' }), airAt: '2026-11-20T18:00:00Z', log: [...base.log!, { id: 'l-theirs', kind: 'STEP' as const, text: '«التحقق»: قيد التنفيذ' }] };
+    const merged = mergeCardChanges(base, mine, current)!;
+    expect(merged.steps[0]).toMatchObject({ status: 'DONE', note: 'رُفعت الشهادة', spentMinutes: 90 });
+    expect(merged.steps[1]).toMatchObject({ status: 'IN_PROGRESS', startedAt: '2026-11-19T09:00:00Z' });
+    expect(merged.airAt).toBe('2026-11-20T18:00:00Z');
+    expect(merged.log!.map((e) => e.id)).toEqual(['l1', 'l-theirs', 'l-mine']);
+    // The merged card is an ordinary change by the reporter to the stored card.
+    expect(cardChangeError(current, merged, reporter, ctx)).toBeNull();
+  });
+
+  it('merges different fields of the same step, and keeps what the server stamped meanwhile', () => {
+    const mine = withStep(base, 's1', { status: 'IN_PROGRESS' });
+    const current = withStep(base, 's1', { dueAt: '2026-11-19T15:00:00Z', assigneeName: 'ليلى النجار' });
+    expect(mergeCardChanges(base, mine, current)!.steps[0]).toMatchObject({ status: 'IN_PROGRESS', dueAt: '2026-11-19T15:00:00Z', assigneeName: 'ليلى النجار' });
+  });
+
+  it('refuses when both sides changed the same thing', () => {
+    expect(mergeCardChanges(base, withStep(base, 's1', { status: 'DONE' }), withStep(base, 's1', { status: 'BLOCKED', blockedReason: 'عطل' }))).toBeNull();
+    expect(mergeCardChanges(base, { ...base, script: 'نصي' }, { ...base, script: 'نص زميلي' })).toBeNull();
+    // The same change made on both sides is not a conflict.
+    expect(mergeCardChanges(base, { ...base, script: 'نص متفق عليه' }, { ...base, script: 'نص متفق عليه' })!.script).toBe('نص متفق عليه');
+  });
+
+  it('refuses when the card was closed, deleted or its steps rearranged', () => {
+    const mine = withStep(base, 's1', { status: 'DONE' });
+    expect(mergeCardChanges(base, mine, { ...base, status: 'CLOSED' })).toBeNull();
+    expect(mergeCardChanges(base, mine, { ...base, deletedAt: '2026-11-19T10:00:00Z' })).toBeNull();
+    expect(mergeCardChanges(base, { ...mine, steps: mine.steps.slice(0, 2) }, base)).toBeNull();
+    expect(mergeCardChanges(base, mine, { ...base, steps: base.steps.slice(1) })).toBeNull();
+    // A step added by a supervisor meanwhile stays, and so does a removed one the sender never touched.
+    const added = { ...base, steps: [...base.steps, step('s9', 'publish')] };
+    expect(mergeCardChanges(base, mine, added)!.steps.map((s) => s.id)).toEqual(['s1', 's2', 's3', 's9']);
+    expect(mergeCardChanges(base, mine, { ...base, steps: base.steps.slice(0, 2) })!.steps.map((s) => s.id)).toEqual(['s1', 's2']);
   });
 });

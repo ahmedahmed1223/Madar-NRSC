@@ -4,7 +4,9 @@ import {
   RoleDefinition,
   computeEffectivePermissions,
   evaluatePermission,
+  findUserRole,
 } from '../shared/rbac';
+import { canOpenScreen } from '../shared/screens';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 
@@ -69,6 +71,13 @@ export class RbacService {
    */
   static hasPermission(user: User | undefined | null, permissionCode: string): boolean {
     return evaluatePermission(user, permissionCode, this.getRoleDefinitions());
+  }
+
+  /** Whether the user's role opens a screen (the sidebar, the search and the address bar all ask here). */
+  static canOpenScreen(user: User | undefined | null, nav: string): boolean {
+    if (!user) return false;
+    const roles = this.getRoleDefinitions();
+    return canOpenScreen(nav, findUserRole(user, roles), (permission) => evaluatePermission(user, permission, roles), user.role === 'SUPER_ADMIN');
   }
 
   /**

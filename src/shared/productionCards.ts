@@ -38,6 +38,8 @@ export const DEFAULT_STEP_TYPES: StepType[] = [
   { id: 'montage', name: 'المونتاج', weight: 3 },
   { id: 'graphics', name: 'الجرافيك', weight: 2 },
   { id: 'translate', name: 'الترجمة', weight: 2 },
+  { id: 'monitor', name: 'الرصد والمتابعة', weight: 2 },
+  { id: 'quality', name: 'مراجعة الجودة', weight: 2 },
   { id: 'approve', name: 'الاعتماد', weight: 1 },
   { id: 'publish', name: 'النشر والإدراج في البث', weight: 1 },
 ];
@@ -302,7 +304,7 @@ const optMinutes = (v: unknown) => v === undefined || v === null || (Number.isIn
 export const MAX_CARD_STEPS = 30;
 
 /** Shape of a card, whoever writes it. */
-export function cardError(card: ProductionCard, ctx: CardContext): string | null {
+export function cardError(card: ProductionCard): string | null {
   if (!card || typeof card !== 'object') return 'بطاقة غير صالحة';
   if (typeof card.title !== 'string' || !card.title.trim() || card.title.length > 200) return 'عنوان البطاقة مطلوب وبحد أقصى 200 حرف';
   if (!CARD_KINDS.some((k) => k.id === card.kind)) return 'نوع المادة غير معروف';
@@ -311,7 +313,6 @@ export function cardError(card: ProductionCard, ctx: CardContext): string | null
   if (!optText(card.brief, 5000)) return 'وصف المطلوب بحد أقصى 5000 حرف';
   if (!optText(card.script, 60000)) return 'النص بحد أقصى 60000 حرف';
   for (const key of ['dueAt', 'airAt'] as const) if (card[key] && !isIso(card[key])) return 'موعد التسليم أو البث غير صالح';
-  if (card.ownerId && !ctx.users.has(card.ownerId)) return 'صاحب القرار غير موجود أو موقوف';
   if (card.target !== undefined && card.target !== null) {
     const t = card.target;
     if (!t || !['news', 'episode', 'bulletin'].includes(t.kind) || typeof t.id !== 'string' || !ID.test(t.id) || typeof t.title !== 'string' || t.title.length > 300) return 'ربط البطاقة بمادة غير صالح';
@@ -334,8 +335,6 @@ export function cardError(card: ProductionCard, ctx: CardContext): string | null
     if (!optText(step.title, 200) || !optText(step.note, 3000) || !optText(step.blockedReason, 1000)) return 'نص المهمة أطول من المسموح';
     if (!optMinutes(step.estimateMinutes) || !optMinutes(step.spentMinutes)) return 'الوقت بالدقائق رقم صحيح موجب';
     if (step.dueAt && !isIso(step.dueAt)) return 'موعد تسليم المهمة غير صالح';
-    if (step.assigneeId && !ctx.users.has(step.assigneeId)) return 'المكلف غير موجود أو موقوف';
-    if (step.stationId && !ctx.stations.some((s) => s.id === step.stationId)) return 'محطة المهمة غير موجودة';
     if (step.status === 'BLOCKED' && !(step.blockedReason || '').trim()) return 'اكتب سبب التعطل';
   }
   if (card.log !== undefined) {
@@ -355,8 +354,17 @@ export const canClaimStep = (step: CardStep, actor: CardActor) => !step.assignee
 
 /** Returns an Arabic error when the actor may not make this change, otherwise null. */
 export function cardChangeError(before: ProductionCard | null, after: ProductionCard, actor: CardActor, ctx: CardContext): string | null {
-  const shape = cardError(after, ctx);
+  const shape = cardError(after);
   if (shape) return shape;
+
+  // People and stations are checked only where this write names them: a colleague who has since
+  // left, or a station removed later, must not freeze the cards they were on.
+  if (after.ownerId && after.ownerId !== before?.ownerId && !ctx.users.has(after.ownerId)) return 'صاحب القرار غير موجود أو موقوف';
+  for (const step of after.steps) {
+    const prev = before?.steps.find((s) => s.id === step.id);
+    if (step.assigneeId && step.assigneeId !== prev?.assigneeId && !ctx.users.has(step.assigneeId)) return 'المكلف غير موجود أو موقوف';
+    if (step.stationId && step.stationId !== prev?.stationId && !ctx.stations.some((s) => s.id === step.stationId)) return 'محطة المهمة غير موجودة';
+  }
 
   // Earlier log entries are a record: nobody rewrites them.
   const oldLog = before?.log || [];
@@ -403,12 +411,74 @@ export function cardChangeError(before: ProductionCard | null, after: Production
 }
 
 // ---------------------------------------------------------------------------
+// Writes based on an older version (made offline, or while a colleague saved)
+// ---------------------------------------------------------------------------
+
+const MERGED_CARD_FIELDS = ['title', 'kind', 'brief', 'priority', 'ownerId', 'dueAt', 'airAt', 'target', 'script', 'scriptApproved', 'links', 'mediaIds'] as const;
+
+/** Takes the sender's change to one value unless the stored value changed differently meanwhile. */
+function mergeValue<T>(base: T, mine: T, current: T): { ok: boolean; value: T } {
+  if (same(base, mine)) return { ok: true, value: current };
+  if (same(base, current) || same(current, mine)) return { ok: true, value: mine };
+  return { ok: false, value: current };
+}
+
+/**
+ * Three-way merge of a card: `base` is the version the browser started from, `mine` what it
+ * sent, `current` what is stored now. A reporter who finishes a step without a connection keeps
+ * that work even though an editor changed another part of the card meanwhile.
+ *
+ * Returns the stored card with the sender's changes applied, or null when both sides changed the
+ * same thing (or the card's steps were rearranged, or it was closed): the sender then gets the
+ * latest version and decides. The result still goes through cardChangeError like any other write.
+ */
+export function mergeCardChanges(base: ProductionCard, mine: ProductionCard, current: ProductionCard): ProductionCard | null {
+  if (base.status !== current.status || base.status !== mine.status || current.deletedAt || mine.deletedAt) return null;
+  const order = (card: ProductionCard) => (card.steps || []).map((s) => s.id).join('|');
+  if (order(base) !== order(mine)) return null;
+
+  const merged: any = { ...current };
+  for (const key of MERGED_CARD_FIELDS) {
+    const result = mergeValue(base[key], mine[key], current[key]);
+    if (!result.ok) return null;
+    merged[key] = result.value;
+  }
+
+  const baseSteps = new Map(base.steps.map((s) => [s.id, s]));
+  const mineSteps = new Map(mine.steps.map((s) => [s.id, s]));
+  const currentIds = new Set(current.steps.map((s) => s.id));
+  // A step the sender worked on was removed meanwhile.
+  if (mine.steps.some((s) => !currentIds.has(s.id) && !same(baseSteps.get(s.id), s))) return null;
+  const steps: CardStep[] = [];
+  for (const step of current.steps) {
+    const from = baseSteps.get(step.id) as any;
+    const sent = mineSteps.get(step.id) as any;
+    if (!from || !sent || same(from, sent)) {
+      steps.push(step);
+      continue;
+    }
+    const next: any = { ...step };
+    for (const key of new Set([...Object.keys(from), ...Object.keys(sent), ...Object.keys(step)])) {
+      const result = mergeValue(from[key], sent[key], (step as any)[key]);
+      if (!result.ok) return null;
+      next[key] = result.value;
+    }
+    steps.push(next);
+  }
+  merged.steps = steps;
+
+  const known = new Set((current.log || []).map((e) => e.id));
+  merged.log = [...(current.log || []), ...(mine.log || []).filter((e) => e && !known.has(e.id))];
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
 // Convenience for building cards
 // ---------------------------------------------------------------------------
 
 /** Typical chains offered when a card is created; steps are then edited freely. */
 export const CARD_STEP_PRESETS: { id: string; name: string; types: string[] }[] = [
-  { id: 'field', name: 'تقرير ميداني', types: ['gather', 'verify', 'edit', 'montage', 'approve', 'publish'] },
+  { id: 'field', name: 'تقرير ميداني', types: ['gather', 'verify', 'edit', 'montage', 'quality', 'approve', 'publish'] },
   { id: 'desk', name: 'خبر أو موجز', types: ['edit', 'approve', 'publish'] },
-  { id: 'show', name: 'نشرة أو حلقة', types: ['prep', 'edit', 'montage', 'graphics', 'approve', 'publish'] },
+  { id: 'show', name: 'نشرة أو حلقة', types: ['prep', 'edit', 'montage', 'graphics', 'quality', 'approve', 'publish'] },
 ];

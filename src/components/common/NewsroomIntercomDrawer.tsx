@@ -18,6 +18,10 @@ import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
 import type { ChatMessage } from '../../shared/collections';
+import { parseChannel } from '../../shared/chat';
+
+/** The quick drawer carries the open channels; private conversations live on the «المراسلات» screen. */
+const openChannelMessages = () => apiService.getMessages().filter((m) => ['general', 'department', 'legacy'].includes(parseChannel(m.channel)?.kind || ''));
 
 type Channel = string;
 
@@ -54,7 +58,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     ...DEPARTMENTS.filter((d) => d.id === myDept),
     ...DEPARTMENTS.filter((d) => d.id !== myDept),
   ];
-  const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => apiService.getMessages());
+  const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => openChannelMessages());
   const [inputText, setInputText] = useState('');
   const [isUrgentCue, setIsUrgentCue] = useState(false);
   const [lastSeen, setLastSeen] = useState(() => (currentUser ? readLastSeen(currentUser.id) : ''));
@@ -64,7 +68,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   useEffect(
     () =>
       dataStore.subscribe((evt) => {
-        if (evt.type === 'data-changed' && evt.collections.includes('messages')) setMessages(apiService.getMessages());
+        if (evt.type === 'data-changed' && evt.collections.includes('messages')) setMessages(openChannelMessages());
       }),
     []
   );
@@ -115,7 +119,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     if (!inputText.trim()) return;
     try {
       apiService.sendMessage(activeChannel, inputText.trim(), isUrgentCue);
-      setMessages(apiService.getMessages());
+      setMessages(openChannelMessages());
       setInputText('');
       setIsUrgentCue(false);
       setSendError(null);

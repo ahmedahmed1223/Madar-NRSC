@@ -120,6 +120,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   migrateRoleDefaults(db);
   migrateToDepartments(db);
   ensureSystemRoles(db);
+  applyDefaultScreens(db);
   grantNewPermissions(db);
   if (demoAllowed) {
     await ensureDemoUsers(db, config);
@@ -197,7 +198,23 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'cards.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'workload.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'workload.view_all': ['SUPER_ADMIN', 'ADMIN'],
+  'messages.groups': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
 };
+
+/**
+ * Roles stored before version 4 have no screen list. System roles get the default list of their
+ * role once; an administrator then adjusts it in the role editor. Custom roles are left as they are.
+ */
+function applyDefaultScreens(db: NewsroomDatabase) {
+  if (db.getMeta('role_screens_defaults') === '1') return;
+  db.transaction(() => {
+    for (const row of db.listCollection('roles')) {
+      const defaults = DEFAULT_ROLE_DEFINITIONS.find((r) => r.roleCode === row.d?.roleCode)?.screens;
+      if (row.d?.isSystemRole && defaults && !Array.isArray(row.d.screens)) db.writeRow('roles', row.id, { ...row.d, screens: defaults }, row.p, null);
+    }
+    db.setMeta('role_screens_defaults', '1');
+  });
+}
 
 /** System roles introduced after a database was created are added once. */
 function ensureSystemRoles(db: NewsroomDatabase) {

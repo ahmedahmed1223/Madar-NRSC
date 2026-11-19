@@ -208,7 +208,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-slate-900">مقارنة المحطات</h2>
             <p className="text-[11px] text-slate-500">نقاط الحمل = وزن نوع المهمة × درجة تعقيدها (تُضبط الأوزان من الإعدادات). «الحمل للفرد» يقسم النقاط المفتوحة على عدد أفراد المحطة، وبه يُقارن بين المحطات قبل طلب موظفين إضافيين.</p>
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div role="region" tabIndex={0} aria-label={`جدول مقارنة المحطات (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
@@ -242,7 +242,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
               <h2 className="text-sm font-bold text-slate-900">الأفراد</h2>
               <span className="no-print">{stationFilter('كل المحطات')}</span>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div role="region" tabIndex={0} aria-label={`جدول أعباء الأفراد (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
@@ -301,7 +301,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-slate-900">إسهام كل محطة</h2>
             <p className="text-[11px] text-slate-500">المادة المشتركة تُحتسب مرة واحدة في الإجمالي أعلاه، وتظهر هنا عند كل محطة أنجزت فيها مهمة، بنقاط ما أنجزته.</p>
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div role="region" tabIndex={0} aria-label={`جدول إسهام كل محطة (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
@@ -409,7 +409,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
 
           <section className="space-y-2">
             <h3 className="text-sm font-bold text-slate-900">ما أنجزه ({file.done.length})</h3>
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div role="region" tabIndex={0} aria-label={`جدول ما أنجزه (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
@@ -430,7 +430,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
 
           <section className="space-y-2">
             <h3 className="text-sm font-bold text-slate-900">على مكتبه الآن ({file.open.length})</h3>
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div role="region" tabIndex={0} aria-label={`جدول ما على مكتبه الآن (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">

@@ -173,6 +173,57 @@ describe('production cards on the server', () => {
   });
 });
 
+describe('work done without a connection', () => {
+  const card = () => ({
+    ...newCard(),
+    steps: [
+      { id: 's1', type: 'gather', status: 'TODO', complexity: 1, assigneeId: 'usr-6' },
+      { id: 's2', type: 'verify', status: 'TODO', complexity: 1, assigneeId: 'usr-3' },
+    ],
+  });
+
+  it('is merged when a colleague changed another part of the card meanwhile', async () => {
+    expect((await sync(admin, [upsert('crd-offline', card())])).body.results[0].ok).toBe(true);
+    const offline = cardRow('crd-offline');
+    // While the reporter has no connection, the journalist starts verifying and documents it.
+    const theirs = { ...offline.d, steps: offline.d.steps.map((s: any) => (s.id === 's2' ? { ...s, status: 'IN_PROGRESS' } : s)), log: [...offline.d.log, { id: 'log-j', kind: 'NOTE', text: 'بدأت التحقق من الأسماء' }] };
+    expect((await sync(journalist, [upsert('crd-offline', theirs, offline.v)])).body.results[0].ok).toBe(true);
+    expect(cardRow('crd-offline').v).toBeGreaterThan(offline.v);
+
+    // The reporter's write is based on the version from before that.
+    const mine = { ...offline.d, steps: offline.d.steps.map((s: any) => (s.id === 's1' ? { ...s, status: 'DONE', note: 'أُرسلت المادة', spentMinutes: 40 } : s)), log: [...offline.d.log, { id: 'log-r', kind: 'NOTE', text: 'الصور في المجلد المشترك' }] };
+    const merged = await sync(reporter, [upsert('crd-offline', mine, offline.v)]);
+    expect(merged.body.results[0].ok).toBe(true);
+    const row = cardRow('crd-offline').d;
+    expect(row.steps[0]).toMatchObject({ status: 'DONE', note: 'أُرسلت المادة', spentMinutes: 40, doneById: 'usr-6' });
+    expect(row.steps[1]).toMatchObject({ status: 'IN_PROGRESS', assigneeId: 'usr-3' });
+    const notes = row.log.filter((e: any) => e.kind === 'NOTE');
+    expect(notes.map((e: any) => [e.id, e.byId])).toEqual([['log-j', 'usr-3'], ['log-r', 'usr-6']]);
+    // The browser receives the merged card.
+    expect(merged.body.results[0].row.d.steps[1].status).toBe('IN_PROGRESS');
+  });
+
+  it('is refused when both sides changed the same step, or the sender may not make the change', async () => {
+    const start = cardRow('crd-offline');
+    const blocked = { ...start.d, steps: start.d.steps.map((s: any) => (s.id === 's2' ? { ...s, status: 'BLOCKED', blockedReason: 'المصدر لا يرد' } : s)) };
+    expect((await sync(journalist, [upsert('crd-offline', blocked, start.v)])).body.results[0].ok).toBe(true);
+    // The same step, changed from the older version by a supervisor: the latest copy comes back.
+    const stale = { ...start.d, steps: start.d.steps.map((s: any) => (s.id === 's2' ? { ...s, status: 'DONE' } : s)) };
+    const conflict = await sync(editor, [upsert('crd-offline', stale, start.v)]);
+    expect(conflict.body.results[0]).toMatchObject({ ok: false, code: 'CONFLICT' });
+    expect(conflict.body.results[0].current.d.steps[1].status).toBe('BLOCKED');
+    // A stale write cannot be used to change someone else's step.
+    const sneaky = { ...start.d, steps: start.d.steps.map((s: any) => (s.id === 's2' ? { ...s, note: 'ملاحظة مدسوسة' } : s)) };
+    expect((await sync(reporter, [upsert('crd-offline', sneaky, start.v)])).body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    expect(cardRow('crd-offline').d.steps[1].note).toBeUndefined();
+  });
+
+  it('falls back to a conflict when the older version is no longer kept', async () => {
+    const row = cardRow('crd-offline');
+    expect((await sync(reporter, [upsert('crd-offline', row.d, 9999)])).body.results[0]).toMatchObject({ ok: false, code: 'CONFLICT' });
+  });
+});
+
 describe('brief drafts', () => {
   it('are offered to people who work on cards, and only to them', async () => {
     const body = { mode: 'BRIEF', title: 'موجز', content: 'معلومات' };

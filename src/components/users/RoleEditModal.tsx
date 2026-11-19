@@ -6,6 +6,8 @@ import {
   PERMISSION_CATEGORIES,
   PermissionCategory,
 } from '../../services/rbacService';
+import { ASSIGNABLE_SCREENS, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
+import { screenPermission } from '../../shared/commandPalette';
 import { Shield, Sparkles, Check, CheckSquare, Square, Palette, AlertTriangle } from 'lucide-react';
 
 interface RoleEditModalProps {
@@ -39,6 +41,8 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
   const [description, setDescription] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_ROLE_COLORS[2]);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  /** null = every screen the permissions allow. */
+  const [screens, setScreens] = useState<string[] | null>(null);
   const [activeCategory, setActiveCategory] = useState<PermissionCategory | 'ALL'>('ALL');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -51,12 +55,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       const foundColor = PRESET_ROLE_COLORS.find((c) => c.hex === roleToEdit.color) || PRESET_ROLE_COLORS[2];
       setSelectedColor(foundColor);
       setSelectedPermissions([...roleToEdit.permissions]);
+      setScreens(Array.isArray(roleToEdit.screens) ? [...roleToEdit.screens] : null);
     } else {
       setNameAr('');
       setNameEn('');
       setRoleCode(`CUSTOM_ROLE_${Date.now().toString().slice(-4)}`);
       setDescription('');
       setSelectedColor(PRESET_ROLE_COLORS[3]);
+      setScreens(null);
       setSelectedPermissions([
         'news.view',
         'news.create',
@@ -109,6 +115,8 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       badgeText: nameAr.trim(),
       isSystemRole: roleToEdit?.isSystemRole ?? false,
       permissions: selectedPermissions,
+      // Kept in sidebar order; a role without a list opens every screen its permissions allow.
+      ...(screens ? { screens: ASSIGNABLE_SCREENS.filter((nav) => screens.includes(nav)) } : {}),
     });
     onClose();
   };
@@ -337,6 +345,42 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
             })}
           </div>
         </div>
+
+        {/* Screens the role opens */}
+        <fieldset className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <legend className="text-sm font-bold text-slate-900 px-1">الصفحات التي يفتحها هذا الدور</legend>
+          <p className="text-xs text-slate-600">الصلاحيات تحدد ما يستطيع فعله بالبيانات؛ وهنا تحدد الصفحات التي تظهر له. الرئيسية والمساعدة وإعدادات التنبيهات تبقى متاحة للجميع.</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-1">
+            <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-slate-800">
+              <input type="radio" name="role-screens-mode" checked={screens === null} onChange={() => setScreens(null)} />
+              كل الصفحات التي تسمح بها صلاحياته
+            </label>
+            <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-slate-800">
+              <input type="radio" name="role-screens-mode" checked={screens !== null} onChange={() => setScreens(screens ?? ASSIGNABLE_SCREENS.filter((nav) => !screenPermission(nav) || selectedPermissions.includes(screenPermission(nav)!)))} />
+              صفحات محددة فقط
+            </label>
+          </div>
+          {screens !== null && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {SCREEN_GROUPS.map((group) => (
+                <div key={group.label} role="group" aria-label={group.label} className="bg-white border border-slate-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-slate-700 mb-1">{group.label}</p>
+                  {group.navs.map((nav) => {
+                    const needs = screenPermission(nav);
+                    const lacks = !!needs && !selectedPermissions.includes(needs);
+                    return (
+                      <label key={nav} className={`flex items-center gap-2 min-h-9 text-xs ${lacks ? 'text-slate-400' : 'text-slate-800'}`}>
+                        <input type="checkbox" checked={screens.includes(nav)} onChange={() => setScreens(screens.includes(nav) ? screens.filter((x) => x !== nav) : [...screens, nav])} />
+                        {screenLabel(nav)}
+                        {lacks && <span className="text-[11px]">(تحتاج صلاحيتها)</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </fieldset>
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">

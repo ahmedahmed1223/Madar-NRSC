@@ -3,7 +3,7 @@ import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSe
 import { departmentIdOf } from '../../shared/departments';
 import { isApprover } from '../../shared/bulletins';
 import { localDateString } from '../../shared/dates';
-import { screenPermission } from '../../shared/commandPalette';
+import { unreadByChannel } from '../../shared/chat';
 import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
@@ -16,6 +16,7 @@ import {
   BookOpen,
   ArrowLeftRight,
   ClipboardList,
+  MessagesSquare,
   Scale,
   CalendarClock,
   Rss,
@@ -152,8 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Hide administration screens the signed-in user cannot use (the server enforces this too).
   const canSeeNav = (id: string) => {
-    const permission = screenPermission(id);
-    return !currentUser || !permission || RbacService.hasPermission(currentUser, permission);
+    return !currentUser || RbacService.canOpenScreen(currentUser, id);
   };
 
   // Open requests waiting on my department.
@@ -181,6 +181,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     : 0;
   // Upcoming diary events assigned to me (today onwards).
   const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
+  // Unread direct and group messages, and unread messages in the open channels I have visited.
+  const messagesBadge = currentUser ? [...unreadByChannel(apiService.getMessages(), apiService.getChatReads(), currentUser.id).values()].reduce((sum, n) => sum + n, 0) : 0;
   // Open production-card steps assigned to me.
   const cardsBadge = currentUser ? apiService.getCards().filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
@@ -217,6 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الفريق',
       items: [
+        { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white' },
         { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
         { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },

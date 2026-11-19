@@ -66,6 +66,7 @@ export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'on-air', label: 'وضع الهواء', keywords: 'بث مباشر' },
   { nav: 'studio-screen', label: 'شاشة الاستديو' },
   { nav: 'media', label: 'مكتبة الوسائط', keywords: 'صور فيديو' },
+  { nav: 'messages', label: 'المراسلات', keywords: 'رسائل محادثة مجموعات دردشة قنوات' },
   { nav: 'cards', label: 'بطاقات الإنتاج', keywords: 'تكليف تسليم محطات متابعة اليوم', permission: 'cards.view' },
   { nav: 'requests', label: 'طلبات الأقسام' },
   { nav: 'tasks', label: 'المهام' },

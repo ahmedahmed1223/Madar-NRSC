@@ -304,7 +304,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               يُبث اليوم
             </h2>
             {board.airing.length === 0 ? empty('لا بطاقات بموعد بث اليوم.') : (
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+              <div role="region" tabIndex={0} aria-label="جدول ما يُبث اليوم (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-right text-slate-600 border-b border-slate-200">

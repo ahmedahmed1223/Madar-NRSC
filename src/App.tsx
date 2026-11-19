@@ -62,6 +62,7 @@ const StoriesView = lazyWithRetry(() => import('./views/StoriesView').then((m) =
 const DiaryView = lazyWithRetry(() => import('./views/DiaryView').then((m) => ({ default: m.DiaryView })));
 const BookingsView = lazyWithRetry(() => import('./views/BookingsView').then((m) => ({ default: m.BookingsView })));
 const ProductionCardsView = lazyWithRetry(() => import('./views/ProductionCardsView').then((m) => ({ default: m.ProductionCardsView })));
+const MessagesView = lazyWithRetry(() => import('./views/MessagesView').then((m) => ({ default: m.MessagesView })));
 const WorkloadView = lazyWithRetry(() => import('./views/WorkloadView').then((m) => ({ default: m.WorkloadView })));
 const NotificationSettingsView = lazyWithRetry(() => import('./views/NotificationSettingsView').then((m) => ({ default: m.NotificationSettingsView })));
 
@@ -748,6 +749,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   useEffect(() => {
     document.title = screenTitle(activeNav, routeItemTitle);
   }, [activeNav, routeItemTitle]);
+  // A role opens only its own screens, whether reached from the sidebar, a link or the address bar.
+  const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav);
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
@@ -832,6 +835,16 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-500">جارٍ التحميل...</div>}
             >
+            {!screenAllowed && (
+              <div className="max-w-xl mx-auto text-center space-y-3 py-20">
+                <h1 className="text-lg font-bold text-slate-900">هذه الصفحة ليست ضمن صفحات دورك</h1>
+                <p className="text-sm text-slate-600">تُحدَّد صفحات كل دور من «المستخدمون والصلاحيات». إن احتجت إليها في عملك فاطلبها من مدير النظام.</p>
+                <button type="button" onClick={() => setActiveNav('dashboard')} className="min-h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-bold">
+                  العودة إلى الرئيسية
+                </button>
+              </div>
+            )}
+            {screenAllowed && (<>
             {activeNav === 'dashboard' && (
               <DashboardView
                 newsList={newsList}
@@ -1168,6 +1181,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 
+            {activeNav === 'messages' && <MessagesView currentUser={currentUser} users={allUsers} channel={focusId} onChannel={setFocusId} onOpenLink={openLink} />}
+
             {activeNav === 'cards' && (
               <ProductionCardsView currentUser={currentUser} users={allUsers} focusId={focusId} onFocus={setFocusId} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
             )}
@@ -1187,6 +1202,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'requests' && (
               <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusSegmentId={requestSegmentId} onClearFocus={() => setRequestSegmentId(undefined)} />
             )}
+            </>)}
             </Suspense>
             </ViewErrorBoundary>
           </main>

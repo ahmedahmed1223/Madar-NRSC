@@ -126,7 +126,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, tone: 'text-red-600', title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
     }
     const screens: Result[] = onNavigate
-      ? matchScreens(searchTerm, can).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
+      ? matchScreens(searchTerm, can).filter((s) => !currentUser || RbacService.canOpenScreen(currentUser, s.nav)).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
       : [];
 
     if (!searchTerm.trim()) {

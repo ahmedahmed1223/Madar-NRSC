@@ -73,6 +73,7 @@ export interface WireStatusInfo {
 import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
+import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
 import { cardChangeError, cardContextOf, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
@@ -1958,12 +1959,75 @@ export class ApiService {
     return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
-  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false): void {
+  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): void {
+    const me = this.getCurrentUser();
+    const message = { id: newId('msg'), channel, text: text.trim(), isUrgent, ...(extra.attachments?.length ? { attachments: extra.attachments } : {}), ...(extra.ref ? { ref: extra.ref } : {}) };
+    const error = messageError(message);
+    if (error) throw new Error(error);
     const all = getStored<any[]>(COLLECTIONS.messages.storageKey, []);
-    all.unshift({ id: newId('msg'), channel, text: text.slice(0, 2000), isUrgent });
+    // Shown at once; the server stamps the author, the time and who may read it.
+    all.unshift({ ...message, userId: me.id, userName: me.fullName, userAvatar: me.avatarUrl, timestamp: new Date().toISOString() });
     // keep the local window bounded; the server keeps the full history
-    if (all.length > 500) all.length = 500;
+    if (all.length > 3000) all.length = 3000;
     setStored(COLLECTIONS.messages.storageKey, all);
+  }
+
+  /** Older messages of one conversation than this browser holds (oldest first). */
+  static async loadOlderMessages(channel: string, before: string): Promise<ChatMessage[]> {
+    const res = await apiFetch<{ data: ChatMessage[] }>(`/api/v1/chat/history?channel=${encodeURIComponent(channel)}&before=${encodeURIComponent(before)}`);
+    return res.data;
+  }
+
+  // --- GROUP CONVERSATIONS ---
+  static getConversations(): Conversation[] {
+    return getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []).filter((c) => !c.deletedAt);
+  }
+
+  /** Creates a group or changes its name and members, checked with the rules the server enforces. */
+  static saveConversation(data: Pick<Conversation, 'name' | 'memberIds'> & { id?: string }): Conversation {
+    const me = this.getCurrentUser();
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const idx = data.id ? all.findIndex((c) => c.id === data.id) : -1;
+    const before = idx === -1 ? null : all[idx];
+    const after: Conversation = { ...(before || { id: newId('cnv'), ownerId: me.id, ownerName: me.fullName, createdAt: new Date().toISOString() }), name: data.name.trim(), memberIds: data.memberIds };
+    const active = new Set(this.getUsers().filter((u) => u.isActive !== false && !u.deletedAt).map((u) => u.id));
+    const error = conversationChangeError(before, after, me.id, RbacService.hasPermission(me, 'messages.groups'), active);
+    if (error) throw new Error(error);
+    if (idx === -1) setStored(COLLECTIONS.conversations.storageKey, [after, ...all]);
+    else {
+      all[idx] = after;
+      setStored(COLLECTIONS.conversations.storageKey, all);
+    }
+    return after;
+  }
+
+  static leaveConversation(id: string): void {
+    const me = this.getCurrentUser();
+    const group = this.getConversations().find((c) => c.id === id);
+    if (group) this.saveConversation({ id, name: group.name, memberIds: group.memberIds.filter((m) => m !== me.id) });
+  }
+
+  static deleteConversation(id: string): void {
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const group = all.find((c) => c.id === id);
+    if (!group || group.ownerId !== this.getCurrentUser().id) throw new Error('يحذف المجموعة منشئها');
+    setStored(COLLECTIONS.conversations.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
+  /** Where I have read up to in each conversation (shared by my devices). */
+  static getChatReads(): ChatReads | undefined {
+    const me = this.getCurrentUser().id;
+    return getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []).find((r) => r.id === me);
+  }
+
+  static markChannelRead(channel: string, timestamp: string): void {
+    const me = this.getCurrentUser().id;
+    const all = getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []);
+    const mine = all.find((r) => r.id === me) || { id: me, userId: me, seen: {} };
+    if ((mine.seen[channel] || '') >= timestamp) return;
+    const next: ChatReads = { ...mine, seen: { ...mine.seen, [channel]: timestamp } };
+    if (chatReadsError(next, me)) return;
+    setStored(COLLECTIONS.chatReads.storageKey, [next, ...all.filter((r) => r.id !== me)]);
   }
 
   // --- NOTIFICATIONS ---

@@ -14,7 +14,15 @@ export type UserRole =
   | 'REPORTER'
   | 'MEDIA'
   | 'CREW'
-  | 'VIEWER';
+  | 'VIEWER'
+  | 'MAIN_STATION_MANAGER'
+  | 'STATION_MANAGER'
+  | 'DIRECTOR'
+  | 'PREPARER'
+  | 'MONTAGE'
+  | 'QUALITY'
+  | 'MONITOR'
+  | 'REPORTS_EDITOR';
 
 
 export interface User {
