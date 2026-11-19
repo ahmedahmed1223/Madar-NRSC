@@ -245,7 +245,8 @@ export function lastSubmittedAt(item: Partial<NewsItem> | null | undefined): str
   const logs = item?.workflowLogs || [];
   for (let i = logs.length - 1; i >= 0; i--) {
     const log = logs[i];
-    if (log.toStatus === 'UNDER_REVIEW' && !isBookkeeping(log)) return log.timestamp;
+    // The first entry records the creation; a story may be created straight into review.
+    if (log.toStatus === 'UNDER_REVIEW' && !log.action && (i === 0 || !isBookkeeping(log))) return log.timestamp;
   }
   return undefined;
 }

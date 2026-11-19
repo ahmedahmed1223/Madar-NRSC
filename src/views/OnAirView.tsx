@@ -17,7 +17,9 @@ import { useLiveData } from '../hooks/useLiveData';
 import { DEPARTMENTS, departmentName } from '../shared/departments';
 import { canControlOnAir, CUE_PRESETS, Cue, formatClock, liveTiming } from '../shared/onair';
 import { episodeReadiness } from '../shared/production';
-import { localDateString } from '../shared/dates';
+import { stationTimeZone } from '../shared/dates';
+import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
+import { DriftIndicator } from '../components/onair/DriftIndicator';
 
 interface OnAirViewProps {
   currentUser: User;
@@ -52,7 +54,11 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
-  const today = localDateString();
+  // The station's clock and date, whatever zone this computer runs in.
+  const stationZone = stationTimeZone(apiService.getSettings()?.defaultTimezone);
+  const nowMs = Date.now();
+  const wall = stationWall(nowMs, stationZone);
+  const today = wall.date;
   // Programme episodes and news bulletins both run here.
   const episodes = apiService.getAirShows().filter((e) => !e.deletedAt);
   const states = apiService.getOnAirStates();
@@ -78,6 +84,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const live = state?.status === 'LIVE';
   const pastShow = !!episode && episode.broadcastDate < today && !live;
   const timing = liveTiming(state, episode);
+  const showLength = programmeSeconds(episode as any);
+  const untilStart = episode && !live && state?.status !== 'ENDED' ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const isBulletin = (episode as any)?.kind === 'bulletin';
   // A bulletin is ready when every story on air is approved; an episode when every department delivered.
   const readiness = !episode
@@ -203,29 +211,44 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   {episode.programName} — {episode.title}
                 </span>
               </div>
-              {timing && (
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <span>على الهواء: {formatClock(timing.onAirSeconds)}</span>
-                  <span className={timing.drift > 5 ? 'text-red-400' : timing.drift < -5 ? 'text-sky-300' : 'text-emerald-300'}>
-                    {timing.drift > 5 ? `متأخر ${formatClock(timing.drift)}` : timing.drift < -5 ? `متقدم ${formatClock(-timing.drift)}` : 'في الموعد'}
-                  </span>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-bold text-slate-200 tabular-nums">
+                <span title={stationZone ? `بتوقيت المحطة (${stationZone})` : 'بتوقيت هذا الجهاز'}>
+                  الساعة <span className="text-white text-base">{wall.clock}</span>
+                </span>
+                {timing ? (
+                  <>
+                    <span>على الهواء <span className="text-white text-base">{formatClock(timing.onAirSeconds)}</span></span>
+                    {showLength > 0 && (
+                      <span>المتبقي للبرنامج <span className="text-white text-base">{formatClock(Math.max(0, showLength - timing.onAirSeconds))}</span></span>
+                    )}
+                  </>
+                ) : (
+                  untilStart !== null && untilStart > 0 && untilStart < 24 * 3600 && (
+                    <span>حتى الهواء <span className="text-white text-base">{formatClock(untilStart)}</span></span>
+                  )
+                )}
+              </div>
             </div>
+            {timing && live && (
+              <div className="flex flex-wrap items-center gap-3">
+                <DriftIndicator drift={timing.drift} />
+                <span className="text-xs text-slate-300">مقارنةً بخطة الرانداون</span>
+              </div>
+            )}
 
             {timing?.current ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 space-y-1">
-                  <span className="text-2xs text-slate-500">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
+                  <span className="text-xs font-bold text-slate-300">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
                   <h2 className="text-2xl sm:text-3xl font-bold leading-tight">{timing.current.title}</h2>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm text-slate-300">
                     {timing.current.presenterName || ''}
                     {segmentGuests(timing.current).length ? ` · ${segmentGuests(timing.current).map((g) => g.guestName).join('، ')}` : ''}
                   </p>
                 </div>
                 <div className="text-center">
-                  <span className="text-2xs text-slate-500 block">المتبقي</span>
-                  <span className={`text-5xl font-bold font-mono ${remainingCls}`} dir="ltr">
+                  <span className="text-xs font-bold text-slate-300 block">المتبقي للفقرة</span>
+                  <span className={`text-5xl font-bold tabular-nums ${remainingCls}`} dir="ltr">
                     {formatClock(timing.remaining)}
                   </span>
                 </div>
@@ -269,7 +292,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     </button>
                   </>
                 )}
-                {live && <span className="text-2xs text-slate-500 self-center">المسطرة أو ← للتالي، → للسابق</span>}
+                {live && <span className="text-xs text-slate-300 self-center">المسافة أو ← للتالي، → للسابق</span>}
               </div>
             )}
           </section>
