@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
-import { matchesQuery } from '../shared/search';
+import { createSearchIndex, type SearchIndex } from '../shared/arabicSearch';
 import {
   NewsItem,
   Story,
@@ -210,6 +210,30 @@ export function hasPermission(
     default:
       return false;
   }
+}
+
+const htmlText = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
+const versionOf = (r: { updatedAt?: string; createdAt?: string }) => `${r.updatedAt || ''}|${r.createdAt || ''}`;
+
+/** Search indexes of the unified search, memoised per record id + updatedAt. */
+const GLOBAL_INDEX = {
+  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: (n) => [n.title, n.shortTitle, n.keywords], body: (n) => [n.summary, n.locationName, htmlText(n.content)] }),
+  programs: createSearchIndex<Program & { createdAt?: string }>({ id: (p) => p.id, version: versionOf, title: (p) => [p.name], body: (p) => [p.description, p.presenterName, p.producerName] }),
+  episodes: createSearchIndex<Episode & { createdAt?: string }>({ id: (e) => e.id, version: versionOf, title: (e) => [e.title], body: (e) => [e.description, e.programName, e.episodeNumber, e.broadcastDate] }),
+  guests: createSearchIndex<Guest & { createdAt?: string }>({ id: (g) => g.id, version: versionOf, title: (g) => [g.fullName], body: (g) => [g.organization, g.specialty, g.jobTitle] }),
+  tasks: createSearchIndex<EditorialTask & { createdAt?: string }>({ id: (t) => t.id, version: versionOf, title: (t) => [t.title], body: (t) => [t.description, t.assigneeName, t.assignedToName] }),
+  bulletins: createSearchIndex<Bulletin>({ id: (b) => b.id, version: versionOf, title: (b) => [b.title], body: (b) => [b.date, b.editorName, b.anchors, b.studioName, b.notes] }),
+  cards: createSearchIndex<ProductionCard>({ id: (c) => c.id, version: versionOf, title: (c) => [c.title], body: (c) => [c.brief, c.ownerName, c.target?.title, c.steps.map((st) => st.assigneeName || '')] }),
+};
+
+export interface GlobalSearchResult {
+  news: NewsItem[];
+  programs: Program[];
+  episodes: Episode[];
+  guests: Guest[];
+  tasks: EditorialTask[];
+  bulletins: Bulletin[];
+  cards: ProductionCard[];
 }
 
 export class ApiService {
@@ -2208,26 +2232,42 @@ export class ApiService {
   }
 
   // --- GLOBAL SEARCH ---
-  static globalSearch(query: string): {
-    news: NewsItem[];
-    programs: Program[];
-    episodes: Episode[];
-    guests: Guest[];
-    tasks: EditorialTask[];
-  } {
+  /**
+   * Unified search (Ctrl+K): every record type, Arabic-normalised and stem aware, best match first
+   * (title matches above body matches, newest first on equal relevance).
+   */
+  static globalSearch(query: string): GlobalSearchResult {
     if (!query.trim()) {
-      return { news: [], programs: [], episodes: [], guests: [], tasks: [] };
+      return { news: [], programs: [], episodes: [], guests: [], tasks: [], bulletins: [], cards: [] };
     }
-    const has = (...values: unknown[]) => matchesQuery(query, ...values);
-    const text = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
+    const ranked = <T extends { updatedAt?: string; createdAt?: string }>(index: SearchIndex<T>, items: T[]) =>
+      index
+        .search(items, query)
+        .sort((a, b) => b.score - a.score || String(b.item.updatedAt || b.item.createdAt || '').localeCompare(String(a.item.updatedAt || a.item.createdAt || '')))
+        .map((h) => h.item);
+    return {
+      news: ranked(GLOBAL_INDEX.news, this.getNews()),
+      programs: ranked(GLOBAL_INDEX.programs, this.getPrograms() as Array<Program & { createdAt?: string }>),
+      episodes: ranked(GLOBAL_INDEX.episodes, this.getEpisodes() as Array<Episode & { createdAt?: string }>),
+      guests: ranked(GLOBAL_INDEX.guests, this.getGuests() as Array<Guest & { createdAt?: string }>),
+      tasks: ranked(GLOBAL_INDEX.tasks, this.getTasks() as Array<EditorialTask & { createdAt?: string }>),
+      bulletins: ranked(GLOBAL_INDEX.bulletins, this.getBulletins()),
+      cards: ranked(GLOBAL_INDEX.cards, this.getCards()),
+    };
+  }
 
-    const news = this.getNews().filter((n) => has(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, text(n.content)));
-    const programs = this.getPrograms().filter((p) => has(p.name, p.description, p.presenterName, p.producerName));
-    const episodes = this.getEpisodes().filter((e) => has(e.title, e.description, e.programName, e.episodeNumber, e.broadcastDate));
-    const guests = this.getGuests().filter((g) => has(g.fullName, g.organization, g.specialty, g.jobTitle));
-    const tasks = this.getTasks().filter((t) => has(t.title, t.description, t.assigneeName, t.assignedToName));
-
-    return { news, programs, episodes, guests, tasks };
+  /** Words of the records the unified search covers, for «هل تقصد» and suggestions. */
+  static searchVocabularyTexts(): string[] {
+    const out: string[] = [];
+    const push = (...v: unknown[]) => v.forEach((x) => { if (Array.isArray(x)) x.forEach((y) => push(y)); else if (x) out.push(String(x)); });
+    this.getNews().forEach((n) => push(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, n.categoryName));
+    this.getPrograms().forEach((p) => push(p.name, p.presenterName, p.producerName));
+    this.getEpisodes().forEach((e) => push(e.title, e.programName));
+    this.getGuests().forEach((g) => push(g.fullName, g.organization, g.jobTitle, g.specialty));
+    this.getTasks().forEach((t) => push(t.title));
+    this.getBulletins().forEach((b) => push(b.title));
+    this.getCards().forEach((c) => push(c.title, c.ownerName));
+    return out;
   }
 
   // --- SQLITE DATABASE OPERATIONS (server administration) ---

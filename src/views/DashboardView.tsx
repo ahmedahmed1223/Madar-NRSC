@@ -11,6 +11,10 @@ import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, C
 import { AppView } from '../components/layout/Sidebar';
 
 import { MyWorkPanel } from '../components/dashboard/MyWorkPanel';
+import { TodayStatusPanel } from '../components/dashboard/TodayStatusPanel';
+import { isManagerRole, reviewableNews } from '../shared/managerToday';
+import { stationsOf } from '../shared/stations';
+import { apiService } from '../services/api';
 import { useSetupReminder } from '../components/setup/SetupWizard';
 import { sectionOrderFor } from '../shared/navigation';
 import { setupCommand } from '../services/uiEvents';
@@ -61,8 +65,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [activeQueueTab, setActiveQueueTab] = useState<'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'PUBLISHED'>('UNDER_REVIEW');
   const [selectedDashboardCategory, setSelectedDashboardCategory] = useState<string>('ALL');
 
-  const publishedNewsCount = (newsList || []).filter((n) => n.status === 'PUBLISHED').length;
-  const pendingReviewNewsCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
+  const underReviewCount = (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length;
+  // Only what this colleague can act on: others' stories, and for a branch manager their stations' writers.
+  const canReview = RbacService.hasPermission(currentUser, 'news.review') || RbacService.hasPermission(currentUser, 'news.approve');
+  const stationOfUser = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
+  const pendingReviewNewsCount = reviewableNews(newsList || [], currentUser, { canReview, stations: stationsOf(apiService.getSettings()), stationOf: (id) => stationOfUser.get(id) }).length;
+  const isManager = isManagerRole(currentUser.role);
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
   const todayKey = new Date().toLocaleDateString('en-CA');
   // Upcoming = on air now, or scheduled from today on and not yet aired; earliest first.
@@ -74,6 +82,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     (e) => e.status === 'ON_AIR' || ((e.broadcastDate || '').slice(0, 10) === todayKey && !['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status))
   );
   const openTasks = (tasks || []).filter((t) => !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status));
+  const overdueTasks = openTasks.filter((t) => t.dueDate && Date.parse(t.dueDate) < Date.now()).length;
+  const dayOf = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-CA') : '');
+  const newsToday = (newsList || []).filter((n) => dayOf(n.createdAt) === todayKey).length;
+  const publishedToday = (newsList || []).filter((n) => n.status === 'PUBLISHED' && dayOf(n.publishDate || n.updatedAt) === todayKey).length;
 
   // CRITICAL Priority News
   const criticalNews = (newsList || []).filter((n) => n.priority === 'CRITICAL' && n.status !== 'ARCHIVED' && n.status !== 'UNPUBLISHED');
@@ -128,8 +140,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             مرحباً، {currentUser.fullName}
           </h1>
           <p className="text-slate-600 text-sm max-w-2xl leading-relaxed">
-            اليوم: {countLabel(todayEpisodes.length, { zero: 'لا حلقات مجدولة', one: 'حلقة واحدة مجدولة', two: 'حلقتان مجدولتان', few: 'حلقات مجدولة', many: 'حلقة مجدولة' })}،
-            و{countLabel(pendingReviewNewsCount, { zero: 'لا أخبار تنتظر التدقيق', one: 'خبر واحد ينتظر التدقيق والاعتماد', two: 'خبران ينتظران التدقيق والاعتماد', few: 'أخبار تنتظر التدقيق والاعتماد', many: 'خبراً ينتظر التدقيق والاعتماد' })}.
+            اليوم: {countLabel(todayEpisodes.length, { zero: 'لا حلقات مجدولة', one: 'حلقة واحدة مجدولة', two: 'حلقتان مجدولتان', few: 'حلقات مجدولة', many: 'حلقة مجدولة' })}
+            {canReview
+              ? <>، و{countLabel(pendingReviewNewsCount, { zero: 'لا أخبار تنتظر مراجعتك', one: 'خبر واحد ينتظر مراجعتك', two: 'خبران ينتظران مراجعتك', few: 'أخبار تنتظر مراجعتك', many: 'خبراً ينتظر مراجعتك' })}.</>
+              : '.'}
           </p>
         </div>
 
@@ -170,6 +184,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </section>
       )}
 
+      {/* Managers first see whether tonight is on track; everyone else starts with their own work. */}
+      {isManager && (
+        <TodayStatusPanel
+          currentUser={currentUser}
+          episodes={episodes}
+          onOpenEpisode={onSelectEpisode}
+          onOpenBulletin={onOpenBulletin}
+          onNavigate={(v) => onNavigate(v as AppView)}
+        />
+      )}
+
       <MyWorkPanel
         currentUser={currentUser}
         newsList={newsList}
@@ -208,16 +233,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* The day in four numbers: one ruled strip, each cell opens its screen */}
-      <section aria-label="مؤشرات غرفة الأخبار" className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y lg:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
+      {/* The day in four numbers: one ruled strip, each cell says its period and opens its screen */}
+      <section aria-label="مؤشرات غرفة الأخبار اليوم" className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y lg:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
         {[
-          { label: 'الأخبار', value: newsList.length, note: `${publishedNewsCount} منشور · ${pendingReviewNewsCount} قيد المراجعة`, go: 'NEWS_LIST' as AppView, tone: 'text-slate-900' },
-          { label: 'العاجل على الشريط', value: activeBreakingCount, note: `من ${breakingNews.length} عاجل مسجل`, go: 'BREAKING_NEWS' as AppView, tone: activeBreakingCount ? 'text-red-700' : 'text-slate-900' },
-          { label: 'حلقات البرامج', value: episodes.length, note: `${programs.length} برامج · ${countLabel(todayEpisodes.length, { zero: 'لا حلقات اليوم', one: 'حلقة اليوم', two: 'حلقتان اليوم', few: 'حلقات اليوم', many: 'حلقة اليوم' })}`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
-          { label: 'مهام مفتوحة', value: openTasks.length, note: `من ${tasks.length} مهمة`, go: 'TASKS' as AppView, tone: 'text-slate-900' },
+          { label: 'أخبار', period: 'اليوم', value: newsToday, note: `${publishedToday} نُشر اليوم · ${underReviewCount} قيد المراجعة الآن`, go: 'NEWS_LIST' as AppView, tone: 'text-slate-900' },
+          { label: 'العاجل على الشريط', period: 'الآن', value: activeBreakingCount, note: `من ${breakingNews.length} عاجل مسجل`, go: 'BREAKING_NEWS' as AppView, tone: activeBreakingCount ? 'text-red-700' : 'text-slate-900' },
+          { label: 'حلقات', period: 'اليوم', value: todayEpisodes.length, note: `${countLabel(upcomingEpisodes.length, { zero: 'لا حلقات قادمة', one: 'حلقة قادمة واحدة', two: 'حلقتان قادمتان', few: 'حلقات قادمة', many: 'حلقة قادمة' })} · ${programs.length} برامج`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
+          { label: 'مهام مفتوحة', period: 'الآن', value: openTasks.length, note: `${overdueTasks} متأخرة · من ${tasks.length} في كل الفترات`, go: 'TASKS' as AppView, tone: overdueTasks ? 'text-amber-700' : 'text-slate-900' },
         ].map((cell) => (
           <button key={cell.label} type="button" onClick={() => onNavigate(cell.go)} className="text-right p-4 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors min-w-0">
-            <span className="block text-xs font-semibold text-slate-600">{cell.label}</span>
+            <span className="block text-xs font-semibold text-slate-600">{cell.label} <span className="font-normal text-slate-500">({cell.period})</span></span>
             <span className={`block font-mono text-3xl font-bold tabular-nums leading-tight mt-1 ${cell.tone}`}>{cell.value}</span>
             <span className="block text-2xs text-slate-500 mt-1 truncate">{cell.note}</span>
           </button>
@@ -440,7 +465,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>•</span>
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
-                          <span>منذ {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>آخر تحديث {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       </div>
 
@@ -511,7 +536,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span className="font-mono text-2xs">
                       {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
                         <span className="text-rose-700 font-bold">
-                          متأخرة منذ {Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000))} يوم
+                          متأخرة {countLabel(Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000)), { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
                         </span>
                       ) : (
                         <>استحقاق: {task.dueDate ? arabicDate(localDateString(new Date(task.dueDate))) : '—'}</>

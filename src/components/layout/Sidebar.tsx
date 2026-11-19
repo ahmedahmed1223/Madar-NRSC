@@ -52,7 +52,24 @@ import {
   CalendarDays,
   CalendarRange,
 } from 'lucide-react';
-import { User } from '../../types';
+import { EditorialTask, Episode, NewsItem, User } from '../../types';
+import { cardsAwaitingMyDecision, isManagerRole, reviewableNews } from '../../shared/managerToday';
+import { stationsOf } from '../../shared/stations';
+
+/**
+ * The rail's counts are personal: my open tasks, the stories I can actually review (none for
+ * someone who does not review), and episodes ready for air.
+ */
+export function personalBadgeCounts(user: User | null | undefined, news: NewsItem[] = [], tasks: EditorialTask[] = [], episodes: Episode[] = []) {
+  if (!user) return { news: 0, tasks: 0, episodes: 0 };
+  const canReview = RbacService.hasPermission(user, 'news.review') || RbacService.hasPermission(user, 'news.approve');
+  const stationOf = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
+  return {
+    news: reviewableNews(news, user, { canReview, stations: stationsOf(apiService.getSettings()), stationOf: (id) => stationOf.get(id) }).length,
+    tasks: tasks.filter((t) => (t.assigneeId || t.assignedToId) === user.id && !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status)).length,
+    episodes: episodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length,
+  };
+}
 
 export type AppView =
   | 'DASHBOARD'
@@ -199,8 +216,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
   // Unread direct and group messages, and unread messages in the open channels I have visited.
   const messagesBadge = currentUser ? [...unreadByChannel(apiService.getMessages(), apiService.getChatReads(), currentUser.id).values()].reduce((sum, n) => sum + n, 0) : 0;
-  // Open production-card steps assigned to me.
-  const cardsBadge = currentUser ? apiService.getCards().filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
+  // Open production-card steps assigned to me, and for managers the cards awaiting my decision (I own them; blocked or late).
+  const allCards = currentUser ? apiService.getCards().filter((c) => !c.deletedAt) : [];
+  const mySteps = currentUser ? allCards.filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
+  const myDecisions = currentUser && isManagerRole(currentUser.role) ? cardsAwaitingMyDecision(allCards, currentUser.id).length : 0;
+  const cardsBadge = mySteps + myDecisions;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
 
   /** Every screen of the rail with its label, icon and the count that waits there. */
@@ -208,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     dashboard: { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null },
     messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white', count: messagesBadge },
     tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: tasksBadge },
-    cards: { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: cardsBadge },
+    cards: { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: myDecisions > 0 ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800', count: cardsBadge },
     requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800', count: requestsBadge },
     news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800', count: newsBadge },
     wires: { id: 'wires', label: 'المصادر', icon: Rss, badge: null },

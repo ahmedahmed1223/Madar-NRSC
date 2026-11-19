@@ -9,7 +9,9 @@ describe('save and connection feedback', () => {
     expect(saveFeedback(false, 'failed', true)).toContain('تعديلاتك باقية');
   });
   it('distinguishes device from server without promising every field is stored', () => {
-    expect(connectionFeedback(false, false, 0)).toContain('الجهاز');
+    expect(connectionFeedback(false, false, 0)).toContain('غير متصل');
+    expect(connectionFeedback(false, false, 3)).toBe('غير متصل — 3 تغييرات بانتظار الإرسال');
+    expect(connectionFeedback(false, true, 1)).toBe('غير متصل — تغيير واحد بانتظار الإرسال');
     expect(connectionFeedback(true, false, 0)).toContain('الخادم');
     expect(connectionFeedback(true, true, 2)).toContain('2');
     expect(connectionFeedback(true, true, 2)).not.toContain('تمت مزامنة');

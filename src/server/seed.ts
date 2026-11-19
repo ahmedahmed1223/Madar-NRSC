@@ -199,6 +199,8 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'workload.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'workload.view_all': ['SUPER_ADMIN', 'ADMIN'],
   'messages.groups': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
+  // Deleting episodes left `episodes.edit` (preparers and directors keep editing, not deleting).
+  'episodes.delete': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER', 'MAIN_STATION_MANAGER'],
 };
 
 /**

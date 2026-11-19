@@ -261,6 +261,15 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     categoryNameAr: 'البرامج التلفزيونية',
     riskLevel: 'MEDIUM',
   },
+  {
+    code: 'episodes.delete',
+    nameAr: 'حذف الحلقات',
+    nameEn: 'Delete Episodes',
+    description: 'نقل الحلقات إلى سلة المحذوفات واستعادتها (للمنتج ومدير البرامج، لا للمعد ولا للمخرج)',
+    category: 'PROGRAMS',
+    categoryNameAr: 'البرامج التلفزيونية',
+    riskLevel: 'HIGH',
+  },
 
 
   // --- GUESTS ---
@@ -652,6 +661,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'programs.view',
       'episodes.create',
       'episodes.edit',
+      'episodes.delete',
       'roster.manage',
       'guests.view',
       'guests.manage',
@@ -728,6 +738,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'programs.manage',
       'episodes.create',
       'episodes.edit',
+      'episodes.delete',
       'roster.manage',
       'guests.view',
       'guests.manage',
@@ -879,7 +890,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'messages.groups',
       'diary.manage', 'resources.book', 'resources.manage', 'bulletins.edit', 'bulletins.approve', 'bulletins.manage',
       'news.view', 'news.create', 'news.edit_own', 'news.edit_any', 'news.review', 'news.approve', 'news.publish', 'news.breaking_push',
-      'rundown.view', 'rundown.edit', 'rundown.reorder', 'programs.view', 'episodes.create', 'episodes.edit', 'roster.manage',
+      'rundown.view', 'rundown.edit', 'rundown.reorder', 'programs.view', 'episodes.create', 'episodes.edit', 'episodes.delete', 'roster.manage',
       'guests.view', 'guests.manage', 'media.view', 'media.upload', 'tasks.view', 'tasks.create_assign', 'tasks.intercom_broadcast',
       'requests.create', 'requests.manage', 'cards.view', 'cards.work', 'cards.manage', 'workload.view', 'workload.view_all',
       'audit.view', 'reports.export', 'users.view',

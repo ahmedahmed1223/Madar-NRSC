@@ -5,7 +5,7 @@ import { matchesQuery } from './search';
  * screens and actions it can jump to without typing a full search.
  */
 
-export type RecentKind = 'news' | 'program' | 'episode' | 'guest' | 'task';
+export type RecentKind = 'news' | 'program' | 'episode' | 'guest' | 'task' | 'bulletin' | 'card';
 
 export interface RecentEntry {
   kind: RecentKind;
@@ -16,7 +16,7 @@ export interface RecentEntry {
 }
 
 export const RECENT_LIMIT = 8;
-const KINDS: RecentKind[] = ['news', 'program', 'episode', 'guest', 'task'];
+const KINDS: RecentKind[] = ['news', 'program', 'episode', 'guest', 'task', 'bulletin', 'card'];
 
 /** Moves an entry to the front (replacing an older copy of the same record) and caps the list. */
 export function pushRecent(list: RecentEntry[], entry: RecentEntry, limit = RECENT_LIMIT): RecentEntry[] {

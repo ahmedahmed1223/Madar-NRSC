@@ -61,7 +61,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 }) => {
   const canCreate = RbacService.hasPermission(currentUser, 'episodes.create');
   const canEditDetails = RbacService.hasPermission(currentUser, 'episodes.edit');
-  const canDelete = canEditDetails || RbacService.hasPermission(currentUser, 'programs.manage');
+  // Deleting is its own permission (producers and managers), not part of editing.
+  const canDelete = RbacService.hasPermission(currentUser, 'episodes.delete');
   const [selectedProgId, setSelectedProgId] = useState(filterProgramId || 'ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');

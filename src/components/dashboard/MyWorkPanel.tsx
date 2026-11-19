@@ -12,6 +12,8 @@ import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
 import { addDaysIso, arabicDate } from '../../shared/dates';
 import { isStepLate, isStepOpen, stepTypeName, stepTypesOf } from '../../shared/productionCards';
+import { isManagerRole, reviewableNews } from '../../shared/managerToday';
+import { stationName, stationsOf } from '../../shared/stations';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -95,7 +97,10 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'productionCards']);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
-  const canReview = RbacService.hasPermission(currentUser, 'news.review');
+  const canReview = RbacService.hasPermission(currentUser, 'news.review') || RbacService.hasPermission(currentUser, 'news.approve');
+  const isManager = isManagerRole(currentUser.role);
+  const stations = stationsOf(apiService.getSettings());
+  const stationOfUser = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
 
   const myNews: Row[] = newsList
     .filter((n) => n.authorId === me && ['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION', 'REJECTED'].includes(n.status))
@@ -108,9 +113,9 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       onClick: () => onOpenNews(n.id),
     }));
 
+  // Only stories this person can act on; a branch manager sees their stations' writers.
   const toReview: Row[] = canReview
-    ? newsList
-        .filter((n) => n.status === 'UNDER_REVIEW' && n.authorId !== me)
+    ? reviewableNews(newsList, currentUser, { canReview, stations, stationOf: (id) => stationOfUser.get(id) })
         .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
         .map((n) => ({ id: n.id, title: n.title, meta: n.authorName || 'بانتظار المراجعة', tone: 'amber' as const, onClick: () => onOpenNews(n.id) }))
     : [];
@@ -249,7 +254,8 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const candidates: (CardProps | false)[] = [
     RbacService.hasPermission(currentUser, 'news.create') && { testId: 'my-news', icon: FileEdit, title: 'أخباري قيد العمل', rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news') },
     canReview && { testId: 'my-review', icon: FileSearch, title: 'بانتظار مراجعتي', rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news') },
-    { testId: 'my-dept-requests', icon: Inbox, title: `طلبات واردة لقسم ${departmentName(myDept)}`, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests') },
+    // A manager is not the desk that handles a department's requests: listed only when some are waiting.
+    (!isManager || deptInbox.length > 0) && { testId: 'my-dept-requests', icon: Inbox, title: `طلبات واردة لقسم ${departmentName(myDept)}`, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests') },
     { testId: 'my-sent-requests', icon: Send, title: 'طلباتي المرسلة', rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests') },
     RbacService.hasPermission(currentUser, 'cards.view') && { testId: 'my-card-steps', icon: ClipboardList, title: 'مهامي في بطاقات الإنتاج', rows: cardRows, empty: 'لا مهام مفتوحة باسمك في البطاقات', more: () => onNavigate('cards') },
     { testId: 'my-tasks', icon: CheckSquare, title: 'مهامي', rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks') },
@@ -267,7 +273,9 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-blue-600" />
           عملي
-          <span className="text-2xs font-semibold text-slate-500">— قسم {departmentName(myDept)}</span>
+          <span className="text-2xs font-semibold text-slate-500">
+            — {isManager ? (currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : 'الإدارة') : `قسم ${departmentName(myDept)}`}
+          </span>
         </h2>
         <span
           className={`text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}

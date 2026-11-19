@@ -8,6 +8,7 @@
  * (which enforces them), so both always agree.
  */
 import { stationName, stationScope, stationsOf, type Station } from './stations';
+import { departmentName } from './departments';
 
 export const CARD_KINDS = [
   { id: 'NEWS', name: 'خبر' },
@@ -103,6 +104,10 @@ export interface CardStep {
   assigneeName?: string;
   /** Station doing the step: the assignee's station, or the station asked to pick it up. */
   stationId?: string;
+  /** With no assignee: the department asked to pick it up (inside the station when one is given). */
+  departmentId?: string;
+  /** What has to be checked before the step is handed on (from the workflow template). */
+  checklist?: CardChecklistItem[];
   dueAt?: string;
   status: StepStatus;
   complexity: 1 | 2 | 3;
@@ -127,6 +132,11 @@ export interface CardStep {
   doneAt?: string;
   doneById?: string;
   doneByName?: string;
+}
+
+export interface CardChecklistItem {
+  text: string;
+  done?: boolean;
 }
 
 export interface CardTimeEntry {
@@ -187,6 +197,9 @@ export interface ProductionCard {
   mediaIds?: string[];
   /** The newsroom record this card produces. */
   target?: CardTarget;
+  /** Workflow template the assignment was created from (for reports by template). */
+  templateId?: string;
+  templateName?: string;
   steps: CardStep[];
   log?: CardLogEntry[];
   createdById?: string;
@@ -230,7 +243,9 @@ export const openStepsBefore = (card: ProductionCard, stepId: string): CardStep[
 /** Who holds the step, in words: the person, «متاحة لمحطة X» for a station-wide step, or «غير مسندة». */
 export function stepAssigneeLabel(step: CardStep, stations?: Station[]): string {
   if (step.assigneeName) return step.assigneeName;
-  if (step.stationId) return stations ? `متاحة لمحطة ${stationName(stations, step.stationId)}` : 'متاحة للمحطة';
+  const department = step.departmentId ? `قسم ${departmentName(step.departmentId)}` : '';
+  if (step.stationId) return `متاحة ل${department ? `${department} في ` : ''}${stations ? `محطة ${stationName(stations, step.stationId)}` : 'المحطة'}`;
+  if (department) return `متاحة ل${department}`;
   return 'غير مسندة';
 }
 
@@ -441,6 +456,7 @@ const optText = (v: unknown, max: number) => v === undefined || v === null || (t
 const optMinutes = (v: unknown) => v === undefined || v === null || (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 100000);
 
 export const MAX_CARD_STEPS = 30;
+export const MAX_CHECKLIST = 20;
 
 /** Shape of a card, whoever writes it. */
 export function cardError(card: ProductionCard): string | null {
@@ -476,6 +492,12 @@ export function cardError(card: ProductionCard): string | null {
     if (step.dueAt && !isIso(step.dueAt)) return 'موعد تسليم المهمة غير صالح';
     if (step.status === 'BLOCKED' && !(step.blockedReason || '').trim()) return 'اكتب سبب التعطل';
     if (!optText(step.returnedReason, 1000)) return 'سبب الإعادة بحد أقصى 1000 حرف';
+    // Department ids only: administrators may add departments, so the list is not fixed here.
+    if (step.departmentId !== undefined && step.departmentId !== null && (typeof step.departmentId !== 'string' || !TYPE_ID.test(step.departmentId))) return 'قسم المهمة غير معروف';
+    if (step.checklist !== undefined && step.checklist !== null) {
+      if (!Array.isArray(step.checklist) || step.checklist.length > MAX_CHECKLIST) return `الحد الأقصى ${MAX_CHECKLIST} بنداً في قائمة التحقق`;
+      if (step.checklist.some((item) => !item || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200 || (item.done !== undefined && typeof item.done !== 'boolean'))) return 'بند قائمة التحقق مطلوب وبحد أقصى 200 حرف';
+    }
     if (step.waitingOnId !== undefined && step.waitingOnId !== null && (typeof step.waitingOnId !== 'string' || !ID.test(step.waitingOnId))) return 'الزميل المطلوب منه الحل غير صالح';
     if (step.timeLog !== undefined && step.timeLog !== null) {
       if (!Array.isArray(step.timeLog) || step.timeLog.length > 200) return 'سجل الوقت ممتلئ';
@@ -494,15 +516,19 @@ export function cardError(card: ProductionCard): string | null {
   return null;
 }
 
-const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target'] as const;
-const STEP_LOCKED = ['type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId'] as const;
+const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target', 'templateId', 'templateName'] as const;
+const STEP_LOCKED = ['type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId', 'departmentId'] as const;
 
 /**
  * Whether the actor may take an unassigned step: it is open to everyone or addressed to their
  * station, and it is their kind of work (supervisors take anything).
  */
 export const canClaimStep = (step: CardStep, actor: CardActor) =>
-  !step.assigneeId && actor.canWork && (!step.stationId || step.stationId === actor.stationId) && stepFitsActor(step.type, actor);
+  !step.assigneeId &&
+  actor.canWork &&
+  (!step.stationId || step.stationId === actor.stationId) &&
+  (!step.departmentId || actor.canManage || !actor.departmentId || step.departmentId === actor.departmentId) &&
+  stepFitsActor(step.type, actor);
 
 /** Fields a reviewer or the owner changes on someone else's done step when sending it back. */
 const RETURN_KEYS = new Set(['status', 'returnedReason', 'returnedById', 'returnedByName', 'returnedAt']);
@@ -567,6 +593,8 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     const next = after.steps[i];
     if (same(prev, next)) continue;
     if (STEP_LOCKED.some((key) => !same(prev[key], next[key]))) return 'تعديل تفاصيل المهمة لمسؤولي التكليف';
+    // The assignee ticks the checklist; its items are the supervisor's.
+    if (!same((prev.checklist || []).map((c) => c.text), (next.checklist || []).map((c) => c.text))) return 'بنود قائمة التحقق لمسؤولي التكليف';
     if ((next.spentMinutes ?? 0) < (prev.spentMinutes ?? 0)) return 'الوقت المسجّل يُضاف إلى ما سبق ولا يُنقص';
     if (!same(prev.assigneeId, next.assigneeId)) {
       const claiming = next.assigneeId === actor.id && canClaimStep(prev, actor);

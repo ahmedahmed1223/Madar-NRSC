@@ -178,7 +178,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
   /** Colleagues of the step's station whose kind of work it is, supervisors of that station first. */
   const stationPeople = (step: CardStep) =>
     people
-      .filter((p) => p.stationId === step.stationId && stepFitsActor(step.type, p))
+      .filter((p) => (!step.stationId || p.stationId === step.stationId) && (step.departmentId ? p.departmentId === step.departmentId || (p.canManage && !!step.stationId) : stepFitsActor(step.type, p)))
       .sort((a, b) => Number(b.canManage) - Number(a.canManage))
       .slice(0, MAX_FANOUT)
       .map((p) => p.id);
@@ -192,7 +192,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
       : [];
   const pushStep = (step: CardStep, title: string, message: string, force = false) => {
     if (step.assigneeId) push(step.assigneeId, title, message, force);
-    else if (step.stationId) stationPeople(step).forEach((id) => push(id, title, message, force));
+    else if (step.stationId || step.departmentId) stationPeople(step).forEach((id) => push(id, title, message, force));
   };
   const firstOpen = currentStep(after);
 
@@ -202,9 +202,9 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
     if (step.assigneeId && step.assigneeId !== prev?.assigneeId) {
       push(step.assigneeId, `${urgent ? 'عاجل — ' : ''}مهمة لك في بطاقة إنتاج: ${name}`, after.title);
       if (prev?.assigneeId) push(prev.assigneeId, `سُحبت منك «${name}»`, `${after.title} — أُسندت إلى ${step.assigneeName || 'زميل'}`);
-    } else if (!step.assigneeId && step.stationId && isStepOpen(step) && (!prev || prev.assigneeId || prev.stationId !== step.stationId)) {
+    } else if (!step.assigneeId && (step.stationId || step.departmentId) && isStepOpen(step) && (!prev || prev.assigneeId || prev.stationId !== step.stationId || prev.departmentId !== step.departmentId)) {
       if (prev?.assigneeId) push(prev.assigneeId, `سُحبت منك «${name}»`, `${after.title} — صارت متاحة لمحطتها`);
-      stationPeople(step).forEach((id) => push(id, `${urgent ? 'عاجل — ' : ''}مهمة متاحة لمحطتك: ${name}`, `${after.title} — استلمها من بطاقات الإنتاج`));
+      stationPeople(step).forEach((id) => push(id, `${urgent ? 'عاجل — ' : ''}مهمة متاحة ل${step.departmentId ? 'قسمك' : 'محطتك'}: ${name}`, `${after.title} — استلمها من بطاقات الإنتاج`));
     }
 
     if (prev && prev.status !== step.status && step.status === 'BLOCKED') {

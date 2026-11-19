@@ -26,7 +26,7 @@ import { apiService } from './services/api';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
 import { registerServiceWorker } from './services/push';
-import { Sidebar } from './components/layout/Sidebar';
+import { Sidebar, personalBadgeCounts } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
 import { CommandPalette } from './components/layout/CommandPalette';
@@ -803,11 +803,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             setFocusId(null);
             setIsMobileSidebarOpen(false);
           }}
-          badgeCounts={{
-            news: (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length,
-            tasks: (tasks || []).filter((t) => t.status === 'TODO' || t.status === 'IN_PROGRESS').length,
-            episodes: (episodes || []).filter((e) => e.status === 'READY_FOR_BROADCAST').length,
-          }}
+          badgeCounts={personalBadgeCounts(currentUser, newsList, tasks, episodes)}
         />
 
         {/* Center Content Area */}
@@ -1243,6 +1239,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           setActiveNav(nav);
         }}
         onQuickCreateNews={handleCreateNewNewsClick}
+        onOpenLink={openLink}
         newsList={newsList}
         programs={programs}
         episodes={episodes}

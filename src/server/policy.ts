@@ -208,8 +208,12 @@ const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     }
   }
   if (kind === 'create') return auth.can('episodes.create') ? null : 'صلاحياتك لا تسمح بإنشاء الحلقات';
+  // Deleting (or restoring) an episode is its own permission: preparing or directing one is not enough.
   if (kind === 'delete' || isSoftDelete(before, after)) {
-    return any(auth, 'programs.manage', 'episodes.edit') ? null : 'صلاحياتك لا تسمح بحذف الحلقات';
+    return auth.can('episodes.delete') ? null : 'حذف الحلقات للمنتج ومدير البرامج (صلاحية «حذف الحلقات»)';
+  }
+  if (before?.deletedAt && !after?.deletedAt) {
+    return auth.can('episodes.delete') ? null : 'صلاحياتك لا تسمح باستعادة الحلقات المحذوفة';
   }
   if (any(auth, 'episodes.edit')) return null;
   // Narrower roles may only touch the parts of the episode their permission covers.
