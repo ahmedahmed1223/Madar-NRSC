@@ -813,7 +813,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2">
                 <Plus className="w-4 h-4 text-blue-600" />
-                <span>إضافة قسم صحفي جديد</span>
+                <span>إضافة تصنيف جديد</span>
               </h3>
               <span className="text-2xs text-slate-500">تخصيص لوني فوري</span>
             </div>
@@ -974,7 +974,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       className="w-2 h-2 rounded-full shrink-0"
                       style={{ backgroundColor: newCatColor }}
                     />
-                    <span>{newCatNameAr || 'اسم القسم الصحفي'}</span>
+                    <span>{newCatNameAr || 'اسم التصنيف'}</span>
                   </span>
 
                   <span className="text-2xs text-slate-500 font-mono">
@@ -989,7 +989,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="w-full min-h-11 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
-                <span>{savingCategory && !editingCategory ? 'جارٍ الحفظ...' : 'إضافة وتفعيل القسم الصحفي'}</span>
+                <span>{savingCategory && !editingCategory ? 'جارٍ الحفظ...' : 'إضافة وتفعيل التصنيف'}</span>
               </button>
             </form>
 
@@ -1422,7 +1422,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <FormPage
           isOpen={true}
           onClose={() => { if (savingCategory) return false; setEditingCategory(null); }}
-          title={`تعديل القسم الصحفي: ${editingCategory.nameAr}`}
+          title={`تعديل التصنيف: ${editingCategory.nameAr}`}
           subtitle="تعديل اسم وتخصيص لون التصنيف لتحديثه في كافة شاشات العمل"
           maxWidth="lg"
         >
@@ -1655,7 +1655,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           isOpen={true}
           onClose={() => setCategoryToDelete(null)}
           onConfirm={handleConfirmDelete}
-          title={`تأكيد حذف القسم الصحفي (${categoryToDelete.nameAr})`}
+          title={`تأكيد حذف التصنيف (${categoryToDelete.nameAr})`}
           message={
             `هل أنت متأكد من رغبتك في حذف قسم (${categoryToDelete.nameAr})؟ لن تتمكن من استرجاعه إلا بإعادة إنشائه.`
           }

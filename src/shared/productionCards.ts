@@ -332,6 +332,9 @@ export function cardContributions(card: ProductionCard, types: StepType[]): { st
 export interface CardActor {
   id: string;
   stationId?: string;
+  /** A general manager's stations and station groups (see stationScope). */
+  managedStationIds?: string[];
+  managedGroupIds?: string[];
   /** Role code and department decide which kinds of step a colleague may pick up (see stepFitsActor). */
   role?: string;
   departmentId?: string;
@@ -426,12 +429,15 @@ export function sendBackCard(card: ProductionCard, targetId: string, reason: str
 export function canGovernCard(card: Pick<ProductionCard, 'ownerId' | 'ownerStationId'>, actor: CardActor, stations: Station[]): boolean {
   if (!actor.canManage) return false;
   if (card.ownerId === actor.id) return true;
+  // Central management: no station of their own and no stations given to follow.
+  if (!actor.stationId && !actor.managedStationIds?.length && !actor.managedGroupIds?.length) return true;
+  // A station that no longer exists governs nothing (it is not central management).
   const own = stations.find((s) => s.id === actor.stationId);
-  if (!own || own.isMain || !card.ownerStationId || card.ownerStationId === own.id) return true;
+  if (own?.isMain) return true;
+  if (!card.ownerStationId || (own && card.ownerStationId === own.id)) return true;
   const owner = stations.find((s) => s.id === card.ownerStationId);
-  if (!owner) return true;
-  if (owner.isMain) return false;
-  return stationScope(stations, actor.stationId).has(owner.id);
+  if (!owner || owner.isMain) return false;
+  return stationScope(stations, actor).has(owner.id);
 }
 
 export const GOVERN_DENIED = 'إغلاق التكليف وإلغاؤه وحذفه لمحطته المالكة أو المحطة الرئيسية';
@@ -560,7 +566,7 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   const isOwner = !!before && before.ownerId === actor.id;
   if (newLog.slice(oldLog.length).some((e) => e.decision) && !actor.canManage && !isOwner) return 'تسجيل القرار لصاحب التكليف أو مسؤولي التكليف';
 
-  const scope = stationScope(ctx.stations, actor.stationId);
+  const scope = stationScope(ctx.stations, actor);
   const outOfScope = (userId: string) => {
     const station = ctx.users.get(userId)?.stationId;
     return !!station && !scope.has(station);

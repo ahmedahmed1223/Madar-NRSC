@@ -1727,7 +1727,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
             {/* Category */}
             <div>
-              <label htmlFor="news-category-select" className="block text-xs font-bold text-slate-700 mb-1">القسم الصحفي *</label>
+              <label htmlFor="news-category-select" className="block text-xs font-bold text-slate-700 mb-1">تصنيف الخبر *</label>
               <select
                 id="news-category-select"
                 disabled={ro}

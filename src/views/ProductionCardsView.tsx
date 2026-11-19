@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
 import { AlertTriangle, ClipboardList, LayoutTemplate, Plus, Radio } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
@@ -72,6 +73,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [tab, setTab] = useState<Tab>(canManage ? 'TODAY' : 'MINE');
   const [query, setQuery] = useState('');
   const [station, setStation] = useState('ALL');
+  const stationGroups = useMemo(() => stationGroupsOf(settings), [settings]);
+  const inStation = useMemo(() => stationFilterMatcher(station, stationGroups), [station, stationGroups]);
   const [stateFilter, setStateFilter] = useState<'OPEN' | CardState>('OPEN');
   const [kind, setKind] = useState('ALL');
   const [formOpen, setFormOpen] = useState(false);
@@ -134,10 +137,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       cards
         .filter((c) => (stateFilter === 'OPEN' ? c.status === 'OPEN' : cardStates(c, now).includes(stateFilter)))
         .filter((c) => kind === 'ALL' || c.kind === kind)
-        .filter((c) => station === 'ALL' || c.ownerStationId === station || c.steps.some((s) => s.stationId === station))
+        .filter((c) => station === 'ALL' || inStation(c.ownerStationId) || c.steps.some((s) => inStation(s.stationId)))
         .filter((c) => matchesQuery(query, c.title, c.brief, c.ownerName, c.target?.title, c.templateName, c.steps.map((s) => s.assigneeName || '')))
         .sort((a, b) => OPEN_STATES.indexOf(cardState(a, now)) - OPEN_STATES.indexOf(cardState(b, now)) || (b.updatedAt || '').localeCompare(a.updatedAt || '')),
-    [cards, stateFilter, kind, station, query, now]
+    [cards, stateFilter, kind, station, query, now, inStation]
   );
   const page = useIncremental(filtered, 40, `${stateFilter}|${kind}|${station}|${query}`);
 
@@ -431,6 +434,11 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             </select>
             <select aria-label="المحطة" value={station} onChange={(e) => setStation(e.target.value)} className={SELECT}>
               <option value="ALL">كل المحطات</option>
+              {stationGroups.length > 0 && (
+                <optgroup label="مجموعات المحطات">
+                  {stationGroups.map((g) => <option key={g.id} value={`group:${g.id}`}>{g.name}</option>)}
+                </optgroup>
+              )}
               {stations.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}

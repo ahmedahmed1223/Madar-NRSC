@@ -1443,7 +1443,7 @@ export class ApiService {
   /** What the signed-in colleague may do on cards (the server applies the same rules). */
   static cardActor(): CardActor {
     const me = this.getCurrentUser();
-    return { id: me.id, stationId: me.stationId, role: me.role, departmentId: departmentIdOf(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: departmentIdOf(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
   }
 
   /** Creates or replaces a card after checking it with the rules the server enforces. */

@@ -283,7 +283,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-slate-500" />
-          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">القسم الصحفي:</label>
+          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">تصنيف الخبر:</label>
           <select
             id="reports-category-filter"
             value={selectedCategory}
@@ -361,7 +361,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Category Breakdown */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800">
-            حجم الإنتاج الإخباري حسب الأقسام الصحفية <span className="text-2xs font-normal text-slate-500">(ضمن الفترة المختارة)</span>
+            حجم الإنتاج الإخباري حسب تصنيفات الأخبار <span className="text-2xs font-normal text-slate-500">(ضمن الفترة المختارة)</span>
           </h3>
           <div className="space-y-3">
             {categories.map((cat) => {

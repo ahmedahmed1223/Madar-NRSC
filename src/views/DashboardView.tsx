@@ -173,7 +173,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section data-tour="setup-wizard" aria-label="الإعداد السريع" className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50">
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-slate-900">أكمل إعداد «مدار» لفريقك</h2>
-            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة: المؤسسة، المحطات، الأقسام الصحفية، الفريق، الأمان والنسخ الاحتياطي.</p>
+            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة: المؤسسة، المحطات، تصنيفات الأخبار، الفريق، الأمان والنسخ الاحتياطي.</p>
           </div>
           <div className="h-1.5 sm:w-32 rounded-full bg-white overflow-hidden" aria-hidden="true">
             <div className="h-full bg-blue-600" style={{ width: `${(setup.done / setup.total) * 100}%` }} />

@@ -108,7 +108,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   // Colleagues a supervisor can hand work to (in the stations they follow), with how much open work each already holds.
   const people = useMemo(() => {
     if (!open) return [];
-    const scope = stationScope(stations, actor.stationId);
+    const scope = stationScope(stations, actor);
     return cardCandidates().filter((p) => !p.stationId || scope.has(p.stationId));
     // The list is rebuilt when the card changes; colleagues and settings rarely change meanwhile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -471,7 +471,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                           ))}
                           {actor.canManage && (
                             <optgroup label="أو اتركها لمحطة">
-                              {stations.filter((s) => stationScope(stations, actor.stationId).has(s.id)).map((s) => (
+                              {stations.filter((s) => stationScope(stations, actor).has(s.id)).map((s) => (
                                 <option key={s.id} value={`s:${s.id}`}>متاحة لمحطة {s.name}</option>
                               ))}
                             </optgroup>

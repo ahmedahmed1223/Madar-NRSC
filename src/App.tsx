@@ -633,7 +633,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     } catch (err: any) {
       addToast({
         title: 'خطأ في حفظ القسم',
-        message: err.message || 'تعذر حفظ القسم الصحفي',
+        message: err.message || 'تعذر حفظ التصنيف',
         type: 'error',
       });
       return false;

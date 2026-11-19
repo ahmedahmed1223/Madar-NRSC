@@ -186,7 +186,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
   const followers = (step: CardStep) =>
     step.stationId && ctx
       ? people
-          .filter((p) => p.canManage && stationScope(ctx.stations, p.stationId).has(step.stationId!))
+          .filter((p) => p.canManage && stationScope(ctx.stations, p).has(step.stationId!))
           .slice(0, MAX_FANOUT)
           .map((p) => p.id)
       : [];
