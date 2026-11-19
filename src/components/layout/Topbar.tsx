@@ -260,7 +260,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Real synchronisation status with the server */}
         <div
-          className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap ${
+          className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap max-w-[16rem] truncate ${
             !syncStatus.online
               ? 'bg-red-50 text-red-700 border-red-200'
               : syncStatus.pending > 0

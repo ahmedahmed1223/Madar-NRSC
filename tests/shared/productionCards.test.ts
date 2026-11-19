@@ -12,6 +12,16 @@ import {
   isCardLate,
   stepPoints,
   stepTypesError,
+  canGovernCard,
+  canSendBack,
+  cardStates,
+  isStepOwnLate,
+  openStepsBefore,
+  sendBackCard,
+  sendBackTargets,
+  stepAssigneeLabel,
+  stepFitsActor,
+  timeLogMinutes,
   stepTypesOf,
   type CardActor,
   type CardContext,
@@ -250,5 +260,117 @@ describe('merging a write based on an older version', () => {
     const added = { ...base, steps: [...base.steps, step('s9', 'publish')] };
     expect(mergeCardChanges(base, mine, added)!.steps.map((s) => s.id)).toEqual(['s1', 's2', 's3', 's9']);
     expect(mergeCardChanges(base, mine, { ...base, steps: base.steps.slice(0, 2) })!.steps.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+});
+
+describe('trial fixes: rework, blockers, claiming, time and station scope', () => {
+  // usr chain: gather (reporter) → verify (editor) → montage (montage) → quality (quality).
+  const qualityActor: CardActor = { id: 'quality', stationId: 'istanbul', role: 'QUALITY', departmentId: 'quality', canManage: false, canWork: true };
+  const qctx: CardContext = { ...ctx, users: new Map([...ctx.users, ['quality', { stationId: 'istanbul' }]]) };
+  const chain = () =>
+    card({
+      steps: [
+        step('s1', 'gather', { assigneeId: 'reporter', stationId: 'gaza', status: 'DONE' }),
+        step('s2', 'montage', { assigneeId: 'montage', stationId: 'istanbul', status: 'DONE' }),
+        step('s3', 'graphics', { assigneeId: 'editor', stationId: 'beirut', status: 'DONE' }),
+        step('s4', 'quality', { assigneeId: 'quality', stationId: 'istanbul', status: 'IN_PROGRESS' }),
+      ],
+    });
+
+  it('lets the reviewer send an earlier step back with a reason, resetting the steps after it', () => {
+    const before = chain();
+    expect(canSendBack(before, qualityActor, 's4')).toBe(true);
+    expect(sendBackTargets(before, 's4').map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+    const back = sendBackCard(before, 's2', 'اسم الشاهد الثاني غير مثبت', 's4');
+    expect(back.steps.map((s) => s.status)).toEqual(['DONE', 'IN_PROGRESS', 'TODO', 'IN_PROGRESS']);
+    expect(back.steps[1].returnedReason).toBe('اسم الشاهد الثاني غير مثبت');
+    expect(cardChangeError(before, back, qualityActor, qctx)).toBeNull();
+    // A reason is required.
+    expect(cardChangeError(before, sendBackCard(before, 's2', '  ', 's4'), qualityActor, qctx)).toContain('سبب الإعادة');
+    // Someone without a review step after it may not.
+    expect(cardChangeError(before, sendBackCard(before, 's1', 'سبب'), editor, qctx)).toContain('لصاحب التكليف');
+    // Sending back must not touch anything else on someone else's step.
+    const sneaky = { ...back, steps: back.steps.map((s) => (s.id === 's2' ? { ...s, note: 'مدسوسة' } : s)) };
+    expect(cardChangeError(before, sneaky, qualityActor, qctx)).toContain('أُسندت إليه');
+    // The owner may send back from anywhere.
+    const owner: CardActor = { id: 'reporter', stationId: 'gaza', canManage: false, canWork: true };
+    expect(cardChangeError({ ...before, ownerId: 'reporter' }, { ...sendBackCard(before, 's3', 'الخريطة خاطئة'), ownerId: 'reporter' }, owner, qctx)).toBeNull();
+  });
+
+  it('offers a station step only to colleagues whose kind of work it is', () => {
+    const montageStep = step('m', 'montage', { stationId: 'gaza' });
+    const translate = step('t', 'translate', { stationId: 'gaza' });
+    const montage: CardActor = { id: 'm1', stationId: 'gaza', role: 'MONTAGE', departmentId: 'montage', canManage: false, canWork: true };
+    const reports: CardActor = { id: 'r1', stationId: 'gaza', role: 'REPORTS_EDITOR', departmentId: 'reports', canManage: false, canWork: true };
+    const manager: CardActor = { id: 'mgr', stationId: 'gaza', role: 'STATION_MANAGER', departmentId: 'newsroom', canManage: true, canWork: true };
+    expect(canClaimStep(montageStep, montage)).toBe(true);
+    expect(canClaimStep(translate, montage)).toBe(false);
+    expect(canClaimStep(montageStep, reports)).toBe(false);
+    expect(canClaimStep(step('e', 'edit', { stationId: 'gaza' }), reports)).toBe(true);
+    expect(canClaimStep(translate, manager)).toBe(true);
+    expect(stepFitsActor('my-custom-type', montage)).toBe(true);
+    // A step left to a department is for that department.
+    expect(canClaimStep(step('d', 'edit', { stationId: 'gaza', departmentId: 'reports' }), reports)).toBe(true);
+    expect(canClaimStep(step('d', 'montage', { stationId: 'gaza', departmentId: 'graphics' }), montage)).toBe(false);
+    // Enforced on writes too.
+    const before = card({ steps: [step('x', 'translate', { stationId: 'gaza' })] });
+    const claimed = withStep(before, 'x', { assigneeId: 'm1', status: 'IN_PROGRESS' });
+    expect(cardChangeError(before, claimed, montage, { ...ctx, users: new Map([...ctx.users, ['m1', { stationId: 'gaza' }]]) })).toContain('المكلف');
+  });
+
+  it('adds work sessions to the time spent and never rewrites them', () => {
+    const before = card({ steps: [step('s1', 'gather', { assigneeId: 'reporter', status: 'DONE', spentMinutes: 75, timeLog: [{ id: 'tm1', minutes: 75 }] })] });
+    const reopened = withStep(before, 's1', { status: 'IN_PROGRESS' });
+    expect(cardChangeError(before, reopened, reporter, ctx)).toBeNull();
+    const again = withStep(reopened, 's1', { status: 'DONE', spentMinutes: 90, timeLog: [{ id: 'tm1', minutes: 75 }, { id: 'tm2', minutes: 15 }] });
+    expect(cardChangeError(reopened, again, reporter, ctx)).toBeNull();
+    expect(timeLogMinutes(again.steps[0].timeLog)).toBe(90);
+    expect(cardChangeError(reopened, withStep(reopened, 's1', { spentMinutes: 15 }), reporter, ctx)).toContain('يُضاف');
+    expect(cardChangeError(reopened, withStep(reopened, 's1', { timeLog: [{ id: 'tm1', minutes: 5 }] }), reporter, ctx)).toContain('سجل الوقت');
+  });
+
+  it('keeps decisions with the owner and supervisors', () => {
+    const before = card();
+    const decision = { ...before, log: [{ id: 'l1', kind: 'NOTE' as const, text: 'سحب من نشرة الظهيرة', decision: true }] };
+    expect(cardChangeError(before, decision, editor, ctx)).toContain('القرار');
+    expect(cardChangeError(before, decision, chief, ctx)).toBeNull();
+    expect(cardChangeError({ ...before, ownerId: 'editor' }, { ...decision, ownerId: 'editor' }, editor, ctx)).toBeNull();
+  });
+
+  it('lets a branch close, cancel or delete only the assignments it governs', () => {
+    const stationsMain: Station[] = [{ id: 'gaza', name: 'غزة' }, { id: 'beirut', name: 'بيروت' }, { id: 'istanbul', name: 'إسطنبول', isMain: true }];
+    const mctx: CardContext = { ...ctx, stations: stationsMain };
+    const gazaChief: CardActor = { id: 'g-chief', stationId: 'gaza', canManage: true, canWork: true };
+    const mainCard = card({ ownerId: 'chief', ownerStationId: 'istanbul' });
+    const gazaCard = card({ ownerId: 'chief', ownerStationId: 'gaza' });
+    expect(canGovernCard(mainCard, gazaChief, stationsMain)).toBe(false);
+    expect(canGovernCard(gazaCard, gazaChief, stationsMain)).toBe(true);
+    expect(canGovernCard(card({ ownerStationId: 'beirut' }), gazaChief, stationsMain)).toBe(true);
+    expect(canGovernCard(gazaCard, { ...gazaChief, stationId: 'istanbul' }, stationsMain)).toBe(true);
+    expect(canGovernCard(mainCard, { ...gazaChief, id: 'chief' }, stationsMain)).toBe(true);
+    expect(cardChangeError(mainCard, { ...mainCard, status: 'CANCELLED' }, gazaChief, mctx)).toContain('المحطة الرئيسية');
+    expect(cardChangeError(gazaCard, { ...gazaCard, status: 'CLOSED' }, gazaChief, mctx)).toBeNull();
+  });
+
+  it('reports a blocked card past its deadline as late too, without blaming the step waiting behind it', () => {
+    const c = card({
+      dueAt: '2026-11-19T11:00:00Z',
+      steps: [
+        step('s1', 'montage', { status: 'BLOCKED', blockedReason: 'اللقطات لم تصل', dueAt: '2026-11-19T10:00:00Z' }),
+        step('s2', 'quality', { dueAt: '2026-11-19T11:00:00Z' }),
+      ],
+    });
+    expect(cardState(c, NOW)).toBe('BLOCKED');
+    expect(cardStates(c, NOW)).toEqual(['BLOCKED', 'LATE']);
+    expect(isStepOwnLate(c, c.steps[0], NOW)).toBe(true);
+    expect(isStepOwnLate(c, c.steps[1], NOW)).toBe(false);
+    expect(openStepsBefore(c, 's2').map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('names station- and department-wide steps instead of «غير مسندة»', () => {
+    expect(stepAssigneeLabel(step('a', 'edit', { stationId: 'gaza' }), stations)).toBe('متاحة لمحطة غزة');
+    expect(stepAssigneeLabel(step('a', 'edit', { departmentId: 'montage' }), stations)).toBe('متاحة لقسم المونتاج');
+    expect(stepAssigneeLabel(step('a', 'edit'), stations)).toBe('غير مسندة');
+    expect(stepAssigneeLabel(step('a', 'edit', { assigneeName: 'سامر' }), stations)).toBe('سامر');
   });
 });
