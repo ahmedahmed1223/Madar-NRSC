@@ -6,6 +6,9 @@ import { apiService } from '../../services/api';
 import { ACCEPTED_UPLOAD_TYPES, mediaTypeForMime, uploadMediaFile } from '../../services/mediaUpload';
 import type { MediaFile } from '../../types';
 import { videoStatusName } from '../../shared/production';
+import { AR, countLabel } from '../../shared/arabicPlural';
+
+const TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
 
 export const mediaIcon = (type?: string) =>
   type === 'VIDEO' ? Film : type === 'AUDIO' ? Music : type === 'IMAGE' ? ImageIcon : FileText;
@@ -236,9 +239,9 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
                   )}
                 </div>
                 <div className="p-2 space-y-0.5">
-                  <span className="block text-xs font-bold text-slate-800 truncate">{m.title || m.fileName}</span>
+                  <span className="block text-xs font-bold text-slate-800 truncate" dir="auto">{m.title || m.fileName}</span>
                   <span className="block text-2xs text-slate-500">
-                    {m.mediaType === 'VIDEO' ? videoStatusName(m.videoStatus) : m.mediaType}
+                    {m.mediaType === 'VIDEO' ? videoStatusName(m.videoStatus) : TYPE_NAMES[m.mediaType] || m.mediaType}
                   </span>
                 </div>
                 {on && (
@@ -252,7 +255,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          <span className="text-xs text-slate-500">{picked.length} مادة محددة</span>
+          <span className="text-xs text-slate-500" role="status">{picked.length ? `المحدد: ${countLabel(picked.length, AR.item)}` : 'لم تُحدَّد مادة بعد'}</span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl">
               إلغاء

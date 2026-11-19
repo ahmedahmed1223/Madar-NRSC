@@ -156,9 +156,9 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
             </button>
             <div className="flex-1 min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-1.5 text-2xs font-bold">
-                {q.parentId && <CornerDownLeft className="w-3 h-3 text-purple-500" />}
+                {q.parentId && <CornerDownLeft className="w-3 h-3 text-slate-400" aria-hidden />}
                 <span className={`px-1.5 py-0.5 rounded ${KIND_TONE[q.kind || 'MAIN']}`}>{questionKindName(q.kind)}</span>
-                {(guest || q.assignedToName) && <span className="text-purple-700">إلى: {guest?.guestName || q.assignedToName}</span>}
+                {(guest || q.assignedToName) && <span className="text-slate-600 font-semibold">إلى: {guest?.guestName || q.assignedToName}</span>}
               </div>
               <p className={`text-sm font-bold leading-relaxed ${q.isAsked ? 'line-through text-slate-500' : 'text-slate-800'}`}>{q.questionText}</p>
               {q.notes && <p className="text-2xs text-slate-500">للمذيع: {q.notes}</p>}

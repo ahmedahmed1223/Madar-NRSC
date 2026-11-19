@@ -204,7 +204,7 @@ describe('shift handover brief', () => {
     expect(text.indexOf('ملاحظات مسؤول المناوبة')).toBeLessThan(text.indexOf('■ متعطل'));
     expect(text).toContain('تابعوا موجز الظهيرة');
     expect(text).toContain('■ متعطل أو متأخر — يحتاج قراراً (2)');
-    expect(text).toContain('■ مستحق خلال 8 ساعات القادمة (0)');
+    expect(text).toContain('■ مستحق خلال 8 ساعات (0)');
     expect(text).toContain('[عاجل] شهادة مصوّرة');
     expect(text).toContain('أُنجز في المناوبة:');
     expect(handoverText(buildHandover([], { ...options, stationId: null }), 'x')).toContain('لا شيء متعطل.');

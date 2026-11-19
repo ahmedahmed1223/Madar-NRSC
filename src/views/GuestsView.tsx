@@ -191,9 +191,9 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           >
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 rounded-2xl ring-2 ring-slate-100" />
-                  <div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 shrink-0 rounded-2xl ring-2 ring-slate-100" />
+                  <div className="min-w-0">
                     <h3 className="font-bold text-slate-800 text-sm">{guest.fullName}</h3>
                     <p className="text-xs text-slate-500">{guest.jobTitle}</p>
                     <p className="text-xs text-blue-700 font-semibold">{guest.organization}</p>
@@ -205,10 +205,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(guest)}
-                    className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    aria-label={`تعديل بيانات الضيف: ${guest.fullName}`}
                     title="تعديل بيانات الضيف"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-4 h-4" aria-hidden />
                   </button>
                   )}
 
@@ -220,10 +221,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                           onDeleteGuest(guest.id);
                         }
                       }}
-                      className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      className="min-h-10 min-w-10 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      aria-label={`حذف الضيف: ${guest.fullName}`}
                       title="حذف الضيف من الأرشيف"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden />
                     </button>
                   )}
                 </div>
@@ -245,18 +247,18 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                 {guest.phone && (
                   <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-mono text-left" dir="ltr">{guest.phone}</span>
+                    <Phone className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
+                    <a href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`} className="font-mono text-left hover:text-blue-700 hover:underline" dir="ltr" aria-label={`اتصال بـ ${guest.fullName}: ${guest.phone}`}>{guest.phone}</a>
                   </div>
                 )}
                 {guest.email && (
                   <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-mono text-left truncate" dir="ltr">{guest.email}</span>
+                    <Mail className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
+                    <a href={`mailto:${guest.email}`} className="min-w-0 text-left truncate hover:text-blue-700 hover:underline" dir="ltr" title={guest.email}>{guest.email}</a>
                   </div>
                 )}
                 {guest.notes && (
-                  <p className="text-2xs text-slate-500 italic mt-1 line-clamp-2">
+                  <p className="text-2xs text-slate-500 mt-1 line-clamp-2">
                     {guest.notes}
                   </p>
                 )}

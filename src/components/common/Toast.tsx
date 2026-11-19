@@ -43,22 +43,22 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
 
   const styles = {
     success: {
-      bg: 'bg-emerald-950/90 border-emerald-500/40 text-emerald-100',
+      bg: 'border-emerald-500/40',
       icon: <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />,
       bar: 'bg-emerald-500',
     },
     error: {
-      bg: 'bg-rose-950/90 border-rose-500/40 text-rose-100',
+      bg: 'border-rose-500/50',
       icon: <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />,
       bar: 'bg-rose-500',
     },
     warning: {
-      bg: 'bg-amber-950/90 border-amber-500/40 text-amber-100',
+      bg: 'border-amber-500/40',
       icon: <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />,
       bar: 'bg-amber-500',
     },
     info: {
-      bg: 'bg-slate-900/90 border-blue-500/40 text-slate-100',
+      bg: 'border-blue-500/40',
       icon: <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />,
       bar: 'bg-blue-500',
     },
@@ -69,7 +69,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
       role={toast.type === 'error' ? 'alert' : 'status'}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className={`pointer-events-auto relative overflow-hidden backdrop-blur-md border rounded-xl p-3.5 shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${styles.bg}`}
+      className={`pointer-events-auto relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3.5 shadow-2xl ${styles.bg}`}
     >
       <div className="flex items-start gap-3">
         {styles.icon}

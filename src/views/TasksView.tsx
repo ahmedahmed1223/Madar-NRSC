@@ -9,7 +9,7 @@ import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
-import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown } from 'lucide-react';
+import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown, CheckSquare } from 'lucide-react';
 import { confirmDialog } from '../services/dialogs';
 import { TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
@@ -25,7 +25,7 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
   const days = overdueDays(task);
   if (!days) return null;
   return (
-    <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-2xs font-bold whitespace-nowrap">
+    <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-2xs font-bold whitespace-nowrap">
       متأخرة {countLabel(days, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
     </span>
   );
@@ -45,6 +45,9 @@ interface TasksViewProps {
   /** A task to highlight and scroll to (notifications link to /tasks/<id>). */
   focusId?: string | null;
 }
+
+/** One priority vocabulary on the board and in the list: urgent in red, high in amber. */
+const priorityVariant = (p?: string) => (p === 'URGENT' || p === 'CRITICAL' ? 'danger' : p === 'HIGH' ? 'warning' : 'default');
 
 const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 0, HIGH: 1, NORMAL: 2, MEDIUM: 2, LOW: 3 };
 const dueTime = (t: { dueDate?: string }) => (t.dueDate ? Date.parse(t.dueDate) || Infinity : Infinity);
@@ -267,13 +270,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <div className="flex items-start justify-between gap-2">
         {handle}
         <Badge
-          variant={
-            t.priority === 'URGENT'
-              ? 'danger'
-              : t.priority === 'HIGH'
-              ? 'warning'
-              : 'default'
-          }
+          variant={priorityVariant(t.priority)}
           size="sm"
         >
           {priorityLabel(t.priority)}
@@ -317,7 +314,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <UserIcon className="w-3 h-3 text-slate-500" />
           <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
         </div>
-        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-500'}`}>
+        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-amber-800' : 'text-slate-500'}`}>
           <OverdueBadge task={t} />
           <Clock className="w-3 h-3" />
           <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''}</span>
@@ -347,33 +344,36 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <CheckSquare className="w-5 h-5 text-blue-600" />
             المهام
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            متابعة تكليفات المراسلين والمعدين، تواريخ التسليم، وسير العمل الصحفي
+          <p className="text-xs text-slate-500 mt-1">
+            المهام المسندة إلى الزملاء: من ينفّذ ماذا، وموعد التسليم، وأين وصل العمل.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 text-xs font-bold">
+          <div role="group" aria-label="طريقة العرض" className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 text-xs font-bold">
             <button
               type="button"
+              aria-pressed={activeTab === 'KANBAN'}
               onClick={() => setActiveTab('KANBAN')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`min-h-9 px-3 py-1.5 rounded-lg transition-colors ${
                 activeTab === 'KANBAN' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
               }`}
             >
-              لوحة كانبان
+              لوحة
             </button>
             <button
               type="button"
+              aria-pressed={activeTab === 'LIST'}
               onClick={() => setActiveTab('LIST')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`min-h-9 px-3 py-1.5 rounded-lg transition-colors ${
                 activeTab === 'LIST' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
               }`}
             >
-              جدول قائمة
+              قائمة
             </button>
           </div>
 
@@ -515,15 +515,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <table className="w-full min-w-[720px] text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                <th className="py-3 px-4">عنوان المهمة</th>
-                <th className="py-3 px-3">الأولوية</th>
-                <th className="py-3 px-3">المسؤول المكلف</th>
-                <th className="py-3 px-3">تاريخ الاستحقاق</th>
-                <th className="py-3 px-3">الحالة</th>
-                <th className="py-3 px-4 text-center">إجراءات</th>
+                <th scope="col" className="py-3 px-4">عنوان المهمة</th>
+                <th scope="col" className="py-3 px-3 whitespace-nowrap">الأولوية</th>
+                <th scope="col" className="py-3 px-3 whitespace-nowrap">المسؤول المكلف</th>
+                <th scope="col" className="py-3 px-3 whitespace-nowrap">تاريخ الاستحقاق</th>
+                <th scope="col" className="py-3 px-3">الحالة</th>
+                <th scope="col" className="py-3 px-4 text-center">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
+              {filteredTasks.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-10 px-4 text-center text-slate-500">
+                    {tasks.length === 0 ? 'لا مهام بعد.' : mineOnly && !searchQuery && selectedStatus === 'ALL' ? 'لا مهام مسندة إليك الآن. ألغِ «مهامي فقط» لرؤية مهام الفريق.' : 'لا مهام تطابق البحث أو التصفية.'}
+                  </td>
+                </tr>
+              )}
               {taskListPage.visible.map((t) => (
                 <tr key={t.id} data-task-id={t.id} tabIndex={-1} className={`hover:bg-slate-50/70 outline-hidden ${focusId === t.id ? 'bg-blue-50' : ''}`}>
                   <td className="py-3 px-4 font-bold text-slate-800">
@@ -533,14 +540,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     </div>
                   </td>
                   <td className="py-3 px-3">
-                    <Badge variant={t.priority === 'URGENT' ? 'danger' : 'default'} size="sm">
+                    <Badge variant={priorityVariant(t.priority)} size="sm">
                       {priorityLabel(t.priority)}
                     </Badge>
                   </td>
                   <td className="py-3 px-3 font-semibold text-slate-700">{assigneeOf(t)}</td>
                   <td className="py-3 px-3 tabular-nums text-slate-600">
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={overdueDays(t) ? 'text-red-600 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
+                      <span className={overdueDays(t) ? 'text-amber-800 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
                       <OverdueBadge task={t} />
                     </div>
                   </td>

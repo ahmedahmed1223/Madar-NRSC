@@ -1,3 +1,4 @@
+import { countLabel } from '../../shared/arabicPlural';
 import { LongTextField } from '../common/TextSizeControls';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { dataStore } from '../../services/dataStore';
@@ -310,8 +311,8 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               sizeKey="anchor-script"
               label={`نص المذيع ${meta.clip ? '(المقدمة / الربط)' : ''}`}
               aside={
-                <span className="text-2xs font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
-                  {words} كلمة · قراءة {mmss(readSeconds(script))}
+                <span className="text-2xs tabular-nums text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                  {countLabel(words, { one: 'كلمة واحدة', two: 'كلمتان', few: 'كلمات', many: 'كلمة', zero: 'لا كلمات' })} · قراءة <span className="font-mono">{mmss(readSeconds(script))}</span>
                 </span>
               }
               rows={8}
@@ -408,7 +409,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 </button>
               )}
               {!isNew && graphics.some((g) => g.lines.some((l) => l.trim())) && RbacService.hasPermission(currentUser, 'requests.create') && (
-                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-purple-700 hover:underline">
+                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline">
                   <Send className="w-3.5 h-3.5" /> إرسال لقسم الجرافيك
                 </button>
               )}
@@ -430,7 +431,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
 
-          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
+          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} title={story.slug} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
           <div className="sticky bottom-0 bg-white flex flex-wrap items-center justify-between gap-2 py-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && status === 'DRAFT' && (

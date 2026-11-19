@@ -5,11 +5,13 @@ import { SortTh, sortList, usePersistentSort } from '../components/common/SortHe
 
 const USER_SORT_KEYS = ['name', 'role', 'department', 'status', 'lastLogin'] as const;
 type UserSortKey = (typeof USER_SORT_KEYS)[number];
+const VIEW_KEY = 'nrcs-users-view';
+const ICON_BTN = 'min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center bg-white rounded-lg border border-slate-200 transition-colors';
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
-import { stationName, stationsOf } from '../shared/stations';
+import { stationGroupsOf, stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
@@ -20,6 +22,7 @@ import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
 import { confirmSaved } from '../services/confirmSave';
+import { countLabel } from '../shared/arabicPlural';
 import { roleInUseError } from '../services/roleUsage';
 import {
   Users as UsersIcon,
@@ -50,10 +53,26 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'MATRIX'>('DIRECTORY');
-  const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
+  const [viewMode, setViewModeState] = useState<'GRID' | 'TABLE'>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'TABLE' ? 'TABLE' : 'GRID';
+    } catch {
+      return 'GRID';
+    }
+  });
+  /** The chosen layout is remembered on this device. */
+  const setViewMode = (mode: 'GRID' | 'TABLE') => {
+    setViewModeState(mode);
+    try {
+      localStorage.setItem(VIEW_KEY, mode);
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  };
 
   // Filters
   const stations = stationsOf(ApiService.getSettings());
+  const stationGroups = stationGroupsOf(ApiService.getSettings());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
@@ -287,7 +306,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
     const matchesRole = selectedRoleFilter === 'ALL' || findUserRole(u, roles)?.id === selectedRoleFilter;
     const knownStation = !!u.stationId && stations.some((st) => st.id === u.stationId);
-    const matchesStation = stationFilter === 'ALL' || (stationFilter === 'NONE' ? !knownStation : u.stationId === stationFilter);
+    const group = stationFilter.startsWith('group:') ? stationGroups.find((g) => `group:${g.id}` === stationFilter) : undefined;
+    const matchesStation =
+      stationFilter === 'ALL' ||
+      (stationFilter === 'NONE' ? !knownStation : group ? !!u.stationId && group.stationIds.includes(u.stationId) : u.stationId === stationFilter);
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
     const matchesStatus =
       selectedStatusFilter === 'ALL'
@@ -307,7 +329,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   // KPI Metrics
   const activeCount = users.filter((u) => u.isActive).length;
   const suspendedCount = users.filter((u) => !u.isActive).length;
-  const twoFactorRate = Math.round((users.filter((u) => u.twoFactorEnabled).length / (users.length || 1)) * 100);
+  const withoutTwoFactor = users.filter((u) => !u.twoFactorEnabled).length;
 
   return (
     <div className="space-y-6 text-right font-sans max-w-7xl mx-auto" dir="rtl">
@@ -334,10 +356,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           <button
             type="button"
             onClick={handleExportRoster}
-            className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-2xl transition-colors cursor-pointer flex items-center gap-1.5"
+            className="min-h-11 px-3.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
           >
-            <Download className="w-4 h-4" />
-            <span>تصدير السجل</span>
+            <Download className="w-4 h-4" aria-hidden="true" />
+            <span>تصدير القائمة (CSV)</span>
           </button>
 
           {canCreate && (
@@ -347,93 +369,56 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               setUserToEdit(null);
               setIsUserModalOpen(true);
             }}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-2"
+            className="min-h-11 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
             <span>إضافة مستخدم جديد</span>
           </button>
           )}
         </div>
       </div>
 
-      {/* KPI Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
-            <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">{users.length} موظف</div>
-            <span className="text-2xs text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
-          </div>
-          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 items-center justify-center">
-            <UsersIcon className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
-            <div className="text-xl sm:text-2xl font-bold text-emerald-700 mt-1">{activeCount} مفعل</div>
-            <span className="text-2xs text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
-          </div>
-          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 items-center justify-center">
-            <UserCheck className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
-            <div className="text-xl sm:text-2xl font-bold text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
-            <span className="text-2xs text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
-          </div>
-          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 items-center justify-center">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
-            <div className="text-xl sm:text-2xl font-bold text-indigo-600 mt-1">{twoFactorRate}%</div>
-            <span className="text-2xs text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
-          </div>
-          <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center">
-            <KeyRound className="w-5 h-5" />
-          </div>
-        </div>
+      {/* Account summary: each count filters the directory. */}
+      <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="ملخص الحسابات" role="group">
+        {([
+          { label: 'نشطة', count: activeCount, apply: () => { clearFilters(); setSelectedStatusFilter('ACTIVE'); }, on: selectedStatusFilter === 'ACTIVE', warn: false },
+          { label: 'مجمّدة', count: suspendedCount, apply: () => { clearFilters(); setSelectedStatusFilter('INACTIVE'); }, on: selectedStatusFilter === 'INACTIVE', warn: false },
+          { label: 'بلا تحقق بخطوتين', count: withoutTwoFactor, apply: () => { clearFilters(); setTwoFactorFilter('OFF'); }, on: twoFactorFilter === 'OFF', warn: withoutTwoFactor > 0 },
+        ]).map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            aria-pressed={item.on}
+            onClick={() => { setActiveTab('DIRECTORY'); if (item.on) clearFilters(); else item.apply(); }}
+            className={`min-h-11 sm:min-h-9 px-3 rounded-lg border inline-flex items-center gap-2 font-bold transition-colors ${item.on ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'}`}
+          >
+            <span className={`tabular-nums text-sm ${item.warn ? 'text-amber-800' : 'text-slate-900'}`}>{item.count}</span>
+            {item.label}
+          </button>
+        ))}
+        <span className="text-slate-500">{countLabel(users.length, { one: 'حساب واحد', two: 'حسابان', few: 'حسابات', many: 'حساباً' })}، {countLabel(roles.length, { one: 'دور واحد', two: 'دوران', few: 'أدوار', many: 'دوراً' })}</span>
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('DIRECTORY')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'DIRECTORY'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <UsersIcon className="w-4 h-4" />
-          <span>دليل الموظفين والمستخدمين ({users.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('MATRIX')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'MATRIX'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>مصفوفة الصلاحيات والأدوار</span>
-        </button>
-
-        
-
-        
+      <div role="tablist" aria-label="المستخدمون والأدوار" className="flex items-center gap-1 border-b border-slate-200">
+        {([
+          { id: 'DIRECTORY', label: `الحسابات (${users.length})`, icon: UsersIcon },
+          { id: 'MATRIX', label: 'الأدوار والصلاحيات', icon: ShieldCheck },
+        ] as const).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`-mb-px min-h-11 px-4 border-b-2 text-sm font-bold transition-colors flex items-center gap-2 ${
+              activeTab === t.id ? 'border-blue-600 text-slate-900' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <t.icon className="w-4 h-4" aria-hidden="true" />
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
 
       {/* TAB 1: USERS DIRECTORY */}
@@ -441,15 +426,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-              <div className="relative flex-1 min-w-[12rem]">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto sm:flex-1 min-w-0">
+              <div className="relative col-span-2 sm:flex-1 sm:min-w-[12rem]">
                 <Search className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
                 <input
-                  type="text"
+                  type="search"
+                  aria-label="بحث في الحسابات"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث بالاسم، البريد، الرقم الوظيفي، أو المسمى..."
-                  className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  className="w-full min-h-11 sm:min-h-9 text-xs pr-9 pl-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -457,9 +443,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="الدور"
                 value={selectedRoleFilter}
                 onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
-                <option value="ALL">كافة الأدوار التحريرية</option>
+                <option value="ALL">كل الأدوار</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.nameAr}
@@ -471,12 +457,17 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="المحطة"
                 value={stationFilter}
                 onChange={(e) => setStationFilter(e.target.value)}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">كل المحطات</option>
                 {stations.map((st) => (
                   <option key={st.id} value={st.id}>
                     {st.name}
+                  </option>
+                ))}
+                {stationGroups.map((g) => (
+                  <option key={g.id} value={`group:${g.id}`}>
+                    مجموعة {g.name}
                   </option>
                 ))}
                 <option value="NONE">بلا محطة</option>
@@ -486,9 +477,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="القسم"
                 value={selectedDepartmentFilter}
                 onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
-                <option value="ALL">كافة الأقسام</option>
+                <option value="ALL">كل الأقسام</option>
                 {DEPARTMENTS.map((dept) => (
                   <option key={dept.id} value={dept.id}>
                     {dept.name}
@@ -500,18 +491,18 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 aria-label="حالة الحساب"
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value as any)}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
-                <option value="ALL">كافة الحالات</option>
-                <option value="ACTIVE">نشط ومصرح فقط</option>
-                <option value="INACTIVE">مجمد وموقوف فقط</option>
+                <option value="ALL">كل الحالات</option>
+                <option value="ACTIVE">النشطة فقط</option>
+                <option value="INACTIVE">المجمّدة فقط</option>
               </select>
 
               <select
                 aria-label="التحقق بخطوتين"
                 value={twoFactorFilter}
                 onChange={(e) => setTwoFactorFilter(e.target.value as any)}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="ALL">التحقق بخطوتين: الكل</option>
                 <option value="ON">مفعّل</option>
@@ -526,7 +517,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                   if (key !== sort.key) toggleSort(key, dir);
                   else if (dir !== sort.dir) toggleSort(key);
                 }}
-                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
               >
                 <option value="name:asc">الاسم (أ-ي)</option>
                 <option value="name:desc">الاسم (ي-أ)</option>
@@ -537,34 +528,29 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               </select>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setViewMode('GRID')}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'GRID' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="عرض بطاقات"
-              >
-                <Grid className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('TABLE')}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'TABLE' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="عرض جدول"
-              >
-                <List className="w-4 h-4" />
-              </button>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg" role="group" aria-label="طريقة العرض">
+              {([['GRID', 'عرض بطاقات', Grid], ['TABLE', 'عرض جدول', List]] as const).map(([mode, label, Icon]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  aria-pressed={viewMode === mode}
+                  aria-label={label}
+                  title={label}
+                  className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-md transition-colors ${
+                    viewMode === mode ? 'bg-white shadow-xs text-blue-700' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" aria-hidden="true" />
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Results Info */}
           <div className="flex items-center justify-between text-xs text-slate-500 px-1">
             <span>
-              عرض <strong className="text-slate-800">{filteredUsers.length}</strong> من إجمالي {users.length} مستخدم
+              <strong className="text-slate-800 tabular-nums">{filteredUsers.length}</strong> من {users.length}
             </span>
             {filtersActive && (
               <button
@@ -587,11 +573,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                 return (
                   <div
                     key={user.id}
-                    className={`bg-white rounded-2xl border transition-all shadow-xs hover:shadow-md flex flex-col justify-between overflow-hidden ${
+                    className={`bg-white rounded-xl border transition-colors flex flex-col justify-between overflow-hidden ${
                       isCurrentActive
                         ? 'border-blue-500 ring-2 ring-blue-400/50'
                         : !user.isActive
-                        ? 'border-red-200 bg-red-50/20 opacity-80'
+                        ? 'border-rose-200 bg-rose-50/20'
                         : 'border-slate-200/80'
                     }`}
                   >
@@ -609,14 +595,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             </span>
                           )}
                           {!user.isActive && (
-                            <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">مجمّد</span>
+                            <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">مجمّد</span>
                           )}
-                          <span
-                            className={`w-2.5 h-2.5 rounded-full ${
-                              user.isActive ? 'bg-emerald-500' : 'bg-red-500'
-                            }`}
-                            title={user.isActive ? 'نشط' : 'مجمد'}
-                          />
                         </div>
                       </div>
 
@@ -671,14 +651,15 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         type="button"
                         onClick={() => handleResetPassword(user)}
                         disabled={isCurrentActive}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                        title={isCurrentActive ? undefined : 'إصدار كلمة مرور مؤقتة'}
+                        className={`min-h-11 sm:min-h-9 text-xs font-bold px-3 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${
                           isCurrentActive
                             ? 'bg-blue-100 text-blue-700 cursor-default'
-                            : 'bg-white hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 shadow-2xs'
+                            : 'bg-white hover:border-blue-300 hover:text-blue-800 text-slate-700 border border-slate-200'
                         }`}
                       >
                         <KeyRound className="w-3.5 h-3.5" />
-                        <span>{isCurrentActive ? 'الحساب الحالي' : 'إصدار كلمة مرور مؤقتة'}</span>
+                        <span>{isCurrentActive ? 'الحساب الحالي' : 'كلمة مرور مؤقتة'}</span>
                       </button>
                       )}
 
@@ -687,7 +668,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           <button
                             type="button"
                             onClick={() => void handleRevokeSessions(user)}
-                            className="p-1.5 bg-white hover:bg-rose-100 text-rose-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                            className={`${ICON_BTN} text-slate-600 hover:text-rose-700 hover:bg-rose-50`}
                             title="إنهاء الجلسات على كل الأجهزة (جهاز مفقود أو حاسوب مشترك)"
                             aria-label={`إنهاء جلسات ${user.fullName}`}
                           >
@@ -698,8 +679,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           <button
                             type="button"
                             onClick={() => handleResetTwoFactor(user)}
-                            className="p-1.5 bg-white hover:bg-indigo-100 text-indigo-600 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                            className={`${ICON_BTN} text-slate-600 hover:text-blue-700 hover:bg-blue-50`}
                             title="إلغاء التحقق بخطوتين (فقدان جهاز المصادقة)"
+                            aria-label={`إلغاء التحقق بخطوتين لـ${user.fullName}`}
                           >
                             <ShieldOff className="w-3.5 h-3.5" />
                           </button>
@@ -711,8 +693,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             setUserToEdit(user);
                             setIsUserModalOpen(true);
                           }}
-                          className="p-1.5 bg-white hover:bg-slate-200 text-slate-600 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          className={`${ICON_BTN} text-slate-600 hover:text-blue-700 hover:bg-blue-50`}
                           title="تعديل المستخدم"
+                          aria-label={`تعديل ${user.fullName}`}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -723,12 +706,13 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           type="button"
                           onClick={() => handleToggleStatus(user.id)}
                           disabled={isCurrentActive}
-                          className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                          className={`${ICON_BTN} ${
                             user.isActive
-                              ? 'bg-white hover:bg-amber-100 text-amber-700 border-slate-200'
-                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                              ? 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
+                              : 'text-emerald-700 hover:bg-emerald-50 border-emerald-200'
                           } disabled:opacity-40 disabled:cursor-not-allowed`}
                           title={user.isActive ? 'تجميد الحساب' : 'تنشيط الحساب'}
+                          aria-label={`${user.isActive ? 'تجميد حساب' : 'تنشيط حساب'} ${user.fullName}`}
                         >
                           {user.isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
                         </button>
@@ -739,8 +723,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           type="button"
                           onClick={() => handleDeleteUser(user.id)}
                           disabled={isCurrentActive}
-                          className="p-1.5 bg-white hover:bg-red-100 text-red-600 rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          className={`${ICON_BTN} text-slate-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed`}
                           title="حذف الحساب"
+                          aria-label={`حذف حساب ${user.fullName}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -802,7 +787,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           <td className="p-3 text-center">
                             <span
                               className={`text-2xs font-bold px-2 py-0.5 rounded-full ${
-                                user.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                                user.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                               }`}
                             >
                               {user.isActive ? 'نشط' : 'مجمّد'}
@@ -816,7 +801,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 type="button"
                                 onClick={() => handleResetPassword(user)}
                                 disabled={isCurrent}
-                                className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-2xs font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="min-h-11 sm:min-h-9 px-2.5 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-800 rounded-lg text-2xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 title="إصدار كلمة مرور مؤقتة"
                               >
                                 كلمة مرور مؤقتة
@@ -829,9 +814,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                   setUserToEdit(user);
                                   setIsUserModalOpen(true);
                                 }}
-                                className="p-1 hover:bg-slate-200 text-slate-600 rounded-md transition-colors cursor-pointer"
+                                className={`${ICON_BTN} text-slate-600 hover:text-blue-700 hover:bg-blue-50`}
+                                title="تعديل المستخدم"
+                                aria-label={`تعديل ${user.fullName}`}
                               >
-                                <Edit2 className="w-3.5 h-3.5" />
+                                <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                               </button>
                               )}
                             </div>

@@ -39,7 +39,6 @@ interface Result {
   key: string;
   group: string;
   icon: React.ElementType;
-  tone: string;
   title: string;
   meta?: string;
   badge?: string;
@@ -51,14 +50,14 @@ const RECENT_GROUP = 'فتح مؤخراً';
 const QUICK_WORDS = QUICK_SCREENS.flatMap((s) => [s.label, s.keywords || '']);
 const ACTIONS_GROUP = 'إجراءات سريعة';
 const SCREENS_GROUP = 'الشاشات';
-const KIND_LOOK: Record<RecentKind, { icon: React.ElementType; tone: string; label: string }> = {
-  news: { icon: FileText, tone: 'text-blue-500', label: 'خبر' },
-  program: { icon: Tv, tone: 'text-emerald-500', label: 'برنامج' },
-  episode: { icon: Video, tone: 'text-purple-500', label: 'حلقة' },
-  guest: { icon: Users, tone: 'text-amber-500', label: 'ضيف' },
-  task: { icon: CheckSquare, tone: 'text-indigo-500', label: 'مهمة' },
-  bulletin: { icon: ListVideo, tone: 'text-rose-500', label: 'نشرة' },
-  card: { icon: ClipboardList, tone: 'text-teal-600', label: 'تكليف' },
+const KIND_LOOK: Record<RecentKind, { icon: React.ElementType; label: string }> = {
+  news: { icon: FileText, label: 'خبر' },
+  program: { icon: Tv, label: 'برنامج' },
+  episode: { icon: Video, label: 'حلقة' },
+  guest: { icon: Users, label: 'ضيف' },
+  task: { icon: CheckSquare, label: 'مهمة' },
+  bulletin: { icon: ListVideo, label: 'نشرة' },
+  card: { icon: ClipboardList, label: 'تكليف' },
 };
 const RESULT_GROUPS = ['الأخبار', 'النشرات', 'التكليفات', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'];
 const RESULT_FORMS = { one: 'نتيجة واحدة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجة' };
@@ -155,10 +154,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     const can = (permission: string) => !currentUser || RbacService.hasPermission(currentUser, permission);
     const actions: Result[] = [];
     if (onQuickCreateNews && can('news.create') && matchesQuery(searchTerm, 'خبر جديد', 'انشاء كتابة مسودة')) {
-      actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, tone: 'text-red-600', title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
+      actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
     }
     const screens: Result[] = onNavigate
-      ? matchScreens(searchTerm, can).filter((s) => !currentUser || RbacService.canOpenScreen(currentUser, s.nav)).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, tone: 'text-slate-500', title: s.label, meta: 'الانتقال إلى الشاشة', open: run(() => onNavigate(s.nav)) }))
+      ? matchScreens(searchTerm, can).filter((s) => !currentUser || RbacService.canOpenScreen(currentUser, s.nav)).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, title: s.label, open: run(() => onNavigate(s.nav)) }))
       : [];
 
     if (!searchTerm.trim()) {
@@ -166,7 +165,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         const title = currentTitle(entry);
         if (title == null) return [];
         const look = KIND_LOOK[entry.kind];
-        return [{ key: `r-${entry.kind}-${entry.id}`, group: RECENT_GROUP, icon: History, tone: look.tone, title, meta: look.label, open: pick(entry.kind, entry.id, title) }];
+        return [{ key: `r-${entry.kind}-${entry.id}`, group: RECENT_GROUP, icon: History, title, meta: look.label, open: pick(entry.kind, entry.id, title) }];
       });
       return [...recentResults, ...actions, ...screens];
     }
@@ -176,13 +175,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     const bulletins = canScreen('bulletins') ? r.bulletins : [];
     const cards = canScreen('cards') ? r.cards : [];
     return [
-      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
-      ...bulletins.map((b) => ({ key: `b-${b.id}`, group: 'النشرات', icon: ListVideo, tone: 'text-rose-500', title: b.title, meta: [bulletinKindName(b.kind), `${b.date} ${b.startTime}`, b.editorName && `المحرر: ${b.editorName}`].filter(Boolean).join(' · '), badge: BULLETIN_STATUSES.find((x) => x.id === b.status)?.name, open: pick('bulletin', b.id, b.title) })),
-      ...cards.map((c) => ({ key: `c-${c.id}`, group: 'التكليفات', icon: ClipboardList, tone: 'text-teal-600', title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
-      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
-      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick('episode', e.id, e.title) })),
-      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick('guest', g.id, g.fullName) })),
-      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick('task', t.id, t.title) })),
+      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
+      ...bulletins.map((b) => ({ key: `b-${b.id}`, group: 'النشرات', icon: ListVideo, title: b.title, meta: [bulletinKindName(b.kind), `${b.date} ${b.startTime}`, b.editorName && `المحرر: ${b.editorName}`].filter(Boolean).join(' · '), badge: BULLETIN_STATUSES.find((x) => x.id === b.status)?.name, open: pick('bulletin', b.id, b.title) })),
+      ...cards.map((c) => ({ key: `c-${c.id}`, group: 'التكليفات', icon: ClipboardList, title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
+      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
+      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick('episode', e.id, e.title) })),
+      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick('guest', g.id, g.fullName) })),
+      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick('task', t.id, t.title) })),
       ...actions,
       ...screens,
     ];
@@ -260,7 +259,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         onKeyDown={onKeyDown}
         className="relative w-full max-w-2xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[75vh]"
       >
-        <div className="flex items-center px-4 py-3.5 border-b border-slate-200 bg-slate-50/50">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-y-2 px-4 py-2.5 border-b border-slate-200 bg-slate-50/50">
           <Search className="w-5 h-5 text-slate-500 shrink-0 ml-3" aria-hidden />
           <input
             ref={inputRef}
@@ -274,8 +273,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="بحث فوري في الأخبار، البرامج، الحلقات، الضيوف، والمهام…"
-            className="w-full bg-transparent border-none text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-400"
+            className="input-bare flex-1 min-w-0 min-h-11 px-1 bg-transparent text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-500"
           />
+          <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="order-last sm:order-none w-full sm:w-auto min-h-11 sm:min-h-9 sm:ms-2 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-700">
+            <option value="">كل الأنواع</option>
+            {[...RESULT_GROUPS.filter((g) => (g !== 'النشرات' && g !== 'التكليفات') || (onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, g === 'النشرات' ? 'bulletins' : 'cards')))), SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
+          </select>
           {query && (
             <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" title="مسح البحث" className="w-11 h-11 shrink-0 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md">
               <X className="w-4 h-4" />
@@ -286,12 +289,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </button>
         </div>
 
-        <div className="px-4 py-2 border-b border-slate-100">
-          <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="w-full sm:w-auto min-h-11 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
-            <option value="">كل الأنواع</option>
-            {[...RESULT_GROUPS.filter((g) => (g !== 'النشرات' && g !== 'التكليفات') || (onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, g === 'النشرات' ? 'bulletins' : 'cards')))), SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
-          </select>
-        </div>
         {(hints.length > 0 || (correction && visibleResults.length > 0)) && (
           <div className="px-4 py-2 border-b border-slate-100 space-y-1">
             {correction && visibleResults.length > 0 && <DidYouMean suggestion={correction} onPick={pickQuery} />}
@@ -336,9 +333,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       aria-selected={i === active}
                       onMouseEnter={() => setActive(i)}
                       onClick={r.open}
-                      className={`p-3 min-h-14 rounded-lg cursor-pointer flex items-center gap-3 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                      className={`px-3 py-2 min-h-11 rounded-lg cursor-pointer flex items-center gap-3 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${r.tone}`} aria-hidden />
+                      <Icon className={`w-4 h-4 shrink-0 ${i === active ? 'text-blue-600' : 'text-slate-500'}`} aria-hidden />
                       <span className="truncate flex-1 min-w-0">
                         <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}><Highlight text={r.title} query={searchTerm} /></span>
                         {r.meta && <span className="text-2xs text-slate-500 block truncate"><Highlight text={r.meta} query={searchTerm} /></span>}

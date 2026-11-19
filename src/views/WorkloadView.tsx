@@ -16,7 +16,7 @@ import { departmentIdOf, departmentName, DEPARTMENTS } from '../shared/departmen
 import { findUserRole } from '../shared/rbac';
 import { onDutyAt } from '../shared/roster';
 import { dmChannel, groupChannel, MAX_MESSAGE_CHARS, stationChannel } from '../shared/chat';
-import { AR, countLabel } from '../shared/arabicPlural';
+import { AR, countLabel, countWithNumber } from '../shared/arabicPlural';
 import {
   collectWork,
   comparePeriods,
@@ -64,6 +64,8 @@ const DRILL_NAMES: Record<DrillKind, string> = { open: 'مفتوحة', late: 'م
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const points = (n: number) => countLabel(n, AR.point);
+/** «1 متفرغ»، «4 متفرغين»، «11 متفرغاً» for a team's summary line. */
+const FREE = { one: 'متفرغ', two: 'متفرغان', few: 'متفرغين', many: 'متفرغاً' };
 const NOTES_KEY = (userId: string) => `madar-handover-notes:${userId}`;
 
 /** A figure that opens the list of the items behind it (no button when there is nothing to list). */
@@ -382,7 +384,8 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+      {/* On paper each tab prints its own heading (organisation, sheet, filters), so the screen title stays off the sheet. */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 no-print">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Scale className="w-5 h-5 text-blue-600" />
@@ -499,7 +502,8 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                   <div className="flex items-end gap-0.5 h-28" aria-hidden="true">
                     {trend.map((d) => (
                       <div key={d.date} className="flex-1 min-w-0 h-full flex flex-col justify-end group relative" title={`${formatDay(d.date)}: ${countLabel(d.done, { ...AR.task, zero: 'لا مهام' })} (${points(d.donePoints)})`}>
-                        <div className={`w-full rounded-t ${d.done ? 'bg-blue-600 group-hover:bg-blue-700' : 'bg-slate-200'}`} style={{ height: d.done ? `${Math.max(4, (d.done / maxDay) * 100)}%` : '2px' }} />
+                        {d.done > 0 && trend.length <= 14 && <span className="text-3xs font-bold text-slate-700 text-center tabular-nums leading-4">{d.done}</span>}
+                        <div className={`w-full rounded-t ${d.done ? 'bg-blue-600 group-hover:bg-blue-700' : 'bg-slate-200'}`} style={{ height: d.done ? `${Math.max(4, (d.done / maxDay) * 85)}%` : '2px' }} />
                       </div>
                     ))}
                   </div>
@@ -530,7 +534,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
             <section className="space-y-2">
               <h2 className="text-sm font-bold text-slate-900">مقارنة المحطات</h2>
               <p className="text-2xs text-slate-500">
-                نقاط الحمل = وزن نوع المهمة × درجة تعقيدها (تُضبط الأوزان من الإعدادات)، وتشمل مراجعة الأخبار ومهام الجودة. «الحمل للفرد» يقسم النقاط المفتوحة على عدد أفراد المحطة. {LOAD_LEVEL_RULE} اضغط رقم المتأخرة أو المتعطلة لرؤية ما وراءه.
+                نقاط الحمل = وزن نوع المهمة × درجة تعقيدها (تُضبط الأوزان من الإعدادات)، وتشمل مراجعة الأخبار ومهام الجودة. «الحمل للفرد» يقسم النقاط المفتوحة على عدد أفراد المحطة. {LOAD_LEVEL_RULE} <span className="no-print">اضغط رقم المتأخرة أو المتعطلة لرؤية ما وراءه.</span>
               </p>
               <div role="region" tabIndex={0} aria-label="جدول مقارنة المحطات (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
                 <table className="w-full min-w-[46rem] text-xs">
@@ -615,11 +619,11 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                             className="inline-flex items-center gap-1.5 print-text"
                           >
                             <ChevronDown aria-hidden="true" className={`w-4 h-4 text-slate-500 transition-transform no-print ${expanded ? '' : 'rotate-90'}`} />
-                            {team.name}
+                            {team.name}{' '}
                             <span className="font-normal text-slate-500">({countLabel(team.people, AR.person)})</span>
                           </button>
                         </th>
-                        <td className="p-3 whitespace-nowrap text-sky-800 font-bold">{team.free ? `${team.free} متفرغ` : ''}</td>
+                        <td className="p-3 whitespace-nowrap text-sky-800 font-bold">{team.free ? countWithNumber(team.free, FREE) : ''}</td>
                         <td className={`${TD} font-bold`}><Count value={team.overdue} tone="text-amber-700" label="متأخرة" onOpen={() => drillTo(`${team.name} — متأخرة`, pick(filteredItems.filter((i) => team.members.some((m) => m.id === i.userId)), 'late'))} /></td>
                         <td className={`${TD} font-bold`}><Count value={team.blocked} tone="text-rose-700" label="متعطلة" onOpen={() => drillTo(`${team.name} — متعطلة`, pick(filteredItems.filter((i) => team.members.some((m) => m.id === i.userId)), 'blocked'))} /></td>
                         <td className={`${TD} font-bold`}>{team.open}</td>

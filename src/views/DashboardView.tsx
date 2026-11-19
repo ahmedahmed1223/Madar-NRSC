@@ -129,13 +129,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const showSchedule = can('programs.view') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
   const showGuests = can('guests.view') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
   const setup = useSetupReminder(currentUser);
+  const sideOnly = !showSchedule && !showQueues;
 
   return (
     <div className="space-y-6">
       {/* Greeting: the screen title strap, one line on the day, and the actions this colleague may take */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2 min-w-0">
-          <StationClock className="inline-flex px-2.5 py-1 rounded-md bg-white border border-slate-200 lg:hidden" />
+          {/* Its own line on phones and tablets, so the strap below never shares a line with it. */}
+          <div className="lg:hidden">
+            <StationClock className="px-2.5 py-1 rounded-md bg-white border border-slate-200" />
+          </div>
           <h1>
             مرحباً، {currentUser.fullName}
           </h1>
@@ -173,7 +177,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section data-tour="setup-wizard" aria-label="الإعداد السريع" className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50">
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-slate-900">أكمل إعداد «مدار» لفريقك</h2>
-            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة: المؤسسة، المحطات، الأقسام الصحفية، الفريق، الأمان والنسخ الاحتياطي.</p>
+            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة: المؤسسة، المحطات، تصنيفات الأخبار، الفريق، الأمان والنسخ الاحتياطي.</p>
           </div>
           <div className="h-1.5 sm:w-32 rounded-full bg-white overflow-hidden" aria-hidden="true">
             <div className="h-full bg-blue-600" style={{ width: `${(setup.done / setup.total) * 100}%` }} />
@@ -234,11 +238,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {/* The day in four numbers: one ruled strip, each cell says its period and opens its screen */}
-      <section aria-label="مؤشرات غرفة الأخبار اليوم" className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y lg:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
+      <section aria-label="مؤشرات غرفة الأخبار اليوم" className="grid grid-cols-2 xl:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y xl:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
         {[
           { label: 'أخبار', period: 'اليوم', value: newsToday, note: `${publishedToday} نُشر اليوم · ${underReviewCount} قيد المراجعة الآن`, go: 'NEWS_LIST' as AppView, tone: 'text-slate-900' },
           { label: 'العاجل على الشريط', period: 'الآن', value: activeBreakingCount, note: `من ${breakingNews.length} عاجل مسجل`, go: 'BREAKING_NEWS' as AppView, tone: activeBreakingCount ? 'text-red-700' : 'text-slate-900' },
-          { label: 'حلقات', period: 'اليوم', value: todayEpisodes.length, note: `${countLabel(upcomingEpisodes.length, { zero: 'لا حلقات قادمة', one: 'حلقة قادمة واحدة', two: 'حلقتان قادمتان', few: 'حلقات قادمة', many: 'حلقة قادمة' })} · ${programs.length} برامج`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
+          { label: 'حلقات', period: 'اليوم', value: todayEpisodes.length, note: `${countLabel(upcomingEpisodes.length, { zero: 'لا حلقات قادمة', one: 'حلقة قادمة واحدة', two: 'حلقتان قادمتان', few: 'حلقات قادمة', many: 'حلقة قادمة' })} · ${countLabel(programs.length, { zero: 'لا برامج', one: 'برنامج واحد', two: 'برنامجان', few: 'برامج', many: 'برنامجاً' })}`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
           { label: 'مهام مفتوحة', period: 'الآن', value: openTasks.length, note: `${overdueTasks} متأخرة · من ${tasks.length} في كل الفترات`, go: 'TASKS' as AppView, tone: overdueTasks ? 'text-amber-700' : 'text-slate-900' },
         ].map((cell) => (
           <button key={cell.label} type="button" onClick={() => onNavigate(cell.go)} className="text-right p-4 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors min-w-0">
@@ -250,7 +254,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       {/* Main Two-Column Operational Layout */}
-      <div className={`grid grid-cols-1 gap-6 ${showSchedule || showQueues ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+      <div className={`grid grid-cols-1 gap-6 ${sideOnly ? '' : 'lg:grid-cols-3'}`}>
         {/* Left Column (2 Cols in Arabic RTL): Upcoming Broadcast Schedule & News Flow */}
         {(showSchedule || showQueues) && <div className="lg:col-span-2 space-y-6">
           {/* Upcoming Episodes / Playout */}
@@ -280,12 +284,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   className="p-4 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-bold text-slate-800 text-sm">{ep.title}</span>
                       <Badge variant="primary" size="sm">
                         {ep.programName}
                       </Badge>
-                      <span className="text-xs font-mono text-slate-500">حلقة #{ep.episodeNumber}</span>
+                      <span className="text-xs text-slate-500 whitespace-nowrap">الحلقة <span className="font-mono tabular-nums">{ep.episodeNumber}</span></span>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       <span>تقديم: <strong className="text-slate-700">{ep.presenterName}</strong></span>
@@ -296,12 +300,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 self-end sm:self-center">
-                    <div className="text-left font-mono text-xs">
-                      <span className="text-slate-500 block text-2xs font-sans">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
-                      <strong className="text-slate-800 font-bold">{ep.startTime} - {ep.endTime}</strong>
+                  <div className="flex items-center gap-4 self-end sm:self-center shrink-0">
+                    <div className="text-left text-xs">
+                      <span className="text-slate-500 block text-2xs whitespace-nowrap">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
+                      <strong className="text-slate-800 font-bold font-mono tabular-nums whitespace-nowrap" dir="ltr">{ep.startTime}–{ep.endTime}</strong>
                     </div>
-                    <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700">
+                    <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 whitespace-nowrap">
                       فتح الرانداون
                     </span>
                   </div>
@@ -338,7 +342,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button
                     key={tab}
                     onClick={() => setActiveQueueTab(tab)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${
                       isActive ? getStatusColor(tab) + ' shadow-xs border border-slate-200' : 'text-slate-500 hover:bg-slate-100 border border-transparent'
                     }`}
                   >
@@ -363,13 +367,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   onClick={() => setSelectedDashboardCategory('ALL')}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
                     selectedDashboardCategory === 'ALL'
-                      ? 'bg-slate-800 text-white shadow-xs'
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
                   <span>كافة الأقسام</span>
                   <span
-                    className={`text-2xs px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-2xs px-1.5 py-px rounded-full font-mono ${
                       selectedDashboardCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
                     }`}
                   >
@@ -404,7 +408,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       />
                       <span>{cat.nameAr}</span>
                       <span
-                        className="text-2xs px-1.5 py-0.2 rounded-full font-mono font-bold"
+                        className="text-2xs px-1.5 py-px rounded-full font-mono font-bold"
                         style={{
                             backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'var(--color-slate-100)',
                             color: isSelected ? '#ffffff' : 'var(--color-slate-800)',
@@ -428,7 +432,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
-            <div className="p-3 divide-y divide-slate-100 min-h-[300px]">
+            <div className={`p-3 divide-y divide-slate-100 ${queuedNews.length ? 'min-h-[300px]' : ''}`}>
               {queuedNews.length > 0 ? (
                 queuedNews.map((news) => {
                   const cat = categories.find((c) => c.id === news.categoryId || c.nameAr === news.categoryName);
@@ -476,13 +480,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center h-full py-12 text-slate-500">
-                  <FileCheck className="w-12 h-12 mb-3 text-slate-200" />
+                <div className="flex flex-col items-center justify-center py-8 text-slate-500 text-center">
+                  <FileCheck className="w-8 h-8 mb-2 text-slate-300" aria-hidden="true" />
                   <p className="text-sm font-medium">الطابور فارغ حالياً</p>
                   <p className="text-xs">
                     {selectedDashboardCategory !== 'ALL'
-                      ? `لا توجد مواد إخبارية في قسم (${categories.find((c) => c.id === selectedDashboardCategory)?.nameAr || 'المحدد'}) بحالة (${getStatusLabel(activeQueueTab)})`
-                      : `لا يوجد مواد إخبارية في حالة (${getStatusLabel(activeQueueTab)})`}
+                      ? `لا مواد في قسم «${categories.find((c) => c.id === selectedDashboardCategory)?.nameAr || 'المحدد'}» بحالة «${getStatusLabel(activeQueueTab)}»`
+                      : `لا مواد بحالة «${getStatusLabel(activeQueueTab)}»`}
                   </p>
                 </div>
               )}
@@ -491,8 +495,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>}
 
-        {/* Right Column: Editorial Tasks & Guest Directory Preview */}
-        <div className="space-y-6">
+        {/* Right Column: Editorial Tasks & Guest Directory Preview (side by side when they are all there is) */}
+        <div className={sideOnly ? `grid grid-cols-1 gap-6 items-start ${showGuests ? 'lg:grid-cols-2' : ''}` : 'space-y-6'}>
           {/* Urgent Editorial Tasks */}
           <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
@@ -508,7 +512,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className={sideOnly && !showGuests ? 'grid gap-2.5 lg:grid-cols-2' : 'space-y-2.5'}>
               {openTasks.length === 0 && (
                 <p className="text-xs text-slate-500 text-center py-4">لا توجد مهام مفتوحة</p>
               )}
@@ -525,15 +529,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {task.title}
                     </span>
                     <Badge
-                      variant={['CRITICAL', 'URGENT', 'HIGH'].includes(task.priority) ? 'danger' : 'warning'}
+                      variant={['CRITICAL', 'URGENT'].includes(task.priority) ? 'danger' : task.priority === 'HIGH' ? 'warning' : 'default'}
                       size="sm"
                     >
                       {TASK_PRIORITY_LABELS[task.priority] || task.priority}
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between text-2xs text-slate-500">
-                    <span>المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
-                    <span className="font-mono text-2xs">
+                  <div className="flex items-center justify-between gap-2 text-2xs text-slate-500">
+                    <span className="min-w-0 truncate">المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
+                    <span className="text-2xs shrink-0">
                       {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
                         <span className="text-rose-700 font-bold">
                           متأخرة {countLabel(Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000)), { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}

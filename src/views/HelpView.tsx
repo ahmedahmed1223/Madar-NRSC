@@ -5,9 +5,12 @@ import { HELP_ARTICLES } from '../content/help';
 import { scoreFields } from '../shared/arabicSearch';
 import { departmentIdOf, departmentName } from '../shared/departments';
 import { toursFor } from '../components/help/TourHost';
-import { setupCommand, tourCommand } from '../services/uiEvents';
+import { navigateTo, setupCommand, tourCommand } from '../services/uiEvents';
 import { RbacService } from '../services/rbacService';
-import { PlayCircle, Settings2 } from 'lucide-react';
+import { BookOpenText, PlayCircle, Settings2 } from 'lucide-react';
+import { countLabel } from '../shared/arabicPlural';
+
+const STEP_FORMS = { one: 'خطوة واحدة', two: 'خطوتان', few: 'خطوات', many: 'خطوة' };
 
 interface HelpViewProps {
   currentUser: User;
@@ -45,15 +48,32 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
           <p className="text-xs text-slate-500 mt-1">أدلة مختصرة لكل مهمة يومية. قسمك: {departmentName(myDept)}.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onOpenShortcuts} className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+          <button type="button" onClick={onOpenShortcuts} className="min-h-10 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
             اختصارات لوحة المفاتيح
           </button>
-          <button type="button" onClick={onOpenWhatsNew} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
+          <button type="button" onClick={onOpenWhatsNew} className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5" />
             ما الجديد
           </button>
         </div>
       </div>
+
+      <a
+        href="/guide"
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          e.preventDefault();
+          navigateTo.emit('/guide');
+        }}
+        className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50 hover:border-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+      >
+        <BookOpenText className="w-6 h-6 text-blue-700 shrink-0" aria-hidden="true" />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-bold text-slate-900">دليل الاستخدام</span>
+          <span className="block text-xs text-slate-700 mt-0.5">الدليل الكامل للقراءة والطباعة: دليلك حسب دورك، كل شاشة وأزرارها، خطوات العمل، المصطلحات والأسئلة الشائعة.</span>
+        </span>
+        <span className="inline-flex items-center justify-center min-h-10 px-4 rounded-lg bg-blue-600 text-white text-xs font-bold shrink-0">افتح الدليل</span>
+      </a>
 
       <section aria-labelledby="help-tours-title" className="space-y-2">
         <h2 id="help-tours-title" className="text-sm font-bold text-slate-900">جولات تفاعلية</h2>
@@ -65,7 +85,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 <PlayCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block text-sm font-bold text-slate-900">{tour.title}</span>
-                  <span className="block text-xs text-slate-600 mt-0.5">{tour.summary} · {tour.steps.length} خطوات</span>
+                  <span className="block text-xs text-slate-600 mt-0.5">{tour.summary} · {countLabel(tour.steps.length, STEP_FORMS)}</span>
                 </span>
               </button>
             </li>
@@ -117,7 +137,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
               >
                 <span className="block text-xs font-bold text-slate-800">{a.title}</span>
                 <span className="block text-2xs text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
-                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-2xs font-bold text-blue-700">لقسمك</span>}
+                {a.departments.includes(myDept) && <span className="inline-block mt-1.5 px-1.5 py-px rounded bg-blue-50 text-2xs font-bold text-blue-700">لقسمك</span>}
               </button>
             ))}
           </nav>

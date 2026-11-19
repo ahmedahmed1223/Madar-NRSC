@@ -52,6 +52,7 @@ const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) =
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
 const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
+const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
@@ -633,7 +634,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     } catch (err: any) {
       addToast({
         title: 'خطأ في حفظ القسم',
-        message: err.message || 'تعذر حفظ القسم الصحفي',
+        message: err.message || 'تعذر حفظ التصنيف',
         type: 'error',
       });
       return false;
@@ -1144,7 +1145,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                           aria-selected={activeNav === t.id}
                           onClick={() => setActiveNav(t.id)}
                           className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
-                            activeNav === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            activeNav === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                           }`}
                         >
                           {t.label}
@@ -1209,6 +1210,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'help' && (
               <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
             )}
+
+            {activeNav === 'guide' && <GuideView currentUser={currentUser} focusId={focusId} onFocus={setFocusId} />}
 
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 

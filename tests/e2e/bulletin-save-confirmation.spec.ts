@@ -84,7 +84,7 @@ for (const collection of ['bulletinFormats', 'bulletinStories']) {
       await expect(page.getByText(/أُضيفت .* قصة كمسودات/)).not.toBeVisible();
       await page.unroute('**/api/v1/data/sync');
       await form.getByRole('button', { name: /إضافة.*للنشرة/ }).click();
-      await expect(page.getByText('أُضيفت 1 قصة كمسودات في آخر النشرة', { exact: true })).toBeVisible();
+      await expect(page.getByText('أُضيفت قصة واحدة كمسودة في آخر النشرة', { exact: true })).toBeVisible();
       const after = await (await page.request.get('/api/v1/data')).json();
       expect(after.collections.bulletinStories.length).toBe(data.collections.bulletinStories.length + 1);
     }

@@ -112,7 +112,7 @@ function ownScope(stations: Station[], own: Station): Set<string> {
  * Ids of the stations someone follows and may assign work to.
  * - Nobody's station given (central management): every station.
  * - A station that no longer exists: nothing (a removed station never widens anyone's reach).
- * - A general manager given stations or groups: the union of those stations' scopes (and their own station's).
+ * - A general manager given stations or groups: exactly those stations, their own station and the main station.
  */
 export function stationScope(stations: Station[], who?: ScopeSubject, groups: StationGroup[] = rememberedGroups): Set<string> {
   const subject: { stationId?: string | null; managedStationIds?: string[]; managedGroupIds?: string[] } = typeof who === 'object' && who !== null ? who : { stationId: typeof who === 'string' ? who : undefined };
@@ -121,11 +121,10 @@ export function stationScope(stations: Station[], who?: ScopeSubject, groups: St
   const known = [...managed].map((id) => stations.find((s) => s.id === id)).filter((s): s is Station => !!s);
   const ownId = subject.stationId || undefined;
   const own = ownId ? stations.find((s) => s.id === ownId) : undefined;
-  if (managed.size) {
-    const scope = new Set<string>();
-    for (const station of own ? [own, ...known] : known) ownScope(stations, station).forEach((id) => scope.add(id));
-    return scope;
-  }
+  // A general manager answers for exactly the stations and groups given to them (and their own
+  // station), not for every station those stations work with.
+  // Like any branch, they also reach the main station.
+  if (managed.size) return new Set([...(own ? [own.id] : []), ...known.map((s) => s.id), ...stations.filter((s) => s.isMain).map((s) => s.id)]);
   if (!ownId) return new Set(stations.map((s) => s.id));
   return own ? ownScope(stations, own) : new Set();
 }

@@ -128,7 +128,7 @@ export const TodayStatusPanel: React.FC<TodayStatusPanelProps> = ({ currentUser,
 
   const metrics = [
     {
-      label: 'الليلة على الهواء',
+      label: 'نشرات وحلقات',
       period: 'اليوم',
       value: air.length,
       note: air.length ? (airWithIssues.length ? `${countLabel(airWithIssues.length, { zero: '', one: 'واحدة تحتاج متابعة', two: 'اثنتان تحتاجان متابعة', few: 'تحتاج متابعة', many: 'تحتاج متابعة' })}` : 'كلها بلا موانع') : 'لا نشرات ولا حلقات',
@@ -151,7 +151,7 @@ export const TodayStatusPanel: React.FC<TodayStatusPanelProps> = ({ currentUser,
       </div>
 
       {/* The answer in four numbers; each opens its detail below. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y lg:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
+      <div className="grid grid-cols-2 xl:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y xl:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
         {metrics.map((m) => (
           <button key={m.label} type="button" onClick={() => jump(m.target)} className="text-right p-4 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors min-w-0 print-text">
             <span className="block text-xs font-semibold text-slate-600">

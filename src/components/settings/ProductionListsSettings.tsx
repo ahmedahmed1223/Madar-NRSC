@@ -66,15 +66,15 @@ export function ProductionListsSettings({ currentUser }: { currentUser: User }) 
   };
   const inputClass = 'mt-1 block w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-slate-900';
   return <section className="space-y-4 py-4" aria-label="إدارة قوائم الإنتاج">
-    <h2 className="text-lg font-bold">قوائم الإنتاج</h2>
+    <div><h2 className="text-lg font-bold text-slate-900">قوائم الإنتاج</h2><p className="text-sm text-slate-600">أسماء تُختار من القوائم في الحلقات والنشرات والحجوزات، ولا تحتاج حساباً في النظام.</p></div>
     <FilterTabs label="نوع قائمة الإنتاج" tabs={[{ id: 'PRESENTER', label: 'المذيعون' }, { id: 'DIRECTOR', label: 'المخرجون' }, { id: 'STUDIO', label: 'الاستديوهات' }]} active={tab} onChange={next => { setTab(next); setSearch(''); setInactive(false); }} />
     <div className="flex flex-wrap items-center gap-3">
-      <label className="flex-1 min-w-0 text-sm">بحث في القائمة<input type="search" value={search} onChange={e => setSearch(e.target.value)} className={inputClass} /></label>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={inactive} onChange={e => setInactive(e.target.checked)} />عرض الأسماء المعطلة</label>
-      {canEdit && <button type="button" onClick={() => open()} className="inline-flex items-center gap-2 min-h-11 px-3 rounded-lg bg-blue-600 text-white"><Plus className="w-4 h-4" />{studio ? 'إضافة استديو' : 'إضافة اسم'}</button>}
+      <label className="flex-1 min-w-48 text-sm font-bold text-slate-700">بحث في القائمة<input type="search" value={search} onChange={e => setSearch(e.target.value)} className={inputClass} /></label>
+      <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={inactive} onChange={e => setInactive(e.target.checked)} />عرض الأسماء المعطلة</label>
+      {canEdit && <button type="button" onClick={() => open()} className="inline-flex items-center gap-2 min-h-11 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold"><Plus className="w-4 h-4" />{studio ? 'إضافة استديو' : 'إضافة اسم'}</button>}
     </div>
     {!canEdit && <p className="text-sm text-slate-600">{studio ? 'إدارة الاستديوهات تتطلب صلاحية إدارة الموارد.' : `إدارة قائمة ${tab === 'PRESENTER' ? 'المذيعين' : 'المخرجين'} تتطلب صلاحية إعدادات النظام.`}</p>}
-    {visible.length === 0 && <p role="status" className="text-sm text-slate-600 py-4">لا توجد أسماء مطابقة</p>}
+    {visible.length === 0 && <p role="status" className="text-sm text-slate-600 py-4">{search.trim() || rows.length ? 'لا توجد أسماء مطابقة' : studio ? 'لا استديوهات في القائمة بعد. أضف الاستديوهات لتظهر في الحجوزات والحلقات.' : `قائمة ${tab === 'PRESENTER' ? 'المذيعين' : 'المخرجين'} فارغة. أضف الأسماء لتُختار في الحلقات والنشرات دون كتابتها كل مرة.`}</p>}
     <ul className="divide-y divide-slate-200">
       {visible.map(row => <li key={row.id} className="flex items-center gap-3 py-3">
         <div className="flex-1 min-w-0"><strong className="block text-sm break-words">{row.name}</strong><span className="text-xs text-slate-600">{row.active ? 'نشط' : 'معطل'}{'roles' in row ? ` · ${row.roles.map(role => role === 'PRESENTER' ? 'مذيع' : 'مخرج').join('، ')}` : ''}</span></div>

@@ -247,7 +247,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
       {/* Studio Prompter Top Bar */}
       <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">
-          <span className="px-2.5 py-1 bg-red-600 text-white font-mono text-xs font-bold rounded-md">
+          <span className="shrink-0 px-2.5 py-1 bg-zinc-800 border border-zinc-600 text-zinc-100 text-xs font-bold rounded-md">
             الملقّن
           </span>
           <div className="min-w-0 truncate">
@@ -300,7 +300,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
           {/* Font Size Controls */}
           <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-            <Type className="w-3.5 h-3.5 text-slate-500" />
+            <Type className="w-3.5 h-3.5 text-slate-400" aria-hidden />
             <button
               type="button"
               onClick={() => setFontSize((f) => Math.max(22, f - 4))}
@@ -323,7 +323,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           </div>
 
           {/* Speed Controls */}
-          <label className="flex items-center gap-2 text-sm flex-1 min-w-48">سرعة التمرير<input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
+          <label className="flex items-center gap-2 text-sm flex-1 min-w-48"><span className="whitespace-nowrap">سرعة التمرير</span><input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
           <button type="button" aria-label="ملء الشاشة (F)" title="ملء الشاشة (F)" className="p-2 bg-zinc-800 rounded-md" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
           {followId && <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={followDirector} onChange={e => setFollowDirector(e.target.checked)}/>متابعة المخرج</label>}
 
@@ -331,7 +331,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-500 hover:text-red-300 rounded-lg transition-colors"
+            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-300 hover:text-red-300 rounded-lg transition-colors"
             title="خروج من شاشة الملقن (Esc)"
             aria-label="إغلاق الملقّن"
           >
@@ -424,7 +424,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                       }}
                     />
                   ) : (
-                    <div className="text-slate-600 text-center py-20 italic">
+                    <div className="text-zinc-400 text-center py-20">
                       [لا يوجد نص أوتوكيو مكتوب {isBulletin ? 'لهذه القصة' : 'لهذه الفقرة'} - اعتمد على الملاحظات الإخراجية]
                     </div>
                   )}

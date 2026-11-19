@@ -243,14 +243,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             >
               {/* Cover image & badges */}
               <div
-                className="relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
+                className="theme-fixed relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
                 onClick={() => onSelectProgram && onSelectProgram(prog.id)}
                 title="فتح ملف البرنامج"
               >
                 <img
                   src={prog.coverImageUrl}
-                  alt={prog.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  alt=""
+                  className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
                 <div className="absolute top-3 right-3 flex items-center gap-2">
@@ -259,7 +259,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   </Badge>
                 </div>
                 <div className="absolute bottom-3 right-3 left-3 text-white">
-                  <h3 className="text-lg font-bold leading-tight hover:text-blue-300 transition-colors">
+                  <h3 className="text-lg font-bold leading-tight">
                     {prog.name}
                   </h3>
                   <span className="text-xs text-slate-300 font-mono">
@@ -298,7 +298,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectProgram ? onSelectProgram(prog.id) : onSelectProgramEpisodes(prog.id)}
-                    className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs"
+                    className="w-full min-h-10 px-3 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                   >
                     <Eye className="w-4 h-4" />
                     <span>ملف البرنامج</span>
@@ -318,7 +318,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenEditModal(prog)}
-                      className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                      className="min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                      aria-label={`تعديل بيانات البرنامج: ${prog.name}`}
                       title="تعديل بيانات البرنامج"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -333,7 +334,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                             onDeleteProgram(prog.id);
                           }
                         }}
-                        className="p-2 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
+                        className="min-h-10 min-w-10 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
+                        aria-label={`حذف البرنامج: ${prog.name}`}
                         title="حذف البرنامج"
                       >
                         <Trash2 className="w-4 h-4" />

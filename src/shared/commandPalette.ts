@@ -78,6 +78,7 @@ export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'users', label: 'المستخدمون والصلاحيات', keywords: 'الادوار', permission: 'users.view' },
   { nav: 'settings', label: 'الإعدادات', permission: 'system.settings' },
   { nav: 'help', label: 'المساعدة', keywords: 'دليل' },
+  { nav: 'guide', label: 'دليل الاستخدام', keywords: 'دليل شرح تعليمات كيف' },
   { nav: 'whats-new', label: 'ما الجديد', keywords: 'الاصدار' },
 ];
 

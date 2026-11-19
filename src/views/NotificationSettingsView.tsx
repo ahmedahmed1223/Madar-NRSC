@@ -133,7 +133,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 type="button"
                 disabled={!delivery || !!busy}
                 onClick={() => run('on', () => enablePush(delivery!.publicKey), 'فُعّلت التنبيهات على هذا الجهاز')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold"
+                className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold"
               >
                 <BellRing className="w-3.5 h-3.5" />
                 {busy === 'on' ? 'جارٍ التفعيل...' : 'تفعيل التنبيهات على هذا الجهاز'}

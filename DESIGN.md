@@ -38,9 +38,21 @@ Rules: a single signal hue owns every action and current state; red never decora
 
 ## The strap (signature)
 
-- `.strap` / the screen title (`#app-main h1`): ink band, paper text, 6px signal tab at the start edge, square corners (2px). Multi-line titles break the band per line (`box-decoration-break: clone`). At night the band inverts to paper with ink text.
+- `.strap` / the screen title (`#app-main h1`, and the title of a create/edit form page, which is a screen too): ink band, paper text, 6px signal tab at the start edge, square corners (2px). Multi-line titles break the band per line (`box-decoration-break: clone`). At night the band inverts to paper with ink text.
 - Active navigation item: a translucent paper band on the ink rail with the same signal tab.
 - Never on cards, list rows, alerts or buttons.
+
+## Buttons and badges
+
+One hierarchy everywhere, so a colleague never wonders which button acts:
+
+- **Primary** (one per area): signal fill, white text — `bg-blue-600 hover:bg-blue-700 text-white`, `rounded-lg`, `min-h-10`, `text-xs font-bold`.
+- **Secondary**: outline on paper — `bg-white border border-slate-300 text-slate-700 hover:bg-slate-50`, same size and radius.
+- **Quiet / link**: text in the signal colour (`text-blue-700`), for «عرض الكل», «فتح» and in-row actions.
+- **Destructive**: red fill only where the action deletes or cannot be undone (and asks first); otherwise red text.
+- **Selected** (segmented choice, chip, active tab): the signal colour (`bg-blue-600 text-white`, or `bg-blue-50 text-blue-700` for a quiet toggle), or the white pill on grey of `FilterTabs`.
+- **Ink** (`bg-slate-900`/`slate-950`) belongs to the shell and to things that float above the paper: the rail, the strap, toasts, a sticky save bar, the intercom drawer, the sign-in and on-air screens. An ink button on a paper screen is off-rule.
+- **Counts and badges**: what waits for me is a signal pill (`bg-blue-600 text-white`) placed right after its label; broadcast red only for breaking news, live air and urgent unread; a state chip always carries its word.
 
 ## Navigation
 

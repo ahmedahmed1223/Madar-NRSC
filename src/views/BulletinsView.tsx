@@ -203,12 +203,12 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
           <p className="text-xs text-slate-500 mt-1">رانداون النشرة، قصصها وتوقيتها واعتمادها قبل الهواء.</p>
         </div>
         {canManage && tab === 'DAY' && (
-          <button type="button" onClick={openNew} className="flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">
+          <button type="button" onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs self-start sm:self-auto">
             <Plus className="w-4 h-4" /> نشرة جديدة
           </button>
         )}
         {canManage && tab === 'FORMATS' && (
-          <button type="button" onClick={() => editFormat()} className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold">
+          <button type="button" onClick={() => editFormat()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs self-start sm:self-auto">
             <Plus className="w-4 h-4" /> قالب جديد
           </button>
         )}
@@ -220,8 +220,8 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
         onChange={setTab}
         tabs={[
           { id: 'DAY', label: 'نشرات اليوم', tone: 'blue' },
-            { id: 'WORK', label: 'مساحة العمل', tone: 'blue' },
-          { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'violet' },
+          { id: 'WORK', label: 'مساحة العمل', tone: 'blue' },
+          { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'slate' },
         ]}
       />
 
@@ -235,16 +235,16 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
       {tab === 'DAY' && (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="اليوم السابق" className="p-2 rounded-lg border border-slate-200 bg-white">
+            <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="اليوم السابق" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronRight className="w-4 h-4" />
             </button>
             <span className="text-sm font-bold text-slate-800 min-w-[8rem] text-center">{dayLabel(date)}</span>
-            <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="اليوم التالي" className="p-2 rounded-lg border border-slate-200 bg-white">
+            <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="اليوم التالي" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white" />
+            <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="min-h-11 sm:min-h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white" />
             {date !== localDateString() && (
-              <button type="button" onClick={() => setDate(localDateString())} className="text-xs font-bold text-blue-700 hover:underline">
+              <button type="button" onClick={() => setDate(localDateString())} className="min-h-11 sm:min-h-9 px-2 text-xs font-bold text-blue-700 hover:underline">
                 العودة لليوم
               </button>
             )}
@@ -346,7 +346,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   </div>
                   {canManage && (
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => editFormat(f)} aria-label={`تعديل ${f.name}`} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <button type="button" onClick={() => editFormat(f)} aria-label={`تعديل ${f.name}`} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg">
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
@@ -361,7 +361,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                           }
                         }}
                         aria-label={`حذف ${f.name}`}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                        className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -372,8 +372,9 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   {f.days.length === 0 ? (
                     <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
                   ) : (
-                    DAY_NAMES.map((d, i) => (
-                      <span key={d} className={`text-2xs px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    // Only the days it airs, in words (never colour alone); seven days read as one word.
+                    (f.days.length === 7 ? ['يومياً'] : DAY_NAMES.filter((_, i) => f.days.includes(i))).map((d) => (
+                      <span key={d} className="text-2xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800">
                         {d}
                       </span>
                     ))

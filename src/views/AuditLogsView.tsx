@@ -146,17 +146,17 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <Shield className="w-6 h-6 text-blue-600" />
-            <span>سجل التدقيق</span>
+          <h1 className="text-xl font-bold text-slate-900">
+            <Shield className="w-5 h-5" aria-hidden="true" />
+            سجل التدقيق
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            تسجيل غير قابل للتعديل لجميع العمليات والاعتمادات والنشر وتغيير الصلاحيات في النظام
+            يكتبه الخادم ولا يُعدَّل: الدخول والنشر والاعتمادات وتغيير الحسابات والصلاحيات. «سجل النشاط» يروي عمل الزملاء في المواد.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <div className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-            السجلات: <span className="text-slate-800 font-mono">{shownCount}</span> من <span className="font-mono">{totalCount}</span>
+          <div role="status" className="text-xs text-slate-600 tabular-nums">
+            <span className="font-bold text-slate-900">{shownCount}</span> من {totalCount}
           </div>
           <button
             type="button"
@@ -181,9 +181,9 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
       />
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-96">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-end flex-wrap gap-3">
+          <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-md">
             <label htmlFor="audit-search-input" className="sr-only">بحث في سجل التدقيق</label>
             <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -191,16 +191,16 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="بحث بالموظف، تفاصيل الإجراء، أو الكيان..."
+              placeholder="ابحث بالاسم أو الإجراء أو التفاصيل..."
               autoComplete="off"
               spellCheck="false"
-              className="w-full pr-10 pl-9 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              className="w-full min-h-11 pr-10 pl-11 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+                className="absolute left-0.5 top-1/2 -translate-y-1/2 min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 rounded-md"
                 title="مسح البحث"
                 aria-label="مسح البحث"
               >
@@ -209,14 +209,14 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {tab === 'AUDIT' && (<>
-            <label htmlFor="audit-action-filter" className="text-xs text-slate-500 shrink-0 font-medium">نوع الإجراء:</label>
+          {tab === 'AUDIT' && (
+          <div>
+            <label htmlFor="audit-action-filter" className="block text-2xs font-bold text-slate-600 mb-1">نوع الإجراء</label>
             <select
               id="audit-action-filter"
               value={selectedAction}
               onChange={(e) => setSelectedAction(e.target.value)}
-              className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all w-full sm:w-auto font-medium"
+              className={`${FIELD} w-full sm:w-auto`}
             >
               <option value="ALL">جميع الإجراءات</option>
               {[...new Set((logs || []).map(actionOf))]
@@ -228,23 +228,9 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                   </option>
                 ))}
             </select>
-            </>)}
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors whitespace-nowrap"
-                title="إعادة تعيين جميع الفلاتر"
-              >
-                إعادة تعيين
-              </button>
-            )}
           </div>
-        </div>
+          )}
 
-        {/* Date range and colleague */}
-        <div className="flex flex-wrap items-end gap-3 pt-3 border-t border-slate-100">
           <div>
             <label htmlFor="audit-from-day" className="block text-2xs font-bold text-slate-600 mb-1">من تاريخ</label>
             <input id="audit-from-day" type="date" value={fromDay} max={toDay || undefined} onChange={(e) => setFromDay(e.target.value)} className={FIELD} dir="ltr" />
@@ -268,12 +254,21 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               ))}
             </select>
           </div>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="min-h-11 px-3 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-lg transition-colors whitespace-nowrap"
+            >
+              مسح الفلاتر
+            </button>
+          )}
         </div>
 
         {/* Action quick tags */}
         {tab === 'AUDIT' && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 text-xs">
-          <span className="text-2xs font-bold text-slate-500 ml-1">تصفية سريعة:</span>
+          <span className="text-2xs font-bold text-slate-600 me-1">تصفية سريعة:</span>
           {[
             { id: 'ALL', label: 'الكل' },
             { id: 'PUBLISH', label: 'نشر فوري' },
@@ -291,7 +286,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
               type="button"
               onClick={() => setSelectedAction(tag.id)}
               aria-pressed={selectedAction === tag.id}
-              className={`min-h-7 px-2.5 py-1 rounded-lg text-2xs font-bold transition-colors ${
+              className={`min-h-11 sm:min-h-8 px-2.5 rounded-lg text-2xs font-bold transition-colors ${
                 selectedAction === tag.id
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -306,17 +301,17 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
 
       {/* Audit Log Table */}
       {tab === 'AUDIT' ? (
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="جدول سجل التدقيق (يمكن تمريره أفقياً)">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
                 <th className="py-3 px-4">التاريخ والوقت</th>
-                <th className="py-3 px-3">المستخدم / المسؤول</th>
-                <th className="py-3 px-3">نوع الإجراء</th>
-                <th className="py-3 px-3">الكيان المتأثر</th>
-                <th className="py-3 px-4">تفاصيل وملاحظات العملية</th>
-                <th className="py-3 px-3">عنوان IP</th>
+                <th className="py-3 px-3">المستخدم</th>
+                <th className="py-3 px-3">الإجراء</th>
+                <th className="py-3 px-3">العنصر</th>
+                <th className="py-3 px-4">التفاصيل</th>
+                <th className="py-3 px-3 whitespace-nowrap">عنوان IP</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-sans">
@@ -342,8 +337,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                       {fullTime(timeOf(log))}
                     </td>
                     <td className="py-3 px-3">
-                      <div className="font-bold text-slate-800">{log.userName}</div>
-                      <div className="text-2xs text-slate-500 font-mono">{log.userId}</div>
+                      <div className="font-bold text-slate-800 whitespace-nowrap" title={log.userId}>{log.userName}</div>
                     </td>
                     <td className="py-3 px-3">{getActionBadge(actionOf(log))}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700">

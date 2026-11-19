@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import React from 'react';
 import { AppNotification } from '../../types';
-import { Bell, Check, Clock, ExternalLink, Settings2, Zap } from 'lucide-react';
+import { Bell, Check, ChevronLeft, Clock, Settings2, Zap } from 'lucide-react';
 import { categoryName } from '../../shared/notifications';
 
 interface NotificationDropdownProps {
@@ -35,7 +35,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             <Bell className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-bold text-slate-800">مركز الإشعارات التحريرية</span>
             {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-2xs font-bold px-1.5 py-0.5 rounded-full">
+              <span className="bg-blue-600 text-white text-2xs font-bold px-1.5 py-0.5 rounded-full tabular-nums">
                 {unreadCount}
               </span>
             )}
@@ -91,8 +91,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     {notif.category && <span className="ms-1 px-1 rounded bg-slate-100 text-slate-500">{categoryName(notif.category)}</span>}
                   </span>
                   {notif.linkUrl && (
-                    <span className="text-blue-600 flex items-center gap-0.5">
-                      الانتقال <ExternalLink className="w-2.5 h-2.5" />
+                    <span className="text-blue-700 font-semibold flex items-center gap-0.5">
+                      فتح <ChevronLeft className="w-3 h-3" aria-hidden="true" />
                     </span>
                   )}
                 </span>

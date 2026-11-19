@@ -26,6 +26,7 @@ import {
   Flame,
   MonitorPlay,
   BookOpen,
+  BookOpenText,
   ArrowLeftRight,
   ClipboardList,
   MessagesSquare,
@@ -222,25 +223,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const myDecisions = currentUser && isManagerRole(currentUser.role) ? cardsAwaitingMyDecision(allCards, currentUser.id).length : 0;
   const cardsBadge = mySteps + myDecisions;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
+  // What waits for me reads in the signal colour; broadcast red is kept for breaking news and live air.
+  const WAITING = 'bg-blue-600 text-white';
+  const ON_AIR = 'bg-red-600 text-white';
 
   /** Every screen of the rail with its label, icon and the count that waits there. */
   const ITEMS: Record<string, NavItem> = {
     dashboard: { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null },
-    messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white', count: messagesBadge },
-    tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: tasksBadge },
-    cards: { id: 'cards', label: 'التكليفات', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: myDecisions > 0 ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800', count: cardsBadge },
-    requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800', count: requestsBadge },
-    news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800', count: newsBadge },
+    messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: WAITING, count: messagesBadge },
+    tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: WAITING, count: tasksBadge },
+    cards: { id: 'cards', label: 'التكليفات', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: WAITING, count: cardsBadge },
+    requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: WAITING, count: requestsBadge },
+    news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: WAITING, count: newsBadge },
     wires: { id: 'wires', label: 'المصادر', icon: Rss, badge: null },
-    breaking: { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-600 text-white', count: breakingCount },
-    bulletins: { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800', count: toApprove },
+    breaking: { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: ON_AIR, count: breakingCount },
+    bulletins: { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: WAITING, count: toApprove },
     stories: { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
-    diary: { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: 'bg-sky-100 text-sky-800', count: diaryBadge },
+    diary: { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: WAITING, count: diaryBadge },
     episodes: { id: 'episodes', label: 'الحلقات', icon: Video, badge: null },
     programs: { id: 'programs', label: 'البرامج', icon: Tv, badge: null },
     calendar: { id: 'calendar', label: 'جدول البث', icon: Calendar, badge: null },
     guests: { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
-    'on-air': { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white', count: liveCount },
+    'on-air': { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: ON_AIR, count: liveCount },
     'studio-screen': { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
     media: { id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null },
     bookings: { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
@@ -251,7 +255,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     users: { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
     settings: { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },
     help: { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
-    'whats-new': { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-700 text-white' },
+    guide: { id: 'guide', label: 'دليل الاستخدام', icon: BookOpenText, badge: null },
+    'whats-new': { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-white/10 text-slate-100' },
   };
 
   // Sections follow the colleague's role; each folds, and the fold is remembered on this device.
@@ -304,13 +309,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-300' : 'text-slate-400'}`} aria-hidden="true" />
         {!isCollapsed && (
           <>
-            <span className="flex-1 text-right truncate">{item.label}</span>
+            {/* The count sits right after its label, so the two read as one. */}
+            <span className="min-w-0 text-right truncate">{item.label}</span>
             {item.badge && (
-              <span className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 tabular-nums ${item.badgeColor || 'bg-slate-800 text-slate-300'}`}>{item.badge}</span>
+              <span className={`-ms-1 text-2xs px-1.5 min-w-5 text-center leading-5 rounded-full font-bold shrink-0 tabular-nums ${item.badgeColor || 'bg-slate-800 text-slate-300'}`}>{item.badge}</span>
             )}
           </>
         )}
-        {isCollapsed && item.badge && <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500" />}
+        {isCollapsed && item.badge && <span aria-hidden="true" className={`absolute top-2 left-2 w-2 h-2 rounded-full ${item.badgeColor === ON_AIR ? 'bg-red-500' : 'bg-blue-400'}`} />}
       </button>
     );
   };
@@ -331,7 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         aria-label="القائمة الرئيسية"
         {...(isSmallScreen && !isMobileOpen ? { inert: true, 'aria-hidden': true } : {})}
         {...(isSmallScreen && isMobileOpen ? { role: 'dialog', 'aria-modal': true } : {})}
-        className={`theme-fixed bg-slate-950 text-slate-300 border-l border-white/5 flex flex-col transition-all duration-300 select-none
+        className={`theme-fixed bg-slate-950 text-slate-300 border-l border-white/5 flex flex-col transition-[transform,width] duration-200 ease-out select-none
           fixed inset-y-0 right-0 z-50 md:relative md:z-20
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'}
           ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'}
@@ -380,6 +386,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={onCloseMobile}
                 className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors md:hidden"
                 title="إغلاق القائمة"
+                aria-label="إغلاق القائمة"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -412,7 +419,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? '' : 'rotate-90'}`} aria-hidden="true" />
                   <span className="flex-1 text-right">{group.label}</span>
                   {!open && waiting > 0 && (
-                    <span className="min-w-5 px-1.5 rounded-full bg-blue-500 text-white text-3xs font-bold tabular-nums leading-5">{waiting > 99 ? '99+' : waiting}</span>
+                    <span className="min-w-5 px-1.5 rounded-full bg-blue-600 text-white text-3xs font-bold tabular-nums leading-5">{waiting > 99 ? '99+' : waiting}</span>
                   )}
                 </button>
               )}

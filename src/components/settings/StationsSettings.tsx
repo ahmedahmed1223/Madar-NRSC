@@ -6,9 +6,13 @@ import { confirmDialog } from '../../services/dialogs';
 import { SINGLETON_ID } from '../../shared/collections';
 import { newId } from '../../shared/ids';
 import { MAX_STEP_TYPES, stepTypesError, stepTypesOf, type StepType } from '../../shared/productionCards';
+import { countLabel } from '../../shared/arabicPlural';
 import { MAX_STATION_GROUPS, MAX_STATIONS, stationGroupsError, stationGroupsOf, stationScope, stationsError, stationsOf, type Station, type StationGroup } from '../../shared/stations';
 
-const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm text-slate-900';
+const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
+const COLLEAGUES = { one: 'زميل واحد', two: 'زميلان', few: 'زملاء', many: 'زميلاً', zero: 'لا زملاء' };
+const TYPE_ROW = 'grid grid-cols-[minmax(0,1fr)_6rem_2.75rem] sm:grid-cols-[minmax(0,1fr)_6rem_7.5rem_2.75rem] gap-2';
+const STEPS = { one: 'خطوة واحدة', two: 'خطوتان', few: 'خطوات', many: 'خطوة' };
 
 type Usage = Awaited<ReturnType<typeof apiService.getStationUsage>>;
 
@@ -104,7 +108,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
 
   const removeType = async (type: StepType) => {
     const uses = stepTypeUsage().get(type.id) || 0;
-    if (uses && !(await confirmDialog({ title: `حذف نوع «${type.name}»`, message: `يستخدمه ${uses} من خطوات التكليفات (المنجزة منها أيضاً). ستظهر هذه الخطوات بعد الحذف كـ«مهمة» بوزن 1، فتتغير نقاط الأعباء وتقارير المحطات بأثر رجعي. يُفضّل إعادة تسميته أو تعديل وزنه بدلاً من حذفه.`, confirmLabel: 'حذف رغم ذلك', cancelLabel: 'إبقاء النوع', danger: true }))) return;
+    if (uses && !(await confirmDialog({ title: `حذف نوع «${type.name}»`, message: `تستخدمه ${countLabel(uses, STEPS)} في التكليفات (المنجزة منها أيضاً). ستظهر هذه الخطوات بعد الحذف كـ«مهمة» بوزن 1، فتتغير نقاط الأعباء وتقارير المحطات بأثر رجعي. يُفضّل إعادة تسميته أو تعديل وزنه بدلاً من حذفه.`, confirmLabel: 'حذف رغم ذلك', cancelLabel: 'إبقاء النوع', danger: true }))) return;
     setTypes((list) => list.filter((t) => t.id !== type.id));
   };
 
@@ -160,7 +164,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
             const follows = [...stationScope(stations, station.id, groups)].filter((id) => id !== station.id).map((id) => stations.find((s) => s.id === id)?.name);
             const restrictedOthers = others.filter((o) => !o.isMain && o.linkedIds !== undefined && !o.linkedIds.includes(station.id));
             return (
-              <li key={station.id} className="border border-slate-200 rounded-2xl bg-white p-4 space-y-3">
+              <li key={station.id} className="border border-slate-200 rounded-xl bg-white p-4 space-y-3">
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="flex-1 min-w-48">
                     <label htmlFor={`station-name-${station.id}`} className="block text-sm font-bold text-slate-700 mb-1">اسم المحطة {index + 1}</label>
@@ -170,8 +174,8 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                     <input type="radio" name="main-station" checked={!!station.isMain} onChange={() => setMain(station.id)} />
                     المحطة الرئيسية
                   </label>
-                  <span className="min-h-11 flex items-center text-sm text-slate-600">{members(station.id)} من الزملاء</span>
-                  <button type="button" onClick={() => void removeStation(station)} aria-label={`حذف محطة ${station.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl border border-rose-200 text-rose-700">
+                  <span className="min-h-11 flex items-center text-sm text-slate-600 tabular-nums">{countLabel(members(station.id), COLLEAGUES)}</span>
+                  <button type="button" onClick={() => void removeStation(station)} aria-label={`حذف محطة ${station.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -205,7 +209,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
           })}
         </ul>
         {stations.length < MAX_STATIONS && (
-          <button type="button" onClick={() => setStations((list) => [...list, { id: newId('st'), name: '' }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-xl border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => setStations((list) => [...list, { id: newId('st'), name: '' }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <Plus className="w-4 h-4" />
             إضافة محطة
           </button>
@@ -271,13 +275,13 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         {groups.length === 0 && <p className="text-sm text-slate-500">لا توجد مجموعات بعد.</p>}
         <ul className="space-y-3">
           {groups.map((group, index) => (
-            <li key={group.id} className="border border-slate-200 rounded-2xl bg-white p-4 space-y-2">
+            <li key={group.id} className="border border-slate-200 rounded-xl bg-white p-4 space-y-2">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex-1 min-w-48">
                   <label htmlFor={`group-name-${group.id}`} className="block text-sm font-bold text-slate-700 mb-1">اسم المجموعة {index + 1}</label>
                   <input id={`group-name-${group.id}`} value={group.name} maxLength={60} required onChange={(e) => setGroups((list) => list.map((g) => (g.id === group.id ? { ...g, name: e.target.value } : g)))} className={INPUT} />
                 </div>
-                <button type="button" onClick={() => setGroups((list) => list.filter((g) => g.id !== group.id))} aria-label={`حذف مجموعة ${group.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl border border-rose-200 text-rose-700">
+                <button type="button" onClick={() => setGroups((list) => list.filter((g) => g.id !== group.id))} aria-label={`حذف مجموعة ${group.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -297,7 +301,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
           ))}
         </ul>
         {groups.length < MAX_STATION_GROUPS && (
-          <button type="button" onClick={() => setGroups((list) => [...list, { id: newId('grp'), name: '', stationIds: [] }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-xl border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => setGroups((list) => [...list, { id: newId('grp'), name: '', stationIds: [] }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <Plus className="w-4 h-4" />
             إضافة مجموعة
           </button>
@@ -309,41 +313,50 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         <p className="text-sm text-slate-600 max-w-3xl">
           الوزن (من 1 إلى 10) يعبّر عن ثقل هذا النوع من العمل. نقاط المهمة = الوزن × درجة التعقيد (بسيطة 1، متوسطة 2، معقدة 3)، وبها تُقارن أعباء الأفراد والمحطات.
         </p>
+        <div className={`${TYPE_ROW} px-1 text-xs font-bold text-slate-600`} aria-hidden="true">
+          <span>النوع</span>
+          <span>الوزن</span>
+          <span className="hidden sm:block">الاستخدام</span>
+          <span />
+        </div>
         <ul className="space-y-2">
-          {types.map((type, index) => (
-            <li key={type.id} className="grid grid-cols-[1fr_6rem_auto] gap-2 items-end">
-              <div>
-                <label htmlFor={`type-name-${type.id}`} className="block text-xs font-bold text-slate-700 mb-1">
-                  نوع المهمة {index + 1}
-                  {typeUses.get(type.id) ? <span className="font-normal text-slate-500"> — مستخدم في {typeUses.get(type.id)} خطوة</span> : null}
-                </label>
-                <input id={`type-name-${type.id}`} value={type.name} maxLength={60} required onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, name: e.target.value } : t)))} className={INPUT} />
-              </div>
-              <div>
-                <label htmlFor={`type-weight-${type.id}`} className="block text-xs font-bold text-slate-700 mb-1">الوزن</label>
-                <input id={`type-weight-${type.id}`} type="number" min={1} max={10} step={1} inputMode="numeric" value={type.weight} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, weight: Math.round(Number(e.target.value)) } : t)))} className={INPUT} />
-              </div>
-              <button type="button" disabled={types.length === 1} onClick={() => void removeType(type)} aria-label={`حذف نوع ${type.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl border border-rose-200 text-rose-700 disabled:opacity-40">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </li>
-          ))}
+          {types.map((type, index) => {
+            const uses = typeUses.get(type.id) || 0;
+            return (
+              <li key={type.id} className={`${TYPE_ROW} items-center`}>
+                <div>
+                  <label htmlFor={`type-name-${type.id}`} className="sr-only">نوع المهمة {index + 1}</label>
+                  <input id={`type-name-${type.id}`} value={type.name} maxLength={60} required aria-describedby={`type-uses-${type.id}`} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, name: e.target.value } : t)))} className={INPUT} />
+                </div>
+                <div>
+                  <label htmlFor={`type-weight-${type.id}`} className="sr-only">وزن {type.name || `نوع المهمة ${index + 1}`}</label>
+                  <input id={`type-weight-${type.id}`} type="number" min={1} max={10} step={1} inputMode="numeric" value={type.weight} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, weight: Math.round(Number(e.target.value)) } : t)))} className={`${INPUT} tabular-nums`} />
+                </div>
+                <p id={`type-uses-${type.id}`} className="hidden sm:block text-xs text-slate-500">{uses ? `في ${countLabel(uses, STEPS)}` : 'غير مستخدم'}</p>
+                <button type="button" disabled={types.length === 1} onClick={() => void removeType(type)} aria-label={`حذف نوع ${type.name}`} title="حذف النوع" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 disabled:opacity-40">
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
         {types.length < MAX_STEP_TYPES && (
-          <button type="button" onClick={() => setTypes((list) => [...list, { id: newId('ty'), name: '', weight: 2 }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-xl border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => setTypes((list) => [...list, { id: newId('ty'), name: '', weight: 2 }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <Plus className="w-4 h-4" />
             إضافة نوع مهمة
           </button>
         )}
       </fieldset>
 
-      {error && <p role="alert" className="text-sm font-bold text-rose-700">{error}</p>}
-      {saved && <p role="status" className="text-sm font-bold text-emerald-700">حُفظت المحطات والمجموعات وأنواع المهام</p>}
-      {dirty && !saving && <p className="text-sm text-amber-800">لديك تعديلات غير محفوظة.</p>}
-      <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
-        <Save className="w-4 h-4" />
-        {saving ? 'جارٍ الحفظ…' : 'حفظ'}
-      </button>
+      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-100/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
+          <Save className="w-4 h-4" aria-hidden="true" />
+          {saving ? 'جارٍ الحفظ…' : 'حفظ'}
+        </button>
+        {error && <p role="alert" className="text-sm font-bold text-rose-700">{error}</p>}
+        {saved && <p role="status" className="text-sm font-bold text-emerald-700">حُفظت المحطات والمجموعات وأنواع المهام</p>}
+        {dirty && !saving && !error && <p className="text-sm text-amber-800">لديك تعديلات غير محفوظة.</p>}
+      </div>
     </form>
   );
 }

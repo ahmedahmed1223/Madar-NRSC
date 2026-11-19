@@ -18,6 +18,8 @@ test('news search survives editing and reload with author and date filters', asy
   await expect.poll(() => page.locator('#app-main').evaluate(el => el.parentElement!.scrollTop)).toBe(scrollTop);
   await page.reload();
   await expect(search).toHaveValue('القمة');
+  // The author and date filters live in the «الفلاتر» panel.
+  await page.locator('[aria-controls="news-advanced-filters"]').click();
   await expect(page.getByLabel('الكاتب:', { exact: true })).toBeVisible();
   await expect(page.getByLabel('من تاريخ:', { exact: true })).toBeVisible();
   await close();

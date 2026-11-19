@@ -5,6 +5,7 @@ import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
+import { AR, countLabel } from '../shared/arabicPlural';
 import React, { useState } from 'react';
 import { Search, Plus, FolderGit2, Calendar as CalendarIcon, Link as LinkIcon, ArrowUpRight, X, MapPin, Edit2, Trash2 } from 'lucide-react';
 import { confirmDialog } from '../services/dialogs';
@@ -168,10 +169,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
         <button
           type="button"
           onClick={handleOpenAddModal}
-          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          إنشاء تغطية / قصة جديدة
+          تغطية جديدة
         </button>
         )}
       </div>
@@ -184,8 +185,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           active={activeTab}
           onChange={setActiveTab}
           tabs={[
-            { id: 'ACTIVE', label: 'التغطيات النشطة', count: stories.filter((s) => s.status === 'ACTIVE').length, tone: 'blue' },
-            { id: 'RESOLVED', label: 'منتهية/مغلقة', count: stories.filter((s) => s.status === 'RESOLVED').length, tone: 'emerald' },
+            { id: 'ACTIVE', label: 'نشطة', count: stories.filter((s) => s.status === 'ACTIVE').length, tone: 'blue' },
+            { id: 'RESOLVED', label: 'منتهية', count: stories.filter((s) => s.status === 'RESOLVED').length, tone: 'emerald' },
             { id: 'ARCHIVED', label: 'الأرشيف', count: stories.filter((s) => s.status === 'ARCHIVED').length, tone: 'slate', secondary: true },
           ]}
         />
@@ -196,7 +197,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               aria-label="تصنيف التغطية"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
+              className="min-h-11 sm:min-h-0 px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">جميع التصنيفات</option>
               {categories.map((c) => (
@@ -214,13 +215,15 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="بحث في عنوان التغطية، الوصف، أو المدينة..."
-              className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500"
+              aria-label="بحث في التغطيات"
+              className="w-full min-h-11 sm:min-h-0 pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+                aria-label="مسح البحث"
+                className="absolute left-0 top-1/2 -translate-y-1/2 min-h-9 min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-slate-700"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -259,7 +262,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   </Badge>
 
                   {story.categoryName && (
-                    <span className="text-2xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                    <span className="text-2xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
                       {story.categoryName}
                     </span>
                   )}
@@ -277,10 +280,11 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenEditModal(story)}
-                    className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="تعديل بيانات القصة"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="تعديل بيانات التغطية"
+                    aria-label={`تعديل التغطية: ${story.title}`}
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Edit2 className="w-4 h-4" />
                   </button>
                   )}
 
@@ -290,7 +294,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     onClick={() => void handleDeleteStory(story)}
                     aria-label={`حذف التغطية: ${story.title}`}
                     title="حذف التغطية"
-                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -302,19 +306,19 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                       setDetailStory(story);
                       if (onSelectStory) onSelectStory(story.id);
                     }}
-                    className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="استعراض التقارير المرتبطة"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="فتح ملف التغطية"
+                    aria-label={`فتح ملف التغطية: ${story.title}`}
                   >
-                    <ArrowUpRight className="w-4 h-4" />
+                    <ArrowUpRight className="w-4 h-4 rtl:-scale-x-100" />
                   </button>
                 </div>
               </div>
 
-              <h3
-                onClick={() => setDetailStory(story)}
-                className="text-base font-bold text-slate-800 mb-2 hover:text-indigo-700 transition-colors cursor-pointer"
-              >
-                {story.title}
+              <h3 className="text-base font-bold text-slate-800 mb-2">
+                <button type="button" onClick={() => setDetailStory(story)} className="text-right hover:text-blue-700 transition-colors">
+                  {story.title}
+                </button>
               </h3>
 
               <p className="text-xs text-slate-600 line-clamp-2 mb-4 leading-relaxed">{story.description}</p>
@@ -338,10 +342,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDetailStory(story)}
-                  className="flex items-center gap-1 text-indigo-600 font-bold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1 min-h-9 text-blue-700 font-bold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
                 >
                   <LinkIcon className="w-3 h-3" />
-                  {linkedArticles.length} مادة خبرية مرتبطة
+                  {linkedArticles.length ? `${countLabel(linkedArticles.length, AR.news)} في التغطية` : 'لا أخبار بعد'}
                 </button>
               </div>
             </div>
@@ -351,8 +355,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
         {filteredStories.length === 0 && (
           <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <FolderGit2 className="w-12 h-12 mb-3 text-slate-300" />
-            <p className="font-semibold text-sm">لا توجد قصص إخبارية مطابقة لمعايير البحث</p>
-            <p className="text-xs text-slate-500 mt-1">اضغط على زر "إنشاء تغطية / قصة جديدة" لإضافة ملف تحريري</p>
+            <p className="font-semibold text-sm">{searchQuery.trim() || selectedCategory !== 'ALL' ? 'لا تغطيات مطابقة للبحث أو التصنيف' : activeTab === 'ACTIVE' ? 'لا تغطيات نشطة' : activeTab === 'RESOLVED' ? 'لا تغطيات منتهية' : 'الأرشيف فارغ'}</p>
+            {canManageStories && activeTab === 'ACTIVE' && <p className="text-xs text-slate-500 mt-1">افتح ملفاً لحدث كبير بزر «تغطية جديدة» واربط به أخباره ومواده.</p>}
           </div>
         )}
       </div>
@@ -362,14 +366,14 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
         isOpen={isModalOpen}
         draft={draft}
         onClose={() => setIsModalOpen(false)}
-        title={editingStory ? 'تعديل التغطية والقصة الإخبارية' : 'إنشاء تغطية أو قصة مركزية جديدة'}
-        subtitle="تجميع الأخبار والتقارير ومتابعة التطورات تحت ملف إخباري موحد"
+        title={editingStory ? 'تعديل التغطية' : 'تغطية جديدة'}
+        subtitle="ملف واحد للحدث: أخباره وتقاريره وتطوراته"
         maxWidth="2xl"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="stories-view-field-1" className="block text-xs font-bold text-slate-700">عنوان القصة / الملف التحريري *</label>
+              <label htmlFor="stories-view-field-1" className="block text-xs font-bold text-slate-700">عنوان التغطية *</label>
               {title && (
                 <button
                   type="button"
@@ -386,7 +390,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="مثال: تغطية القمة الاقتصادية، مستجدات الانتخابات..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -396,7 +400,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <select id="stories-view-field-2"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
               >
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -411,7 +415,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <select id="stories-view-field-3"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
               >
                 <option value="CRITICAL">أولوية قصوى</option>
                 <option value="HIGH">عاجل وهام</option>
@@ -425,7 +429,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               <select id="stories-view-field-4"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as 'ACTIVE' | 'RESOLVED' | 'ARCHIVED')}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
               >
                 <option value="ACTIVE">تغطية نشطة ومستمرة</option>
                 <option value="RESOLVED">ملف مكتمل / منتهي</option>
@@ -454,7 +458,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     value={locationName}
                 onChange={(e) => setLocationName(e.target.value)}
                 placeholder="مثال: الرياض، واشنطن..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
               />
                   <GlossaryDatalist id="newsroom-glossary" />
               <div className="mt-1 flex flex-wrap gap-1">
@@ -463,7 +467,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     key={loc}
                     type="button"
                     onClick={() => setLocationName(loc)}
-                    className="text-2xs bg-slate-100 hover:bg-indigo-50 text-slate-600 px-1.5 py-0.5 rounded"
+                    className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
                   >
                     {loc}
                   </button>
@@ -489,7 +493,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                 value={keywordsInput}
                 onChange={(e) => setKeywordsInput(e.target.value)}
                 placeholder="اقتصاد، قمة، طاقة، تضخم..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -515,7 +519,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="اكتب أهداف التغطية، الزوايا التحريرية، والجهات والمسؤولين المعنيين بالملف..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -530,7 +534,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xs disabled:opacity-60"
+              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs disabled:opacity-60"
             >
               {saving ? 'جارٍ الحفظ…' : editingStory ? 'حفظ التعديلات' : 'إنشاء التغطية'}
             </button>

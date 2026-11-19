@@ -187,7 +187,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         items={[
           { label: 'دليل الحلقات', onClick: onBack },
           { label: episode.programName },
-          { label: `حلقة #${episode.episodeNumber}: ${episode.title}` },
+          { label: `حلقة ${episode.episodeNumber}` },
         ]}
         statusBadge={{
           label: statusInfo.label,
@@ -220,6 +220,123 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Top Episode Banner */}
+      <div className="border-b border-slate-200 pb-4 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="sm:hidden min-h-11 min-w-11 inline-flex items-center justify-center shrink-0 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+              aria-label="العودة للحلقات"
+              title="العودة للحلقات"
+            >
+              <ArrowRight className="w-5 h-5" aria-hidden />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
+                  {episode.programName}
+                </span>
+                <span className="text-xs text-slate-500 tabular-nums">
+                  حلقة {episode.episodeNumber} · الموسم {episode.seasonNumber}
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1 break-words">
+                {episode.title}
+              </h1>
+            </div>
+          </div>
+
+          {/* Episode Live Status Controller */}
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+            {mayEditEpisode && (
+              <button
+                type="button"
+                onClick={() => setEditingDetails(true)}
+                disabled={!canEditEpisode || lock.status === 'acquiring'}
+                title={lockedByOther ? `الحلقة قيد التحرير لدى ${lock.holder?.userName || 'زميل آخر'}` : 'تعديل العنوان والرقم وموعد البث والطاقم'}
+                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 disabled:opacity-50"
+              >
+                <Edit2 className="w-4 h-4" />
+                تعديل بيانات الحلقة
+              </button>
+            )}
+            {canBook && (
+              <button
+                type="button"
+                onClick={bookStudio}
+                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
+                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
+              >
+                <CalendarPlus className="w-4 h-4" />
+                {episodeBookings.length ? `محجوز (${episodeBookings.length})` : 'حجز استوديو'}
+              </button>
+            )}
+            <ExportMenu
+              items={[
+                { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
+                { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episode, docContext()) },
+                { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episode, docContext()) },
+                { id: 'guests', label: 'ورقة الضيوف والشارات', hint: 'الحجز والهواتف ونصوص الشارات', build: () => guestSheetDoc(episode, allGuests, docContext()) },
+              ]}
+            />
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-500 font-semibold">حالة الحلقة:</span>
+              <select
+                aria-label="حالة الحلقة"
+                value={episode.status}
+                onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
+                disabled={!canEditEpisode}
+                className="min-h-11 px-3 border border-slate-300 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
+              >
+                {EPISODE_STATUS_INFO.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {editingDetails && (
+          <EpisodeDetailsEditor
+            episode={episode}
+            episodes={apiService.getEpisodes()}
+            currentUser={currentUser}
+            onClose={() => setEditingDetails(false)}
+            onSaveEpisode={onSaveEpisode}
+            lock={{ status: lock.status, holderName: lock.holder?.userName }}
+          />
+        )}
+        {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
+
+        {/* Episode Info Bar */}
+        <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-slate-500" />
+            <span>موعد البث:</span>
+            <strong className="text-slate-800 tabular-nums">
+              {arabicDate(episode.broadcastDate)} ({episode.startTime} - {episode.endTime})
+            </strong>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Tv className="w-4 h-4 text-slate-500" />
+            <span>الاستوديو:</span>
+            <strong className="text-slate-800">{episode.studioName}</strong>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span>المقدم:</span>
+            <strong className="text-slate-800">{episode.presenterName}</strong>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span>المنتج:</span>
+            <strong className="text-slate-800">{episode.producerName}</strong>
+          </div>
+        </div>
+      </div>
 
       {/* On-air readiness across departments */}
       <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready && timingOk ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
@@ -270,129 +387,13 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         )}
       </section>
 
-      {/* Top Episode Banner */}
-      <div className="border-b border-slate-200 pb-4 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
-              title="العودة للحلقات"
-            >
-              <ArrowRight className="w-5 h-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
-                  {episode.programName}
-                </span>
-                <span className="text-xs text-slate-500 font-mono">
-                  حلقة #{episode.episodeNumber} (الموسم {episode.seasonNumber})
-                </span>
-              </div>
-              <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1 break-words">
-                {episode.title}
-              </h1>
-            </div>
-          </div>
-
-          {/* Episode Live Status Controller */}
-          <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
-            {mayEditEpisode && (
-              <button
-                type="button"
-                onClick={() => setEditingDetails(true)}
-                disabled={!canEditEpisode || lock.status === 'acquiring'}
-                title={lockedByOther ? `الحلقة قيد التحرير لدى ${lock.holder?.userName || 'زميل آخر'}` : 'تعديل العنوان والرقم وموعد البث والطاقم'}
-                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 disabled:opacity-50"
-              >
-                <Edit2 className="w-4 h-4" />
-                تعديل بيانات الحلقة
-              </button>
-            )}
-            {canBook && (
-              <button
-                type="button"
-                onClick={bookStudio}
-                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
-              >
-                <CalendarPlus className="w-4 h-4" />
-                {episodeBookings.length ? `محجوز (${episodeBookings.length})` : 'حجز استوديو'}
-              </button>
-            )}
-            <ExportMenu
-              items={[
-                { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
-                { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episode, docContext()) },
-                { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episode, docContext()) },
-                { id: 'guests', label: 'ورقة الضيوف والشارات', hint: 'الحجز والهواتف ونصوص الشارات', build: () => guestSheetDoc(episode, allGuests, docContext()) },
-              ]}
-            />
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-500 font-semibold">حالة الحلقة:</span>
-              <select
-                aria-label="حالة الحلقة"
-                value={episode.status}
-                onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
-                disabled={!canEditEpisode}
-                className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
-              >
-                {EPISODE_STATUS_INFO.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {editingDetails && (
-          <EpisodeDetailsEditor
-            episode={episode}
-            episodes={apiService.getEpisodes()}
-            currentUser={currentUser}
-            onClose={() => setEditingDetails(false)}
-            onSaveEpisode={onSaveEpisode}
-            lock={{ status: lock.status, holderName: lock.holder?.userName }}
-          />
-        )}
-        {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
-
-        {/* Episode Info Bar */}
-        <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-slate-500" />
-            <span>موعد البث:</span>
-            <strong className="text-slate-800 tabular-nums">
-              {arabicDate(episode.broadcastDate)} ({episode.startTime} - {episode.endTime})
-            </strong>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Tv className="w-4 h-4 text-slate-500" />
-            <span>الاستوديو:</span>
-            <strong className="text-slate-800">{episode.studioName}</strong>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span>المقدم:</span>
-            <strong className="text-slate-800">{episode.presenterName}</strong>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span>المنتج:</span>
-            <strong className="text-slate-800">{episode.producerName}</strong>
-          </div>
-        </div>
-      </div>
-
       {/* Tabs */}
       <nav aria-label="خطوات إعداد الحلقة" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 border-b border-slate-200 pb-3 text-xs font-bold">
         <button
           type="button"
           onClick={() => setActiveTab('PLAN')}
           aria-pressed={activeTab === 'PLAN'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'PLAN' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -404,21 +405,21 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('RUNDOWN')}
           aria-pressed={activeTab === 'RUNDOWN'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'RUNDOWN'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <ListOrdered className="w-4 h-4" />
-          <span>مخطط الرانداون التلفزيوني ({episode.rundown?.length || 0})</span>
+          <span>الرانداون ({episode.rundown?.length || 0})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('QUESTIONS')}
           aria-pressed={activeTab === 'QUESTIONS'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'QUESTIONS'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -432,7 +433,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('GUESTS')}
           aria-pressed={activeTab === 'GUESTS'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'GUESTS'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -446,7 +447,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('SCRIPT')}
           aria-pressed={activeTab === 'SCRIPT'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'SCRIPT'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -460,7 +461,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('NOTES')}
           aria-pressed={activeTab === 'NOTES'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'NOTES' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >

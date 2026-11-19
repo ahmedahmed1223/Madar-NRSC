@@ -62,7 +62,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   }, [isOpen, card?.id]);
 
   // Supervisors distribute work inside the stations they follow.
-  const scope = useMemo(() => stationScope(stations, currentUser.stationId), [stations, currentUser.stationId]);
+  const scope = useMemo(() => stationScope(stations, currentUser), [stations, currentUser]);
   const people = useMemo(() => users.filter((u) => u.isActive !== false && !u.deletedAt && (!u.stationId || scope.has(u.stationId))), [users, scope]);
   const groups = useMemo(
     () => [

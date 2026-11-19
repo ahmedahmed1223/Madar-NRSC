@@ -20,7 +20,7 @@ import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Filter, Flame, CheckCircle, Clock, Eye, Edit2, Trash2, Archive, Send, CheckSquare, Square, Radio, X, Lock, RotateCcw, Undo2 } from 'lucide-react';
+import { Plus, Search, Filter, Flame, CheckCircle, Clock, Eye, Edit2, Trash2, Archive, Send, CheckSquare, Square, Radio, X, Lock, RotateCcw, Undo2, BookOpen } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
 import { FilterTabs } from '../components/common/FilterTabs';
@@ -29,7 +29,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { dataStore } from '../services/dataStore';
-import { transitionDenial, isBreakingLive } from '../shared/newsWorkflow';
+import { transitionDenial, isBreakingLive, awaitsMyReview, isQualityPassed, activeReviewClaim } from '../shared/newsWorkflow';
 import { isLockActive, EditLock } from '../shared/collections';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
@@ -249,7 +249,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
   }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
 
-  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
+  // The review tab lists everything under review (it replaces the table): a quality reviewer no
+  // longer sees what passed quality; what waits on me comes first, a colleague's claim is marked.
+  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW' && (can('news.approve') || !isQualityPassed(n))).sort((a, b) =>
+    Number(awaitsMyReview(can, currentUser.id, b)) - Number(awaitsMyReview(can, currentUser.id, a)) ||
     (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
 
   const handleRestore = (id: string) => {
@@ -351,7 +354,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           <button
             type="button"
             onClick={() => setIsArchiveOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all whitespace-nowrap"
           >
             <Archive className="w-4 h-4" />
             الأرشيف القديم
@@ -360,7 +363,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             type="button"
             data-tour="news-create"
             onClick={onCreateNews}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             إنشاء خبر جديد
@@ -637,7 +640,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
         {reviewMode ? (
           <section aria-label="طابور مراجعة الأخبار" className="p-3 sm:p-4 space-y-1">
-            <h2 className="text-sm font-bold text-slate-800">طابور المراجعة: {countLabel(reviewQueue.length, AR.news)}</h2>
+            <h2 className="text-sm font-bold text-slate-800">طابور المراجعة: {countLabel(reviewQueue.length, { ...AR.news, zero: 'لا أخبار' })}</h2>
             <p className="text-xs text-slate-600">الأعلى أولوية أولاً، ثم الأقدم انتظاراً. افتح الخبر للمراجعة، وينتقل الاعتماد إلى الخبر التالي.</p>
             {reviewQueue.length === 0 ? (
               <div className="py-8 text-center text-sm text-slate-600">
@@ -659,6 +662,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <Badge variant={pInfo.variant} size="sm">{pInfo.label}</Badge>
                       {item.authorName && <span className="text-xs text-slate-600">{item.authorName}</span>}
                       {lock && <span className="text-2xs font-bold text-amber-700">يحرره الآن: {lock.userName}</span>}
+                      {isQualityPassed(item) && <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800">اجتازت التدقيق</span>}
+                      {(() => {
+                        const claim = activeReviewClaim(item);
+                        return claim && claim.userId !== currentUser.id ? <span className="text-2xs font-bold text-slate-700">يراجعها {claim.userName}</span> : null;
+                      })()}
                       <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>
                         بانتظار المراجعة منذ {minutes < 60 ? countLabel(minutes, { ...AR.minute, zero: 'أقل من دقيقة' }) : countLabel(Math.floor(minutes / 60), AR.hour)}
                       </span>
@@ -692,20 +700,20 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     )}
                   </button>
                 </th>
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
-                {showColumn('category') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
-                {showColumn('priority') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                {showColumn('author') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
-                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
-                {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36 sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات تحريرية</th>
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem] xl:min-w-[16rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                {showColumn('category') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
+                {showColumn('priority') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                {showColumn('author') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
+                <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
+                {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 whitespace-nowrap text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                <th className="py-3.5 px-2 sm:px-3 text-center w-24 xl:w-auto sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredNews.length === 0 ? (
                 <tr>
                   <td colSpan={4 + listPreferences.columns.length} className="py-12 text-center text-slate-500">
-                    {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» ضمن الفلاتر الحالية.` : 'لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.'}
+                    {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» ضمن الفلاتر الحالية.` : activeTab === 'BREAKING' && !anyFilter ? 'لا عاجل على الهواء الآن. يُطلق العاجل من خبر منشور بزر الشعلة في عمود الإجراءات.' : 'لا أخبار مطابقة للتصنيف أو الفلاتر المحددة.'}
                     <DidYouMean suggestion={correction} onPick={applySearch} className="mt-2" />
                     {anyFilter && (
                       <button type="button" onClick={() => { resetFilters(); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
@@ -766,7 +774,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             >
                               <Highlight text={item.title} query={searchQuery} />
                             </button>
-                            <span className="text-2xs text-slate-500 block line-clamp-1 mt-0.5">
+                            <span className="text-2xs text-slate-500 line-clamp-1 mt-0.5">
                               <Highlight text={item.summary} query={searchQuery} />
                             </span>
                             {/* Below 1280px (tablets, laptops with the sidebar) the category, priority, author and time columns fold in here. */}
@@ -857,13 +865,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>}
 
                       {/* Actions stay in view (sticky) while a narrow table scrolls. */}
-                      <td className="py-3.5 px-2 sm:px-4 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
-                        <div className="flex flex-wrap items-center justify-center gap-1">
-                          {/* Quick Preview */}
+                      <td className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
+                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5 min-w-[4.75rem] xl:min-w-0">
+                          {/* Quick Preview (on phones the title itself opens it) */}
                           <button
                             type="button"
                             onClick={() => setPreviewNews(item)}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 hidden sm:inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                             title="معاينة وسجل التدقيق"
                           >
                             <Eye className="w-4 h-4" />
@@ -873,7 +881,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRestore(item.id)}
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-blue-700 hover:bg-blue-50"
                               title="استعادة الخبر من سلة المحذوفات"
                             >
                               <RotateCcw className="w-4 h-4" />
@@ -884,10 +892,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onEditNews(item.id)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-blue-700 hover:bg-blue-50"
                             title={lock ? `يحرره الآن ${lock.userName} (فتح للقراءة)` : canEditNewsContent(can, currentUser.id, item) ? 'تحرير الخبر' : 'فتح الخبر للقراءة'}
                           >
-                            {canEditNewsContent(can, currentUser.id, item) && !lock ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            {canEditNewsContent(can, currentUser.id, item) && !lock ? <Edit2 className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
                           </button>
 
                           {/* Workflow actions offered only when the server will accept them */}
@@ -895,7 +903,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'UNDER_REVIEW')}
-                              className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="إرسال للمراجعة"
                             >
                               <Send className="w-4 h-4" />
@@ -906,7 +914,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'APPROVED')}
-                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="اعتماد الخبر"
                             >
                               <CheckCircle className="w-4 h-4" />
@@ -917,7 +925,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'NEEDS_REVISION')}
-                              className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="إعادة للكاتب مع ملاحظات"
                             >
                               <Undo2 className="w-4 h-4" />
@@ -928,7 +936,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'PUBLISHED')}
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="نشر رسمي الآن"
                             >
                               <Radio className="w-4 h-4" />
@@ -940,10 +948,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => onToggleBreaking(item)}
-                              className={`p-1.5 rounded-lg transition-colors ${
+                              className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors ${
                                 isBreakingLive(item)
-                                  ? 'text-red-600 bg-red-50 hover:bg-red-100'
-                                  : 'text-slate-500 hover:text-red-600 hover:bg-red-50'
+                                  ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                                  : 'text-slate-600 hover:text-red-700 hover:bg-red-50'
                               }`}
                               title={isBreakingLive(item) ? 'إيقاف من شريط العاجل' : 'إطلاق على شريط العاجل (4 ساعات)'}
                             >
@@ -956,7 +964,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(item.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-red-700 hover:bg-red-50"
                               title="نقل إلى سلة المحذوفات"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -984,7 +992,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage(currentPage - 1)}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+                className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 السابق
               </button>
@@ -995,7 +1003,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 type="button"
                 disabled={currentPage >= pageCount - 1}
                 onClick={() => setPage(currentPage + 1)}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+                className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 التالي
               </button>

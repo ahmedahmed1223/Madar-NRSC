@@ -14,6 +14,18 @@ import { ExternalFilePicker, availableSources } from '../components/media/Extern
 import { TARGET_NAMES, type StorageCopy, type StorageStatus } from '../shared/storage';
 import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive, Download } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
+
+/** «PDF», «MP3»… from a file name, for tiles without a picture. */
+const fileExtension = (name?: string) => (name && /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toUpperCase()) || '';
+
+/** A file name that may wrap after «_», «-» and «.» (long names otherwise break mid-word). */
+const breakable = (name = '') =>
+  name.split(/(?<=[_.-])/).map((part, i) => (
+    <React.Fragment key={i}>
+      {i > 0 && <wbr />}
+      {part}
+    </React.Fragment>
+  ));
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 
@@ -297,19 +309,22 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">مكتبة الوسائط</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">الصور والفيديو والصوت والوثائق، مع الوسوم والبحث.</p>
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-blue-600" />
+            مكتبة الوسائط
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">الصور والفيديو والصوت والوثائق، مع الوسوم والبحث.</p>
         </div>
 
         {canUpload && (
         <button
           type="button"
           onClick={handleOpenUpload}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 min-h-11 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start sm:self-auto"
         >
           <UploadCloud className="w-4 h-4" />
           رفع مادة وسائط جديدة
@@ -360,8 +375,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               <button
                 key={key}
                 type="button"
+                aria-pressed={selectedType === key}
                 onClick={() => setSelectedType(key)}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                className={`min-h-11 sm:min-h-9 px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   selectedType === key
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -369,7 +385,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               >
                 <span>{label}</span>
                 <span
-                  className={`text-2xs px-1.5 py-0.2 rounded-md ${
+                  className={`text-2xs px-1.5 rounded-md tabular-nums ${
                     selectedType === key ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'
                   }`}
                 >
@@ -386,16 +402,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         {assetPage.visible.map((asset) => (
           <div
             key={asset.id}
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
+            className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:border-blue-300 transition-colors"
           >
             {/* Visual Thumbnail */}
             <div className="theme-fixed relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
-                <ThumbImage src={asset.fileUrl || asset.url} alt={asset.title} icon={getMediaIcon('IMAGE')} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <ThumbImage src={asset.fileUrl || asset.url} alt={asset.title} icon={getMediaIcon('IMAGE')} className="w-full h-full object-cover" />
               ) : asset.mediaType === 'VIDEO' ? (
                 <div className="w-full h-full relative flex items-center justify-center bg-slate-950">
                   <ThumbImage src={(asset as any).thumbnailUrl || (asset as any).posterUrl} alt="" className="w-full h-full object-cover opacity-60" />
-                  <div className="absolute w-11 h-11 rounded-full bg-blue-600/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                  <div className="absolute w-11 h-11 rounded-full bg-blue-600/90 text-white flex items-center justify-center">
                     <Video className="w-5 h-5" />
                   </div>
                 </div>
@@ -404,9 +420,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   <div className="p-3 bg-slate-800 rounded-2xl text-blue-400">
                     {getMediaIcon(asset.mediaType)}
                   </div>
-                  <span className="text-xs font-mono font-bold text-slate-300">
-                    {asset.mediaType}
-                  </span>
+                  {fileExtension(asset.fileName) && (
+                    <span className="text-xs font-mono font-bold text-slate-300" dir="ltr">
+                      {fileExtension(asset.fileName)}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -434,17 +452,17 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             {/* Content info */}
             <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
               <div>
-                <h4
+                <h2
                   dir="auto"
                   onClick={() => setPreviewAsset(asset)}
                   className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug cursor-pointer hover:text-blue-600 transition-colors"
                 >
                   {asset.title || (
-                    <span dir="auto" className="block break-all font-mono font-semibold">
-                      {asset.fileName}
+                    <span dir="ltr" className="block text-right font-mono font-semibold [overflow-wrap:anywhere]" title={asset.fileName}>
+                      {breakable(asset.fileName)}
                     </span>
                   )}
-                </h4>
+                </h2>
                 {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-2xs font-bold">
                     {asset.mediaType === 'VIDEO' && (
@@ -477,8 +495,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setPreviewAsset(asset)}
-                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="معاينة المادة"
+                    aria-label={`معاينة المادة: ${asset.title || asset.fileName}`}
                   >
                     <Eye className="w-4 h-4" />
                   </button>
@@ -488,8 +507,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                     onClick={async () => {
                       if ((await confirmDialog(`حذف المادة «${asset.title || asset.fileName}» نهائياً مع ملفها؟`))) onDeleteMedia(asset.id);
                     }}
-                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                    className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                     title="حذف من الأرشيف"
+                    aria-label={`حذف المادة: ${asset.title || asset.fileName}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -502,9 +522,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
         {filteredAssets.length === 0 && (
           <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            <HardDrive className="w-12 h-12 mb-3 text-slate-300" />
-            <p className="font-semibold text-sm">لا توجد وسائط مطابقة لمعايير البحث</p>
-            <p className="text-xs text-slate-500 mt-1">اضغط على زر "رفع مادة وسائط جديدة" لتسجيل ملف جديد بالأرشيف</p>
+            <HardDrive className="w-10 h-10 mb-3 text-slate-400" aria-hidden="true" />
+            <p className="font-semibold text-sm">{mediaAssets.length === 0 ? 'المكتبة فارغة.' : 'لا مواد تطابق البحث أو النوع المختار.'}</p>
+            {canUpload && <p className="text-xs text-slate-500 mt-1">ارفع ملفاً من «رفع مادة وسائط جديدة».</p>}
           </div>
         )}
       </div>

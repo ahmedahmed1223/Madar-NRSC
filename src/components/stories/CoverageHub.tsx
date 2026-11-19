@@ -43,7 +43,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
     <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-          <Icon className="w-4 h-4 text-indigo-600" />
+          <Icon className="w-4 h-4 text-blue-600" />
           {title} ({count})
         </h3>
         {action}
@@ -75,7 +75,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
           count={items.length}
           action={
             canCreateNews && onCreateNews ? (
-              <button type="button" onClick={onCreateNews} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+              <button type="button" onClick={onCreateNews} className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5" />
                 خبر جديد في التغطية
               </button>
@@ -85,7 +85,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
           {items.length === 0 && <p className="text-2xs text-slate-500">لا توجد أخبار في هذه التغطية بعد.</p>}
           <ul className="space-y-1.5">
             {items.map((n) => (
-              <li key={n.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300">
+              <li key={n.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 hover:border-blue-300">
                 <div className="min-w-0">
                   <span className="block text-xs font-bold text-slate-800 truncate">{n.title}</span>
                   <span className="text-2xs text-slate-500">
@@ -93,7 +93,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
                   </span>
                 </div>
                 {onOpenNews && (
-                  <button type="button" onClick={() => onOpenNews(n.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg shrink-0" title="فتح الخبر">
+                  <button type="button" onClick={() => onOpenNews(n.id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg shrink-0" title="فتح الخبر">
                     <ExternalLink className="w-4 h-4" />
                   </button>
                 )}
@@ -147,7 +147,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
                   </span>
                 </span>
                 {onOpenEpisode && (
-                  <button type="button" onClick={() => onOpenEpisode(episode.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg shrink-0 mr-auto" title="فتح الحلقة">
+                  <button type="button" onClick={() => onOpenEpisode(episode.id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg shrink-0 mr-auto" title="فتح الحلقة">
                     <ExternalLink className="w-4 h-4" />
                   </button>
                 )}

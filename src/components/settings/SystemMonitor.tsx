@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AR, countLabel } from '../../shared/arabicPlural';
 import { AlertTriangle, CheckCircle2, LogOut, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../services/http';
 import { apiService } from '../../services/api';
@@ -153,7 +154,7 @@ export function SystemMonitor() {
                     {data.jobs.map((job) => (
                       <tr key={job.name} className="border-b border-slate-100 last:border-0">
                         <th scope="row" className="p-3 text-right font-bold text-slate-900">{job.name}</th>
-                        <td className="p-3 tabular-nums whitespace-nowrap">{job.everyMinutes === undefined ? '—' : job.everyMinutes >= 60 ? `${Math.round(job.everyMinutes / 60)} ساعة` : job.everyMinutes >= 1 ? `${Math.round(job.everyMinutes)} دقيقة` : `${Math.round(job.everyMinutes * 60)} ثانية`}</td>
+                        <td className="p-3 tabular-nums whitespace-nowrap">{job.everyMinutes === undefined ? '—' : job.everyMinutes >= 60 ? countLabel(Math.round(job.everyMinutes / 60), AR.hour) : job.everyMinutes >= 1 ? countLabel(Math.round(job.everyMinutes), AR.minute) : countLabel(Math.round(job.everyMinutes * 60), { one: 'ثانية واحدة', two: 'ثانيتان', few: 'ثوانٍ', many: 'ثانية' })}</td>
                         <td className="p-3 whitespace-nowrap">{when(job.lastRunAt)}</td>
                         <td className={`p-3 font-bold ${job.ok === false ? 'text-rose-700' : job.ok ? 'text-emerald-700' : 'text-slate-600'}`}>{job.ok === false ? job.error : job.ok ? 'نجحت' : 'لم تعمل بعد'}</td>
                       </tr>
@@ -186,7 +187,7 @@ export function SystemMonitor() {
                       <td className="p-3 tabular-nums" dir="ltr">{s.ip || '—'}</td>
                       <td className="p-3">
                         {canRevoke && (s.userId !== me.id || s.devices > 1) && (
-                          <button type="button" onClick={() => revoke(s.userId, s.name)} className="min-h-9 px-3 rounded-lg border border-rose-200 text-rose-700 text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap">
+                          <button type="button" onClick={() => revoke(s.userId, s.name)} className="min-h-11 sm:min-h-9 px-3 rounded-lg border border-slate-300 text-slate-700 hover:border-rose-200 hover:text-rose-700 hover:bg-rose-50 text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap">
                             <LogOut className="w-3.5 h-3.5" />
                             {s.userId === me.id ? 'إنهاء جلساتي الأخرى' : 'إنهاء الجلسات'}
                           </button>

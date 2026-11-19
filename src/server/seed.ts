@@ -23,6 +23,7 @@ import {
 import { demoBulletin, INITIAL_BULLETIN_FORMATS } from '../services/demoBulletins';
 import { demoBookings, demoDiary, INITIAL_RESOURCES } from '../services/demoPlanning';
 import { localDateString } from '../shared/dates';
+import { validZone } from '../shared/dateFormat';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { departmentIdOf, departmentName } from '../shared/departments';
@@ -118,6 +119,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
 
   await ensureAdministrator(db, config);
   reconcileTwoFactorFlags(db);
+  normalizeStationZone(db);
   migrateRoleDefaults(db);
   migrateToDepartments(db);
   ensureSystemRoles(db);
@@ -329,6 +331,15 @@ function migrateRoleDefaults(db: NewsroomDatabase) {
     }
     db.setMeta('roles_migration', '1');
   });
+}
+
+/** Older seeds stored «Asia/Riyadh (GMT+3)», which is not a time zone: keep only the IANA name. */
+function normalizeStationZone(db: NewsroomDatabase) {
+  const row = db.getRow('settings', SINGLETON_ID);
+  const zone = row?.d?.defaultTimezone;
+  if (typeof zone !== 'string' || !/[\s(]/.test(zone.trim())) return;
+  const clean = validZone(zone);
+  if (clean) db.writeRow('settings', SINGLETON_ID, { ...row!.d, defaultTimezone: clean }, row!.p, null);
 }
 
 /** The user record's twoFactorEnabled flag must mirror real TOTP enrolment (never trust seeded/legacy values). */
