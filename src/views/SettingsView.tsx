@@ -10,6 +10,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { confirmSaved } from '../services/confirmSave';
 import { SINGLETON_ID } from '../shared/collections';
 import { settingsError } from '../shared/settings';
+import { matchesQuery } from '../shared/search';
 import { sanitizeDateSettings } from '../shared/dateFormat';
 import { DEFAULT_BREAKING_HOURS } from '../shared/newsWorkflow';
 import { themePreference, setThemePreference, reducedMotion, setReducedMotion, setTextScale, TEXT_SCALES, textScale, type TextScale } from '../services/theme';
@@ -335,14 +336,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Filtered categories
   const filteredCategories = useMemo(() => {
     if (!categorySearch.trim()) return orderedCategories;
-    const q = categorySearch.toLowerCase();
-    return orderedCategories.filter(
-      (c) =>
-        c.nameAr.toLowerCase().includes(q) ||
-        (c.nameEn && c.nameEn.toLowerCase().includes(q)) ||
-        (c.slug && c.slug.toLowerCase().includes(q)) ||
-        (c.description && c.description.toLowerCase().includes(q))
-    );
+    return orderedCategories.filter((c) => matchesQuery(categorySearch, c.nameAr, c.nameEn, c.slug, c.description));
   }, [orderedCategories, categorySearch]);
 
   const handleSaveGeneral = async (e: React.FormEvent) => {
@@ -641,8 +635,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <label htmlFor="settings-search" className="sr-only">البحث في الإعدادات</label>
         <input id="settings-search" type="search" value={settingsSearch} onChange={e => setSettingsSearch(e.target.value)} className="w-full min-h-11 border border-slate-300 rounded-lg px-3 bg-white text-slate-800" placeholder="البحث في الإعدادات" />
         {settingsSearch.trim() && <div aria-live="polite" className="flex flex-wrap gap-2">
-          {SECTIONS.filter(s => `${s.label} ${s.hint}`.includes(settingsSearch.trim())).map(s => <button key={s.id} type="button" onClick={() => { void chooseSection(s.id); setSettingsSearch(''); }} className="min-h-11 px-3 text-blue-700 underline">{s.label}</button>)}
-          {!SECTIONS.some(s => `${s.label} ${s.hint}`.includes(settingsSearch.trim())) && <p>لا توجد إعدادات مطابقة</p>}
+          {SECTIONS.filter(s => matchesQuery(settingsSearch, s.label, s.hint)).map(s => <button key={s.id} type="button" onClick={() => { void chooseSection(s.id); setSettingsSearch(''); }} className="min-h-11 px-3 text-blue-700 underline">{s.label}</button>)}
+          {!SECTIONS.some(s => matchesQuery(settingsSearch, s.label, s.hint)) && <p>لا توجد إعدادات مطابقة</p>}
         </div>}
       </div>
       {section === 'preferences' && <section className="space-y-4 border-b border-slate-200 py-4">

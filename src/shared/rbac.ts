@@ -168,6 +168,15 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
     riskLevel: 'CRITICAL',
   },
   {
+    code: 'news.breaking_request',
+    nameAr: 'إرسال خبر عاجل للمراجعة',
+    nameEn: 'Send Breaking for Review',
+    description: 'إرسال تنبيه عاجل من الميدان أو الرصد إلى الديسك؛ قرار بثه يبقى لمن يملك إطلاق العاجل',
+    category: 'NEWS',
+    categoryNameAr: 'غرفة الأخبار',
+    riskLevel: 'LOW',
+  },
+  {
     code: 'news.delete',
     nameAr: 'حذف وأرشفة المواد الإخبارية',
     nameEn: 'Delete News',
@@ -699,6 +708,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'news.view',
       'news.create',
       'news.edit_own',
+      'news.breaking_request',
       'rundown.view',
       'programs.view',
       'guests.view',
@@ -797,6 +807,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
       'news.view',
       'news.create',
       'news.edit_own',
+      'news.breaking_request',
       'guests.view',
       'media.view',
       'media.upload',
@@ -986,7 +997,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'رصد',
     isSystemRole: true,
     screens: ['wires', 'news', 'breaking', 'stories', 'diary', 'media', 'messages', 'cards', 'requests', 'tasks', 'roster', 'workload'],
-    permissions: ['messages.groups', 'news.view', 'news.create', 'news.edit_own', 'media.view', 'media.upload', 'tasks.view', 'requests.create', 'cards.view', 'cards.work'],
+    permissions: ['messages.groups', 'news.view', 'news.create', 'news.edit_own', 'news.breaking_request', 'media.view', 'media.upload', 'tasks.view', 'requests.create', 'cards.view', 'cards.work'],
   },
   {
     id: 'role-reports-editor',
@@ -999,7 +1010,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'تقارير',
     isSystemRole: true,
     screens: ['news', 'bulletins', 'stories', 'diary', 'guests', 'media', 'messages', 'cards', 'requests', 'tasks', 'bookings', 'roster', 'workload'],
-    permissions: ['messages.groups', 'resources.book', 'bulletins.edit', 'news.view', 'news.create', 'news.edit_own', 'rundown.view', 'guests.view', 'media.view', 'media.upload', 'tasks.view', 'requests.create', 'cards.view', 'cards.work'],
+    permissions: ['messages.groups', 'resources.book', 'bulletins.edit', 'news.view', 'news.create', 'news.edit_own', 'news.breaking_request', 'rundown.view', 'guests.view', 'media.view', 'media.upload', 'tasks.view', 'requests.create', 'cards.view', 'cards.work'],
   },
 ];
 

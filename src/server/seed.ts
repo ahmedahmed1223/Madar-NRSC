@@ -203,6 +203,8 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'messages.groups': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
   // Deleting episodes left `episodes.edit` (preparers and directors keep editing, not deleting).
   'episodes.delete': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER', 'MAIN_STATION_MANAGER'],
+  // Field reporters and the monitoring desk send breaking alerts for review; airing stays with editors.
+  'news.breaking_request': ['JOURNALIST', 'REPORTER', 'MONITOR', 'REPORTS_EDITOR'],
 };
 
 /**
