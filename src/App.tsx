@@ -61,6 +61,8 @@ const ProgramDetailView = lazyWithRetry(() => import('./views/ProgramDetailView'
 const StoriesView = lazyWithRetry(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
 const DiaryView = lazyWithRetry(() => import('./views/DiaryView').then((m) => ({ default: m.DiaryView })));
 const BookingsView = lazyWithRetry(() => import('./views/BookingsView').then((m) => ({ default: m.BookingsView })));
+const ProductionCardsView = lazyWithRetry(() => import('./views/ProductionCardsView').then((m) => ({ default: m.ProductionCardsView })));
+const WorkloadView = lazyWithRetry(() => import('./views/WorkloadView').then((m) => ({ default: m.WorkloadView })));
 const NotificationSettingsView = lazyWithRetry(() => import('./views/NotificationSettingsView').then((m) => ({ default: m.NotificationSettingsView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
@@ -858,6 +860,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   setActiveNav('episodes');
                 }}
                 onNavigate={(view: any) => {
+                  // A record on a list screen (e.g. cards/<id>) opens through the link router.
+                  if (String(view).includes('/')) return openLink(`/${view}`);
                   const map: Record<string, string> = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking' };
                   if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
                   setActiveNav(map[view] || String(view).toLowerCase().replace(/_/g, '-'));
@@ -1163,6 +1167,22 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             )}
 
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
+
+            {activeNav === 'cards' && (
+              <ProductionCardsView currentUser={currentUser} users={allUsers} focusId={focusId} onFocus={setFocusId} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
+            )}
+
+            {activeNav === 'workload' && (
+              <WorkloadView
+                currentUser={currentUser}
+                users={allUsers}
+                onOpen={(ref) => {
+                  if (ref.nav === 'news-editor') handleEditNewsClick(ref.id);
+                  else if (ref.nav === 'cards') openLink(`/cards/${ref.id}`);
+                  else openLink(`/${ref.nav}`);
+                }}
+              />
+            )}
 
             {activeNav === 'requests' && (
               <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusSegmentId={requestSegmentId} onClearFocus={() => setRequestSegmentId(undefined)} />

@@ -14,6 +14,7 @@ import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
+import { cardChangeError, cardContextOf } from '../shared/productionCards';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -43,7 +44,7 @@ const require =
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
 
-const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId'] as const;
+const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'stationId'] as const;
 
 function changed(before: any, after: any, field: string) {
   return JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after?.[field] ?? null);
@@ -474,6 +475,12 @@ export const POLICIES: Record<CollectionName, Policy> = {
   diary: diaryPolicy,
   resources: resourcesPolicy,
   bookings: bookingsPolicy,
+  productionCards: ({ auth, kind, before, after, list }) => {
+    const canManage = auth.can('cards.manage');
+    if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) return canManage ? null : 'حذف بطاقات الإنتاج واستعادتها لمسؤولي التكليف';
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, canManage, canWork: auth.can('cards.work') };
+    return cardChangeError(before, after, actor, cardContextOf(list?.('settings')[0], list?.('users') || []));
+  },
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
@@ -491,6 +498,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
     case 'notificationPrefs':
       return data?.userId === auth.user.id;
+    case 'productionCards':
+      return auth.can('cards.view');
     default:
       return true;
   }

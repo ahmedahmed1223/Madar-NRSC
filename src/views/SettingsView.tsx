@@ -19,6 +19,7 @@ import { DraftStatus } from '../components/common/DraftStatus';
 import { NewsTemplatesSettings } from '../components/settings/NewsTemplatesSettings';
 import { ProductionListsSettings } from '../components/settings/ProductionListsSettings';
 import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
+import { StationsSettings } from '../components/settings/StationsSettings';
 import {
   Settings,
   Tv,
@@ -43,6 +44,7 @@ import {
   Hash,
   FileText,
   Tag,
+  Network,
 } from 'lucide-react';
 import { Category, NewsSource, User, NewsItem } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -64,9 +66,10 @@ interface SettingsViewProps {
   onOpenUsers?: () => void;
 }
 
-type SettingsSection = 'station' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
+type SettingsSection = 'station' | 'stations' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
+  { id: 'stations', label: 'المحطات وبطاقات الإنتاج', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
   { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
   { id: 'production', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات', icon: Users },
   { id: 'airDisplay', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
@@ -604,6 +607,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'editorial' && <NewsTemplatesSettings />}
       {section === 'production' && <ProductionListsSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}
+      {section === 'stations' && <StationsSettings />}
       {section === 'categories' && (
       <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">

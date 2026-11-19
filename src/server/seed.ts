@@ -192,6 +192,11 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'diary.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'resources.book': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER', 'MEDIA', 'CREW'],
   'resources.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'cards.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW', 'VIEWER'],
+  'cards.work': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
+  'cards.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'workload.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'workload.view_all': ['SUPER_ADMIN', 'ADMIN'],
 };
 
 /** System roles introduced after a database was created are added once. */

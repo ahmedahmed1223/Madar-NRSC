@@ -73,6 +73,7 @@ export interface WireStatusInfo {
 import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
+import { cardChangeError, cardContextOf, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
@@ -252,6 +253,7 @@ export class ApiService {
       jobTitle: user.jobTitle || 'صحفي',
       departmentId: user.departmentId || 'newsroom',
       department: user.department || 'غرفة التحرير',
+      stationId: user.stationId,
       staffId: user.staffId || '',
       bio: user.bio || '',
       twoFactorEnabled: user.twoFactorEnabled ?? false,
@@ -1410,6 +1412,62 @@ export class ApiService {
   static deleteRequest(id: string): void {
     const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
     setStored(COLLECTIONS.requests.storageKey, all.filter((r) => r.id !== id));
+  }
+
+  // --- PRODUCTION CARDS ---
+  static getCards(): ProductionCard[] {
+    return getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
+  }
+
+  static getCard(id: string): ProductionCard | undefined {
+    return this.getCards().find((c) => c.id === id);
+  }
+
+  /** What the signed-in colleague may do on cards (the server applies the same rules). */
+  static cardActor(): CardActor {
+    const me = this.getCurrentUser();
+    return { id: me.id, stationId: me.stationId, canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+  }
+
+  /** Creates or replaces a card after checking it with the rules the server enforces. */
+  static saveCard(card: ProductionCard): ProductionCard {
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    const idx = all.findIndex((c) => c.id === card.id);
+    const before = idx === -1 ? null : all[idx];
+    const error = cardChangeError(before, card, this.cardActor(), cardContextOf(this.getSettings(), this.getUsers()));
+    if (error) throw new Error(error);
+    const saved = { ...card, updatedAt: new Date().toISOString() };
+    if (idx === -1) setStored(COLLECTIONS.productionCards.storageKey, [saved, ...all]);
+    else {
+      all[idx] = saved;
+      setStored(COLLECTIONS.productionCards.storageKey, all);
+    }
+    return saved;
+  }
+
+  static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard {
+    const card = this.getCard(id);
+    if (!card) throw new Error('البطاقة غير موجودة');
+    return this.saveCard(change(card));
+  }
+
+  static updateCardStep(cardId: string, stepId: string, changes: Partial<CardStep>): ProductionCard {
+    return this.updateCard(cardId, (card) => ({ ...card, steps: card.steps.map((s) => (s.id === stepId ? { ...s, ...changes } : s)) }));
+  }
+
+  /** Documents work on the card; the server records who wrote it, from which station and when. */
+  static addCardNote(cardId: string, text: string, stepId?: string): ProductionCard {
+    const me = this.getCurrentUser();
+    return this.updateCard(cardId, (card) => ({
+      ...card,
+      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
+    }));
+  }
+
+  static deleteCard(id: string): void {
+    if (!this.cardActor().canManage) throw new Error('حذف بطاقات الإنتاج لمسؤولي التكليف');
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
   }
 
   // --- TAXONOMY & CONFIG ---

@@ -11,6 +11,7 @@ import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
 import { addDaysIso, arabicDate } from '../../shared/dates';
+import { isStepLate, isStepOpen, stepTypeName, stepTypesOf } from '../../shared/productionCards';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -91,7 +92,7 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testI
 
 /** Personal work queue: what needs me now, by role and department. */
 export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin }) => {
-  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources']);
+  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'productionCards']);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review');
@@ -228,6 +229,21 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       })),
   ];
 
+  // My open steps on production cards: stuck and late first.
+  const stepTypes = stepTypesOf(apiService.getSettings());
+  const cardRows: Row[] = apiService
+    .getCards()
+    .filter((c) => c.status === 'OPEN')
+    .flatMap((c) => c.steps.filter((s) => s.assigneeId === me && isStepOpen(s)).map((s) => ({ card: c, step: s })))
+    .sort((a, b) => Number(isStepLate(b.step, now)) - Number(isStepLate(a.step, now)) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'))
+    .map(({ card, step }) => ({
+      id: `${card.id}:${step.id}`,
+      title: `${stepTypeName(stepTypes, step.type)}: ${card.title}`,
+      meta: step.status === 'BLOCKED' ? 'متعطلة' : isStepLate(step, now) ? 'متأخرة' : card.priority === 'URGENT' ? 'عاجل' : step.dueAt ? new Date(step.dueAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }) : undefined,
+      tone: (step.status === 'BLOCKED' || isStepLate(step, now) || card.priority === 'URGENT' ? 'red' : 'slate') as Row['tone'],
+      onClick: () => onNavigate(`cards/${card.id}`),
+    }));
+
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
   const candidates: (CardProps | false)[] = [
@@ -235,6 +251,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     canReview && { testId: 'my-review', icon: FileSearch, title: 'بانتظار مراجعتي', rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news') },
     { testId: 'my-dept-requests', icon: Inbox, title: `طلبات واردة لقسم ${departmentName(myDept)}`, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests') },
     { testId: 'my-sent-requests', icon: Send, title: 'طلباتي المرسلة', rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests') },
+    RbacService.hasPermission(currentUser, 'cards.view') && { testId: 'my-card-steps', icon: ClipboardList, title: 'مهامي في بطاقات الإنتاج', rows: cardRows, empty: 'لا مهام مفتوحة باسمك في البطاقات', more: () => onNavigate('cards') },
     { testId: 'my-tasks', icon: CheckSquare, title: 'مهامي', rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks') },
     { testId: 'my-episodes', icon: Tv, title: 'الحلقات القادمة وجاهزيتها', rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes') },
     (bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) && { testId: 'my-bulletins', icon: Radio, title: 'قصص النشرات', rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins') },

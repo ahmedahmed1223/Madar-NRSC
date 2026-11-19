@@ -15,6 +15,8 @@ import {
   MonitorPlay,
   BookOpen,
   ArrowLeftRight,
+  ClipboardList,
+  Scale,
   CalendarClock,
   Rss,
   Tv,
@@ -179,6 +181,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     : 0;
   // Upcoming diary events assigned to me (today onwards).
   const diaryBadge = currentUser ? apiService.getDiary().filter((e) => e.date >= today && e.coverage !== 'SKIP' && e.assigneeIds.includes(currentUser.id)).length : 0;
+  // Open production-card steps assigned to me.
+  const cardsBadge = currentUser ? apiService.getCards().filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
   const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
     { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
@@ -213,6 +217,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الفريق',
       items: [
+        { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
         { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
         { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
@@ -222,6 +227,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       label: 'الإدارة',
       items: [
+        { id: 'workload', label: 'الأعباء والأداء', icon: Scale, badge: null },
         { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
         { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
         { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },

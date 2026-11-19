@@ -9,6 +9,7 @@ import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
+import { stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
@@ -64,6 +65,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
 
   // Filters
+  const stations = stationsOf(ApiService.getSettings());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
@@ -259,7 +261,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // Filtering Logic
   const filteredUsers = sortList(users.filter((u) => {
-    const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone);
+    const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone, u.stationId ? stationName(stations, u.stationId) : '');
 
     const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
@@ -587,7 +589,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             </p>
                           )}
                           <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{user.jobTitle}</p>
-                          <p className="text-[11px] text-slate-500 truncate">{departmentName(departmentIdOf(user))}</p>
+                          <p className="text-[11px] text-slate-500 truncate">{departmentName(departmentIdOf(user))}{user.stationId ? ` — ${stationName(stations, user.stationId)}` : ''}</p>
                         </div>
                       </div>
 
@@ -739,7 +741,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                             </span>
                           </td>
 
-                          <td className="p-3 font-medium text-slate-700">{departmentName(departmentIdOf(user))}</td>
+                          <td className="p-3 font-medium text-slate-700">{departmentName(departmentIdOf(user))}{user.stationId ? <span className="block text-[11px] font-normal text-slate-500">{stationName(stations, user.stationId)}</span> : null}</td>
 
                           <td className="p-3 text-center">
                             <span

@@ -32,6 +32,9 @@ import { statusLabel } from '../shared/labels';
 import { localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
+import { stepTypesOf } from '../shared/productionCards';
+import { stationsOf } from '../shared/stations';
+import { cardNotices, stampCard } from './cards';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -274,7 +277,7 @@ export class SyncService {
   private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
     const NAMES: Partial<Record<CollectionName, string>> = {
       news: 'NEWS', stories: 'STORY', programs: 'PROGRAM', episodes: 'EPISODE', bulletins: 'BULLETIN', guests: 'GUEST',
-        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', bulletinFormats: 'BULLETIN_FORMAT', settings: 'SETTINGS',
+        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', productionCards: 'PRODUCTION_CARD', bulletinFormats: 'BULLETIN_FORMAT', settings: 'SETTINGS',
     };
     const entity = NAMES[collection];
     if (!entity || !after) return;
@@ -283,7 +286,7 @@ export class SyncService {
     let severity = 'INFO';
     let details = '';
     if (collection === 'settings') {
-      const keys = ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'dateTime', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'newsTemplates'];
+      const keys = ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'dateTime', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'newsTemplates', 'stations', 'cardStepTypes'];
       const changes = keys.filter(key => JSON.stringify(before?.[key]) !== JSON.stringify(after[key])).map(key => ({ field: key, before: before?.[key] ?? null, after: after[key] ?? null }));
       if (!changes.length) return;
       [action, details] = ['SETTINGS_UPDATE', JSON.stringify(changes)];
@@ -591,7 +594,9 @@ export class SyncService {
         if (collection === 'cues') after = stampCue(before, after, auth);
           if (collection === 'tasks') {
             const member = this.db.getRow('users', String(after.assigneeId))?.d;
-            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName };
+            const finished = after.status === 'DONE' || after.status === 'COMPLETED';
+            // Completion time is the server's, so output can be measured per period.
+            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || new Date().toISOString() : undefined };
           }
           if (collection === 'reviewThreads') {
             const now = new Date().toISOString();
@@ -644,10 +649,17 @@ export class SyncService {
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
+        if (collection === 'productionCards' && !after.deletedAt) {
+          // Stamped after the policy so the rules compare exactly what the browser sent.
+          const users = new Map<string, any>(this.listData('users').map((u: any) => [u.id, u]));
+          after = stampCard(before, after, auth.user, users, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d), auth.can('cards.manage'));
+        }
         if (collection === 'users') {
           // 2FA status is owned by the server (enrolment endpoints), never by the client.
           after.twoFactorEnabled = !!this.db.getCredentials(id)?.totpEnabled;
-          const invalid = this.validateUser(id, after);
+          // A station removed later does not block other edits to its former members.
+          const stationUnknown = after.stationId && after.stationId !== before?.stationId && !stationsOf(this.db.getRow('settings', SINGLETON_ID)?.d).some((s) => s.id === after.stationId);
+          const invalid = stationUnknown ? 'المحطة المختارة غير موجودة' : this.validateUser(id, after);
           if (invalid) return { ok: false, code: 'INVALID', message: invalid, current } as SyncOpResult;
         }
 
@@ -681,6 +693,11 @@ export class SyncService {
 
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+        if (collection === 'productionCards' && !after.deletedAt) {
+          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d))) {
+            this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent);
+          }
+        }
           if (collection === 'tasks' && !after.deletedAt) {
             const assigned = after.assigneeId && after.assigneeId !== before?.assigneeId;
             const deadline = before && after.dueDate !== before.dueDate;

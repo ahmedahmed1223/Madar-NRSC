@@ -1,5 +1,7 @@
 import type { SystemSettings } from '../types';
 import { validZone } from './dateFormat';
+import { stationsError } from './stations';
+import { stepTypesError } from './productionCards';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
   for (const key of ['onAirDisplayMode', 'studioDisplayMode'] as const) {
@@ -16,6 +18,14 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
     if (!value || typeof value !== 'object' || Array.isArray(value)) return 'إعدادات التاريخ والوقت غير صالحة';
     const options: Record<string, unknown[]> = { digits: ['latn', 'arab'], calendar: ['gregory', 'islamic-umalqura'], hourCycle: ['h23', 'h12'], dateStyle: ['long', 'numeric'], clockSeconds: [true, false], timeBasis: ['station', 'device'] };
     if (Object.entries(value).some(([key, item]) => !options[key]?.includes(item))) return 'خيارات التاريخ والوقت غير صالحة';
+  }
+  if (settings.stations !== undefined) {
+    const error = stationsError(settings.stations);
+    if (error) return error;
+  }
+  if (settings.cardStepTypes !== undefined) {
+    const error = stepTypesError(settings.cardStepTypes);
+    if (error) return error;
   }
   if (settings.enableAuditLog !== true) return 'سجل التدقيق إلزامي ولا يمكن تعطيله';
   if (settings.newsTemplates !== undefined) {

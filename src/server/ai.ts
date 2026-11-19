@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { AppConfig } from './config';
 
-export const COPILOT_MODES = ['TV_REWRITE', 'HEADLINES', 'ANCHOR_LEAD', 'PROOFREAD'] as const;
+export const COPILOT_MODES = ['TV_REWRITE', 'HEADLINES', 'ANCHOR_LEAD', 'PROOFREAD', 'BRIEF'] as const;
 export type CopilotMode = (typeof COPILOT_MODES)[number];
 
 const TONES: Record<string, string> = {
@@ -36,6 +36,8 @@ const PROMPTS: Record<CopilotMode, string> = {
   ANCHOR_LEAD: 'اكتب مقدمتين بديلتين يقرأهما المذيع قبل التقرير. أعد JSON بالحقلين lead1 و lead2.',
   PROOFREAD:
     'دقق النص لغوياً وأسلوبياً دون تغيير الحقائق. أعد JSON بالحقول: notes (مصفوفة ملاحظات التصحيح), paragraphs (مصفوفة فقرات النص المصحح).',
+  BRIEF:
+    'اكتب مسودة موجز إخباري قصير يُقرأ على الهواء في أقل من 40 ثانية، من المعلومات المعطاة فقط. إن نقصت معلومة أساسية فاذكرها في الملاحظات ولا تخمّنها. أعد JSON بالحقلين: brief (نص الموجز) و gaps (مصفوفة بما ينقص للتحقق منه قبل البث).',
 };
 
 export interface CopilotInput {
@@ -113,6 +115,9 @@ export async function runCopilot(config: AppConfig, input: CopilotInput) {
       };
     case 'ANCHOR_LEAD':
       return { type: 'ANCHOR_LEAD', lead1: String(data.lead1 || ''), lead2: String(data.lead2 || '') };
+    case 'BRIEF':
+      // Plain text for a text box (the page escapes it when it renders); a person reviews and approves it.
+      return { type: 'BRIEF', brief: String(data.brief || '').slice(0, 4000), gaps: (Array.isArray(data.gaps) ? data.gaps : []).slice(0, 10).map((g: unknown) => String(g).slice(0, 300)) };
     case 'PROOFREAD': {
       const notes = (Array.isArray(data.notes) ? data.notes : []).map((n: unknown) => String(n));
       return { type: 'PROOFREAD', correctionsCount: notes.length, notes, polishedContent: paragraphs(data.paragraphs) };

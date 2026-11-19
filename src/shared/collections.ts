@@ -56,6 +56,8 @@ export const COLLECTIONS = {
   resources: { storageKey: 'nrcs_resources_v1', kind: 'list' },
   /** Resource bookings (the server rejects overlapping bookings of the same resource). */
   bookings: { storageKey: 'nrcs_bookings_v1', kind: 'list' },
+  /** Production cards that travel with an item between stations (see shared/productionCards). */
+  productionCards: { storageKey: 'madar_production_cards_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;

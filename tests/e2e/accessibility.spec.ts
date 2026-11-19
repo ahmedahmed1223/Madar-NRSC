@@ -9,7 +9,7 @@ import { DEMO_PASSWORD, leaveEditors } from './helpers';
  */
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
-const SCREENS = ['', 'wires', 'news', 'breaking', 'bulletins', 'stories', 'diary', 'programs', 'episodes', 'calendar', 'guests', 'on-air', 'studio-screen', 'media', 'requests', 'tasks', 'bookings', 'roster', 'reports', 'audit', 'users', 'settings', 'help', 'whats-new', 'alerts'];
+const SCREENS = ['', 'wires', 'news', 'breaking', 'bulletins', 'stories', 'diary', 'programs', 'episodes', 'calendar', 'guests', 'on-air', 'studio-screen', 'media', 'cards', 'requests', 'tasks', 'bookings', 'roster', 'workload', 'reports', 'audit', 'users', 'settings', 'help', 'whats-new', 'alerts'];
 
 async function violations(page: Page) {
   await page.addScriptTag({ content: axeSource });

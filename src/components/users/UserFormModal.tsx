@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../../shared/departments';
 import { RbacService, RoleDefinition } from '../../services/rbacService';
+import { apiService } from '../../services/api';
+import { stationsOf } from '../../shared/stations';
 import {
   User as UserIcon,
   Mail,
@@ -11,6 +13,7 @@ import {
   Shield,
   Briefcase,
   Building,
+  MapPin,
   Clock,
   KeyRound,
   Sparkles,
@@ -43,6 +46,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [role, setRole] = useState<UserRole>('JOURNALIST');
   const [jobTitle, setJobTitle] = useState('');
   const [departmentId, setDepartmentId] = useState<string>('newsroom');
+  const [stationId, setStationId] = useState('');
+  const stations = stationsOf(apiService.getSettings());
   const [staffId, setStaffId] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('/avatar.svg');
@@ -60,6 +65,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole(userToEdit.role || 'JOURNALIST');
       setJobTitle(userToEdit.jobTitle || '');
       setDepartmentId(departmentIdOf(userToEdit));
+      setStationId(userToEdit.stationId || '');
       setStaffId(userToEdit.staffId || '');
       setBio(userToEdit.bio || '');
       setAvatarUrl(userToEdit.avatarUrl || '/avatar.svg');
@@ -73,6 +79,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole('JOURNALIST');
       setJobTitle('');
       setDepartmentId('newsroom');
+      setStationId('');
       setStaffId('');
       setBio('');
       setAvatarUrl('/avatar.svg');
@@ -115,6 +122,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       jobTitle: jobTitle.trim(),
       departmentId,
       department: departmentName(departmentId),
+      stationId: stationId || undefined,
       staffId: staffId.trim(),
       bio: bio.trim(),
       avatarUrl,
@@ -320,6 +328,29 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="user-form-modal-station" className="block text-xs font-bold text-slate-700 mb-1.5">
+              المحطة
+            </label>
+            <div className="relative">
+              <MapPin className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+              <select id="user-form-modal-station"
+                value={stationId}
+                onChange={(e) => setStationId(e.target.value)}
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+              >
+                <option value="">بدون محطة (إدارة مركزية)</option>
+                {stationId && !stations.some((s) => s.id === stationId) && <option value={stationId}>محطة محذوفة</option>}
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}{station.isMain ? ' (الرئيسية)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">تُنسب إليها أعماله في بطاقات الإنتاج. تُدار المحطات من الإعدادات.</p>
           </div>
         </div>
 

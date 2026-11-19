@@ -48,7 +48,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '3.28.0';
+export const APP_VERSION = '4.0.0';
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -726,9 +726,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     requireAuth,
     aiLimiter,
     wrap(async (req, res) => {
-      if (!req.auth!.can('news.create') && !req.auth!.can('news.edit_any')) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
-      if (!isAiConfigured(config)) throw new HttpError(503, 'المساعد الذكي غير مفعّل على الخادم (GEMINI_API_KEY)', 'AI_NOT_CONFIGURED');
       const mode = req.body?.mode as CopilotMode;
+      // Brief drafts are for anyone working on production cards; the other modes belong to the news editor.
+      const allowed = mode === 'BRIEF' ? req.auth!.can('cards.work') : req.auth!.can('news.create') || req.auth!.can('news.edit_any');
+      if (!allowed) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
+      if (!isAiConfigured(config)) throw new HttpError(503, 'المساعد الذكي غير مفعّل على الخادم (GEMINI_API_KEY)', 'AI_NOT_CONFIGURED');
       if (!COPILOT_MODES.includes(mode)) throw new HttpError(400, 'وضع غير مدعوم');
       try {
         const result = await runCopilot(config, {
