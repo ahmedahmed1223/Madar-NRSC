@@ -16,14 +16,18 @@ interface CoverageHubProps {
   newsList: NewsItem[];
   currentUser: User;
   canCreateNews: boolean;
+  /** May edit the coverage itself (news.create or news.edit_any, as the server's stories policy). */
+  canManage: boolean;
   onOpenNews?: (id: string) => void;
   onCreateNews?: () => void;
   onOpenEpisode?: (id: string) => void;
   onEdit: () => void;
 }
 
+const STORY_STATUS_LABELS: Record<string, string> = { ACTIVE: 'نشطة', RESOLVED: 'مغلقة', ARCHIVED: 'مؤرشفة' };
+
 /** Everything about one coverage in one place: stories, media, requests, episodes and discussion. */
-export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, currentUser, canCreateNews, onOpenNews, onCreateNews, onOpenEpisode, onEdit }) => {
+export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, currentUser, canCreateNews, canManage, onOpenNews, onCreateNews, onOpenEpisode, onEdit }) => {
   useLiveData(['requests', 'media', 'episodes', 'comments']);
   const items = newsList.filter((n) => n.storyId === story.id);
   const newsIds = new Set(items.map((n) => n.id));
@@ -55,10 +59,12 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
         <div className="flex flex-wrap items-center gap-4 text-slate-500 pt-2 border-t border-slate-200">
           <span>التصنيف: <strong>{story.categoryName || 'عام'}</strong></span>
           <span>الموقع: <strong>{story.locationName || 'غير محدد'}</strong></span>
-          <span>الحالة: <strong>{story.status === 'ACTIVE' ? 'نشطة' : 'مغلقة'}</strong></span>
-          <button type="button" onClick={onEdit} className="mr-auto px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100">
-            تعديل بيانات التغطية
-          </button>
+          <span>الحالة: <strong>{STORY_STATUS_LABELS[story.status] || story.status}</strong></span>
+          {canManage && (
+            <button type="button" onClick={onEdit} className="mr-auto min-h-11 px-3 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100">
+              تعديل بيانات التغطية
+            </button>
+          )}
         </div>
       </div>
 

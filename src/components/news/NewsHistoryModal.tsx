@@ -92,7 +92,7 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
             </ul>
             {selected && (
               <div className="md:col-span-2 border border-slate-200 rounded-xl p-4 space-y-3 max-h-[60vh] overflow-y-auto">
-                <h3 className="text-base font-extrabold text-slate-900">{selected.data.title}</h3>
+                <h3 className="text-base font-bold text-slate-900">{selected.data.title}</h3>
                 {selected.data.summary && <p className="text-xs text-slate-600 leading-relaxed">{selected.data.summary}</p>}
                 <div
                   className="rich-content text-sm text-slate-800"

@@ -88,7 +88,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
           <span className={`px-3 py-1 rounded-lg font-black ${state?.status === 'LIVE' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-200'}`}>{state?.status === 'LIVE' ? 'على الهواء' : 'خارج الهواء'}</span>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black leading-tight">{seg?.title || (state?.status === 'ENDED' ? 'انتهى البث' : 'بانتظار بدء البث')}</h1>
+          <h1 className="no-strap text-4xl sm:text-6xl lg:text-7xl font-black leading-tight">{seg?.title || (state?.status === 'ENDED' ? 'انتهى البث' : 'بانتظار بدء البث')}</h1>
           {timing && (
             <span className={`text-7xl sm:text-9xl font-black font-mono ${remainingCls}`} dir="ltr">
               {formatClock(timing.remaining)}

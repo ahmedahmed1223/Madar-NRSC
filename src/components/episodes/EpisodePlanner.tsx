@@ -367,7 +367,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
         ].map((c) => (
           <div key={c.label} className={`p-3 rounded-xl border ${c.warn ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
             <div className="text-2xs font-bold text-slate-500">{c.label}</div>
-            <div className="text-lg font-black text-slate-800 font-mono" dir="ltr" style={{ textAlign: 'right' }}>
+            <div className="text-lg font-bold text-slate-800 font-mono" dir="ltr" style={{ textAlign: 'right' }}>
               {c.value}
             </div>
           </div>
@@ -466,7 +466,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               <div className="min-w-0 flex items-start gap-1.5">
                 {topic && canEditEpisode && handle}
                 <div className="min-w-0">
-                <h4 className="text-sm font-black text-slate-800">
+                <h4 className="text-sm font-bold text-slate-800">
                   {topic ? `المحور ${idx + 1}: ${topic.title}` : 'خارج المحاور (المقدمة، الفواصل، الختام)'}
                 </h4>
                 {topic?.angle && <p className="text-xs text-slate-600 mt-0.5">الزاوية: {topic.angle}</p>}

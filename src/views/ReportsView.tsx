@@ -1,4 +1,6 @@
 import { countLabel } from '../shared/labels';
+import { downloadCsv } from '../services/csvExport';
+import { localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, Clock, Tv, FileText, Users, Calendar, Printer, Download, Filter } from 'lucide-react';
 import { NewsItem, Episode, Guest, Category } from '../types';
@@ -87,30 +89,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   const handleExportCsv = () => {
-    const csvRows = [
+    // Same filters as the screen: the period and the selected category.
+    const categoryLabel = selectedCategory === 'ALL' ? 'كل الأقسام' : categories.find((c) => c.id === selectedCategory)?.nameAr || selectedCategory;
+    const approvalLabel = avgApprovalMinutes === null ? 'لا توجد أخبار معتمدة' : `${avgApprovalMinutes} دقيقة`;
+    const csvRows: unknown[][] = [
       ['المؤشر الإحصائي', 'القيمة'],
       ['الفترة', periodLabel],
-      ['إجمالي الأخبار المرشحة', String(filteredNews.length)],
-      ['الأخبار المنشورة', String(publishedCount)],
-      ['الأخبار المعتمدة', String(approvedCount)],
-      ['أخبار قيد المراجعة', String(reviewCount)],
-      ['المسودات الأولية', String(draftCount)],
-      ['إجمالي الحلقات التلفزيونية', String(totalEpisodes)],
-      ['حلقات جاهزة للبث المباشر', String(readyEpisodes)],
-      ['حلقات تم بثها', String(completedEpisodes)],
-      ['إجمالي الضيوف المعتمدين (كل الفترات)', String(guests.length)],
+      ['القسم', categoryLabel],
+      ['إجمالي الأخبار المرشحة', filteredNews.length],
+      ['الأخبار المنشورة', publishedCount],
+      ['الأخبار المعتمدة', approvedCount],
+      ['أخبار قيد المراجعة', reviewCount],
+      ['المسودات الأولية', draftCount],
+      ['متوسط زمن الاعتماد (من الإنشاء حتى الاعتماد)', approvalLabel],
+      ['إجمالي الحلقات التلفزيونية', totalEpisodes],
+      ['حلقات جاهزة للبث المباشر', readyEpisodes],
+      ['حلقات تم بثها', completedEpisodes],
+      ['إجمالي الضيوف المعتمدين (كل الفترات)', guests.length],
       ['دقة توقيت الرانداون', `${rundownAccuracy.onTime}/${rundownAccuracy.total}`],
     ];
-
-    const csvContent = '\uFEFF' + csvRows.map((e) => e.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `nrcs_performance_report_${selectedPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const categorySlug = selectedCategory === 'ALL' ? 'all' : selectedCategory;
+    downloadCsv(`nrcs_performance_report_${selectedPeriod}_${categorySlug}_${localDateString()}.csv`, csvRows);
   };
 
   return (
@@ -118,7 +117,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {/* Header with Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             التقارير
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -225,7 +224,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <span className="text-xs font-bold text-slate-600">معدل نشر الأخبار</span>
             <FileText className="w-5 h-5 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
+          <div className="text-2xl font-bold text-slate-800 font-mono">
             {filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%
           </div>
           <p className="text-2xs text-emerald-700 font-semibold flex items-center gap-1">
@@ -239,7 +238,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <span className="text-xs font-bold text-slate-600">جاهزية الحلقات للبث</span>
             <Tv className="w-5 h-5 text-purple-600" />
           </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
+          <div className="text-2xl font-bold text-slate-800 font-mono">
             {readyEpisodes + completedEpisodes} من {totalEpisodes}
           </div>
           <p className="text-2xs text-purple-600 font-semibold">
@@ -252,7 +251,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون</span>
             <Clock className="w-5 h-5 text-emerald-700" />
           </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
+          <div className="text-2xl font-bold text-slate-800 font-mono">
             {rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
           </div>
           <p className="text-2xs text-slate-500">
@@ -267,7 +266,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف <span className="font-normal text-slate-500">(الإجمالي، لا يتأثر بالفترة)</span></span>
             <Users className="w-5 h-5 text-amber-700" />
           </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">{guests.length}</div>
+          <div className="text-2xl font-bold text-slate-800 font-mono">{guests.length}</div>
           <p className="text-2xs text-amber-700 font-semibold">
             موزعين على مختلف التخصصات السياسية والاقتصادية
           </p>

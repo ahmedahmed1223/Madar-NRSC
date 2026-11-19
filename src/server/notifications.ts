@@ -64,7 +64,7 @@ export function alertForWires(db: NewsroomDatabase, wires: WireItem[], now = Dat
     for (const p of prefs) {
       const hits = watchWordHits(`${wire.title}\n${wire.summary}`, p.watchWords || []);
       if (!(flash && p.flashAlerts) && !hits.length) continue;
-      const title = flash ? `عاجل — ${wire.sourceName}` : `برقية تحوي «${hits.slice(0, 3).join('، ')}»`;
+      const title = flash ? `عاجل — ${wire.sourceName}` : `مادة تحوي «${hits.slice(0, 3).join('، ')}»`;
       writeNotification(db, { userId: p.userId, title, message: wire.title, linkUrl: `/wires/${wire.id}`, category: 'wire', urgent: flash });
       written++;
     }

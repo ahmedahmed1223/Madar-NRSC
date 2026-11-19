@@ -60,7 +60,7 @@ export const CueAlertOverlay: React.FC<{ currentUser: User }> = ({ currentUser }
             <strong className="block text-base leading-snug">{c.message}</strong>
             <span className="text-2xs opacity-80">من {c.fromName} · {new Date(c.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-          <button type="button" onClick={() => apiService.ackCue(c.id)} className="px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-xs font-black shrink-0">
+          <button type="button" onClick={() => apiService.ackCue(c.id)} className="px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-xs font-bold shrink-0">
             تم الاستلام
           </button>
         </div>

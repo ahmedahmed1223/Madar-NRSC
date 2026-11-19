@@ -4,6 +4,7 @@ import { confirmDialog } from '../services/dialogs';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
+import { notify } from '../services/notify';
 import React, { useState } from 'react';
 import { CalendarClock, ChevronLeft, ChevronRight, Plus, Trash2, Edit2, X } from 'lucide-react';
 import type { User } from '../types';
@@ -194,7 +195,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
     <div className="space-y-5" data-testid="bulletins-view">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
             النشرات
           </h1>
           <p className="text-xs text-slate-500 mt-1">رانداون النشرة، قصصها وتوقيتها واعتمادها قبل الهواء.</p>
@@ -288,7 +289,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-black font-mono text-slate-800" dir="ltr">
+                          <span className="text-lg font-bold font-mono text-slate-800" dir="ltr">
                             {b.startTime}
                           </span>
                           <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
@@ -351,7 +352,15 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                       </button>
                       <button
                         type="button"
-                        onClick={async () => (await confirmDialog(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`)) && apiService.deleteBulletinFormat(f.id)}
+                        onClick={async () => {
+                          if (!(await confirmDialog(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`))) return;
+                          try {
+                            apiService.deleteBulletinFormat(f.id);
+                            await confirmSaved('bulletinFormats', f.id, `حُذف القالب «${f.name}»`);
+                          } catch (err: any) {
+                            notify({ type: 'error', title: 'تعذر حذف القالب', message: err?.message || 'حدث خطأ أثناء الحذف' });
+                          }
+                        }}
                         aria-label={`حذف ${f.name}`}
                         className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
                       >

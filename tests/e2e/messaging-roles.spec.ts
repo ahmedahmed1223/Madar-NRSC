@@ -159,7 +159,7 @@ test('a role opens only the screens of its job', async ({ browser }) => {
   await expect(nav.getByRole('button', { name: /طلبات الأقسام/ })).toBeVisible();
   await expect(nav.getByRole('button', { name: /بطاقات الإنتاج/ })).toBeVisible();
   await expect(nav.getByRole('button', { name: /الضيوف/ })).toHaveCount(0);
-  await expect(nav.getByRole('button', { name: /البرقيات/ })).toHaveCount(0);
+  await expect(nav.getByRole('button', { name: /المصادر/ })).toHaveCount(0);
   await expect(nav.getByRole('button', { name: /المستخدمون/ })).toHaveCount(0);
   // The address bar does not get around it, and the search does not offer it.
   await editorRole.page.goto('/guests');

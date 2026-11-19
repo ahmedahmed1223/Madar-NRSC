@@ -184,7 +184,7 @@ export const TestingView: React.FC = () => {
     <div className="space-y-5 text-right" dir="rtl">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-emerald-700" />
             حالة النظام
           </h1>
@@ -206,7 +206,7 @@ export const TestingView: React.FC = () => {
       <div className="grid grid-cols-3 gap-3">
         {(['PASSED', 'WARNING', 'FAILED'] as CheckStatus[]).map((s) => (
           <div key={s} className={`p-3 rounded-xl ${STATUS_STYLE[s]}`}>
-            <div className="text-2xl font-extrabold">{counts[s] || 0}</div>
+            <div className="text-2xl font-bold">{counts[s] || 0}</div>
             <div className="text-xs font-bold">{STATUS_LABEL[s]}</div>
           </div>
         ))}

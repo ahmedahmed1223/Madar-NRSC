@@ -57,7 +57,7 @@ export function parsePath(pathname: string): { view: string; id: string | null }
 
 const TITLES: Record<string, string> = {
   dashboard: 'الرئيسية',
-  wires: 'البرقيات',
+  wires: 'المصادر',
   news: 'الأخبار',
   'news-editor': 'محرر الخبر',
   breaking: 'العاجل',
@@ -86,7 +86,7 @@ const TITLES: Record<string, string> = {
   settings: 'الإعدادات',
   database: 'قاعدة البيانات',
   tests: 'الاختبارات',
-  alerts: 'تنبيهات البرقيات',
+  alerts: 'تنبيهات المصادر',
   help: 'المساعدة',
   'whats-new': 'ما الجديد',
 };

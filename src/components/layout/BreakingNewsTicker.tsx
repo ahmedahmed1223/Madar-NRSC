@@ -58,7 +58,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
         {/* Pulsing Tag */}
         <div className="flex items-center gap-1.5 bg-black/25 px-2.5 py-1 rounded-lg shrink-0 border border-white/10">
           <Flame className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-          <span className="font-extrabold tracking-wider text-2xs uppercase">عاجل</span>
+          <span className="font-bold tracking-wider text-2xs uppercase">عاجل</span>
           {rawList.length > 1 && (
             <span className="bg-white/20 text-2xs px-1.5 py-0.2 rounded font-mono font-bold">
               {safeIndex + 1}/{rawList.length}

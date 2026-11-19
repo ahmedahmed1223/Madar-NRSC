@@ -172,7 +172,7 @@ export const REPORT_SOURCES = [
   { id: 'ASSIGNED', name: 'تكليف مراسل بالاسم', hint: 'يصل الطلب للمراسل المختار مباشرة', requestType: 'FIELD' },
   { id: 'IN_HOUSE', name: 'إعداد داخلي من فريق البرنامج', hint: 'المعد يجهز المادة من مصادر متاحة', requestType: null },
   { id: 'ARCHIVE', name: 'مواد من الأرشيف', hint: 'يصل طلب لقسم الأرشيف لتجهيز المواد', requestType: 'ARCHIVE' },
-  { id: 'AGENCY', name: 'مواد وكالات الأنباء', hint: 'اختر المادة من مكتبة الوسائط أو البرقيات', requestType: null },
+  { id: 'AGENCY', name: 'مواد وكالات الأنباء', hint: 'اختر المادة من مكتبة الوسائط أو المصادر', requestType: null },
 ] as const;
 export type ReportSource = (typeof REPORT_SOURCES)[number]['id'];
 export const reportSourceOf = (id?: string) => REPORT_SOURCES.find((s) => s.id === id);

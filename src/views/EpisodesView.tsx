@@ -5,20 +5,23 @@ import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
-import { ProductionNameField } from '../components/common/ProductionNameField';
+import { EpisodeDetailsFields } from '../components/episodes/EpisodeDetailsFields';
+import { EpisodeDetailsEditor } from '../components/episodes/EpisodeDetailsEditor';
+import { EPISODE_STATUS_INFO, episodeEndTime, episodeStatusInfo, type EpisodeDetailsValues } from '../components/episodes/episodeDetails';
+import { apiService } from '../services/api';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { studioConflictsFor } from '../shared/schedule';
 import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, ChevronRight, ListOrdered, Users, Trash2, X } from 'lucide-react';
-import { Episode, Program, EpisodeStatus, User } from '../types';
+import { Plus, Search, ChevronRight, ListOrdered, Users, Trash2, X, Edit2 } from 'lucide-react';
+import { Episode, Program, User } from '../types';
 import { newId } from '../shared/ids';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 
 const EPISODE_SORT_KEYS = ['date', 'title', 'number', 'presenter', 'segments', 'status'] as const;
 type EpisodeSortKey = (typeof EPISODE_SORT_KEYS)[number];
-const EPISODE_STATUS_RANK: Record<string, number> = { PLANNING: 0, IN_PREPARATION: 1, PREPARING: 1, READY: 2, RECORDING: 3, RECORDED: 4, EDITING: 5, READY_FOR_BROADCAST: 6, ON_AIR: 7, BROADCASTED: 8, ARCHIVED: 9, CANCELLED: 10 };
+const EPISODE_STATUS_RANK: Record<string, number> = Object.fromEntries(EPISODE_STATUS_INFO.map((s, i) => [s.id, i]));
 const episodeSortValue = (e: Episode, key: EpisodeSortKey): unknown =>
   key === 'title'
     ? e.title
@@ -57,24 +60,22 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   openNewRequest,
 }) => {
   const canCreate = RbacService.hasPermission(currentUser, 'episodes.create');
-  const canDelete = RbacService.hasPermission(currentUser, 'episodes.edit') || RbacService.hasPermission(currentUser, 'programs.manage');
+  const canEditDetails = RbacService.hasPermission(currentUser, 'episodes.edit');
+  const canDelete = canEditDetails || RbacService.hasPermission(currentUser, 'programs.manage');
   const [selectedProgId, setSelectedProgId] = useState(filterProgramId || 'ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Form states for new episode
+  // Form state for a new episode: the program and structure, plus the shared details fields.
   const [programId, setProgramId] = useState(programs[0]?.id || '');
-  const [title, setTitle] = useState('');
-  const [episodeNumber, setEpisodeNumber] = useState(1);
-  const [seasonNumber, setSeasonNumber] = useState(1);
-  const [broadcastDate, setBroadcastDate] = useState(localDateString());
-  const [startTime, setStartTime] = useState('21:00');
-  const [durationMinutes, setDurationMinutes] = useState(50);
-  const [presenterName, setPresenterName] = useState(currentUser.fullName);
-  const [producerName, setProducerName] = useState(currentUser.fullName);
-  const [studioName, setStudioName] = useState('');
-  const [directorName, setDirectorName] = useState('');
+  const [details, setDetails] = useState<EpisodeDetailsValues>(() => ({
+    title: '', episodeNumber: 1, seasonNumber: 1, broadcastDate: localDateString(), startTime: '21:00', durationMinutes: 50,
+    presenterName: currentUser.fullName, producerName: currentUser.fullName, studioName: '', directorName: '', description: '',
+  }));
+  const changeDetails = (patch: Partial<EpisodeDetailsValues>) => setDetails((d) => ({ ...d, ...patch }));
+  // The episode whose details are being edited from the list («تعديل بيانات الحلقة»).
+  const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
 
   // Episode numbers run per program (next = highest number in that program + 1).
   const nextEpisodeNumber = (progId: string) =>
@@ -83,94 +84,52 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const selectProgramForNew = (progId: string) => {
     const prog = programs.find((p) => p.id === progId);
     setProgramId(progId);
-    setEpisodeNumber(nextEpisodeNumber(progId));
     const prev = episodes.filter((e) => e.programId === progId && (e.rundown || []).length > 0).sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''));
     setCopyFromId(prev[0]?.id || '');
     setStartMode(prog?.template?.segments.length ? 'TEMPLATE' : 'BLANK');
-    if (prog) {
-      setStudioName(prog.studioName || '');
-      setPresenterName(prog.presenterName || currentUser.fullName);
-      setProducerName(prog.producerName || currentUser.fullName);
-      setDurationMinutes(prog.durationMinutes || 50);
-      if (/^\d{2}:\d{2}$/.test(prog.broadcastTime || '')) setStartTime(prog.broadcastTime);
-    }
+    changeDetails({
+      episodeNumber: nextEpisodeNumber(progId),
+      ...(prog
+        ? {
+            studioName: prog.studioName || '',
+            presenterName: prog.presenterName || currentUser.fullName,
+            producerName: prog.producerName || currentUser.fullName,
+            durationMinutes: prog.durationMinutes || 50,
+            ...(/^\d{2}:\d{2}$/.test(prog.broadcastTime || '') ? { startTime: prog.broadcastTime } : {}),
+          }
+        : {}),
+    });
   };
-  const [description, setDescription] = useState('');
   // How the new episode's structure starts: the program template, a copy of an earlier episode, or blank.
   const [startMode, setStartMode] = useState<'TEMPLATE' | 'COPY' | 'BLANK'>('BLANK');
   const [copyFromId, setCopyFromId] = useState('');
   const [saving, setSaving] = useState(false);
   const draft = useFormDraft(`episode:${currentUser.id}:new`, isAddModalOpen,
-    { programId, title, episodeNumber, seasonNumber, broadcastDate, startTime, durationMinutes,
-      presenterName, producerName, studioName, directorName, description, startMode, copyFromId }, value => {
-      setProgramId(value.programId); setTitle(value.title); setEpisodeNumber(value.episodeNumber);
-      setSeasonNumber(value.seasonNumber); setBroadcastDate(value.broadcastDate); setStartTime(value.startTime);
-      setDurationMinutes(value.durationMinutes); setPresenterName(value.presenterName);
-      setProducerName(value.producerName); setStudioName(value.studioName); setDescription(value.description);
-      setDirectorName(value.directorName || '');
-      setStartMode(value.startMode); setCopyFromId(value.copyFromId);
+    { programId, ...details, startMode, copyFromId }, value => {
+      const { programId: prog, startMode: mode, copyFromId: copyFrom, ...rest } = value;
+      setProgramId(prog);
+      setDetails({ ...rest, directorName: rest.directorName || '' });
+      setStartMode(mode); setCopyFromId(copyFrom);
     });
   const programTemplate = programs.find((p) => p.id === programId)?.template;
   const previousEpisodes = episodes
     .filter((e) => e.programId === programId && (e.rundown || []).length > 0)
     .sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''));
 
-
-  const DURATION_PRESETS = [30, 45, 50, 60, 90];
-
-  const calculateEndTime = (start: string, durationMin: number) => {
-    try {
-      const [h, m] = start.split(':').map(Number);
-      if (isNaN(h) || isNaN(m)) return start;
-      const totalMin = h * 60 + m + durationMin;
-      const endH = Math.floor(totalMin / 60) % 24;
-      const endM = totalMin % 60;
-      return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-    } catch {
-      return start;
-    }
-  };
-
-  // Always derived from the fields on screen, so it can never show a stale end.
-  const endTime = calculateEndTime(startTime, Number(durationMinutes) || 0);
-  const endsNextDay = (() => {
-    const [h, m] = startTime.split(':').map(Number);
-    return h * 60 + m + (Number(durationMinutes) || 0) >= 24 * 60;
-  })();
-
-  const handleDurationChange = (minutes: number) => setDurationMinutes(minutes);
-
-  const handleStartTimeChange = (newStart: string) => setStartTime(newStart);
-
-  const statusBadgeInfo: Record<EpisodeStatus, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'default' }> = {
-    PLANNING: { label: 'مرحلة التخطيط', variant: 'default' },
-    IN_PREPARATION: { label: 'قيد الإعداد والتحرير', variant: 'warning' },
-    PREPARING: { label: 'تجهيز المحتوى', variant: 'warning' },
-    READY: { label: 'جاهز للتسجيل', variant: 'info' },
-    RECORDING: { label: 'جاري التسجيل', variant: 'danger' },
-    RECORDED: { label: 'تم التسجيل', variant: 'purple' },
-    EDITING: { label: 'المونتاج والمكساج', variant: 'info' },
-    READY_FOR_BROADCAST: { label: 'جاهز للبث المباشر', variant: 'success' },
-    ON_AIR: { label: 'على الهواء مباشرة', variant: 'danger' },
-    BROADCASTED: { label: 'تم البث بنجاح', variant: 'primary' },
-    ARCHIVED: { label: 'مؤرشفة', variant: 'default' },
-    CANCELLED: { label: 'ملغاة', variant: 'danger' },
-  };
+  const endTime = episodeEndTime(details.startTime, Number(details.durationMinutes) || 0);
 
   const handleOpenAdd = () => {
-    setTitle('');
     const defaultProgram =
       (filterProgramId && filterProgramId !== 'ALL' && filterProgramId) ||
       (selectedProgId !== 'ALL' && selectedProgId) ||
       programs[0]?.id ||
       '';
     // Defaults first; the program's own time and length then take over.
-    setStartTime('21:00');
+    setDetails({
+      title: '', episodeNumber: 1, seasonNumber: 1, broadcastDate: localDateString(), startTime: '21:00', durationMinutes: 50,
+      presenterName: currentUser.fullName, producerName: currentUser.fullName, studioName: '', directorName: '', description: '',
+    });
     selectProgramForNew(defaultProgram);
-    setSeasonNumber(1);
-    setBroadcastDate(localDateString());
-    setDescription('');
-    setDirectorName('');
     setIsAddModalOpen(true);
   };
 
@@ -182,7 +141,9 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
   const handleCreateEpisode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const selProg = programs.find((p) => p.id === programId);
+    const { title, episodeNumber, seasonNumber, broadcastDate, startTime, durationMinutes, presenterName, producerName, studioName, directorName, description } = details;
     const clashes = studioConflictsFor(
       { id: '__new__', studioName: studioName || selProg?.studioName, broadcastDate, startTime, endTime, durationMinutes: Number(durationMinutes) || 50 },
       episodes
@@ -207,14 +168,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
         : null;
     const structure = source ? structureFromTemplate(source, id, newId, presenterName || selProg?.presenterName) : { topics: [], rundown: [] };
 
-    if (saving) return;
     setSaving(true);
     try {
     const saved = await onSaveEpisode({
       id,
       programId,
       programName: selProg?.name || '',
-      title: title || `الحلقة ${episodeNumber}`,
+      title: title.trim() || `الحلقة ${episodeNumber}`,
       episodeNumber: Number(episodeNumber) || 1,
       seasonNumber: Number(seasonNumber) || 1,
       broadcastDate,
@@ -251,7 +211,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             الحلقات
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -336,10 +296,11 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
               className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold transition-all"
             >
               <option value="ALL">جميع الحالات</option>
-              <option value="PLANNING">تخطيط</option>
-              <option value="IN_PREPARATION">قيد الإعداد</option>
-              <option value="READY_FOR_BROADCAST">جاهز للبث</option>
-              <option value="BROADCASTED">تم البث</option>
+              {EPISODE_STATUS_INFO.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -370,7 +331,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                 </tr>
               ) : (
                 episodePage.visible.map((ep) => {
-                  const sInfo = statusBadgeInfo[ep.status] || { label: ep.status, variant: 'default' };
+                  const sInfo = episodeStatusInfo(ep.status);
+                  const foreignLock = canEditDetails ? apiService.getForeignLock(ep.id, 'episodes') : null;
                   const rundownCount = ep.rundown?.length || 0;
                   const guestsCount = ep.guests?.length || 0;
 
@@ -457,6 +419,19 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
 
+                          {canEditDetails && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingEpisode(ep)}
+                              disabled={!!foreignLock}
+                              aria-label={`تعديل بيانات الحلقة: ${ep.title}`}
+                              title={foreignLock ? `قيد التحرير لدى ${foreignLock.userName}` : 'تعديل بيانات الحلقة'}
+                              className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-40"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+
                           {onDeleteEpisode && canDelete && (
                             <button
                               type="button"
@@ -493,161 +468,27 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
         maxWidth="2xl"
       >
         <form onSubmit={handleCreateEpisode} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="episode-program-select" className="block text-xs font-bold text-slate-700 mb-1">البرنامج التابع له *</label>
-              <select
-                id="episode-program-select"
-                value={programId}
-                onChange={(e) => selectProgramForNew(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              >
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="episode-title-input" className="block text-xs font-bold text-slate-700">عنوان موضوع الحلقة *</label>
-                {title && (
-                  <button
-                    type="button"
-                    onClick={() => setTitle('')}
-                    className="text-2xs text-slate-500 hover:text-rose-500"
-                  >
-                    مسح
-                  </button>
-                )}
-              </div>
-              <input
-                id="episode-title-input"
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="مثال: مستقبل الطاقة المتجددة في الشرق الأوسط"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label htmlFor="episode-number-input" className="block text-xs font-bold text-slate-700 mb-1">رقم الحلقة</label>
-              <input
-                id="episode-number-input"
-                type="number"
-                value={episodeNumber}
-                onChange={(e) => setEpisodeNumber(Number(e.target.value))}
-                min="1"
-                inputMode="numeric"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label htmlFor="episode-season-input" className="block text-xs font-bold text-slate-700 mb-1">الموسم</label>
-              <input
-                id="episode-season-input"
-                type="number"
-                value={seasonNumber}
-                onChange={(e) => setSeasonNumber(Number(e.target.value))}
-                min="1"
-                inputMode="numeric"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label htmlFor="episode-start-time-input" className="block text-xs font-bold text-slate-700 mb-1">وقت البدء</label>
-              <input
-                id="episode-start-time-input"
-                type="time"
-                value={startTime}
-                onChange={(e) => handleStartTimeChange(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label htmlFor="episode-duration-input" className="block text-xs font-bold text-slate-700 mb-1">المدة (دقيقة)</label>
-              <input
-                id="episode-duration-input"
-                type="number"
-                min="1"
-                max="480"
-                inputMode="numeric"
-                value={durationMinutes}
-                onChange={(e) => handleDurationChange(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Duration Presets & End Time Calculation */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl">
-            <div className="flex items-center gap-1.5">
-              <span className="text-2xs text-blue-700 font-bold">المدة الموصى بها:</span>
-              {DURATION_PRESETS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => handleDurationChange(m)}
-                  className={`text-2xs px-2 py-0.5 rounded-md font-mono transition-all ${
-                    durationMinutes === m
-                      ? 'bg-blue-600 text-white font-bold shadow-2xs'
-                      : 'bg-white text-blue-800 hover:bg-blue-100 border border-blue-200'
-                  }`}
+          <EpisodeDetailsFields
+            values={details}
+            onChange={changeDetails}
+            programField={
+              <div>
+                <label htmlFor="episode-program-select" className="block text-xs font-bold text-slate-700 mb-1">البرنامج التابع له *</label>
+                <select
+                  id="episode-program-select"
+                  value={programId}
+                  onChange={(e) => selectProgramForNew(e.target.value)}
+                  className="w-full min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  {m}د
-                </button>
-              ))}
-            </div>
-            <div className="text-2xs text-blue-900 font-medium">
-              نهاية البث التقديرية: <strong className="font-mono text-blue-700">{endTime}</strong>
-              {endsNextDay && <span className="text-amber-700 font-bold"> (اليوم التالي)</span>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="episode-broadcast-date-input" className="block text-xs font-bold text-slate-700 mb-1">تاريخ البث المقرر</label>
-              <input
-                id="episode-broadcast-date-input"
-                type="date"
-                value={broadcastDate}
-                onChange={(e) => setBroadcastDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label htmlFor="episode-studio-input" className="block text-xs font-bold text-slate-700 mb-1">الاستوديو المخصص</label>
-              <ProductionNameField kind="STUDIO" label="الاستوديو المخصص"
-                id="episode-studio-input"
-                type="text"
-                value={studioName}
-                onChange={setStudioName}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="grid sm:grid-cols-2 gap-3 mb-3">
-              <label className="block text-xs font-bold text-slate-700">مقدم الحلقة<ProductionNameField kind="PRESENTER" label="مقدم الحلقة" id="episode-presenter-input" value={presenterName} onChange={setPresenterName} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white" /></label>
-              <label className="block text-xs font-bold text-slate-700">مخرج الحلقة<ProductionNameField kind="DIRECTOR" label="مخرج الحلقة" id="episode-director-input" value={directorName} onChange={setDirectorName} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white" /></label>
-            </div>
-            <label htmlFor="episode-desc-input" className="block text-xs font-bold text-slate-700 mb-1">مقدمة ووصف الحلقة</label>
-            <textarea
-              id="episode-desc-input"
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="وصف مختصر لمحاور الحلقة الرئيسية ومسار الحوار..."
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            />
-          </div>
+                  {programs.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            }
+          />
 
           <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
             <legend className="px-1 text-xs font-bold text-slate-700">بنية الحلقة</legend>
@@ -686,20 +527,31 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <button
               type="button"
               onClick={() => void draft.close(() => setIsAddModalOpen(false))}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              className="min-h-11 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
+              className="min-h-11 px-5 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
             >
-              بدء إعداد الحلقة
+              {saving ? 'جارٍ الحفظ على الخادم…' : 'بدء إعداد الحلقة'}
             </button>
           </div>
         </form>
       </FormPage>
+
+      {editingEpisode && (
+        <EpisodeDetailsEditor
+          key={editingEpisode.id}
+          episode={episodes.find((e) => e.id === editingEpisode.id) || editingEpisode}
+          episodes={episodes}
+          currentUser={currentUser}
+          onClose={() => setEditingEpisode(null)}
+          onSaveEpisode={onSaveEpisode}
+        />
+      )}
     </div>
   );
 };

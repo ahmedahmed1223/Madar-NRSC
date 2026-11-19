@@ -5,9 +5,11 @@ import { apiService } from '../services/api';
 import { VIDEO_STATUSES, isVideoReady, videoStatusName } from '../shared/production';
 import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
-import React, { useState } from 'react';
+import { confirmSaved } from '../services/confirmSave';
+import { notify } from '../services/notify';
+import React, { useEffect, useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
-import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive, Download } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -15,7 +17,8 @@ import { Modal } from '../components/common/Modal';
 interface MediaLibraryViewProps {
   mediaAssets: MediaAsset[];
   currentUser: User;
-  onUploadMedia: (asset: Partial<MediaAsset>) => void;
+  /** Resolves false when the item was not saved (the upload page then stays open with what was typed). */
+  onUploadMedia: (asset: Partial<MediaAsset>) => void | boolean | Promise<boolean | void>;
   onDeleteMedia: (id: string) => void;
 }
 
@@ -83,6 +86,49 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [savingUpload, setSavingUpload] = useState(false);
+
+  // Editing an item's metadata from its preview.
+  const [editTitle, setEditTitle] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  useEffect(() => {
+    setEditTitle(previewAsset?.title || '');
+    setEditTags((previewAsset?.tags || []).join('، '));
+    setEditDescription(previewAsset?.description || '');
+    // Reset only when another item is opened, not after each save of the same one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewAsset?.id]);
+  const splitTags = (text: string) => text.split(/[,،]+/).map((t) => t.trim()).filter(Boolean);
+  const editDirty = !!previewAsset && (
+    editTitle.trim() !== (previewAsset.title || '') ||
+    editDescription.trim() !== (previewAsset.description || '') ||
+    splitTags(editTags).join('|') !== (previewAsset.tags || []).join('|'));
+
+  const handleSaveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!previewAsset || savingEdit) return;
+    if (!editTitle.trim()) {
+      notify({ type: 'error', message: 'عنوان المادة مطلوب' });
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const tags = splitTags(editTags);
+      const updated = apiService.updateMedia(previewAsset.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        tags: tags.length > 0 ? tags : ['عام'],
+      });
+      setPreviewAsset(updated as MediaAsset);
+      await confirmSaved('media', previewAsset.id, 'حُفظت بيانات المادة');
+    } catch (err: any) {
+      notify({ type: 'error', title: 'تعذر حفظ بيانات المادة', message: err?.message || 'حدث خطأ' });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleOpenUpload = () => {
     setTitle('');
@@ -125,9 +171,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     }
   };
 
-  const handleSaveUpload = (e: React.FormEvent) => {
+  const handleSaveUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || savingUpload) return;
 
     const tags = tagsInput
       .split(/[,،]+/)
@@ -139,7 +185,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       return;
     }
 
-    onUploadMedia({
+    setSavingUpload(true);
+    try {
+    const saved = await onUploadMedia({
       title: title.trim(),
       mediaType,
       fileUrl: fileUrl.trim(),
@@ -155,8 +203,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       description: description.trim(),
       tags: tags.length > 0 ? tags : ['عام'],
     });
-
-    setIsUploadModalOpen(false);
+    // Close only once the item is saved; a refusal keeps everything typed on the page.
+    if (saved !== false) setIsUploadModalOpen(false);
+    } catch (err: any) {
+      setUploadError(err?.message || 'تعذر حفظ المادة');
+    } finally {
+      setSavingUpload(false);
+    }
   };
 
   const handleCopyUrl = (url: string) => {
@@ -193,7 +246,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">مكتبة الوسائط</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">مكتبة الوسائط</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">الصور والفيديو والصوت والوثائق، مع الوسوم والبحث.</p>
         </div>
 
@@ -619,9 +672,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
+              disabled={savingUpload}
+              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-60"
             >
-              تسجيل في الأرشيف
+              {savingUpload ? 'جارٍ الحفظ...' : 'تسجيل في الأرشيف'}
             </button>
           </div>
         </form>
@@ -644,26 +698,87 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 className="theme-fixed w-full max-h-96 object-contain rounded-xl bg-slate-950"
               />
             ) : previewAsset.mediaType === 'VIDEO' ? (
-              <div className="theme-fixed relative rounded-xl overflow-hidden bg-slate-950">
-                <img
+              <video
+                key={previewAsset.id}
+                src={previewAsset.fileUrl || previewAsset.url}
+                controls
+                preload="metadata"
+                aria-label={`تشغيل الفيديو: ${previewAsset.title || previewAsset.fileName}`}
+                className="theme-fixed w-full max-h-96 rounded-xl bg-slate-950"
+              >
+                المتصفح لا يدعم تشغيل هذا الفيديو؛ استخدم رابط التنزيل.
+              </video>
+            ) : previewAsset.mediaType === 'AUDIO' ? (
+              <div className="theme-fixed p-6 bg-slate-900 rounded-xl text-center text-white space-y-3">
+                <Music className="w-10 h-10 mx-auto text-purple-400" aria-hidden="true" />
+                <p className="text-xs font-mono">{previewAsset.fileName}</p>
+                <audio
+                  key={previewAsset.id}
                   src={previewAsset.fileUrl || previewAsset.url}
-                  alt=""
-                  className="w-full max-h-80 object-cover opacity-70"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="p-4 bg-blue-600/90 text-white rounded-full shadow-lg">
-                    <Video className="w-8 h-8" />
-                  </div>
-                </div>
+                  controls
+                  preload="metadata"
+                  aria-label={`تشغيل الصوت: ${previewAsset.title || previewAsset.fileName}`}
+                  className="w-full"
+                >
+                  المتصفح لا يدعم تشغيل هذا الملف الصوتي؛ استخدم رابط التنزيل.
+                </audio>
               </div>
             ) : (
               <div className="theme-fixed p-8 bg-slate-900 rounded-xl text-center text-white space-y-2">
-                <Music className="w-12 h-12 mx-auto text-purple-400" />
+                <FileText className="w-12 h-12 mx-auto text-amber-400" aria-hidden="true" />
                 <p className="text-xs font-mono">{previewAsset.fileName}</p>
               </div>
             )}
 
+            {canUpload && (
+              <form onSubmit={handleSaveDetails} className="p-3 rounded-xl border border-slate-200 space-y-3" aria-label="بيانات المادة">
+                <div>
+                  <label htmlFor="media-edit-title" className="block text-xs font-bold text-slate-700 mb-1">العنوان *</label>
+                  <input
+                    id="media-edit-title"
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full min-h-11 px-3 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="media-edit-tags" className="block text-xs font-bold text-slate-700 mb-1">الوسوم (افصل بينها بفاصلة)</label>
+                  <input
+                    id="media-edit-tags"
+                    type="text"
+                    value={editTags}
+                    onChange={(e) => setEditTags(e.target.value)}
+                    className="w-full min-h-11 px-3 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="media-edit-desc" className="block text-xs font-bold text-slate-700 mb-1">الوصف</label>
+                  <textarea
+                    id="media-edit-desc"
+                    rows={2}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={!editDirty || savingEdit}
+                    className="min-h-11 px-4 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingEdit ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+              {!canUpload && previewAsset.description && (
+                <p className="text-slate-700 pb-2 border-b border-slate-200">{previewAsset.description}</p>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">اسم الملف:</span>
                 <span className="font-mono text-slate-700">{previewAsset.fileName}</span>
@@ -747,7 +862,20 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+              {(previewAsset.fileUrl || previewAsset.url) && (
+                <a
+                  href={previewAsset.fileUrl || previewAsset.url}
+                  download={previewAsset.originalName || previewAsset.fileName || true}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 min-h-11 px-3 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-lg border border-slate-200"
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                  تنزيل الملف
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => handleCopyUrl(previewAsset.fileUrl || previewAsset.url || '')}
@@ -756,6 +884,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedLink ? 'تم نسخ الرابط' : 'نسخ رابط الملف'}
               </button>
+              </div>
 
               <button
                 type="button"

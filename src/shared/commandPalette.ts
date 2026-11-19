@@ -53,7 +53,7 @@ export interface QuickScreen {
 /** Screens reachable from the search, in sidebar order. */
 export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'dashboard', label: 'الرئيسية', keywords: 'لوحة القيادة عملي' },
-  { nav: 'wires', label: 'البرقيات', keywords: 'وكالات rss', permission: 'news.view' },
+  { nav: 'wires', label: 'المصادر', keywords: 'برقيات وكالات rss خلاصات', permission: 'news.view' },
   { nav: 'news', label: 'الأخبار', keywords: 'غرفة الأخبار' },
   { nav: 'breaking', label: 'العاجل', keywords: 'خبر عاجل' },
   { nav: 'bulletins', label: 'النشرات', keywords: 'رانداون النشرة' },

@@ -269,7 +269,7 @@ export function pollWires(db: NewsroomDatabase, cfg: WireConfig): Promise<FeedSt
         status.itemCount = feed.items.length;
         status.added = ingestFeed(db, source, feed, cfg);
         status.ok = true;
-        status.message = status.added ? `أضيفت ${status.added} برقية جديدة` : 'لا جديد';
+        status.message = status.added ? `أضيفت ${status.added} مادة جديدة` : 'لا جديد';
         total += status.added;
       } catch (err: any) {
         status.message = err?.name === 'TimeoutError' ? 'انتهت مهلة الاتصال بمصدر الخلاصة' : String(err?.message || err);

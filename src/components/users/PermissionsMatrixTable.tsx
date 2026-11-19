@@ -6,6 +6,7 @@ import {
   RoleDefinition,
 } from '../../services/rbacService';
 import { Check, X, Plus, Edit2, Trash2, Search, Filter, RefreshCw, Info } from 'lucide-react';
+import { alertDialog, confirmDialog } from '../../services/dialogs';
 
 interface PermissionsMatrixTableProps {
   roles: RoleDefinition[];
@@ -14,6 +15,8 @@ interface PermissionsMatrixTableProps {
   onDeleteRole: (roleId: string) => void;
   onAddNewRole: () => void;
   onResetDefaults: () => void;
+  /** Why a role cannot be deleted (e.g. colleagues still hold it), or null; checked before asking to confirm. */
+  roleDeleteBlocker?: (role: RoleDefinition) => string | null;
 }
 
 export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
@@ -23,9 +26,25 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
   onDeleteRole,
   onAddNewRole,
   onResetDefaults,
+  roleDeleteBlocker,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PermissionCategory | 'ALL'>('ALL');
+
+  const handleDeleteRole = async (role: RoleDefinition) => {
+    const blocker = roleDeleteBlocker?.(role);
+    if (blocker) {
+      await alertDialog({ title: 'تعذر حذف الدور', message: blocker });
+      return;
+    }
+    const ok = await confirmDialog({
+      title: 'حذف الدور',
+      message: `حذف الدور المخصص «${role.nameAr}» نهائياً مع صلاحياته؟`,
+      confirmLabel: 'حذف الدور',
+      danger: true,
+    });
+    if (ok) onDeleteRole(role.id);
+  };
 
   const filteredPermissions = ALL_PERMISSIONS.filter((perm) => {
     const matchesSearch =
@@ -120,8 +139,9 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         {!role.isSystemRole && (
                           <button
                             type="button"
-                            onClick={() => onDeleteRole(role.id)}
+                            onClick={() => void handleDeleteRole(role)}
                             className="p-1 hover:bg-red-50 text-red-600 hover:text-red-700 rounded-md transition-colors"
+                            aria-label={`حذف الدور: ${role.nameAr}`}
                             title="حذف هذا الدور"
                           >
                             <Trash2 className="w-3 h-3" />

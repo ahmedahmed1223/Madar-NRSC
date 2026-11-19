@@ -12,10 +12,12 @@ import { LongTextField } from '../components/common/TextSizeControls';
 import type { Booking } from '../shared/planning';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useRef, useEffect} from 'react';
-import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers } from 'lucide-react';
+import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers, Edit2 } from 'lucide-react';
 import { EpisodePlanner } from '../components/episodes/EpisodePlanner';
 import { EpisodeGuestsPanel } from '../components/episodes/EpisodeGuestsPanel';
 import { EpisodeQuestionsPanel } from '../components/episodes/EpisodeQuestionsPanel';
+import { EpisodeDetailsEditor } from '../components/episodes/EpisodeDetailsEditor';
+import { EPISODE_STATUS_INFO, episodeStatusInfo } from '../components/episodes/episodeDetails';
 import { episodeGuestList, segmentGuests } from '../shared/episodePlan';
 import { Episode, RundownSegment, Guest, NewsItem, User, EpisodeStatus } from '../types';
 import { useEditLock } from '../hooks/useNewsEditLock';
@@ -81,6 +83,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode.introScript]);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const statusInfo = episodeStatusInfo(episode.status);
 
   const handleCopyScript = () => {
     if (!introScript) return;
@@ -183,22 +187,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           { label: `حلقة #${episode.episodeNumber}: ${episode.title}` },
         ]}
         statusBadge={{
-          label:
-            episode.status === 'ON_AIR'
-              ? 'على الهواء الآن'
-              : episode.status === 'READY_FOR_BROADCAST'
-              ? 'جاهزة للبث'
-              : episode.status === 'IN_PREPARATION'
-              ? 'قيد الإعداد'
-              : 'مرحلة التخطيط',
-          variant:
-            episode.status === 'ON_AIR'
-              ? 'danger'
-              : episode.status === 'READY_FOR_BROADCAST'
-              ? 'success'
-              : episode.status === 'IN_PREPARATION'
-              ? 'warning'
-              : 'default',
+          label: statusInfo.label,
+          variant: statusInfo.variant === 'purple' || statusInfo.variant === 'info' ? 'primary' : statusInfo.variant,
         }}
         onBack={onBack}
         backLabel="العودة للحلقات"
@@ -306,6 +296,18 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Episode Live Status Controller */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+            {mayEditEpisode && (
+              <button
+                type="button"
+                onClick={() => setEditingDetails(true)}
+                disabled={!canEditEpisode || lock.status === 'acquiring'}
+                title={lockedByOther ? `الحلقة قيد التحرير لدى ${lock.holder?.userName || 'زميل آخر'}` : 'تعديل العنوان والرقم وموعد البث والطاقم'}
+                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 disabled:opacity-50"
+              >
+                <Edit2 className="w-4 h-4" />
+                تعديل بيانات الحلقة
+              </button>
+            )}
             {canBook && (
               <button
                 type="button"
@@ -334,17 +336,26 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 disabled={!canEditEpisode}
                 className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
               >
-                <option value="PLANNING">مرحلة التخطيط</option>
-                <option value="IN_PREPARATION">قيد الإعداد والتحرير</option>
-                <option value="READY_FOR_BROADCAST">جاهز للبث المباشر</option>
-                <option value="ON_AIR">على الهواء الآن</option>
-                <option value="BROADCASTED">تم البث</option>
-                <option value="ARCHIVED">مؤرشفة</option>
+                {EPISODE_STATUS_INFO.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
         </div>
 
+        {editingDetails && (
+          <EpisodeDetailsEditor
+            episode={episode}
+            episodes={apiService.getEpisodes()}
+            currentUser={currentUser}
+            onClose={() => setEditingDetails(false)}
+            onSaveEpisode={onSaveEpisode}
+            lock={{ status: lock.status, holderName: lock.holder?.userName }}
+          />
+        )}
         {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
 
         {/* Episode Info Bar */}

@@ -447,7 +447,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (after?.deletedAt) return null;
     return rosterEntryError(after);
   },
-  wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
+  wires: () => 'المصادر تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
   offlineAirSessions: () => 'السجل المحلي يستورد عبر المسار المخصص ولا يعدل أو يحذف',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;

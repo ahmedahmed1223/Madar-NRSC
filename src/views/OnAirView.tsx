@@ -196,7 +196,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
           <section className="theme-fixed bg-slate-950 text-white rounded-2xl p-5 space-y-4 border border-slate-800" aria-live="polite">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
+                <span className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-bold ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
                   {live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'لم يبدأ'}
                 </span>
                 <span className="text-sm font-bold">
@@ -217,7 +217,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 space-y-1">
                   <span className="text-2xs text-slate-500">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
-                  <h2 className="text-2xl sm:text-3xl font-black leading-tight">{timing.current.title}</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold leading-tight">{timing.current.title}</h2>
                   <p className="text-xs text-slate-500">
                     {timing.current.presenterName || ''}
                     {segmentGuests(timing.current).length ? ` · ${segmentGuests(timing.current).map((g) => g.guestName).join('، ')}` : ''}
@@ -225,7 +225,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                 </div>
                 <div className="text-center">
                   <span className="text-2xs text-slate-500 block">المتبقي</span>
-                  <span className={`text-5xl font-black font-mono ${remainingCls}`} dir="ltr">
+                  <span className={`text-5xl font-bold font-mono ${remainingCls}`} dir="ltr">
                     {formatClock(timing.remaining)}
                   </span>
                 </div>

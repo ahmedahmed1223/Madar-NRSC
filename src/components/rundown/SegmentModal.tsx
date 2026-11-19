@@ -365,7 +365,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               pattern="^[0-9]{1,2}:[0-9]{2}$"
               inputMode="numeric"
               title="أدخل الوقت بصيغة MM:SS مثل 03:30"
-              className="w-28 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-black text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              className="w-28 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-bold text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
             />
           </div>

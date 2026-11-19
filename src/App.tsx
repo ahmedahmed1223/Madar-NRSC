@@ -72,7 +72,9 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
-import { navigateTo, routeChanged } from './services/uiEvents';
+import { navigateTo, routeChanged, setupCommand } from './services/uiEvents';
+import { TourHost } from './components/help/TourHost';
+import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 
 interface AppProps {
@@ -317,7 +319,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       addToast({
         type: 'warning',
         title: 'حذف الخبر',
-        message: 'تم نقل الخبر إلى الأرشيف (Soft Delete)',
+        message: 'نُقل الخبر إلى سلة المحذوفات؛ يستعيده من يملك صلاحية الحذف.',
       });
     } catch (err: any) {
       addToast({
@@ -425,7 +427,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       summary: (wire.summary || '').slice(0, 400),
       content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
       sourceId: known?.id,
-      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
+      internalNotes: `محرر من مادة ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
     });
     setActiveNav('news-editor');
   };
@@ -468,7 +470,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       refreshData();
       addToast(
         on
-          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة 4 ساعات` }
+          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة ${apiService.getSettings().breakingDurationHours ?? 4} ساعات` }
           : { type: 'info', title: 'أُوقف الخبر العاجل', message: 'أُزيل الخبر من شريط العاجل' }
       );
     } catch (err: any) {
@@ -581,12 +583,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       apiService.deleteStory(id, currentUser);
       refreshData();
       addToast({
-        title: 'تمت أرشفة القصة',
-        message: 'تم نقل التغطية إلى الأرشيف بنجاح',
+        title: 'حُذفت التغطية',
+        message: 'تم حذف التغطية؛ بقيت أخبارها في قائمة الأخبار.',
         type: 'info',
       });
-    } catch {
-      // ignore
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'تعذر حذف التغطية', message: err?.message || 'رفض الخادم العملية' });
     }
   };
 
@@ -685,6 +687,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
   useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
+  const [setupOpen, setSetupOpen] = useState(false);
+  useEffect(() => setupCommand.on(() => setSetupOpen(true)), []);
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
@@ -872,6 +876,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onCreateEpisode={() => {
                   setFilterProgramId(null);
                   setActiveNav('episodes');
+                  // The episodes screen opens its form directly.
+                  setOpenNewEpisode((n) => n + 1);
                 }}
                 onNavigate={(view: any) => {
                   // A record on a list screen (e.g. cards/<id>) opens through the link router.
@@ -1210,6 +1216,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-12 w-full empty:hidden" />
         </div>
       </div>
+
+      <TourHost currentUser={currentUser} />
+      {RbacService.hasPermission(currentUser, 'system.settings') && <SetupWizard isOpen={setupOpen} onClose={() => setSetupOpen(false)} currentUser={currentUser} />}
 
       {/* Global Command Palette (Ctrl + K) */}
       <CommandPalette

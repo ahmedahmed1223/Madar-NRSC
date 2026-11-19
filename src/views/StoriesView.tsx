@@ -6,7 +6,8 @@ import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
-import { Search, Plus, FolderGit2, Calendar as CalendarIcon, Link as LinkIcon, ArrowUpRight, X, MapPin, Edit2 } from 'lucide-react';
+import { Search, Plus, FolderGit2, Calendar as CalendarIcon, Link as LinkIcon, ArrowUpRight, X, MapPin, Edit2, Trash2 } from 'lucide-react';
+import { confirmDialog } from '../services/dialogs';
 import { Story, NewsItem, NewsPriority, Category, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { CoverageHub } from '../components/stories/CoverageHub';
@@ -52,6 +53,22 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
 }) => {
   const canCreateNews = RbacService.hasPermission(currentUser, 'news.create');
   const canManageStories = canCreateNews || RbacService.hasPermission(currentUser, 'news.edit_any');
+  // Mirrors the server's stories policy: deleting a coverage needs news.delete.
+  const canDeleteStories = !!onDeleteStory && RbacService.hasPermission(currentUser, 'news.delete');
+  const handleDeleteStory = async (story: Story) => {
+    if (!onDeleteStory) return;
+    const linked = newsList.filter((n) => n.storyId === story.id).length;
+    const ok = await confirmDialog({
+      title: 'حذف التغطية',
+      message: `حذف التغطية «${story.title}»؟${linked ? ` لن تُحذف أخبارها (${linked}) وتبقى في قائمة الأخبار.` : ''}`,
+      confirmLabel: 'حذف التغطية',
+      cancelLabel: 'إلغاء',
+      danger: true,
+    });
+    if (!ok) return;
+    if (detailStory?.id === story.id) setDetailStory(null);
+    onDeleteStory(story.id);
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'RESOLVED' | 'ARCHIVED'>('ACTIVE');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -144,7 +161,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">التغطيات</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">التغطيات</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">الأحداث الكبرى وتطوراتها، مع الأخبار والمواد المرتبطة بكل تغطية.</p>
         </div>
         {canManageStories && (
@@ -264,6 +281,18 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     title="تعديل بيانات القصة"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  )}
+
+                  {canDeleteStories && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteStory(story)}
+                    aria-label={`حذف التغطية: ${story.title}`}
+                    title="حذف التغطية"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                   )}
 
@@ -522,6 +551,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             newsList={newsList}
             currentUser={(currentUser || apiService.getCurrentUser()) as User}
             canCreateNews={canCreateNews}
+            canManage={canManageStories}
             onOpenNews={onSelectNews ? (id) => { setDetailStory(null); onSelectNews(id); } : undefined}
             onCreateNews={onCreateNewsForStory ? () => { const id = detailStory.id; setDetailStory(null); onCreateNewsForStory(id); } : undefined}
             onOpenEpisode={onSelectEpisode ? (id) => { setDetailStory(null); onSelectEpisode(id); } : undefined}

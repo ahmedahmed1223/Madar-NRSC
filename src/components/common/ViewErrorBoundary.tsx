@@ -36,7 +36,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     return (
       <div role="alert" className="max-w-lg mx-auto mt-10 bg-white border border-amber-200 rounded-2xl p-6 text-center space-y-3 shadow-sm">
         <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
-        <h2 className="text-base font-black text-slate-800">تعذر عرض هذه الشاشة</h2>
+        <h2 className="text-base font-bold text-slate-800">تعذر عرض هذه الشاشة</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
           حدث خطأ غير متوقع في هذه الشاشة فقط؛ بقية النظام تعمل وبياناتك محفوظة. أعد المحاولة، وإن تكرر الخطأ انتقل لشاشة أخرى أو أعد تحميل الصفحة.
         </p>

@@ -1,6 +1,7 @@
 import type { SystemSettings } from '../types';
 import { validZone } from './dateFormat';
 import { stationsError } from './stations';
+import { setupStateError } from './setup';
 import { stepTypesError } from './productionCards';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
@@ -25,6 +26,10 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
   }
   if (settings.cardStepTypes !== undefined) {
     const error = stepTypesError(settings.cardStepTypes);
+    if (error) return error;
+  }
+  if (settings.setup !== undefined) {
+    const error = setupStateError(settings.setup);
     if (error) return error;
   }
   if (settings.enableAuditLog !== true) return 'سجل التدقيق إلزامي ولا يمكن تعطيله';

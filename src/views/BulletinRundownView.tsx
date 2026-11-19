@@ -368,7 +368,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                 {onAir?.status === 'LIVE' && <span className="font-bold px-2 py-0.5 rounded bg-red-600 text-white">على الهواء</span>}
                 {bulletin.status === 'DONE' && <span className="font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">أُذيعت</span>}
               </div>
-              <h1 className="text-lg sm:text-xl font-black text-slate-800 mt-1">{bulletin.title}</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1">{bulletin.title}</h1>
               <p className="text-2xs text-slate-500">
                 المحرر: <strong className="text-slate-700">{bulletin.editorName || '—'}</strong> · التقديم: <strong className="text-slate-700">{bulletin.anchors.join('، ') || '—'}</strong>
                 {bulletin.studioName ? ` · ${bulletin.studioName}` : ''}
@@ -423,7 +423,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           ].map((c) => (
             <div key={c.label}>
               <div className="text-2xs text-slate-500 font-sans">{c.label}</div>
-              <div className={`text-sm sm:text-lg font-black ${c.tone || ''}`} dir="ltr">
+              <div className={`text-sm sm:text-lg font-bold ${c.tone || ''}`} dir="ltr">
                 {c.value}
               </div>
             </div>
@@ -525,7 +525,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <div role="menu" className="absolute top-full mt-1 right-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1 w-80">
               {STORY_TYPES.map((t) => (
                 <button key={t.id} type="button" role="menuitem" onClick={() => addStory(t.id)} className="text-right px-2 py-1.5 rounded-lg hover:bg-blue-50 text-xs">
-                  <span className="font-mono font-black text-blue-700">{t.code}</span> {t.name}
+                  <span className="font-mono font-bold text-blue-700">{t.code}</span> {t.name}
                 </button>
               ))}
             </div>
@@ -534,7 +534,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <FileInput className="w-4 h-4" /> من غرفة الأخبار
           </button>
           <button type="button" onClick={() => setSource('WIRES')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
-            <Rss className="w-4 h-4" /> من البرقيات
+            <Rss className="w-4 h-4" /> من المصادر
           </button>
           <button type="button" onClick={() => setSource('COPY')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
             <ListChecks className="w-4 h-4" /> من نشرة أخرى
@@ -613,7 +613,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {s.slug}
                     </button>
                     <div className="flex flex-wrap gap-1 mt-0.5">
-                      <span className="sm:hidden text-2xs font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
+                      <span className="sm:hidden text-2xs font-mono font-bold text-blue-700" title={t.name}>{t.code}</span>
                       {s.floated && <span className="text-2xs font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
                       {s.killed && <span className="text-2xs font-bold text-rose-500">مستبعدة</span>}
                       {changed && <span className="text-2xs font-bold text-blue-700">تحدّث الخبر</span>}
@@ -628,7 +628,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       )}
                     </div>
                   </td>
-                  <td className="p-2 text-center font-mono font-black text-blue-700 hidden sm:table-cell" title={t.name}>
+                  <td className="p-2 text-center font-mono font-bold text-blue-700 hidden sm:table-cell" title={t.name}>
                     {t.code}
                   </td>
                   <td className="p-2 hidden lg:table-cell">{s.anchorName || bulletin.anchors[0] || ''}</td>
@@ -830,7 +830,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           setSource(null);
           setPicked([]);
         }}
-        title={source === 'NEWS' ? 'إضافة من غرفة الأخبار' : source === 'WIRES' ? 'إضافة من برقيات الوكالات' : 'نسخ قصص من نشرة أخرى'}
+        title={source === 'NEWS' ? 'إضافة من غرفة الأخبار' : source === 'WIRES' ? 'إضافة من مواد الوكالات' : 'نسخ قصص من نشرة أخرى'}
         subtitle="تُضاف كمسودات في آخر النشرة، ثم رتّبها وعدّلها"
         maxWidth="3xl"
       >
@@ -871,7 +871,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                 </li>
               );
             })}
-            {source === 'WIRES' && wires.length === 0 && <li className="p-6 text-center text-xs text-slate-500">لا برقيات متاحة.</li>}
+            {source === 'WIRES' && wires.length === 0 && <li className="p-6 text-center text-xs text-slate-500">لا مواد متاحة.</li>}
             {source === 'NEWS' && news.length === 0 && <li className="p-6 text-center text-xs text-slate-500">لا أخبار معتمدة أو منشورة مطابقة.</li>}
           </ul>
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">

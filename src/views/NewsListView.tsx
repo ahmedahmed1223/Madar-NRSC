@@ -58,6 +58,7 @@ const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].re
 export const NewsListView: React.FC<NewsListViewProps> = ({
   newsList = [],
   categories = [],
+  sources = [],
   currentUser,
   onEditNews: openNews,
   onCreateNews: createNews,
@@ -85,7 +86,12 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
   const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
   const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
-  const [selectedCategory, setSelectedCategory] = useState(() => textValue('selectedCategory', 'ALL'));
+  // Categories are filtered by id; a name saved by an earlier version is mapped to its id.
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    const saved = textValue('selectedCategory', 'ALL');
+    return saved === 'ALL' || categories.some((c) => c.id === saved) ? saved : categories.find((c) => c.nameAr === saved)?.id || 'ALL';
+  });
+  const [selectedSource, setSelectedSource] = useState(() => textValue('selectedSource', 'ALL'));
   const [selectedPriority, setSelectedPriority] = useState(() => textValue('selectedPriority', 'ALL'));
   const [onlyMine, setOnlyMine] = useState(savedContext.onlyMine === true);
   const [authorId, setAuthorId] = useState(() => textValue('authorId', 'ALL'));
@@ -151,7 +157,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     if (activeTab === 'BREAKING') {
       if (!isBreakingLive(item)) return false;
     } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
-    if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
+    if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) return false;
+    if (selectedSource !== 'ALL' && item.sourceId !== selectedSource) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (onlyMine && item.authorId !== currentUser.id) return false;
     if (authorId !== 'ALL' && item.authorId !== authorId) return false;
@@ -174,11 +181,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     if (initialFilters.current) { initialFilters.current = false; return; }
     setSelectedIds([]);
     setPage(0);
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate]);
+  }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate]);
 
   const contextRef = useRef({});
   const leavingRef = useRef(false);
-  contextRef.current = { activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page };
+  contextRef.current = { activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page };
   const rememberPosition = () => {
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep navigation available. */ }
     leavingRef.current = true;
@@ -199,7 +206,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   }, [contextKey, savedContext]);
   useEffect(() => {
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
+  }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
 
   const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
     (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
@@ -213,12 +220,19 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     }
   };
 
-  const categoryOptions = Array.from(
-    new Set([
-      ...(categories || []).map((c) => c.nameAr),
-      ...(newsList || []).map((n) => n.categoryName),
-    ])
-  ).filter(Boolean);
+  // Narrowing filters beyond search and «أخباري فقط»; their count shows on the «الفلاتر» button.
+  const activeFilterCount = [authorId !== 'ALL', !!fromDate, !!toDate, selectedCategory !== 'ALL', selectedSource !== 'ALL', selectedPriority !== 'ALL'].filter(Boolean).length;
+  const anyFilter = !!searchQuery || onlyMine || activeFilterCount > 0;
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('ALL');
+    setSelectedSource('ALL');
+    setSelectedPriority('ALL');
+    setOnlyMine(false);
+    setAuthorId('ALL');
+    setFromDate('');
+    setToDate('');
+  };
 
   const handleSelectAll = () => {
     if (selectedIds.length === pagedNews.length && pagedNews.length > 0) {
@@ -282,7 +296,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             {initialTab === 'BREAKING' ? 'العاجل' : 'الأخبار'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -303,6 +317,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           </button>
           {can('news.create') && <button
             type="button"
+            data-tour="news-create"
             onClick={onCreateNews}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
           >
@@ -312,17 +327,6 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         </div>
       </div>
 
-      <details className="border-b border-slate-200 pb-2">
-        <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-slate-700">تخصيص قائمة الأخبار</summary>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
-          <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
-          <select id="news-page-size" value={PAGE_SIZE} onChange={e => { saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
-          <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
-            {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
-          </fieldset>
-          <button type="button" onClick={() => { saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
-        </div>
-      </details>
       <NewsArchiveModal
         isOpen={isArchiveOpen}
         onClose={() => setIsArchiveOpen(false)}
@@ -381,9 +385,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       )}
 
       {/* Filter Toolbar */}
-      <div className="py-3 border-y border-slate-200 flex flex-col 2xl:flex-row items-stretch 2xl:items-center justify-between gap-3">
+      <div className="py-3 border-y border-slate-200 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative flex-1 2xl:min-w-72">
+        <div className="relative flex-1 min-w-[min(100%,18rem)]">
           <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="news-list-search-input"
@@ -412,8 +416,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} className="w-4 h-4 accent-blue-600" />
             أخباري فقط
           </label>
-          <button type="button" aria-expanded={filtersExpanded} aria-controls="news-advanced-filters" onClick={() => setFiltersExpanded(v => !v)} className="sm:hidden min-h-11 px-3 inline-flex items-center gap-2 border border-slate-300 rounded-lg text-sm"><Filter className="w-4 h-4" />الفلاتر{authorId !== 'ALL' || fromDate || toDate || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' ? ' (مفعلة)' : ''}</button>
-          <div id="news-advanced-filters" className={`${filtersExpanded ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2.5 w-full sm:w-auto`}>
+          <button type="button" aria-expanded={filtersExpanded} aria-controls="news-advanced-filters" onClick={() => setFiltersExpanded(v => !v)} className={`min-h-11 px-3 inline-flex items-center gap-2 border rounded-lg text-sm font-semibold ${filtersExpanded || activeFilterCount ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-300 bg-white text-slate-700'}`}><Filter className="w-4 h-4" aria-hidden="true" />الفلاتر{activeFilterCount ? <span className="min-w-5 px-1.5 rounded-full bg-blue-600 text-white text-2xs font-bold tabular-nums leading-5">{activeFilterCount}</span> : null}</button>
+          <div id="news-advanced-filters" className={`${filtersExpanded ? 'flex' : 'hidden'} order-last basis-full flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50`}>
           <label className="min-h-11 flex items-center gap-2 text-xs text-slate-700">الكاتب:
             <select aria-label="الكاتب:" value={authorId} onChange={e => setAuthorId(e.target.value)} className="min-h-11 max-w-44 px-2 border border-slate-300 rounded-lg bg-white">
               <option value="ALL">جميع الكتّاب</option>
@@ -436,13 +440,25 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               className="min-h-11 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأقسام</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nameAr}
                 </option>
               ))}
             </select>
           </div>
+
+          {sources.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <label htmlFor="news-list-source-select">المصدر:</label>
+              <select id="news-list-source-select" value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="min-h-11 max-w-48 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800">
+                <option value="ALL">جميع المصادر</option>
+                {sources.map((src) => (
+                  <option key={src.id} value={src.id}>{src.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <label htmlFor="news-list-priority-select">الأولوية:</label>
@@ -461,19 +477,21 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
               <option value="LOW">منخفض</option>
             </select>
           </div>
+
+          <details className="basis-full border-t border-slate-200 pt-2">
+            <summary className="min-h-11 flex items-center cursor-pointer text-xs font-semibold text-slate-700">عرض القائمة: عدد النتائج والأعمدة</summary>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
+              <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
+              <select id="news-page-size" value={PAGE_SIZE} onChange={e => { saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
+              <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
+                {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
+              </fieldset>
+              <button type="button" onClick={() => { saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
+            </div>
+          </details>
           </div>
-          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' || onlyMine || authorId !== 'ALL' || fromDate || toDate) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('ALL');
-                setSelectedPriority('ALL');
-                setOnlyMine(false);
-                setAuthorId('ALL'); setFromDate(''); setToDate('');
-              }}
-              className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
-            >
+          {anyFilter && (
+            <button type="button" onClick={resetFilters} className="min-h-11 px-3 text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-lg transition-colors">
               إعادة تعيين الفلاتر
             </button>
           )}
@@ -579,7 +597,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     aria-label="تحديد كل الأخبار المعروضة"
                     className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-800"
                   >
-                    {selectedIds.length === filteredNews.length && filteredNews.length > 0 ? (
+                    {selectedIds.length === pagedNews.length && pagedNews.length > 0 ? (
                       <CheckSquare className="w-4 h-4 text-blue-600" />
                     ) : (
                       <Square className="w-4 h-4" />
@@ -600,8 +618,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <tr>
                   <td colSpan={4 + listPreferences.columns.length} className="py-12 text-center text-slate-500">
                     لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
-                    {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL') && (
-                      <button type="button" onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); setSelectedPriority('ALL'); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
+                    {anyFilter && (
+                      <button type="button" onClick={() => { resetFilters(); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
                         مسح البحث والفلاتر
                       </button>
                     )}

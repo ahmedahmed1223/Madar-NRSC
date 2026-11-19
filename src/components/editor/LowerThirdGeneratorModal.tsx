@@ -270,7 +270,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             <div className="bg-slate-950/90 border-r-4 border-blue-600 px-3 py-2 rounded-l-lg max-w-md shadow-2xl animate-in slide-in-from-bottom-2">
               {activeTab === 'GUEST' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide">
+                  <div className="text-white text-xs font-bold tracking-wide">
                     {guestName || 'اسم الضيف الكريم'}
                   </div>
                   <div className="text-blue-400 text-2xs font-semibold mt-0.5">
@@ -281,7 +281,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
 
               {activeTab === 'HEADLINE' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide">
+                  <div className="text-white text-xs font-bold tracking-wide">
                     {headlineText || 'العنوان الرئيسي للموضوع'}
                   </div>
                   {subHeadlineText && (
@@ -292,7 +292,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
 
               {activeTab === 'LOCATION' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide flex items-center gap-1.5">
+                  <div className="text-white text-xs font-bold tracking-wide flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     {reporterName || 'مراسلنا الميداني'}
                   </div>
@@ -303,7 +303,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
               )}
 
               {activeTab === 'BREAKING' && (
-                <div className="text-red-400 text-xs font-black flex items-center gap-1.5">
+                <div className="text-red-400 text-xs font-bold flex items-center gap-1.5">
                   <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-2xs">عاجل</span>
                   <span className="text-white">{breakingText || 'نص الخبر العاجل'}</span>
                 </div>

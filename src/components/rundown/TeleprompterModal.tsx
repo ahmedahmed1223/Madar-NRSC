@@ -395,7 +395,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                   <div className="text-amber-400/80 font-mono text-sm mb-1">
                     الفقرة: {activeSegment.orderIndex || currentSegmentIndex + 1} • النوع: {activeSegment.segmentType} • المستهدف: {formatSecondsToTime(activeSegment.durationSeconds || 0)}
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-extrabold text-white">
+                  <h1 className="text-2xl sm:text-4xl font-bold text-white">
                     {activeSegment.title}
                   </h1>
                   {activeSegment.presenterName && (

@@ -264,7 +264,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   return (
     <div data-testid="my-work" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-blue-600" />
           عملي
           <span className="text-2xs font-semibold text-slate-500">— قسم {departmentName(myDept)}</span>

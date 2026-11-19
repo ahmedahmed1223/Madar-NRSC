@@ -3,6 +3,10 @@ import { BookOpen, Search, Sparkles } from 'lucide-react';
 import type { User } from '../types';
 import { HELP_ARTICLES } from '../content/help';
 import { departmentIdOf, departmentName } from '../shared/departments';
+import { toursFor } from '../components/help/TourHost';
+import { setupCommand, tourCommand } from '../services/uiEvents';
+import { RbacService } from '../services/rbacService';
+import { PlayCircle, Settings2 } from 'lucide-react';
 
 interface HelpViewProps {
   currentUser: User;
@@ -50,6 +54,35 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
           </button>
         </div>
       </div>
+
+      <section aria-labelledby="help-tours-title" className="space-y-2">
+        <h2 id="help-tours-title" className="text-sm font-bold text-slate-900">جولات تفاعلية</h2>
+        <p className="text-xs text-slate-600">تشير الجولة إلى الأزرار الحقيقية في الشاشة وتشرح كل واحد. الأسهم للتنقل وEsc للإنهاء.</p>
+        <ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {toursFor(currentUser).map((tour) => (
+            <li key={tour.id}>
+              <button type="button" onClick={() => tourCommand.emit(tour.id)} className="w-full h-full text-right flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40">
+                <PlayCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-900">{tour.title}</span>
+                  <span className="block text-xs text-slate-600 mt-0.5">{tour.summary} · {tour.steps.length} خطوات</span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {RbacService.hasPermission(currentUser, 'system.settings') && (
+            <li>
+              <button type="button" onClick={() => setupCommand.emit('open')} className="w-full h-full text-right flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40">
+                <Settings2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-900">الإعداد السريع للنظام</span>
+                  <span className="block text-xs text-slate-600 mt-0.5">المؤسسة، المحطات، الأقسام، الفريق، الأمان والنسخ الاحتياطي.</span>
+                </span>
+              </button>
+            </li>
+          )}
+        </ul>
+      </section>
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">

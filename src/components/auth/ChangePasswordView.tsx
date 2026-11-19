@@ -58,7 +58,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
             <KeyRound className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900 leading-tight">تغيير كلمة المرور</h1>
+            <h1 className="text-lg font-bold text-slate-900 leading-tight">تغيير كلمة المرور</h1>
             <p className="text-xs text-slate-500">
               {forced ? 'يجب تعيين كلمة مرور جديدة قبل المتابعة' : '10 أحرف على الأقل، تحتوي على حروف وأرقام'}
             </p>
