@@ -15,12 +15,13 @@ test('the rail follows each role, folds its sections and remembers the fold', as
   // The rail calls the agency feeds «المصادر».
   await expect(nav.getByRole('button', { name: /^المصادر/ })).toBeVisible();
   // Folding hides the items and keeps the header; the choice survives a reload.
-  const header = nav.getByRole('button', { name: 'غرفة الأخبار', exact: true });
+  // A folded header also shows what waits inside, so its name grows a count.
+  const header = nav.getByRole('button', { name: /^غرفة الأخبار/ });
   await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'false');
   await expect(nav.getByRole('button', { name: /^المصادر/ })).toHaveCount(0);
   await reporter.page.reload();
-  await expect(nav.getByRole('button', { name: 'غرفة الأخبار', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(nav.getByRole('button', { name: /^غرفة الأخبار/ })).toHaveAttribute('aria-expanded', 'false');
   // The section of the open screen always shows.
   await reporter.page.goto('/news');
   await expect(nav.getByRole('button', { name: /^الأخبار/ })).toHaveAttribute('aria-current', 'page');
@@ -34,9 +35,10 @@ test('the rail follows each role, folds its sections and remembers the fold', as
 });
 
 test('a colleague takes a tour from the help screen and leaves it with Escape', async ({ browser }) => {
-  const { page, errors, close } = await signIn(browser, 'journalist@akhbar.tv');
+  const { page, errors, close } = await signIn(browser, 'journalist@akhbar.tv', { bypassCSP: true });
   await page.goto('/help');
-  await page.getByRole('button', { name: /جولة البداية/ }).click();
+  const tours = page.getByRole('region', { name: 'جولات تفاعلية' });
+  await tours.getByRole('button', { name: /جولة البداية/ }).click();
   const card = page.getByRole('dialog', { name: 'أهلاً في «مدار»' });
   await expect(card).toBeVisible();
   await expect(card.getByRole('button', { name: 'التالي' })).toBeFocused();
@@ -58,7 +60,7 @@ test('a colleague takes a tour from the help screen and leaves it with Escape', 
 
   // A screen tour opens its screen.
   await page.goto('/help');
-  await page.getByRole('button', { name: /غرفة الأخبار/ }).first().click();
+  await page.getByRole('region', { name: 'جولات تفاعلية' }).getByRole('button', { name: /غرفة الأخبار/ }).click();
   await expect(page).toHaveURL(/\/news$/);
   await expect(page.getByRole('dialog', { name: 'الخبر بحسب مرحلته' })).toBeVisible();
   await page.getByRole('button', { name: 'إنهاء الجولة' }).click();

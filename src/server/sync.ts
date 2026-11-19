@@ -775,7 +775,7 @@ export class SyncService {
             const recipients = new Set<string>();
             if ((assigned || deadline) && after.assigneeId) recipients.add(after.assigneeId);
             if (status && after.creatorId) recipients.add(after.creatorId);
-            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, '/tasks', 'assignment');
+            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment');
           }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'messages' && !before) this.notifyMessage(after);

@@ -79,3 +79,25 @@ describe('program type renames', () => {
     expect(row('programs', program.id).d.typeName).toBe('حواري سياسي');
   });
 });
+
+describe('programme types in use', () => {
+  it('cannot be deleted while a programme uses them', async () => {
+    const { createTestServer: create, loginAgent: login } = await import('../helpers');
+    const srv = await create();
+    try {
+      const admin = await login(srv.app, 'admin@akhbar.tv');
+      const program = srv.db.listCollection('programs').find((r) => !r.d.deletedAt && r.d.typeId)!;
+      const type = srv.db.getRow('programTypes', program.d.typeId)!;
+      const H = { 'X-NRCS-Client': 'web' };
+      const refused = await admin.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'programTypes', op: 'delete', id: type.id }] });
+      expect(refused.body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+      expect(refused.body.results[0].message).toContain('البرامج تستخدمه');
+      const created = await admin.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'programTypes', op: 'upsert', id: 'ptype-unused', d: { id: 'ptype-unused', nameAr: 'نوع غير مستخدم' } }] });
+      expect(created.body.results[0].ok).toBe(true);
+      const removed = await admin.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'programTypes', op: 'delete', id: 'ptype-unused' }] });
+      expect(removed.body.results[0].ok).toBe(true);
+    } finally {
+      srv.close();
+    }
+  });
+});

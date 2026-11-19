@@ -350,7 +350,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
             <article
               key={w.id}
               id={`wire-${w.id}`}
-              className={`bg-white border rounded-2xl p-4 space-y-2 ${flash ? 'border-red-300 border-r-4 border-r-red-600' : 'border-slate-200'} ${
+              className={`bg-white border rounded-2xl p-4 space-y-2 ${flash ? 'border-red-300 bg-red-50/40' : 'border-slate-200'} ${
                 focusWireId === w.id ? 'ring-2 ring-blue-500' : ''
               }`}
             >

@@ -110,8 +110,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
     setMessage(null);
     try {
       await fn();
-      setMessage({ ok: true, text: ok });
+      // Moving on clears the previous step's message, so the confirmation is set after it.
       if (next) go(1);
+      setMessage({ ok: true, text: ok });
     } catch (err) {
       setMessage({ ok: false, text: err instanceof Error ? err.message : 'تعذر الحفظ' });
     } finally {
