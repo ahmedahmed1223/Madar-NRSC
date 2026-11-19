@@ -21,6 +21,7 @@ import { ProductionListsSettings } from '../components/settings/ProductionListsS
 import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
 import { StationsSettings } from '../components/settings/StationsSettings';
 import { SystemMonitor } from '../components/settings/SystemMonitor';
+import { StorageSettings } from '../components/settings/StorageSettings';
 import { ProgramTypesSettings } from '../components/settings/ProgramTypesSettings';
 import { dataStore } from '../services/dataStore';
 import {
@@ -47,6 +48,7 @@ import {
   Tag,
   Network,
   Activity,
+  Cloud,
   ChevronUp,
   ChevronDown,
 } from 'lucide-react';
@@ -73,7 +75,7 @@ interface SettingsViewProps {
   focusSourceId?: string | null;
 }
 
-export type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
+export type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
   { id: 'stations', label: 'المحطات وبطاقات الإنتاج', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
@@ -83,6 +85,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
   { id: 'preferences', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وحجم الخط وتقليل الحركة', icon: Palette },
   { id: 'monitor', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
   { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
+  { id: 'storage', label: 'التخزين', hint: 'Dropbox وGoogle Drive والمجلد المشترك وجسر مدار', icon: Cloud },
   { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
   { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
@@ -179,6 +182,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [section, setSection] = useState<SettingsSection>(() => {
     if (isSection(initialSection)) return initialSection;
+    // Back from a cloud provider's consent page (see StorageSettings).
+    if (new URLSearchParams(window.location.search).has('storage')) return 'storage';
     try {
       const saved = localStorage.getItem(SECTION_KEY);
       return isSection(saved) ? saved : 'station';
@@ -777,6 +782,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'airDisplay' && <AirDisplaySettings />}
       {section === 'stations' && <StationsSettings />}
       {section === 'monitor' && <SystemMonitor />}
+      {section === 'storage' && <StorageSettings />}
       {section === 'categories' && (
       <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">

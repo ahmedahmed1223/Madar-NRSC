@@ -78,7 +78,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             الأحداث المتوقعة وقرار تغطيتها ومن يغطيها؛ يصل المكلفين تنبيه، ويُكتب الخبر من الحدث مباشرة.
-            {undecided > 0 && <span className="text-amber-700 font-bold"> أحداث قادمة بلا قرار تغطية: {undecided}.</span>}
+            {undecided > 0 && <span className="text-amber-800 font-bold"> أحداث قادمة بلا قرار تغطية: {undecided}.</span>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

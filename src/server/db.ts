@@ -33,6 +33,8 @@ export interface UploadRecord {
   sizeBytes: number;
   uploadedBy: string;
   createdAt: string;
+  /** The server's own copy was removed; the file is read from a copy elsewhere. */
+  localEvicted?: boolean;
 }
 
 export interface SessionRecord {
@@ -160,7 +162,62 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions (user_id);
     `,
   },
+  {
+    version: 5,
+    sql: `
+      -- 1 once the server's own copy was removed (the file lives in Dropbox or the shared folder).
+      ALTER TABLE uploads ADD COLUMN local_evicted INTEGER NOT NULL DEFAULT 0;
+      -- Copies of an upload kept elsewhere (Dropbox, the station's shared folder) and their state.
+      CREATE TABLE IF NOT EXISTS upload_copies (
+        upload_id TEXT NOT NULL,
+        target TEXT NOT NULL,
+        state TEXT NOT NULL,
+        remote_path TEXT,
+        error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (upload_id, target)
+      );
+      CREATE INDEX IF NOT EXISTS idx_upload_copies_state ON upload_copies (target, state);
+      -- Files the bridge found in the shared folder (searchable from the library).
+      CREATE TABLE IF NOT EXISTS share_index (
+        path TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        modified_at TEXT,
+        seen_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_share_index_name ON share_index (name);
+      -- Files requested from the shared folder through the bridge.
+      CREATE TABLE IF NOT EXISTS share_fetches (
+        upload_id TEXT PRIMARY KEY,
+        state TEXT NOT NULL,
+        error TEXT,
+        requested_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
+
+export interface UploadCopyRow {
+  uploadId: string;
+  target: import('../shared/storage').CopyTarget;
+  state: 'PENDING' | 'DONE' | 'FAILED';
+  remotePath?: string;
+  error?: string;
+  attempts: number;
+  nextAttemptAt?: string;
+  updatedAt: string;
+}
+
+export interface ShareIndexRow {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedAt?: string;
+}
 
 export interface PushSubscriptionRecord {
   endpoint: string;
@@ -551,9 +608,9 @@ export class NewsroomDatabase {
   insertUpload(u: UploadRecord) {
     this.db
       .prepare(
-        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at, local_evicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt);
+      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt, u.localEvicted ? 1 : 0);
   }
 
   getUpload(id: string): UploadRecord | null {
@@ -567,11 +624,190 @@ export class NewsroomDatabase {
       sizeBytes: r.size_bytes,
       uploadedBy: r.uploaded_by,
       createdAt: r.created_at,
+      localEvicted: r.local_evicted === 1,
     };
+  }
+
+  /** The server holds the file again (fetched from the shared folder). */
+  updateUploadStorage(id: string, storedName: string, sizeBytes: number) {
+    this.db.prepare('UPDATE uploads SET stored_name = ?, size_bytes = ? WHERE id = ?').run(storedName, sizeBytes, id);
+  }
+
+  setUploadEvicted(id: string, evicted: boolean) {
+    this.db.prepare('UPDATE uploads SET local_evicted = ? WHERE id = ?').run(evicted ? 1 : 0, id);
+  }
+
+  // --- Copies elsewhere (Dropbox, shared folder) ----------------------------
+
+  private mapCopy(r: any): UploadCopyRow {
+    return {
+      uploadId: r.upload_id,
+      target: r.target,
+      state: r.state,
+      remotePath: r.remote_path || undefined,
+      error: r.error || undefined,
+      attempts: r.attempts,
+      nextAttemptAt: r.next_attempt_at || undefined,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  queueCopy(uploadId: string, target: UploadCopyRow['target'], state: UploadCopyRow['state'] = 'PENDING', remotePath?: string) {
+    this.db
+      .prepare(
+        `INSERT INTO upload_copies (upload_id, target, state, remote_path, attempts, updated_at) VALUES (?, ?, ?, ?, 0, ?)
+         ON CONFLICT(upload_id, target) DO UPDATE SET state = excluded.state, remote_path = COALESCE(excluded.remote_path, remote_path), error = NULL, attempts = 0, next_attempt_at = NULL, updated_at = excluded.updated_at`
+      )
+      .run(uploadId, target, state, remotePath ?? null, new Date().toISOString());
+  }
+
+  copiesOf(uploadId: string): UploadCopyRow[] {
+    return (this.db.prepare('SELECT * FROM upload_copies WHERE upload_id = ? ORDER BY target').all(uploadId) as any[]).map((r) => this.mapCopy(r));
+  }
+
+  copiesFor(uploadIds: string[]): Map<string, UploadCopyRow[]> {
+    const out = new Map<string, UploadCopyRow[]>();
+    for (let i = 0; i < uploadIds.length; i += 400) {
+      const slice = uploadIds.slice(i, i + 400);
+      const rows = this.db.prepare(`SELECT * FROM upload_copies WHERE upload_id IN (${slice.map(() => '?').join(',')})`).all(...slice) as any[];
+      for (const r of rows) {
+        const copy = this.mapCopy(r);
+        out.set(copy.uploadId, [...(out.get(copy.uploadId) || []), copy]);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Copies due now, oldest first. Only files something points to (a library item or a message)
+   * are copied: a file left behind by an abandoned form is never sent anywhere.
+   */
+  dueCopies(target: UploadCopyRow['target'], limit: number, nowIso = new Date().toISOString()): UploadCopyRow[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT c.* FROM upload_copies c
+           WHERE c.target = ? AND c.state = 'PENDING' AND (c.next_attempt_at IS NULL OR c.next_attempt_at <= ?)
+             AND (
+               EXISTS (SELECT 1 FROM entities e WHERE e.collection = 'media' AND e.deleted = 0 AND instr(e.data, '/api/v1/media/files/' || c.upload_id) > 0)
+               OR EXISTS (SELECT 1 FROM entities e WHERE e.collection = 'messages' AND e.deleted = 0 AND instr(e.data, '"id":"' || c.upload_id || '"') > 0)
+             )
+           ORDER BY c.updated_at ASC LIMIT ?`
+        )
+        .all(target, nowIso, limit) as any[]
+    ).map((r) => this.mapCopy(r));
+  }
+
+  finishCopy(uploadId: string, target: string, remotePath: string) {
+    this.db
+      .prepare(`UPDATE upload_copies SET state = 'DONE', remote_path = ?, error = NULL, next_attempt_at = NULL, updated_at = ? WHERE upload_id = ? AND target = ?`)
+      .run(remotePath, new Date().toISOString(), uploadId, target);
+  }
+
+  /** A failed attempt: retried later with a growing delay, given up after `maxAttempts`. */
+  failCopy(uploadId: string, target: string, error: string, maxAttempts = 8) {
+    const row = this.db.prepare('SELECT attempts FROM upload_copies WHERE upload_id = ? AND target = ?').get(uploadId, target) as { attempts: number } | undefined;
+    const attempts = (row?.attempts || 0) + 1;
+    const delayMs = Math.min(6 * 3600_000, 30_000 * 2 ** (attempts - 1));
+    this.db
+      .prepare('UPDATE upload_copies SET state = ?, error = ?, attempts = ?, next_attempt_at = ?, updated_at = ? WHERE upload_id = ? AND target = ?')
+      .run(attempts >= maxAttempts ? 'FAILED' : 'PENDING', error.slice(0, 300), attempts, new Date(Date.now() + delayMs).toISOString(), new Date().toISOString(), uploadId, target);
+  }
+
+  /** Puts every failed copy back in the queue (the administrator's «إعادة المحاولة»). */
+  retryFailedCopies(): number {
+    return this.db
+      .prepare(`UPDATE upload_copies SET state = 'PENDING', attempts = 0, next_attempt_at = NULL, error = NULL, updated_at = ? WHERE state = 'FAILED'`)
+      .run(new Date().toISOString()).changes;
+  }
+
+  copyQueueSummary(): { pending: number; failed: number; done: number; lastErrors: { uploadId: string; target: string; error: string; updatedAt: string }[] } {
+    const counts = this.db.prepare(`SELECT state, COUNT(*) AS n FROM upload_copies GROUP BY state`).all() as { state: string; n: number }[];
+    const n = (s: string) => counts.find((c) => c.state === s)?.n || 0;
+    const lastErrors = (
+      this.db.prepare(`SELECT upload_id, target, error, updated_at FROM upload_copies WHERE error IS NOT NULL ORDER BY updated_at DESC LIMIT 5`).all() as any[]
+    ).map((r) => ({ uploadId: r.upload_id, target: r.target, error: r.error, updatedAt: r.updated_at }));
+    return { pending: n('PENDING'), failed: n('FAILED'), done: n('DONE'), lastErrors };
+  }
+
+  deleteCopies(uploadId: string) {
+    this.db.prepare('DELETE FROM upload_copies WHERE upload_id = ?').run(uploadId);
+    this.db.prepare('DELETE FROM share_fetches WHERE upload_id = ?').run(uploadId);
+  }
+
+  // --- Shared-folder index and fetches --------------------------------------
+
+  /** Replaces (reset) or extends the index the bridge reports; a finished scan drops files no longer seen. */
+  indexShareFiles(files: ShareIndexRow[], scanStartedAt: string, finished: boolean) {
+    const now = new Date().toISOString();
+    const put = this.db.prepare(
+      `INSERT INTO share_index (path, name, size_bytes, modified_at, seen_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(path) DO UPDATE SET name = excluded.name, size_bytes = excluded.size_bytes, modified_at = excluded.modified_at, seen_at = excluded.seen_at`
+    );
+    this.db.transaction(() => {
+      for (const f of files) put.run(f.path, f.name, f.sizeBytes, f.modifiedAt ?? null, now);
+      if (finished) {
+        this.db.prepare('DELETE FROM share_index WHERE seen_at < ?').run(scanStartedAt);
+        this.setMeta('storage.share.indexedAt', now);
+      }
+    })();
+  }
+
+  searchShareIndex(query: string, limit = 50): ShareIndexRow[] {
+    const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+    if (!words.length) return [];
+    const where = words.map(() => `path LIKE ? ESCAPE '\\'`).join(' AND ');
+    const args = words.map((w) => `%${w.replace(/[\\%_]/g, (c) => '\\' + c)}%`);
+    return (this.db.prepare(`SELECT * FROM share_index WHERE ${where} ORDER BY modified_at DESC LIMIT ?`).all(...args, limit) as any[]).map((r) => ({
+      path: r.path,
+      name: r.name,
+      sizeBytes: r.size_bytes,
+      modifiedAt: r.modified_at || undefined,
+    }));
+  }
+
+  getShareIndexEntry(p: string): ShareIndexRow | null {
+    const r = this.db.prepare('SELECT * FROM share_index WHERE path = ?').get(p) as any;
+    return r ? { path: r.path, name: r.name, sizeBytes: r.size_bytes, modifiedAt: r.modified_at || undefined } : null;
+  }
+
+  shareIndexCount(): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM share_index').get() as { n: number }).n;
+  }
+
+  requestShareFetch(uploadId: string) {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO share_fetches (upload_id, state, requested_at, updated_at) VALUES (?, 'PENDING', ?, ?)
+         ON CONFLICT(upload_id) DO UPDATE SET state = CASE WHEN state = 'DONE' THEN state ELSE 'PENDING' END, error = NULL, updated_at = excluded.updated_at`
+      )
+      .run(uploadId, now, now);
+  }
+
+  pendingShareFetches(limit = 10): { uploadId: string; path: string }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT f.upload_id, c.remote_path FROM share_fetches f JOIN upload_copies c ON c.upload_id = f.upload_id AND c.target = 'share'
+           WHERE f.state = 'PENDING' ORDER BY f.requested_at ASC LIMIT ?`
+        )
+        .all(limit) as any[]
+    ).map((r) => ({ uploadId: r.upload_id, path: r.remote_path }));
+  }
+
+  finishShareFetch(uploadId: string, error?: string) {
+    this.db.prepare('UPDATE share_fetches SET state = ?, error = ?, updated_at = ? WHERE upload_id = ?').run(error ? 'FAILED' : 'DONE', error ?? null, new Date().toISOString(), uploadId);
+  }
+
+  shareFetchState(uploadId: string): { state: string; error?: string } | null {
+    const r = this.db.prepare('SELECT state, error FROM share_fetches WHERE upload_id = ?').get(uploadId) as any;
+    return r ? { state: r.state, error: r.error || undefined } : null;
   }
 
   deleteUpload(id: string) {
     this.db.prepare('DELETE FROM uploads WHERE id = ?').run(id);
+    this.deleteCopies(id);
   }
 
   uploadsSummary(): { files: number; bytes: number } {

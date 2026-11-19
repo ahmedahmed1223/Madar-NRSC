@@ -22,6 +22,7 @@ import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
 import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
+import { queueCopiesForUpload, registerStorageRoutes, sendStoredFile } from './storage';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -446,6 +447,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     wrap(async (req, res) => {
       try {
         const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id);
+        // Copied to the connected cloud (and the shared folder, when asked for on the local network).
+        queueCopiesForUpload(db, record, req);
         res.status(201).json({
           success: true,
           data: {
@@ -463,19 +466,16 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     })
   );
 
-  app.get('/api/v1/media/files/:id', requirePermission('media.view'), (req: ApiRequest, res) => {
+  app.get('/api/v1/media/files/:id', requirePermission('media.view'), wrap(async (req, res) => {
     const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
     if (!record) throw new HttpError(404, 'الملف غير موجود');
-    const filePath = path.join(uploadsDir(config.dataDir), record.storedName);
-    if (!fs.existsSync(filePath)) throw new HttpError(404, 'الملف غير موجود');
     // Served as an inert document: never executed, never sniffed, cached privately.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
-    res.type(record.mimeType);
-    // Server-built path; DATA_DIR may sit under a hidden folder, which Express 5 refuses by default.
-    res.sendFile(filePath, { dotfiles: 'allow' });
-  });
+    // From the server's disk, else from Dropbox/Google Drive/the shared folder (see storage.ts).
+    await sendStoredFile(db, config, req, res, record, HttpError);
+  }));
 
   // --- Messaging: files and older history -------------------------------------
 
@@ -1049,6 +1049,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       res.json({ success: true, message: 'تمت استعادة النسخة الاحتياطية بنجاح', data: db.stats() });
     })
   );
+
+  registerStorageRoutes(app, { db, config, HttpError, wrap, audit });
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ success: false, error: 'المسار غير موجود', code: 'NOT_FOUND' });

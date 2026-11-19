@@ -38,7 +38,7 @@ import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
 import { mergeCardChanges, stepTypesOf } from '../shared/productionCards';
 import { stationsOf } from '../shared/stations';
-import { cardNotices, stampCard } from './cards';
+import { cardNotices, stampCard, type CardNoticeContext } from './cards';
 import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
 
 export const MAX_OPS_PER_REQUEST = 500;
@@ -276,6 +276,30 @@ export class SyncService {
 
   private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false) {
     writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
+  }
+
+  /** Colleagues as card notices need them: station, role, department and what they may do on cards. */
+  private cardPeople(settings: any): CardNoticeContext {
+    const roles = this.listData('roles') as RoleDefinition[];
+    const people = this.listData('users')
+      .filter((u: any) => u && u.isActive !== false && !u.deletedAt)
+      .map((u: any) => ({
+        id: u.id,
+        stationId: u.stationId,
+        role: u.role,
+        departmentId: departmentIdOf(u),
+        canManage: evaluatePermission(u, 'cards.manage', roles),
+        canWork: evaluatePermission(u, 'cards.work', roles),
+      }));
+    return { people, stations: stationsOf(settings) };
+  }
+
+  /** A deleted card leaves no unread notices behind: they point at nothing. */
+  private settleCardNotifications(cardId: string) {
+    const link = `/cards/${cardId}`;
+    for (const row of this.db.listCollection('notifications')) {
+      if (row.d && row.d.linkUrl === link && !row.d.isRead) this.db.writeRow('notifications', row.id, { ...row.d, isRead: true }, row.p, null);
+    }
   }
 
   /** Server-side audit trail for the main records: who created, changed status, deleted or restored what. */
@@ -719,7 +743,14 @@ export class SyncService {
         if (collection === 'productionCards' && !after.deletedAt) {
           // Stamped after the policy so the rules compare exactly what the browser sent.
           const users = new Map<string, any>(this.listData('users').map((u: any) => [u.id, u]));
-          after = stampCard(before, after, auth.user, users, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d), auth.can('cards.manage'));
+          // Library items attached to a card must exist; their titles go into the trail.
+          const mediaTitle = (mediaId: string) => {
+            const item = this.db.getRow('media', mediaId)?.d;
+            return item && !item.deletedAt ? String(item.title || item.originalName || item.fileName || 'ملف') : undefined;
+          };
+          const attached = new Set(before?.mediaIds || []);
+          if ((after.mediaIds || []).some((mid: string) => !attached.has(mid) && !mediaTitle(mid))) throw new SyncReject('INVALID', 'الملف المرفق غير موجود في مكتبة الوسائط');
+          after = stampCard(before, after, auth.user, users, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d), auth.can('cards.manage'), { mediaTitle });
         }
         if (collection === 'users') {
           // 2FA status is owned by the server (enrolment endpoints), never by the client.
@@ -764,10 +795,12 @@ export class SyncService {
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
         if (collection === 'productionCards' && !after.deletedAt) {
-          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d))) {
+          const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(settings), this.cardPeople(settings))) {
             this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent);
           }
         }
+        if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) this.settleCardNotifications(id);
           if (collection === 'tasks' && !after.deletedAt) {
             const assigned = after.assigneeId && after.assigneeId !== before?.assigneeId;
             const deadline = before && after.dueDate !== before.dueDate;

@@ -46,7 +46,8 @@ export async function openNav(page: Page, label: string) {
     await page.getByRole('button', { name: 'فتح القائمة الرئيسية', exact: true }).click();
   }
   // Sections of the rail fold; open them all when the screen is in a folded one.
-  const item = page.locator('aside nav button', { hasText: label }).first();
+  // Section headers (they carry aria-expanded) can contain a screen's name, e.g. «غرفة الأخبار».
+  const item = page.locator('aside nav button:not([aria-expanded])', { hasText: label }).first();
   if (!(await item.isVisible().catch(() => false))) {
     const folded = page.locator('aside nav button[aria-expanded="false"]');
     while (await folded.count()) await folded.first().click();

@@ -2,7 +2,7 @@ import fs from 'fs';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { jobRuns } from './jobs';
-import { cardState } from '../shared/productionCards';
+import { cardState, isCardLate } from '../shared/productionCards';
 import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
 import { stationsOf } from '../shared/stations';
 import type { AdminOverview } from '../shared/adminOverview';
@@ -78,7 +78,8 @@ export function adminOverview(db: NewsroomDatabase, config: AppConfig, now = Dat
       stations: stations.length,
       openCards: cards.length,
       blockedCards: states.filter((s) => s === 'BLOCKED').length,
-      lateCards: states.filter((s) => s === 'LATE').length,
+      // A blocked card past its deadline is late too.
+      lateCards: cards.filter((c) => isCardLate(c, now)).length,
       messages: messages.count,
       oldestMessageAt: messages.oldestAt,
       groups: db.listCollection('conversations').filter((r) => r.d && !r.d.deletedAt).length,

@@ -7,7 +7,7 @@
  * The rules below are shared by the browser (to explain a refusal before sending) and the server
  * (which enforces them), so both always agree.
  */
-import { stationScope, stationsOf, type Station } from './stations';
+import { stationName, stationScope, stationsOf, type Station } from './stations';
 
 export const CARD_KINDS = [
   { id: 'NEWS', name: 'خبر' },
@@ -108,15 +108,33 @@ export interface CardStep {
   complexity: 1 | 2 | 3;
   /** Planned effort in minutes. */
   estimateMinutes?: number;
-  /** Actual effort in minutes, noted by the person who did it. */
+  /** Actual effort in minutes: the sum of every work session logged on the step (rework adds, never replaces). */
   spentMinutes?: number;
+  /** Work sessions, one entry per «تم الإنجاز» or time added; append-only, stamped by the server. */
+  timeLog?: CardTimeEntry[];
   /** Handoff note: what is complete and what is missing. */
   note?: string;
   blockedReason?: string;
+  /** While blocked: the colleague who can unblock it (e.g. whoever owes the footage). */
+  waitingOnId?: string;
+  waitingOnName?: string;
+  /** Set when a reviewer or the card owner sends the step back for rework; cleared once it is done again. */
+  returnedReason?: string;
+  returnedById?: string;
+  returnedByName?: string;
+  returnedAt?: string;
   startedAt?: string;
   doneAt?: string;
   doneById?: string;
   doneByName?: string;
+}
+
+export interface CardTimeEntry {
+  id: string;
+  minutes: number;
+  at?: string;
+  byId?: string;
+  byName?: string;
 }
 
 export interface CardLink {
@@ -132,6 +150,8 @@ export interface CardLogEntry {
   stationId?: string;
   /** NOTE: written by a colleague. STEP: recorded by the server when a step changes hands or state. */
   kind: 'NOTE' | 'STEP';
+  /** A NOTE marked as a decision by the card owner or a supervisor: everyone on the card hears it. */
+  decision?: boolean;
   stepId?: string;
   text: string;
 }
@@ -189,6 +209,31 @@ export const currentStep = (card: ProductionCard): CardStep | undefined => (card
 
 export const isStepLate = (step: CardStep, now = Date.now()) => isStepOpen(step) && !!step.dueAt && new Date(step.dueAt).getTime() < now;
 
+/**
+ * Whether the step itself is to blame for being late: a step that has not started because an
+ * earlier step is blocked or late is waiting, and the delay is reported on that earlier step.
+ */
+export function isStepOwnLate(card: ProductionCard, step: CardStep, now = Date.now()): boolean {
+  if (!isStepLate(step, now)) return false;
+  if (step.status !== 'TODO') return true;
+  const index = (card.steps || []).findIndex((s) => s.id === step.id);
+  const earlier = (card.steps || []).slice(0, Math.max(0, index)).filter(isStepOpen);
+  return !earlier.some((s) => s.status === 'BLOCKED' || isStepLate(s, now));
+}
+
+/** Earlier required steps still open when this one is finished (finishing then needs a confirmation). */
+export const openStepsBefore = (card: ProductionCard, stepId: string): CardStep[] => {
+  const index = (card.steps || []).findIndex((s) => s.id === stepId);
+  return index <= 0 ? [] : card.steps.slice(0, index).filter(isStepOpen);
+};
+
+/** Who holds the step, in words: the person, «متاحة لمحطة X» for a station-wide step, or «غير مسندة». */
+export function stepAssigneeLabel(step: CardStep, stations?: Station[]): string {
+  if (step.assigneeName) return step.assigneeName;
+  if (step.stationId) return stations ? `متاحة لمحطة ${stationName(stations, step.stationId)}` : 'متاحة للمحطة';
+  return 'غير مسندة';
+}
+
 export function cardProgress(card: ProductionCard): { done: number; total: number } {
   const steps = required(card);
   return { done: steps.filter((s) => s.status === 'DONE').length, total: steps.length };
@@ -206,7 +251,10 @@ export const CARD_STATE_NAMES: Record<CardState, string> = {
   NEW: 'لم تبدأ',
 };
 
-/** Where the card stands right now. A blocked card is reported as blocked even when it is also late. */
+/**
+ * Where the card stands right now. A blocked card is reported as blocked even when it is also late;
+ * cardStates() gives both so lists, counters and badges show the delay too.
+ */
 export function cardState(card: ProductionCard, now = Date.now()): CardState {
   if (card.status === 'CLOSED') return 'CLOSED';
   if (card.status === 'CANCELLED') return 'CANCELLED';
@@ -218,6 +266,12 @@ export function cardState(card: ProductionCard, now = Date.now()): CardState {
   return steps.some((s) => s.status !== 'TODO') ? 'IN_PROGRESS' : 'NEW';
 }
 
+/** Every state that applies: a blocked card past its deadline is both BLOCKED and LATE. */
+export function cardStates(card: ProductionCard, now = Date.now()): CardState[] {
+  const state = cardState(card, now);
+  return state === 'BLOCKED' && isCardLate(card, now) ? ['BLOCKED', 'LATE'] : [state];
+}
+
 /** Open, not ready, and a step or the card itself is past its deadline. */
 export function isCardLate(card: ProductionCard, now = Date.now()): boolean {
   if (card.status !== 'OPEN') return false;
@@ -227,14 +281,14 @@ export function isCardLate(card: ProductionCard, now = Date.now()): boolean {
   return !!card.dueAt && new Date(card.dueAt).getTime() < now;
 }
 
-/** Why the card is stuck or late, in words for the chief editor's board. */
-export function cardHoldReason(card: ProductionCard, types: StepType[], now = Date.now()): string {
+/** Why the card is stuck or late, in words for the chief editor's board. Pass the stations to name station-wide steps. */
+export function cardHoldReason(card: ProductionCard, types: StepType[], now = Date.now(), stations?: Station[]): string {
   const blocked = (card.steps || []).filter((s) => s.status === 'BLOCKED');
   if (blocked.length) return blocked.map((s) => `${stepTypeName(types, s.type)}: ${s.blockedReason || 'بدون سبب مكتوب'}`).join(' • ');
-  const late = (card.steps || []).filter((s) => isStepLate(s, now));
-  if (late.length) return late.map((s) => `${stepTypeName(types, s.type)} لم تُسلَّم (${s.assigneeName || 'غير مسندة'})`).join(' • ');
+  const late = (card.steps || []).filter((s) => isStepOwnLate(card, s, now));
+  if (late.length) return late.map((s) => `${stepTypeName(types, s.type)} لم تُسلَّم (${stepAssigneeLabel(s, stations)})`).join(' • ');
   const waiting = currentStep(card);
-  if (isCardLate(card, now) && waiting) return `بانتظار ${stepTypeName(types, waiting.type)} (${waiting.assigneeName || 'غير مسندة'})`;
+  if (isCardLate(card, now) && waiting) return `بانتظار ${stepTypeName(types, waiting.type)} (${stepAssigneeLabel(waiting, stations)})`;
   return '';
 }
 
@@ -263,6 +317,9 @@ export function cardContributions(card: ProductionCard, types: StepType[]): { st
 export interface CardActor {
   id: string;
   stationId?: string;
+  /** Role code and department decide which kinds of step a colleague may pick up (see stepFitsActor). */
+  role?: string;
+  departmentId?: string;
   /** cards.manage: creates cards, distributes steps, approves scripts, closes cards. */
   canManage: boolean;
   /** cards.work: carries out steps and documents work. */
@@ -284,6 +341,88 @@ export function cardContextOf(settings: { stations?: Station[]; cardStepTypes?: 
     users: new Map(users.filter((u) => u.isActive !== false && !u.deletedAt).map((u) => [u.id, { stationId: u.stationId }])),
   };
 }
+
+/**
+ * Who does each built-in kind of step, by department and by role. A colleague picks up («يستلم»)
+ * only steps that fit their work; supervisors pick up anything. Step types an administrator added
+ * later are open to everyone, and so is every type for someone whose role and department are unknown.
+ */
+export const STEP_TYPE_FIT: Record<string, { departments: string[]; roles: string[] }> = {
+  gather: { departments: ['field', 'newsroom', 'reports'], roles: ['REPORTER', 'JOURNALIST', 'REPORTS_EDITOR'] },
+  verify: { departments: ['newsroom', 'monitoring', 'quality', 'reports'], roles: ['JOURNALIST', 'EDITOR', 'MONITOR', 'QUALITY', 'REPORTS_EDITOR'] },
+  edit: { departments: ['newsroom', 'reports', 'production'], roles: ['JOURNALIST', 'EDITOR', 'REPORTS_EDITOR', 'PREPARER', 'PRODUCER'] },
+  prep: { departments: ['production'], roles: ['PREPARER', 'PRODUCER'] },
+  montage: { departments: ['montage'], roles: ['MONTAGE'] },
+  graphics: { departments: ['graphics'], roles: [] },
+  translate: { departments: ['newsroom', 'monitoring'], roles: ['JOURNALIST', 'MONITOR'] },
+  monitor: { departments: ['monitoring'], roles: ['MONITOR'] },
+  quality: { departments: ['quality'], roles: ['QUALITY'] },
+  // Approval is a supervisor's decision.
+  approve: { departments: [], roles: [] },
+  publish: { departments: ['control', 'direction'], roles: ['DIRECTOR', 'EDITOR', 'PRODUCER'] },
+};
+
+/** Whether this kind of step is the colleague's kind of work (supervisors: always). */
+export function stepFitsActor(type: string, actor: Pick<CardActor, 'canManage' | 'role' | 'departmentId'>): boolean {
+  if (actor.canManage) return true;
+  const fit = STEP_TYPE_FIT[type];
+  if (!fit || (!actor.role && !actor.departmentId)) return true;
+  return (!!actor.role && fit.roles.includes(actor.role)) || (!!actor.departmentId && fit.departments.includes(actor.departmentId));
+}
+
+/** Step types whose holder reviews what came before and may send it back for rework. */
+export const REVIEW_STEP_TYPES = ['quality', 'approve'];
+
+/** Whether the actor may send earlier steps of this card back: the owner, a supervisor, or whoever holds an open review step. */
+export function canSendBack(card: ProductionCard, actor: CardActor, reviewStepId?: string): boolean {
+  if (card.status !== 'OPEN') return false;
+  if (actor.canManage || card.ownerId === actor.id) return true;
+  return (card.steps || []).some((s) => s.assigneeId === actor.id && isStepOpen(s) && REVIEW_STEP_TYPES.includes(s.type) && (!reviewStepId || s.id === reviewStepId));
+}
+
+/** Done steps before the reviewer's step that can be sent back (all done steps for the owner or a supervisor). */
+export function sendBackTargets(card: ProductionCard, fromStepId?: string): CardStep[] {
+  const index = fromStepId ? (card.steps || []).findIndex((s) => s.id === fromStepId) : card.steps.length;
+  return (card.steps || []).slice(0, index < 0 ? card.steps.length : index).filter((s) => s.status === 'DONE');
+}
+
+/**
+ * Sends `targetId` back for rework with a reason: it reopens (in progress when someone holds it),
+ * and done steps after it up to the reviewer's step wait again. Their history stays in the log.
+ */
+export function sendBackCard(card: ProductionCard, targetId: string, reason: string, fromStepId?: string): ProductionCard {
+  const target = card.steps.findIndex((s) => s.id === targetId);
+  const until = fromStepId ? card.steps.findIndex((s) => s.id === fromStepId) : card.steps.length;
+  return {
+    ...card,
+    steps: card.steps.map((s, i) => {
+      if (i === target) return { ...s, status: s.assigneeId ? 'IN_PROGRESS' : 'TODO', returnedReason: reason.trim() };
+      if (i > target && (until < 0 || i < until) && s.status === 'DONE') return { ...s, status: 'TODO' };
+      return s;
+    }),
+  };
+}
+
+/**
+ * Whether a supervisor may close, cancel, reopen or delete this card: central management and the
+ * main station govern every card; a branch governs cards its own station owns and those of the
+ * branches it follows, never the main station's. The card owner always may.
+ */
+export function canGovernCard(card: Pick<ProductionCard, 'ownerId' | 'ownerStationId'>, actor: CardActor, stations: Station[]): boolean {
+  if (!actor.canManage) return false;
+  if (card.ownerId === actor.id) return true;
+  const own = stations.find((s) => s.id === actor.stationId);
+  if (!own || own.isMain || !card.ownerStationId || card.ownerStationId === own.id) return true;
+  const owner = stations.find((s) => s.id === card.ownerStationId);
+  if (!owner) return true;
+  if (owner.isMain) return false;
+  return stationScope(stations, actor.stationId).has(owner.id);
+}
+
+export const GOVERN_DENIED = 'إغلاق البطاقة وإلغاؤها وحذفها لمحطتها المالكة أو المحطة الرئيسية';
+
+/** Time logged on a step: the sum of its work sessions on top of what was noted before sessions existed. */
+export const timeLogMinutes = (entries?: CardTimeEntry[]) => (entries || []).reduce((sum, e) => sum + (Number.isFinite(e?.minutes) ? e.minutes : 0), 0);
 
 const ID = /^[A-Za-z0-9_.:\-]{1,128}$/;
 /** Compares values whatever the order of their keys; absent, null and undefined are the same. */
@@ -336,11 +475,20 @@ export function cardError(card: ProductionCard): string | null {
     if (!optMinutes(step.estimateMinutes) || !optMinutes(step.spentMinutes)) return 'الوقت بالدقائق رقم صحيح موجب';
     if (step.dueAt && !isIso(step.dueAt)) return 'موعد تسليم المهمة غير صالح';
     if (step.status === 'BLOCKED' && !(step.blockedReason || '').trim()) return 'اكتب سبب التعطل';
+    if (!optText(step.returnedReason, 1000)) return 'سبب الإعادة بحد أقصى 1000 حرف';
+    if (step.waitingOnId !== undefined && step.waitingOnId !== null && (typeof step.waitingOnId !== 'string' || !ID.test(step.waitingOnId))) return 'الزميل المطلوب منه الحل غير صالح';
+    if (step.timeLog !== undefined && step.timeLog !== null) {
+      if (!Array.isArray(step.timeLog) || step.timeLog.length > 200) return 'سجل الوقت ممتلئ';
+      for (const entry of step.timeLog) {
+        if (!entry || typeof entry.id !== 'string' || !ID.test(entry.id) || !Number.isInteger(entry.minutes) || entry.minutes < 1 || entry.minutes > 1440) return 'وقت الجلسة بالدقائق بين 1 و1440';
+      }
+    }
   }
   if (card.log !== undefined) {
     if (!Array.isArray(card.log) || card.log.length > 500) return 'سجل البطاقة ممتلئ';
     for (const entry of card.log) {
       if (!entry || typeof entry.id !== 'string' || !ID.test(entry.id) || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 3000) return 'ملاحظة التوثيق مطلوبة وبحد أقصى 3000 حرف';
+      if (entry.decision !== undefined && entry.decision !== null && typeof entry.decision !== 'boolean') return 'نوع الملاحظة غير صالح';
     }
   }
   return null;
@@ -349,8 +497,16 @@ export function cardError(card: ProductionCard): string | null {
 const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target'] as const;
 const STEP_LOCKED = ['type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId'] as const;
 
-/** Whether the actor may take an unassigned step: it is open to everyone or addressed to their station. */
-export const canClaimStep = (step: CardStep, actor: CardActor) => !step.assigneeId && actor.canWork && (!step.stationId || step.stationId === actor.stationId);
+/**
+ * Whether the actor may take an unassigned step: it is open to everyone or addressed to their
+ * station, and it is their kind of work (supervisors take anything).
+ */
+export const canClaimStep = (step: CardStep, actor: CardActor) =>
+  !step.assigneeId && actor.canWork && (!step.stationId || step.stationId === actor.stationId) && stepFitsActor(step.type, actor);
+
+/** Fields a reviewer or the owner changes on someone else's done step when sending it back. */
+const RETURN_KEYS = new Set(['status', 'returnedReason', 'returnedById', 'returnedByName', 'returnedAt']);
+const changedKeys = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !same((a as any)[k], (b as any)[k]));
 
 /** Returns an Arabic error when the actor may not make this change, otherwise null. */
 export function cardChangeError(before: ProductionCard | null, after: ProductionCard, actor: CardActor, ctx: CardContext): string | null {
@@ -363,23 +519,36 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   for (const step of after.steps) {
     const prev = before?.steps.find((s) => s.id === step.id);
     if (step.assigneeId && step.assigneeId !== prev?.assigneeId && !ctx.users.has(step.assigneeId)) return 'المكلف غير موجود أو موقوف';
+    if (step.waitingOnId && step.waitingOnId !== prev?.waitingOnId && !ctx.users.has(step.waitingOnId)) return 'الزميل المطلوب منه الحل غير موجود أو موقوف';
     if (step.stationId && step.stationId !== prev?.stationId && !ctx.stations.some((s) => s.id === step.stationId)) return 'محطة المهمة غير موجودة';
+    // Work sessions are a record too: time is added, never rewritten.
+    const oldTime = prev?.timeLog || [];
+    const newTime = step.timeLog || [];
+    if (newTime.length < oldTime.length || oldTime.some((entry, i) => !same(entry, newTime[i]))) return 'سجل الوقت للإضافة فقط';
   }
 
   // Earlier log entries are a record: nobody rewrites them.
   const oldLog = before?.log || [];
   const newLog = after.log || [];
   if (newLog.length < oldLog.length || oldLog.some((entry, i) => newLog[i]?.id !== entry.id || newLog[i]?.text !== entry.text)) return 'سجل التوثيق للإضافة فقط ولا يُعدَّل';
+  const isOwner = !!before && before.ownerId === actor.id;
+  if (newLog.slice(oldLog.length).some((e) => e.decision) && !actor.canManage && !isOwner) return 'تسجيل القرار لصاحب البطاقة أو مسؤولي التكليف';
+
+  const scope = stationScope(ctx.stations, actor.stationId);
+  const outOfScope = (userId: string) => {
+    const station = ctx.users.get(userId)?.stationId;
+    return !!station && !scope.has(station);
+  };
 
   if (actor.canManage) {
     if (!before && after.status !== 'OPEN') return 'البطاقة الجديدة تبدأ جارية';
+    // A branch closes, cancels and reopens only the cards it governs.
+    if (before && before.status !== after.status && !canGovernCard(before, actor, ctx.stations)) return GOVERN_DENIED;
     // Supervisors distribute work inside the stations they follow.
-    const scope = stationScope(ctx.stations, actor.stationId);
     for (const step of after.steps) {
       const prev = before?.steps.find((s) => s.id === step.id);
       if (!step.assigneeId || step.assigneeId === prev?.assigneeId) continue;
-      const station = ctx.users.get(step.assigneeId)?.stationId;
-      if (station && !scope.has(station)) return 'لا يمكنك تكليف زميل من محطة غير مرتبطة بمحطتك';
+      if (outOfScope(step.assigneeId)) return 'لا يمكنك تكليف زميل من محطة غير مرتبطة بمحطتك';
     }
     return null;
   }
@@ -392,21 +561,35 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   if (before.steps.length !== after.steps.length || before.steps.some((s, i) => after.steps[i]?.id !== s.id)) return 'إضافة المهام وحذفها وترتيبها لمسؤولي التكليف';
 
   const mine = (step: CardStep) => step.assigneeId === actor.id;
+  const returned: number[] = [];
   for (let i = 0; i < before.steps.length; i += 1) {
     const prev = before.steps[i];
     const next = after.steps[i];
     if (same(prev, next)) continue;
     if (STEP_LOCKED.some((key) => !same(prev[key], next[key]))) return 'تعديل تفاصيل المهمة لمسؤولي التكليف';
+    if ((next.spentMinutes ?? 0) < (prev.spentMinutes ?? 0)) return 'الوقت المسجّل يُضاف إلى ما سبق ولا يُنقص';
     if (!same(prev.assigneeId, next.assigneeId)) {
       const claiming = next.assigneeId === actor.id && canClaimStep(prev, actor);
       const releasing = mine(prev) && !next.assigneeId && prev.status !== 'DONE';
-      if (!claiming && !releasing) return 'لا يمكنك تغيير المكلف بهذه المهمة';
+      // The card owner hands a step to another colleague without opening the full form.
+      const reassigning = isOwner && prev.status !== 'DONE';
+      if (!claiming && !releasing && !reassigning) return 'لا يمكنك تغيير المكلف بهذه المهمة';
+      if (reassigning && !claiming && next.assigneeId && outOfScope(next.assigneeId)) return 'لا يمكنك تكليف زميل من محطة غير مرتبطة بمحطتك';
     } else if (!mine(prev)) {
-      return 'تحدّث المهمة من أُسندت إليه';
+      const sendingBack = prev.status === 'DONE' && (next.status === 'TODO' || next.status === 'IN_PROGRESS') && changedKeys(prev, next).every((k) => RETURN_KEYS.has(k));
+      if (!sendingBack) return 'تحدّث المهمة من أُسندت إليه';
+      returned.push(i);
     }
   }
-  const worksOnCard = after.steps.some(mine);
-  if ((!same(before.script, after.script) || !same(before.links, after.links) || !same(before.mediaIds, after.mediaIds)) && !worksOnCard) return 'يعدّل النص والروابط من له مهمة في البطاقة';
+  if (returned.length) {
+    // Rework goes back with a reason, and only the owner or a reviewer further down the chain sends it.
+    if (!(after.steps[Math.min(...returned)].returnedReason || '').trim()) return 'اكتب سبب الإعادة إلى الخطوة السابقة';
+    const last = Math.max(...returned);
+    const reviews = before.steps.some((s, i) => i > last && mine(s) && isStepOpen(s) && REVIEW_STEP_TYPES.includes(s.type));
+    if (!isOwner && !reviews) return 'الإعادة إلى خطوة سابقة لصاحب البطاقة أو لمن يراجع المادة (الجودة أو الاعتماد)';
+  }
+  const worksOnCard = isOwner || after.steps.some(mine);
+  if ((!same(before.script, after.script) || !same(before.links, after.links) || !same(before.mediaIds, after.mediaIds)) && !worksOnCard) return 'يعدّل النص والروابط والمواد من له مهمة في البطاقة';
   return null;
 }
 

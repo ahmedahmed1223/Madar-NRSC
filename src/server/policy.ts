@@ -14,7 +14,7 @@ import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
-import { cardChangeError, cardContextOf } from '../shared/productionCards';
+import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED } from '../shared/productionCards';
 import { screensError } from '../shared/screens';
 import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
 import { stationsOf } from '../shared/stations';
@@ -273,7 +273,11 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
     const isOwner = [before?.ownerId, before?.uploadedById].includes(auth.user.id);
     return auth.can('media.delete') || (isOwner && auth.can('media.upload')) ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
   }
-  return auth.can('media.upload') ? null : 'صلاحياتك لا تسمح برفع الوسائط';
+  if (!auth.can('media.upload')) return 'صلاحياتك لا تسمح برفع الوسائط';
+  // Approving a video for air (or withdrawing that approval) is an editorial decision.
+  const approvalChanged = (before?.videoStatus === 'APPROVED') !== (after?.videoStatus === 'APPROVED');
+  if (approvalChanged && !(auth.can('news.approve') || auth.can('media.delete'))) return 'اعتماد الفيديو للبث لمن يملك صلاحية الاعتماد';
+  return null;
 };
 
 const notificationsPolicy: Policy = ({ auth, kind, before }) => {
@@ -499,9 +503,14 @@ export const POLICIES: Record<CollectionName, Policy> = {
   bookings: bookingsPolicy,
   productionCards: ({ auth, kind, before, after, list }) => {
     const canManage = auth.can('cards.manage');
-    if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) return canManage ? null : 'حذف بطاقات الإنتاج واستعادتها لمسؤولي التكليف';
-    const actor = { id: auth.user.id, stationId: auth.user.stationId, canManage, canWork: auth.can('cards.work') };
-    return cardChangeError(before, after, actor, cardContextOf(list?.('settings')[0], list?.('users') || []));
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
+    const ctx = cardContextOf(list?.('settings')[0], list?.('users') || []);
+    if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
+      if (!canManage) return 'حذف بطاقات الإنتاج واستعادتها لمسؤولي التكليف';
+      // A branch deletes or restores only the cards it governs (its own and those of the branches it follows).
+      return !before || canGovernCard(before, actor, ctx.stations) ? null : GOVERN_DENIED;
+    }
+    return cardChangeError(before, after, actor, ctx);
   },
 };
 

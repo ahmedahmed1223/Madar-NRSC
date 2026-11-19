@@ -18,9 +18,10 @@ import { reconcileBackupIncidents } from './src/server/backupIncidents';
 import { backupStatus } from './src/server/databaseDiagnostics';
 import { changeBus } from './src/server/sync';
 import { recordJob, registerJob, trackJob } from './src/server/jobs';
+import { runStorageSync } from './src/server/storage';
 
 /** Periodic jobs as the administrator's overview names them. */
-const JOBS = { publish: 'النشر المجدول', bulletins: 'إنشاء النشرات المجدولة', housekeeping: 'التنظيف الدوري', wires: 'جلب البرقيات', delivery: 'إرسال التنبيهات', backup: 'النسخ الاحتياطي' };
+const JOBS = { publish: 'النشر المجدول', bulletins: 'إنشاء النشرات المجدولة', housekeeping: 'التنظيف الدوري', wires: 'جلب البرقيات', delivery: 'إرسال التنبيهات', backup: 'النسخ الاحتياطي', storage: 'نسخ الملفات إلى التخزين' };
 
 async function main() {
   const config = loadConfig();
@@ -102,6 +103,12 @@ async function main() {
     const poll = () => trackJob(JOBS.wires, () => pollWires(db, config.wires)).catch((err) => logger.error('wire polling failed', { error: String(err) }));
     timers.push(setInterval(poll, config.wires.pollMinutes * 60 * 1000));
     setTimeout(poll, 5_000).unref();
+  }
+  // Library files to Dropbox / Google Drive / the shared folder.
+  if (config.storageSyncSeconds > 0) {
+    registerJob(JOBS.storage, config.storageSyncSeconds / 60);
+    const copy = () => trackJob(JOBS.storage, () => runStorageSync(db, config)).catch((err) => logger.error('storage copy failed', { error: String(err) }));
+    timers.push(setInterval(copy, config.storageSyncSeconds * 1000));
   }
   // Scheduled publishing: checked every 30 seconds.
   timers.push(

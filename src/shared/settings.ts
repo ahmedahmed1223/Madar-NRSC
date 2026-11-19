@@ -2,6 +2,7 @@ import type { SystemSettings } from '../types';
 import { validZone } from './dateFormat';
 import { stationsError } from './stations';
 import { setupStateError } from './setup';
+import { validateStorage } from './storage';
 import { stepTypesError } from './productionCards';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
@@ -26,6 +27,10 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
   }
   if (settings.cardStepTypes !== undefined) {
     const error = stepTypesError(settings.cardStepTypes);
+    if (error) return error;
+  }
+  if (settings.storage !== undefined) {
+    const error = validateStorage(settings.storage);
     if (error) return error;
   }
   if (settings.setup !== undefined) {

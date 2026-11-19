@@ -144,6 +144,8 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
 export function removeUpload(db: NewsroomDatabase, dataDir: string, uploadId: string) {
   const record = db.getUpload(uploadId);
   if (!record) return;
+  // Brought in from Dropbox/Drive/the shared folder: nothing on the server's disk.
+  if (!record.storedName) return db.deleteUpload(uploadId);
   fs.rm(path.join(uploadsDir(dataDir), record.storedName), { force: true }, (err) => {
     if (err) logger.warn('failed to delete upload file', { id: uploadId, error: String(err) });
   });

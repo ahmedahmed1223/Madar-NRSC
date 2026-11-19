@@ -22,7 +22,16 @@ interface RowMeta {
 export type DataStoreEvent =
   | { type: 'data-changed'; collections: CollectionName[]; remote: boolean }
   | { type: 'sync-error'; code: string; message: string; collection: CollectionName }
-  | { type: 'sync-status'; pending: number; online: boolean }
+  | {
+      type: 'sync-status';
+      pending: number;
+      /** The server answered the last request (false after a failed attempt or a dropped stream). */
+      online: boolean;
+      /** What the browser reports (navigator.onLine). */
+      browserOnline?: boolean;
+      /** When the next automatic retry is due (epoch ms), or null when none is scheduled. */
+      retryAt?: number | null;
+    }
   /** The server answered from a different database than before (several copies behind one address). */
   | { type: 'storage-warning'; message: string };
 
@@ -30,8 +39,55 @@ export interface WriteOutcome {
   ok: boolean;
   /** Still waiting for the server when the wait ended (kept and retried in the background). */
   pending?: boolean;
+  /**
+   * There is no connection: the write is stored on this device and will be sent automatically
+   * once the connection is back. Always comes with `pending: true`.
+   */
+  queued?: boolean;
   message?: string;
 }
+
+/** Said to the user when a write waits on this device for the connection to come back. */
+export const QUEUED_MESSAGE = 'محفوظ على جهازك — سيُرسل تلقائياً عند عودة الاتصال.';
+const QUEUED_OUTCOME: WriteOutcome = { ok: false, pending: true, queued: true, message: QUEUED_MESSAGE };
+
+/** Browser connectivity as seen by the sync layer; injectable for tests. */
+export interface Connectivity {
+  isOnline(): boolean;
+  /** Calls back on the browser's online/offline events; returns an unsubscribe function. */
+  subscribe(listener: (online: boolean) => void): () => void;
+}
+
+const browserConnectivity: Connectivity = {
+  // Node (tests, SSR) has no navigator.onLine: treat as online.
+  isOnline: () => typeof navigator === 'undefined' || (navigator as Navigator).onLine !== false,
+  subscribe(listener) {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => undefined;
+    const on = () => listener(true);
+    const off = () => listener(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  },
+};
+
+export interface DataStoreOptions {
+  connectivity?: Connectivity;
+  /** Source of randomness for retry jitter (0 ≤ x < 1). */
+  random?: () => number;
+}
+
+/** First retry after a failed sync, doubled on each further failure… */
+export const RETRY_BASE_MS = 1000;
+/** …up to this cap. */
+export const RETRY_MAX_MS = 60_000;
+/** While the browser says it is offline, one probe this often in case navigator.onLine is wrong. */
+export const OFFLINE_PROBE_MS = 60_000;
+
+type AttemptResult = 'ok' | 'again' | 'network' | 'server' | 'auth' | 'idle';
 
 type Listener = (event: DataStoreEvent) => void;
 
@@ -83,7 +139,13 @@ export type Transport = <T>(url: string, init?: RequestInit & { json?: unknown }
 
 export class DataStore {
   /** `transport` is injectable so tests can run several independent users in one process. */
-  constructor(private request: Transport = apiFetch, private realtime = true) {}
+  constructor(private request: Transport = apiFetch, private realtime = true, options: DataStoreOptions = {}) {
+    this.connectivity = options.connectivity ?? browserConnectivity;
+    this.random = options.random ?? Math.random;
+  }
+
+  private connectivity: Connectivity;
+  private random: () => number;
 
   private data = new Map<CollectionName, any>();
   private meta = new Map<CollectionName, Map<string, RowMeta>>();
@@ -94,7 +156,16 @@ export class DataStore {
   private userId: string | null = null;
   private ready = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
-  private retryDelay = 1000;
+  /** The one scheduled retry after a failure (or the offline probe). */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAt: number | null = null;
+  /** Consecutive failed sync attempts; drives the exponential backoff. */
+  private failures = 0;
+  private lastFailure: Exclude<AttemptResult, 'ok' | 'again' | 'idle'> | null = null;
+  /** The single sync request in flight, if any. */
+  private syncing: Promise<void> | null = null;
+  private attemptListeners = new Set<() => void>();
+  private unsubscribeConnectivity: (() => void) | null = null;
   private online = true;
   private pulling = false;
   private pullAgain = false;
@@ -119,6 +190,8 @@ export class DataStore {
   awaitWrite(c: CollectionName, id: string, timeoutMs = 12_000): Promise<WriteOutcome> {
     const k = keyOf(c, id);
     if (!this.dirty.has(k) && !this.inFlight.has(k)) return Promise.resolve({ ok: true });
+    // No connection: say so at once instead of waiting; the write stays queued on this device.
+    if (this.waitingForConnection()) return Promise.resolve({ ...QUEUED_OUTCOME });
     return new Promise((resolve) => {
       const done = (o: WriteOutcome) => {
         clearTimeout(timer);
@@ -139,6 +212,16 @@ export class DataStore {
     if (!list) return;
     this.waiters.delete(k);
     list.forEach((f) => f(outcome));
+  }
+
+  /** Every write still waiting is kept on this device: tell its form now. */
+  private settleAllWaitersQueued() {
+    for (const k of [...this.waiters.keys()]) this.settleWaiters(k, { ...QUEUED_OUTCOME });
+  }
+
+  /** True while writes cannot reach the server: the browser is offline or the last attempt hit the network. */
+  private waitingForConnection() {
+    return !this.connectivity.isOnline() || (this.retryTimer !== null && this.lastFailure === 'network');
   }
 
   private checkDb(dbId: unknown) {
@@ -182,8 +265,13 @@ export class DataStore {
     return this.online;
   }
 
+  /** Snapshot for status chips: what waits, whether the server answers, and when the next retry is. */
+  syncState() {
+    return { pending: this.pendingCount(), online: this.online, browserOnline: this.connectivity.isOnline(), retryAt: this.retryAt };
+  }
+
   private emitStatus() {
-    this.emit({ type: 'sync-status', pending: this.pendingCount(), online: this.online });
+    this.emit({ type: 'sync-status', ...this.syncState() });
   }
 
   // --- Lifecycle -------------------------------------------------------------
@@ -197,6 +285,7 @@ export class DataStore {
     this.userId = userId;
     this.starting = (async () => {
       this.loadJournal();
+      this.watchConnectivity();
       await this.bootstrap();
       this.replayPersistedPending();
       this.connectRealtime();
@@ -214,6 +303,11 @@ export class DataStore {
     this.pollTimer = null;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = null;
+    this.clearRetry();
+    this.failures = 0;
+    this.lastFailure = null;
+    this.unsubscribeConnectivity?.();
+    this.unsubscribeConnectivity = null;
     this.data.clear();
     this.meta.clear();
     this.dirty.clear();
@@ -258,8 +352,42 @@ export class DataStore {
     }
   }
 
+  private watchConnectivity() {
+    if (this.unsubscribeConnectivity) return;
+    this.unsubscribeConnectivity = this.connectivity.subscribe((online) => this.onConnectivityChange(online));
+  }
+
+  /** Browser went offline: stop trying (bar a rare probe). Back online: resume at once. */
+  private onConnectivityChange(online: boolean) {
+    if (!this.userId) return;
+    if (!online) {
+      // The stream would otherwise reconnect every few seconds into the void.
+      this.eventSource?.close();
+      this.eventSource = null;
+      this.setOnline(false);
+      this.settleAllWaitersQueued();
+      if (this.dirty.size > 0 || this.inFlight.size > 0) this.scheduleRetry();
+      this.emitStatus();
+      return;
+    }
+    // A fresh connection: start the backoff over, with a little jitter so a whole newsroom
+    // coming back at once does not hit the server in the same millisecond.
+    this.failures = 0;
+    this.clearRetry();
+    if (this.realtime && !this.eventSource) this.openStream();
+    if (this.dirty.size > 0) this.scheduleFlush(Math.round(this.random() * RETRY_BASE_MS));
+    void this.pull();
+    this.emitStatus();
+  }
+
   private connectRealtime() {
     if (!this.realtime) return;
+    if (this.connectivity.isOnline()) this.openStream();
+    // Safety net for proxies that buffer SSE.
+    this.pollTimer = setInterval(() => void this.pull(), POLL_FALLBACK_MS);
+  }
+
+  private openStream() {
     if (typeof EventSource !== 'undefined') {
       this.eventSource = new EventSource('/api/v1/data/stream', { withCredentials: true });
       this.eventSource.addEventListener('rev', (e) => {
@@ -272,15 +400,19 @@ export class DataStore {
       };
       this.eventSource.onerror = () => this.setOnline(false);
     }
-    // Safety net for proxies that buffer SSE.
-    this.pollTimer = setInterval(() => void this.pull(), POLL_FALLBACK_MS);
   }
 
   private setOnline(online: boolean) {
     if (this.online === online) return;
     this.online = online;
     this.emitStatus();
-    if (online) this.scheduleFlush(0);
+    if (!online || this.dirty.size === 0) return;
+    if (this.retryTimer && this.lastFailure === 'network') {
+      // The server answered another request: the network is back, so retry soon. The failure
+      // count is kept, so if this attempt fails too the next wait is still longer.
+      this.clearRetry();
+      this.scheduleFlush(Math.round(this.random() * RETRY_BASE_MS));
+    } else if (!this.retryTimer) this.scheduleFlush(0);
   }
 
   // --- Synchronous access (used by ApiService) ------------------------------
@@ -371,12 +503,111 @@ export class DataStore {
 
   // --- Push -----------------------------------------------------------------
 
+  /** Short delay before sending (batches quick edits); never preempts a scheduled retry. */
   private scheduleFlush(delay: number) {
-    if (this.flushTimer) return;
+    if (this.flushTimer || this.retryTimer) return;
+    if (!this.connectivity.isOnline()) {
+      this.scheduleRetry(false);
+      return;
+    }
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
-      void this.flush();
+      if (!this.connectivity.isOnline()) this.scheduleRetry(false);
+      else void this.runOnce();
     }, delay);
+  }
+
+  private clearRetry() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryAt = null;
+  }
+
+  /** Delay before the next automatic attempt: 1s, 2s, 4s … capped at 60s, with jitter. */
+  private retryDelay() {
+    const base = this.connectivity.isOnline() ? Math.min(RETRY_BASE_MS * 2 ** Math.max(0, this.failures - 1), RETRY_MAX_MS) : OFFLINE_PROBE_MS;
+    // "Equal jitter": somewhere between half and all of the base delay.
+    return Math.round(base / 2 + this.random() * (base / 2));
+  }
+
+  /** Schedules the single retry timer. `replace` moves an existing one (after a new failure). */
+  private scheduleRetry(replace = true) {
+    if (this.retryTimer && !replace) return;
+    this.clearRetry();
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    const delay = this.retryDelay();
+    this.retryAt = Date.now() + delay;
+    // Runs even when the browser says offline: that is the probe in case navigator.onLine is wrong.
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.retryAt = null;
+      void this.runOnce();
+    }, delay);
+  }
+
+  /** Resolves when the next sync attempt finishes, or after `ms`. */
+  private nextAttempt(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.attemptListeners.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      this.attemptListeners.add(done);
+    });
+  }
+
+  /**
+   * Starts one sync request unless one is already in flight (then returns that one).
+   * There is never more than one request at a time; what follows it is decided in `afterAttempt`.
+   */
+  private runOnce(): Promise<void> {
+    if (this.syncing) return this.syncing;
+    if (!this.ready || this.dirty.size === 0) return Promise.resolve();
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.clearRetry();
+    let result: AttemptResult = 'idle';
+    this.syncing = this.sendBatch()
+      .then((r) => {
+        result = r;
+      })
+      .finally(() => {
+        this.syncing = null;
+        this.afterAttempt(result);
+        this.attemptListeners.forEach((f) => f());
+      });
+    return this.syncing;
+  }
+
+  private afterAttempt(result: AttemptResult) {
+    switch (result) {
+      case 'ok':
+        this.failures = 0;
+        this.lastFailure = null;
+        if (this.dirty.size > 0) this.scheduleFlush(0);
+        break;
+      case 'again':
+        if (this.dirty.size > 0) this.scheduleFlush(0);
+        break;
+      case 'network':
+      case 'server':
+        this.failures++;
+        this.lastFailure = result;
+        this.scheduleRetry();
+        break;
+      case 'auth':
+        // The shell asks the user to sign in again; changes stay queued until the next edit or flush.
+        this.lastFailure = 'auth';
+        break;
+    }
+    this.emitStatus();
   }
 
   private buildOp(c: CollectionName, id: string, op: 'upsert' | 'delete'): SyncOp {
@@ -386,21 +617,46 @@ export class DataStore {
     return { c, op, id, d: m ? JSON.parse(m.json) : undefined, p: m?.p, baseV };
   }
 
-  /** Pushes everything pending and waits until the server has answered (or the timeout passes). */
+  /**
+   * Pushes everything pending and waits until the server has answered (or the timeout passes).
+   * Returns false at once when there is no connection: the writes stay queued on this device.
+   */
   async settle(timeoutMs = 10_000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
-    while (this.pendingCount() > 0 && Date.now() < deadline) {
-      await this.flush();
-      if (this.pendingCount() > 0) await new Promise((r) => setTimeout(r, 100));
+    while (this.pendingCount() > 0) {
+      if (this.syncing) {
+        await this.syncing;
+        continue;
+      }
+      if (this.waitingForConnection() || this.lastFailure === 'auth') return false;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      if (this.flushTimer || this.retryTimer) {
+        await this.nextAttempt(remaining);
+        continue;
+      }
+      if (!this.ready || this.dirty.size === 0) break;
+      await this.runOnce();
     }
     return this.pendingCount() === 0;
   }
 
-  /** Sends dirty rows; rows already in flight wait for the next round. */
-  async flush(): Promise<void> {
-    if (!this.ready || this.inFlight.size > 0) return;
+  /**
+   * Sends pending rows now. Waits for a request already in flight instead of starting a second
+   * one. Without a connection, or while waiting out a retry delay, it does nothing unless
+   * `force` is set (an explicit "retry now" from the user).
+   */
+  async flush(opts: { force?: boolean } = {}): Promise<void> {
+    if (this.syncing) await this.syncing;
+    if (!this.ready || this.dirty.size === 0) return;
+    if (!opts.force && (!this.connectivity.isOnline() || this.retryTimer)) return;
+    await this.runOnce();
+  }
+
+  /** One request with the next batch of dirty rows; never throws. */
+  private async sendBatch(): Promise<AttemptResult> {
     const entries = [...this.dirty.entries()].slice(0, this.singleOps > 0 ? 1 : BATCH_SIZE);
-    if (entries.length === 0) return;
+    if (entries.length === 0) return 'idle';
 
     const ops = entries.map(([, e]) => this.buildOp(e.c, e.id, e.op));
     entries.forEach(([k]) => {
@@ -411,14 +667,16 @@ export class DataStore {
     try {
       const res = await this.request<{ rev: number; dbId?: string; results: SyncOpResult[] }>('/api/v1/data/sync', { method: 'POST', json: { ops } });
       this.checkDb(res.dbId);
-      this.retryDelay = 1000;
       if (this.singleOps > 0) this.singleOps--;
+      this.failures = 0;
+      this.lastFailure = null;
       this.setOnline(true);
       const touched = new Set<CollectionName>();
       res.results.forEach((result, i) => this.handleResult(ops[i], result, touched));
       this.recordJournal(ops, res.results, res.rev, res.dbId ?? null);
       entries.forEach(([k]) => this.inFlight.delete(k));
       if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
+      return 'ok';
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;
       // Only a malformed request is final; everything else (404 from a proxy, 5xx, network) is retried.
@@ -427,12 +685,11 @@ export class DataStore {
         this.inFlight.delete(k);
         if (!this.dirty.has(k)) this.dirty.set(k, e);
       });
-      if (status === 401) return; // shell handles re-login; changes stay pending
+      if (status === 401) return 'auth';
       if (malformed && entries.length > 1) {
         // Isolate the bad op: resend these one at a time.
         this.singleOps = entries.length;
-        this.scheduleFlush(0);
-        return;
+        return 'again';
       }
       if (malformed) {
         const [k, e] = entries[0];
@@ -443,22 +700,24 @@ export class DataStore {
         this.settleWaiters(k, { ok: false, message });
         // Realign this row with the server copy.
         void this.pull();
-        return;
+        return 'again';
       }
       this.setOnline(false);
+      const network = status === 0;
+      // No connection: forms waiting on these rows learn now that the rows are kept on this device.
+      if (network) this.settleAllWaitersQueued();
       // Say it once per streak of failures, with the server's reason, without dropping anything.
-      if (Date.now() - this.lastErrorAt > 60_000 && entries[0]) {
+      // When the browser itself is offline the connection chip already says so.
+      if (this.connectivity.isOnline() && Date.now() - this.lastErrorAt > 60_000 && entries[0]) {
         this.lastErrorAt = Date.now();
         const reason = err instanceof ApiError ? err.message : 'تعذر الاتصال بالخادم';
-        this.emit({ type: 'sync-error', code: 'RETRY', message: `${reason} — تعديلاتك محفوظة على هذا الجهاز وستُرسل تلقائياً عند استجابة الخادم.`, collection: entries[0][1].c });
+        this.emit({ type: 'sync-error', code: 'RETRY', message: `${reason} — تعديلاتك محفوظة على جهازك وستُرسل تلقائياً عند استجابة الخادم.`, collection: entries[0][1].c });
       }
-      this.retryDelay = Math.min(this.retryDelay * 2, 30_000);
-      setTimeout(() => this.scheduleFlush(0), this.retryDelay);
+      return network ? 'network' : 'server';
     } finally {
       this.persistPending();
       this.emitStatus();
     }
-    if (this.dirty.size > 0) this.scheduleFlush(0);
   }
 
   private handleResult(op: SyncOp, result: SyncOpResult, touched: Set<CollectionName>) {
@@ -496,7 +755,8 @@ export class DataStore {
   // --- Pull -----------------------------------------------------------------
 
   async pull(): Promise<void> {
-    if (!this.ready) return;
+    // Offline: nothing to fetch; the 'online' event pulls again.
+    if (!this.ready || !this.connectivity.isOnline()) return;
     if (this.pulling) {
       this.pullAgain = true;
       return;

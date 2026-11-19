@@ -4,23 +4,28 @@
  * finished in a period, and how the load compares between stations.
  *
  * Every piece of work becomes one WorkItem, whatever screen it came from: a production-card step,
- * an editorial task, a request handled for another department, or a news story written.
+ * an editorial task, a request handled for another department, a news story written, or a story
+ * reviewed (approved, sent back or rejected by someone other than its writer).
  * Weight = how heavy that kind of work is × how complex this one is.
  */
 import { cardContributions, cardState, isStepOpen, stepPoints, stepTypeName, type ProductionCard, type StepType } from './productionCards';
 import type { Station } from './stations';
 
-export type WorkSource = 'CARD_STEP' | 'TASK' | 'REQUEST' | 'NEWS';
+export type WorkSource = 'CARD_STEP' | 'TASK' | 'REQUEST' | 'NEWS' | 'REVIEW';
 
 export const WORK_SOURCE_NAMES: Record<WorkSource, string> = {
   CARD_STEP: 'مهمة في بطاقة إنتاج',
   TASK: 'مهمة تحريرية',
   REQUEST: 'طلب قسم',
   NEWS: 'خبر',
+  REVIEW: 'مراجعة خبر',
 };
 
 /** Weights of work recorded outside production cards (card steps use the configured step types). */
-export const SOURCE_WEIGHTS: Record<Exclude<WorkSource, 'CARD_STEP'>, number> = { TASK: 2, REQUEST: 2, NEWS: 2 };
+export const SOURCE_WEIGHTS: Record<Exclude<WorkSource, 'CARD_STEP'>, number> = { TASK: 2, REQUEST: 2, NEWS: 2, REVIEW: 1 };
+
+/** Review decisions that end a review round and are credited to the reviewer. */
+const REVIEW_OUTCOMES = new Set(['APPROVED', 'NEEDS_REVISION', 'REJECTED', 'PUBLISHED', 'SCHEDULED']);
 
 export interface WorkItem {
   key: string;
@@ -148,8 +153,28 @@ export function collectWork(input: WorkInputs): WorkItem[] {
   }
 
   for (const story of input.news) {
+    if (story.deletedAt) continue;
+    // Quality and editorial review: each decision on a story in review is the reviewer's work.
+    for (const log of story.workflowLogs || []) {
+      const by = log?.changedBy?.id;
+      if (!by || by === story.authorId || log.fromStatus !== 'UNDER_REVIEW' || !REVIEW_OUTCOMES.has(log.toStatus)) continue;
+      items.push({
+        key: `review:${story.id}:${log.id || log.timestamp}`,
+        source: 'REVIEW',
+        userId: by,
+        stationId: stationOf.get(by),
+        title: story.title,
+        typeName: WORK_SOURCE_NAMES.REVIEW,
+        points: SOURCE_WEIGHTS.REVIEW,
+        open: false,
+        blocked: false,
+        overdue: false,
+        doneAt: log.timestamp,
+        ref: { nav: 'news-editor', id: story.id },
+      });
+    }
     // A story produced through a card is already counted by the card's steps.
-    if (story.deletedAt || !story.authorId || cardNews.has(story.id) || story.status === 'REJECTED') continue;
+    if (!story.authorId || cardNews.has(story.id) || story.status === 'REJECTED') continue;
     const done = ['APPROVED', 'SCHEDULED', 'PUBLISHED', 'ARCHIVED', 'UNPUBLISHED'].includes(story.status);
     items.push({
       key: `news:${story.id}`,
@@ -230,6 +255,13 @@ export function loadByPerson(items: WorkItem[], users: UserLike[], period: Perio
 
 export type LoadLevel = 'HIGH' | 'NORMAL' | 'LOW';
 
+/** A station's open load per person above this many times the average is «حمل مرتفع». */
+export const HIGH_LOAD_FACTOR = 1.5;
+/** Below this fraction of the average is «طاقة متاحة». */
+export const LOW_LOAD_FACTOR = 0.5;
+/** The rule in words, shown beside the rating. */
+export const LOAD_LEVEL_RULE = 'التقييم يقارن «الحمل للفرد» بمتوسط المحطات: «حمل مرتفع» إذا زاد على 1.5 ضعف المتوسط، و«طاقة متاحة» إذا قلّ عن نصفه، و«متوازن» بينهما.';
+
 export interface StationLoad extends LoadRow {
   /** Open weighted work per person. */
   perPerson: number;
@@ -264,8 +296,68 @@ export function loadByStation(items: WorkItem[], users: UserLike[], stations: St
   const staffed = list.filter((r) => r.people > 0 && r.id !== '');
   staffed.forEach((r) => (r.perPerson = r.openPoints / r.people));
   const average = staffed.length ? staffed.reduce((sum, r) => sum + r.perPerson, 0) / staffed.length : 0;
-  for (const r of staffed) r.level = average > 0 && r.perPerson > average * 1.5 ? 'HIGH' : average > 0 && r.perPerson < average * 0.5 ? 'LOW' : 'NORMAL';
+  for (const r of staffed) r.level = average > 0 && r.perPerson > average * HIGH_LOAD_FACTOR ? 'HIGH' : average > 0 && r.perPerson < average * LOW_LOAD_FACTOR ? 'LOW' : 'NORMAL';
   return list;
+}
+
+const DAY_MS = 86400_000;
+
+/** The period of the same length just before this one, for comparison. */
+export const previousPeriod = (period: Period): Period => ({ from: period.from - (period.to - period.from), to: period.from });
+
+export interface TrendDay {
+  /** YYYY-MM-DD (in the zone `dayOf` uses). */
+  date: string;
+  done: number;
+  donePoints: number;
+}
+
+/**
+ * Finished work day by day across the period, every day listed (zeros included) so a
+ * quiet day shows as a gap rather than disappearing.
+ */
+export function dailyTrend(items: WorkItem[], period: Period, dayOf: (iso: string) => string = (iso) => iso.slice(0, 10)): TrendDay[] {
+  const days = new Map<string, TrendDay>();
+  // Noon of each day names it, so a daylight-saving shift never skips or repeats a date.
+  for (let t = period.from; t < period.to; t += DAY_MS) {
+    const date = dayOf(new Date(Math.min(t + DAY_MS / 2, period.to - 1)).toISOString());
+    if (!days.has(date)) days.set(date, { date, done: 0, donePoints: 0 });
+  }
+  for (const item of items) {
+    if (item.open || !inPeriod(item.doneAt, period)) continue;
+    const date = dayOf(item.doneAt!);
+    const day = days.get(date) || { date, done: 0, donePoints: 0 };
+    day.done += 1;
+    day.donePoints += item.points;
+    days.set(date, day);
+  }
+  return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface PeriodComparison {
+  done: number;
+  donePoints: number;
+  previousDone: number;
+  previousPoints: number;
+  /** Change in finished points against the previous period, in percent; null when there was nothing before. */
+  change: number | null;
+}
+
+/** Finished work in the period against the same length of time just before it. */
+export function comparePeriods(items: WorkItem[], period: Period): PeriodComparison {
+  const before = previousPeriod(period);
+  let done = 0, donePoints = 0, previousDone = 0, previousPoints = 0;
+  for (const item of items) {
+    if (item.open) continue;
+    if (inPeriod(item.doneAt, period)) {
+      done += 1;
+      donePoints += item.points;
+    } else if (inPeriod(item.doneAt, before)) {
+      previousDone += 1;
+      previousPoints += item.points;
+    }
+  }
+  return { done, donePoints, previousDone, previousPoints, change: previousPoints ? Math.round(((donePoints - previousPoints) / previousPoints) * 100) : null };
 }
 
 export interface ProductionSummary {

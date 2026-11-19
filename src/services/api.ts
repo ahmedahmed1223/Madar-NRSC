@@ -72,7 +72,7 @@ import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
-import { cardChangeError, cardContextOf, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
+import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
@@ -93,6 +93,7 @@ import {
   storyError,
   storyStatusError,
 } from '../shared/bulletins';
+import { scheduledBulletinExists } from '../shared/bulletinReadiness';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { defaultPrefs, NotificationPrefs, prefsError } from '../shared/notifications';
 import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
@@ -1326,7 +1327,9 @@ export class ApiService {
     const f = this.getBulletinFormats().find((x) => x.id === formatId);
     if (!f) throw new Error('القالب غير موجود');
     const id = opts.scheduled ? scheduledBulletinId(f.id, date) : newId('bul');
-    if (getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).some((b) => b.id === id)) throw new Error('هذه النشرة موجودة مسبقاً');
+    const stored = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    // A scheduled day is matched by format and date too, not only by id (a hand-made or imported copy counts).
+    if (stored.some((b) => b.id === id) || (opts.scheduled && scheduledBulletinExists(f, date, stored))) throw new Error('هذه النشرة موجودة مسبقاً');
     const { bulletin, stories } = bulletinFromFormat(f, date, id, newId);
     const saved = this.saveBulletin({ ...bulletin, ...opts.overrides, id });
     const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
@@ -1337,8 +1340,8 @@ export class ApiService {
 
   /** Scheduled bulletins for a day that have not been created yet. */
   static missingScheduledBulletins(date: string): BulletinFormat[] {
-    const existing = new Set(getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).map((b) => b.id));
-    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !existing.has(scheduledBulletinId(f.id, date)));
+    const existing = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !scheduledBulletinExists(f, date, existing));
   }
 
   /** Programme episodes and bulletins that can run in on-air mode. */
@@ -1425,7 +1428,7 @@ export class ApiService {
   /** What the signed-in colleague may do on cards (the server applies the same rules). */
   static cardActor(): CardActor {
     const me = this.getCurrentUser();
-    return { id: me.id, stationId: me.stationId, canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+    return { id: me.id, stationId: me.stationId, role: me.role, departmentId: departmentIdOf(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
   }
 
   /** Creates or replaces a card after checking it with the rules the server enforces. */
@@ -1455,11 +1458,37 @@ export class ApiService {
   }
 
   /** Documents work on the card; the server records who wrote it, from which station and when. */
-  static addCardNote(cardId: string, text: string, stepId?: string): ProductionCard {
+  static addCardNote(cardId: string, text: string, stepId?: string, decision = false): ProductionCard {
     const me = this.getCurrentUser();
     return this.updateCard(cardId, (card) => ({
       ...card,
-      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
+      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, ...(decision ? { decision: true } : {}), byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
+    }));
+  }
+
+  /** Sends an earlier step back for rework with a reason (a reviewer, the owner or a supervisor). */
+  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string): ProductionCard {
+    return this.updateCard(cardId, (card) => sendBackCard(card, targetStepId, reason, fromStepId));
+  }
+
+  /** Finishes a step; the minutes of this work session are added to the step's total, never replacing it. */
+  static finishCardStep(cardId: string, stepId: string, note: string | undefined, sessionMinutes?: number): ProductionCard {
+    const me = this.getCurrentUser();
+    return this.updateCard(cardId, (card) => ({
+      ...card,
+      steps: card.steps.map((s) => {
+        if (s.id !== stepId) return s;
+        const session = sessionMinutes && sessionMinutes > 0 ? [{ id: newId('tim'), minutes: Math.min(1440, Math.round(sessionMinutes)), byId: me.id, byName: me.fullName, at: new Date().toISOString() }] : [];
+        return {
+          ...s,
+          status: 'DONE' as const,
+          note: note?.trim() || undefined,
+          blockedReason: undefined,
+          waitingOnId: undefined,
+          timeLog: session.length ? [...(s.timeLog || []), ...session] : s.timeLog,
+          spentMinutes: (s.spentMinutes || 0) + timeLogMinutes(session) || undefined,
+        };
+      }),
     }));
   }
 

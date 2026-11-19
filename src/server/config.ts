@@ -65,6 +65,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     LOGIN_RATE_LIMIT_PER_15MIN: int(20, 3),
 
     MEDIA_MAX_UPLOAD_MB: int(500, 1),
+    // Copying library files to Dropbox / Google Drive / the shared folder (seconds; 0 disables).
+    STORAGE_SYNC_SECONDS: int(20, 0),
 
     // Outgoing e-mail for notifications (leave SMTP_HOST empty to disable e-mail).
     SMTP_HOST: z.string().optional(),
@@ -140,6 +142,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
     mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,
+    storageSyncSeconds: c.STORAGE_SYNC_SECONDS,
     gemini: { apiKey: geminiKey, model: c.GEMINI_MODEL },
     mail: c.SMTP_HOST
       ? {

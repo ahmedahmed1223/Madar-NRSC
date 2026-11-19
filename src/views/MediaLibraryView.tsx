@@ -8,7 +8,10 @@ import { RbacService } from '../services/rbacService';
 import { confirmSaved } from '../services/confirmSave';
 import { notify } from '../services/notify';
 import React, { useEffect, useState } from 'react';
-import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
+import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
+import { storageClient } from '../services/storageClient';
+import { ExternalFilePicker, availableSources } from '../components/media/ExternalFilePicker';
+import { TARGET_NAMES, type StorageCopy, type StorageStatus } from '../shared/storage';
 import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive, Download } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -21,6 +24,8 @@ interface MediaLibraryViewProps {
   onUploadMedia: (asset: Partial<MediaAsset>) => void | boolean | Promise<boolean | void>;
   onDeleteMedia: (id: string) => void;
 }
+
+const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
 
 const TAG_SUGGESTIONS = [
   'أخبار_عاجلة',
@@ -80,7 +85,42 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [title, setTitle] = useState('');
   const [mediaType, setMediaType] = useState<MediaType>('IMAGE');
   const [fileUrl, setFileUrl] = useState('');
-  const [durationSeconds, setDurationSeconds] = useState(120);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  // Where files can also be kept (Dropbox, Google Drive, the station's shared folder).
+  const [storage, setStorage] = useState<StorageStatus | null>(null);
+  const [keepInShare, setKeepInShare] = useState(true);
+  const [showExternal, setShowExternal] = useState(false);
+  const [copies, setCopies] = useState<Record<string, StorageCopy[]>>({});
+  useEffect(() => {
+    let active = true;
+    storageClient.status().then((st) => active && setStorage(st)).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  const externalSources = availableSources(storage);
+  const shareOffered = !!storage?.share.enabled && storage.share.mode !== 'none' && storage.isLocal;
+  const clouds = storage ? (['dropbox', 'gdrive'] as const).filter((c) => storage[c].enabled && storage[c].connected).map((c) => TARGET_NAMES[c]) : [];
+  const uploadIdOf = (a?: MediaAsset | null) => {
+    const url = a?.url || a?.fileUrl || '';
+    const m = /^\/api\/v1\/media\/files\/([A-Za-z0-9_-]+)/.exec(url);
+    return m ? m[1] : null;
+  };
+  const previewUploadId = uploadIdOf(previewAsset);
+  useEffect(() => {
+    if (!previewUploadId || !storage) return;
+    let active = true;
+    storageClient.copies([previewUploadId]).then((map) => active && setCopies((prev) => ({ ...prev, ...map }))).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [previewUploadId, storage]);
+  const shareAddress = (relative?: string) => {
+    const root = storage?.share.displayPath || '';
+    if (!relative) return '';
+    return root ? `${root.replace(/[\\/]+$/, '')}\\${relative.split('/').join('\\')}` : relative;
+  };
+  const canApproveVideo = RbacService.hasPermission(currentUser, 'news.approve') || RbacService.hasPermission(currentUser, 'media.delete');
   const [tagsInput, setTagsInput] = useState('');
   const [description, setDescription] = useState('');
   const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
@@ -134,7 +174,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     setTitle('');
     setMediaType('IMAGE');
     setFileUrl('');
-    setDurationSeconds(120);
+    setDurationSeconds(0);
+    setKeepInShare(apiService.getSettings().storage?.share?.copyByDefault ?? true);
+    setShowExternal(false);
     setTagsInput('');
     setDescription('');
     setUploaded(null);
@@ -149,7 +191,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     setUploaded(null);
     setUploadProgress(0);
     try {
-      const result = await uploadMediaFile(file, setUploadProgress).promise;
+      // The real length of a clip, read while it uploads.
+      void readMediaDuration(file).then((seconds) => seconds && setDurationSeconds(seconds));
+      const result = await uploadMediaFile(file, setUploadProgress, { keepInSharedFolder: shareOffered && keepInShare }).promise;
       setUploaded(result);
       setFileUrl(result.url);
       setMediaType(mediaTypeForMime(result.mimeType));
@@ -197,7 +241,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       mimeType: uploaded?.mimeType,
       fileSize: uploaded?.sizeBytes,
       fileSizeBytes: uploaded?.sizeBytes,
-      durationSeconds: mediaType === 'VIDEO' || mediaType === 'AUDIO' ? Number(durationSeconds) : undefined,
+      durationSeconds: (mediaType === 'VIDEO' || mediaType === 'AUDIO') && Number(durationSeconds) > 0 ? Number(durationSeconds) : undefined,
       uploadedById: currentUser.id,
       uploadedByName: currentUser.fullName,
       description: description.trim(),
@@ -213,7 +257,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   };
 
   const handleCopyUrl = (url: string) => {
-    navigator.clipboard.writeText(url);
+    // A full address colleagues can paste anywhere (the stored one is relative to «مدار»).
+    navigator.clipboard.writeText(url.startsWith('/') ? `${window.location.origin}${url}` : url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -380,11 +425,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
               <div>
                 <h4
+                  dir="auto"
                   onClick={() => setPreviewAsset(asset)}
                   className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug cursor-pointer hover:text-blue-600 transition-colors"
                 >
                   {asset.title || (
-                    <span dir="ltr" className="block break-all text-left font-mono font-semibold">
+                    <span dir="auto" className="block break-all font-mono font-semibold">
                       {asset.fileName}
                     </span>
                   )}
@@ -488,6 +534,30 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               </p>
             )}
             {uploadError && <p className="text-2xs text-red-600 font-bold">{uploadError}</p>}
+            {shareOffered && (
+              <label className="flex items-center gap-2 min-h-11 text-xs text-slate-800">
+                <input type="checkbox" className="w-4 h-4" checked={keepInShare} disabled={uploadProgress !== null || !!uploaded} onChange={(e) => setKeepInShare(e.target.checked)} />
+                احفظ نسخة في المجلد المشترك{storage?.share.displayPath ? <span dir="ltr" className="text-slate-500">({storage.share.displayPath})</span> : null}
+              </label>
+            )}
+            {clouds.length > 0 && <p className="text-2xs text-slate-600">يُنسخ الملف تلقائياً إلى {clouds.join(' و')} بعد حفظ المادة.</p>}
+            {externalSources.length > 0 && !uploaded && (
+              <button type="button" onClick={() => setShowExternal((v) => !v)} aria-expanded={showExternal} className="min-h-10 text-xs font-bold text-blue-700 underline">
+                {showExternal ? 'إخفاء' : `أو أضف ملفاً موجوداً في ${externalSources.map((x) => TARGET_NAMES[x]).join(' أو ')}`}
+              </button>
+            )}
+            {showExternal && !uploaded && (
+              <ExternalFilePicker
+                sources={externalSources}
+                onPicked={(file) => {
+                  setUploaded(file);
+                  setFileUrl(file.url);
+                  setMediaType(mediaTypeForMime(file.mimeType));
+                  if (!title.trim()) setTitle(file.originalName.replace(/\.[^.]+$/, ''));
+                  setShowExternal(false);
+                }}
+              />
+            )}
           </div>
 
           <div>
@@ -781,11 +851,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               )}
               <div className="flex justify-between">
                 <span className="text-slate-500">اسم الملف:</span>
-                <span className="font-mono text-slate-700">{previewAsset.fileName}</span>
+                <span className="font-mono text-slate-700 break-all" dir="auto">{previewAsset.fileName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">النوع:</span>
-                <span className="font-semibold text-slate-800">{previewAsset.mediaType}</span>
+                <span className="font-semibold text-slate-800">{MEDIA_TYPE_NAMES[previewAsset.mediaType] || previewAsset.mediaType}</span>
               </div>
               {previewAsset.mediaType === 'VIDEO' && (
                 <div className="flex items-center justify-between gap-2">
@@ -804,7 +874,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                       className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white"
                     >
                       {VIDEO_STATUSES.map((v) => (
-                        <option key={v.id} value={v.id}>
+                        <option key={v.id} value={v.id} disabled={v.id === 'APPROVED' && !canApproveVideo && previewAsset.videoStatus !== 'APPROVED'}>
                           {v.name}
                         </option>
                       ))}
@@ -839,6 +909,26 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <span className="text-slate-500">تم الرفع بواسطة:</span>
                 <span className="font-semibold text-slate-800">{previewAsset.uploadedByName || 'النظام'}</span>
               </div>
+              {previewUploadId && (copies[previewUploadId] || []).length > 0 && (
+                <div className="pt-1 border-t border-slate-200 space-y-1">
+                  <span className="text-slate-500 block">نسخ الملف:</span>
+                  <ul className="space-y-1">
+                    {copies[previewUploadId].map((c) => (
+                      <li key={c.target} className="flex flex-wrap items-center gap-2 text-slate-700">
+                        <span className={`px-1.5 py-0.5 rounded-md text-2xs font-bold ${c.state === 'DONE' ? 'bg-emerald-50 text-emerald-800' : c.state === 'FAILED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}`}>
+                          {TARGET_NAMES[c.target]} · {c.state === 'DONE' ? 'محفوظ' : c.state === 'FAILED' ? 'تعذّر النسخ' : 'يُنسخ'}
+                        </span>
+                        {c.target === 'share' && c.state === 'DONE' && storage?.isLocal && c.path && (
+                          <button type="button" onClick={() => navigator.clipboard.writeText(shareAddress(c.path))} className="min-h-9 px-2 rounded-md border border-slate-300 text-2xs font-semibold hover:bg-slate-50 inline-flex items-center gap-1">
+                            <Copy className="w-3 h-3" aria-hidden="true" /> نسخ المسار في الشبكة
+                          </button>
+                        )}
+                        {c.target === 'dropbox' && c.path && <span className="text-2xs text-slate-500 break-all" dir="auto">{c.path}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {previewAsset.durationSeconds && (
                 <div className="flex justify-between">
                   <span className="text-slate-500">المدة:</span>

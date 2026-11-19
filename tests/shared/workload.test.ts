@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STEP_TYPES, type CardStep, type ProductionCard } from '../../src/shared/productionCards';
-import { collectWork, employeeFile, loadByPerson, loadByStation, minutesLabel, producedAt, productionSummary, type Period } from '../../src/shared/workload';
+import { collectWork, comparePeriods, dailyTrend, employeeFile, HIGH_LOAD_FACTOR, LOAD_LEVEL_RULE, loadByPerson, loadByStation, minutesLabel, previousPeriod, producedAt, productionSummary, type Period } from '../../src/shared/workload';
 import { buildHandover, handoverText } from '../../src/shared/handover';
 import type { Station } from '../../src/shared/stations';
 
@@ -156,34 +156,103 @@ describe('load and output', () => {
 describe('shift handover brief', () => {
   const options = { from: Date.parse('2026-11-19T04:00:00Z'), now: NOW, aheadHours: 8, stepTypes: DEFAULT_STEP_TYPES, time: (iso: string) => iso.slice(11, 16) };
 
-  it('reports what was finished, what is running, what is stuck and what comes next', () => {
+  it('lists each card once, in its most pressing section, with the step it waits on', () => {
     const brief = buildHandover(cards, { ...options, stationId: null });
-    expect(brief.finished.map((l) => l.cardId)).toEqual(['shared', 'shared']);
-    expect(brief.finished[0].detail).toContain('رُفعت الشهادة');
-    expect(brief.inProgress.map((l) => l.cardId)).toEqual(['shared']);
+    // The shared card is late (montage), so it sits under "stuck" only, not also under "due" and "in progress".
     expect(brief.stuck.map((l) => l.cardId)).toEqual(['shared', 'blocked']);
+    expect(brief.dueNext).toHaveLength(0);
+    expect(brief.inProgress).toHaveLength(0);
+    expect(brief.stuck[0].detail.startsWith('البث 16:00 — المونتاج متأخرة')).toBe(true);
     expect(brief.stuck[1].detail).toContain('لا تصريح بالتصوير');
     expect(brief.stuck[1].detail).toContain('القرار عند محرر بيروت');
-    expect(brief.dueNext.some((l) => l.detail.includes('15:30'))).toBe(true);
-    expect(brief.dueNext.some((l) => l.detail.startsWith('البث 16:00'))).toBe(true);
-    expect(brief.notes[0].detail).toContain('ينقص تأكيد اسم الشاهد');
+    // What was finished on the card during the shift and the notes ride on the same row.
+    expect(brief.stuck[0].doneInShift).toHaveLength(2);
+    expect(brief.stuck[0].doneInShift[0]).toContain('رُفعت الشهادة');
+    expect(brief.stuck[0].notes[0]).toContain('ينقص تأكيد اسم الشاهد');
+    const all = [...brief.stuck, ...brief.dueNext, ...brief.inProgress, ...brief.finished].map((l) => l.cardId);
+    expect(new Set(all).size).toBe(all.length);
   });
 
   it('limits the brief to one station', () => {
     const gaza = buildHandover(cards, { ...options, stationId: 'gaza' });
-    expect(gaza.finished).toHaveLength(1);
-    expect(gaza.inProgress).toHaveLength(0);
     expect(gaza.stuck.map((l) => l.cardId)).toEqual(['blocked']);
-    expect(gaza.notes).toHaveLength(0);
-    // Gaza worked on the shared card, so its airing is on Gaza's brief too.
+    // Gaza worked on the shared card, so its airing is on Gaza's brief, with the step it now waits on elsewhere.
     expect(gaza.dueNext.map((l) => l.cardId)).toEqual(['shared']);
+    expect(gaza.dueNext[0].detail).toContain('بانتظار المونتاج');
+    expect(gaza.dueNext[0].doneInShift).toHaveLength(1);
+    expect(gaza.dueNext[0].notes).toHaveLength(0);
+    expect(gaza.inProgress).toHaveLength(0);
   });
 
-  it('writes the brief as plain text', () => {
-    const text = handoverText(buildHandover(cards, { ...options, stationId: null }), 'موجز تسليم المناوبة');
+  it('names the station a step was addressed to instead of «غير مسندة»', () => {
+    const toStation: ProductionCard = { id: 'st', title: 'نشر', kind: 'NEWS', priority: 'NORMAL', status: 'OPEN', steps: [step('a', 'publish', { stationId: 'istanbul', dueAt: '2026-11-19T10:00:00Z' })] };
+    const brief = buildHandover([toStation], { ...options, stationId: null, stationName: (id) => stations.find((s) => s.id === id)?.name || id });
+    expect(brief.stuck[0].detail).toContain('محطة إسطنبول — لم تُستلم');
+  });
+
+  it('puts work moving during the shift under "in progress" and closed cards under "finished"', () => {
+    const moving: ProductionCard = { id: 'mv', title: 'متابعة', kind: 'NEWS', priority: 'NORMAL', status: 'OPEN', steps: [step('a', 'edit', { stationId: 'beirut', assigneeName: 'محرر بيروت', status: 'IN_PROGRESS' }), step('b', 'quality', { stationId: 'beirut' })] };
+    const closed: ProductionCard = { id: 'cl', title: 'مغلقة', kind: 'NEWS', priority: 'NORMAL', status: 'CLOSED', steps: [step('a', 'edit', { stationId: 'beirut', status: 'DONE', doneAt: '2026-11-19T09:00:00Z', doneByName: 'محرر بيروت' })] };
+    const brief = buildHandover([moving, closed], { ...options, stationId: 'beirut' });
+    expect(brief.inProgress.map((l) => l.cardId)).toEqual(['mv']);
+    expect(brief.finished.map((l) => l.cardId)).toEqual(['cl']);
+  });
+
+  it('writes the brief as plain text, the manager\'s notes first', () => {
+    const text = handoverText(buildHandover(cards, { ...options, stationId: null }), 'موجز تسليم المناوبة', 'تابعوا موجز الظهيرة');
     expect(text.startsWith('موجز تسليم المناوبة')).toBe(true);
+    expect(text.indexOf('ملاحظات مسؤول المناوبة')).toBeLessThan(text.indexOf('■ متعطل'));
+    expect(text).toContain('تابعوا موجز الظهيرة');
     expect(text).toContain('■ متعطل أو متأخر — يحتاج قراراً (2)');
+    expect(text).toContain('■ مستحق خلال 8 ساعات القادمة (0)');
     expect(text).toContain('[عاجل] شهادة مصوّرة');
+    expect(text).toContain('أُنجز في المناوبة:');
     expect(handoverText(buildHandover([], { ...options, stationId: null }), 'x')).toContain('لا شيء متعطل.');
+  });
+});
+
+describe('reviews, trend and comparison', () => {
+  const reviewed = [
+    {
+      id: 'r', title: 'خبر روجع', authorId: 'g1', status: 'PUBLISHED', approvedAt: '2026-11-18T09:00:00Z',
+      workflowLogs: [
+        { id: 'w1', fromStatus: 'UNDER_REVIEW', toStatus: 'NEEDS_REVISION', changedBy: { id: 'b1' }, timestamp: '2026-11-17T09:00:00Z' },
+        { id: 'w2', fromStatus: 'UNDER_REVIEW', toStatus: 'APPROVED', changedBy: { id: 'b1' }, timestamp: '2026-11-18T09:00:00Z' },
+        { id: 'w3', fromStatus: 'DRAFT', toStatus: 'UNDER_REVIEW', changedBy: { id: 'g1' }, timestamp: '2026-11-17T08:00:00Z' },
+        { id: 'w4', fromStatus: 'UNDER_REVIEW', toStatus: 'APPROVED', changedBy: { id: 'g1' }, timestamp: '2026-11-18T08:00:00Z' },
+      ],
+    },
+  ];
+  const work = collectWork({ cards: [], tasks: [], requests: [], news: reviewed, users, stepTypes: DEFAULT_STEP_TYPES, now: NOW });
+
+  it('credits each review decision to the reviewer, never to the writer reviewing themselves', () => {
+    const reviews = work.filter((i) => i.source === 'REVIEW');
+    expect(reviews.map((i) => i.userId)).toEqual(['b1', 'b1']);
+    expect(reviews.every((i) => !i.open && i.stationId === 'beirut')).toBe(true);
+    const beirut = loadByStation(work, users, stations, week).find((r) => r.id === 'beirut')!;
+    expect(beirut.done).toBe(2);
+  });
+
+  it('lists every day of the period, quiet days included', () => {
+    const trend = dailyTrend(items, week);
+    expect(trend).toHaveLength(7);
+    expect(trend[0].date).toBe('2026-11-13');
+    expect(trend.find((d) => d.date === '2026-11-17')!.done).toBe(3);
+    expect(trend.find((d) => d.date === '2026-11-14')!.done).toBe(0);
+  });
+
+  it('compares the period with the one before it', () => {
+    expect(previousPeriod(week)).toEqual({ from: Date.parse('2026-11-06T00:00:00Z'), to: week.from });
+    const today: Period = { from: Date.parse('2026-11-19T00:00:00Z'), to: Date.parse('2026-11-20T00:00:00Z') };
+    const cmp = comparePeriods(items, today);
+    expect(cmp.done).toBe(2);
+    expect(cmp.previousDone).toBeGreaterThan(0);
+    expect(cmp.change).not.toBeNull();
+    expect(comparePeriods([], today).change).toBeNull();
+  });
+
+  it('states the rating rule with the same factors it uses', () => {
+    expect(LOAD_LEVEL_RULE).toContain('1.5');
+    expect(HIGH_LOAD_FACTOR).toBe(1.5);
   });
 });

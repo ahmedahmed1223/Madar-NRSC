@@ -568,6 +568,8 @@ export interface AuditLog {
 export interface SystemSettings {
   /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */
   setup?: import('../shared/setup').SetupState;
+  /** Dropbox and the station's shared folder (see shared/storage). */
+  storage?: import('../shared/storage').StorageSettings;
   onAirDisplayMode?: 'OPERATIONAL' | 'TEXT';
   studioDisplayMode?: 'OPERATIONAL' | 'TEXT';
   allowOfflineScriptEdits?: boolean;

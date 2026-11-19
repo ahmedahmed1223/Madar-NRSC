@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateBulletinReadiness } from '../src/shared/bulletinReadiness';
+import { durationWords, evaluateBulletinReadiness, scheduledBulletinExists, storyPresenter, timingDelta } from '../src/shared/bulletinReadiness';
 describe('bulletin readiness', () => {
   const bulletin: any = { id: 'b', approvalSteps: [] };
   const story: any = { id: 's', type: 'READER', script: 'نص صالح للقراءة على الهواء', anchorName: 'مذيع', status: 'APPROVED', approvals: [], bulletinId: 'b' };
@@ -23,5 +23,41 @@ describe('bulletin readiness', () => {
     const changed = { ...bulletin, approvalSteps: [{ id: 'editor', kind: 'BULLETIN_EDITOR' }, { id: 'chief', kind: 'CHIEF' }] };
     const approved = { ...story, approvals: [{ stepId: 'editor', byId: 'e', byName: 'e', at: '2026-01-01' }] };
     expect(evaluateBulletinReadiness(changed as any, [approved], [], [], new Date()).some(i => i.code === 'APPROVAL')).toBe(true);
+  });
+  it('the bulletin presenter covers a story without its own, as the rundown table shows it', () => {
+    const noAnchor = { ...story, anchorName: '' };
+    expect(evaluateBulletinReadiness({ ...bulletin, anchors: ['فيصل العتيبي'] }, [noAnchor], [], [], new Date()).some(i => i.code === 'PRESENTER')).toBe(false);
+    expect(evaluateBulletinReadiness({ ...bulletin, anchors: [] }, [noAnchor], [], [], new Date()).find(i => i.code === 'PRESENTER')?.severity).toBe('warning');
+    expect(storyPresenter({ anchors: ['فيصل'] }, { anchorName: '' })).toBe('فيصل');
+    expect(storyPresenter({ anchors: ['فيصل'] }, { anchorName: 'سارة' })).toBe('سارة');
+  });
+});
+
+describe('bulletin timing reads as a duration', () => {
+  it('writes minutes and seconds in words', () => {
+    expect(durationWords(1236)).toBe('20 د 36 ث');
+    expect(durationWords(-45)).toBe('45 ث');
+    expect(durationWords(120)).toBe('2 د');
+    expect(durationWords(3900)).toBe('1 س 05 د');
+  });
+  it('says short or over, never a clock time', () => {
+    expect(timingDelta(-1236).text).toBe('ناقص 20 د 36 ث');
+    expect(timingDelta(65).text).toBe('زائد 1 د 05 ث');
+    expect(timingDelta(20).state).toBe('ON_TIME');
+    expect(timingDelta(8, 5).state).toBe('OVER');
+  });
+});
+
+describe('scheduled bulletin matching', () => {
+  const format = { id: 'fmt-main', kind: 'MAIN' as const, startTime: '20:00' };
+  it('matches the scheduled id, the format and day, or the same kind and time made by hand', () => {
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'bul-fmt-main-2026-11-19', date: '2026-11-19', kind: 'MAIN', startTime: '20:00' }])).toBe(true);
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'bul-demo-main', date: '2026-11-19', formatId: 'fmt-main', kind: 'MAIN', startTime: '20:00' }])).toBe(true);
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'x', date: '2026-11-19', kind: 'MAIN', startTime: '20:00' }])).toBe(true);
+  });
+  it('ignores other days, other formats, and deleted copies', () => {
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'y', date: '2026-11-18', formatId: 'fmt-main', kind: 'MAIN', startTime: '20:00' }])).toBe(false);
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'z', date: '2026-11-19', formatId: 'fmt-noon', kind: 'MAIN', startTime: '20:00' }])).toBe(false);
+    expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'w', date: '2026-11-19', formatId: 'fmt-main', kind: 'MAIN', startTime: '20:00', deletedAt: '2026-11-19T01:00:00Z' }])).toBe(false);
   });
 });

@@ -132,8 +132,7 @@ export const DatabaseManagerView: React.FC = () => {
     }
   };
 
-  // Busy from the moment the operation is asked for until it completes or is cancelled,
-  // so the other database actions stay disabled meanwhile.
+  // Busy while the current state is checked; the confirmation dialog then holds the screen.
   const endOperation = () => {
     setOperation(null);
     setIsResetting(false);
@@ -144,8 +143,9 @@ export const DatabaseManagerView: React.FC = () => {
     if (operation || isResetting || isRestoringBackup) return;
     setIsResetting(true);
     const current = await loadStats();
+    // The dialog is modal; the opener stays enabled underneath so focus can return to it.
+    setIsResetting(false);
     if (current?.resetEnabled) setOperation({ action: 'reset' });
-    else setIsResetting(false);
   };
 
   const handleCreateBackup = async () => {
@@ -182,8 +182,9 @@ export const DatabaseManagerView: React.FC = () => {
   const handleRestoreBackup = async (fileName: string) => {
     if (operation || isResetting || isRestoringBackup) return;
     setIsRestoringBackup(true);
-    if (await loadStats()) setOperation({ action: 'restore', fileName });
-    else setIsRestoringBackup(false);
+    const ok = await loadStats();
+    setIsRestoringBackup(false);
+    if (ok) setOperation({ action: 'restore', fileName });
   };
   const handleRehearse = async (fileName: string) => {
     if (rehearsalGuard.current) return;
@@ -710,7 +711,7 @@ export const DatabaseManagerView: React.FC = () => {
                               disabled={isRestoringBackup || isResetting || isCreatingBackup || !!verifying}
                               className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30 disabled:opacity-50"
                             >
-                              {isRestoringBackup && operation?.fileName === b.fileName ? 'جارٍ الاستعادة...' : 'استعادة هذه النسخة'}
+                              استعادة هذه النسخة
                             </button>
                             <a
                               href={`/api/v1/db/backups/download?fileName=${encodeURIComponent(b.fileName)}`}
