@@ -367,7 +367,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   onClick={() => setSelectedDashboardCategory('ALL')}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
                     selectedDashboardCategory === 'ALL'
-                      ? 'bg-slate-800 text-white shadow-xs'
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >

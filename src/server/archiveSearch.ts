@@ -32,8 +32,8 @@ const htmlText = (html: unknown) => String(html || '').replace(/<[^>]*>/g, ' ');
 const index = createSearchIndex<ArchiveRow>({
   id: (r) => r.id,
   version: (r) => r.v,
-  title: (r) => [r.d.title, r.d.shortTitle, r.d.keywords],
-  body: (r) => [r.d.summary, r.d.locationName, htmlText(r.d.content)],
+  title: (r) => [r.d.title, r.d.shortTitle],
+  body: (r) => [r.d.keywords, r.d.summary, r.d.locationName, htmlText(r.d.content)],
 });
 
 const toItem = (r: ArchiveRow): ArchiveItem => ({

@@ -128,17 +128,17 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
                   <tr key={dept.id} className="hover:bg-slate-50/60">
                     <th scope="row" className="py-2 px-3 font-bold text-slate-800 text-right">
                       <span style={{ paddingInlineStart: `${depth * 1.25}rem` }} className={`inline-block ${depth ? 'font-semibold text-slate-700' : ''}`}>
-                        {depth > 0 && <span className="text-slate-400 me-1" aria-hidden="true">└</span>}
+                        {depth > 0 && <span className="text-slate-500 me-1" aria-hidden="true">└</span>}
                         {dept.name}
                       </span>
                     </th>
-                    <td className="py-2 px-3 text-slate-700">{dept.headUserId ? nameOf(dept.headUserId) || 'حساب غير نشط' : <span className="text-slate-400">—</span>}</td>
+                    <td className="py-2 px-3 text-slate-700">{dept.headUserId ? nameOf(dept.headUserId) || 'حساب غير نشط' : <span className="text-slate-500">—</span>}</td>
                     {perStation.map((n, i) => (
                       <td key={stations[i].id} className="py-2 px-3 text-center tabular-nums">
-                        {n === null ? <span className="text-slate-400" title="القسم غير موجود في هذه المحطة">—<span className="sr-only">غير موجود</span></span> : <span className={n ? 'font-bold text-slate-900' : 'text-slate-400'}>{n}</span>}
+                        {n === null ? <span className="text-slate-500" title="القسم غير موجود في هذه المحطة">—<span className="sr-only">غير موجود</span></span> : <span className={n ? 'font-bold text-slate-900' : 'text-slate-500'}>{n}</span>}
                       </td>
                     ))}
-                    <td className="py-2 px-3 text-center tabular-nums"><span className={centralCount ? 'font-bold text-slate-900' : 'text-slate-400'}>{centralCount}</span></td>
+                    <td className="py-2 px-3 text-center tabular-nums"><span className={centralCount ? 'font-bold text-slate-900' : 'text-slate-500'}>{centralCount}</span></td>
                     <td className="py-2 px-3 text-center tabular-nums font-bold text-slate-900">{total}</td>
                   </tr>
                 );

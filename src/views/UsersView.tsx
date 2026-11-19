@@ -651,14 +651,15 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         type="button"
                         onClick={() => handleResetPassword(user)}
                         disabled={isCurrentActive}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                        title={isCurrentActive ? undefined : 'إصدار كلمة مرور مؤقتة'}
+                        className={`min-h-11 sm:min-h-9 text-xs font-bold px-3 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${
                           isCurrentActive
                             ? 'bg-blue-100 text-blue-700 cursor-default'
-                            : 'bg-white hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 shadow-2xs'
+                            : 'bg-white hover:border-blue-300 hover:text-blue-800 text-slate-700 border border-slate-200'
                         }`}
                       >
                         <KeyRound className="w-3.5 h-3.5" />
-                        <span>{isCurrentActive ? 'الحساب الحالي' : 'إصدار كلمة مرور مؤقتة'}</span>
+                        <span>{isCurrentActive ? 'الحساب الحالي' : 'كلمة مرور مؤقتة'}</span>
                       </button>
                       )}
 

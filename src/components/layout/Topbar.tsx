@@ -419,7 +419,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           aria-label={chat.unread > 0 ? `المحادثة الداخلية (${chat.unread} رسالة جديدة)` : 'المحادثة الداخلية'}
           aria-expanded={chat.open}
           title="المحادثة الداخلية بين الأقسام"
-          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
+          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (

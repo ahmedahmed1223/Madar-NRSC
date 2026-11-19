@@ -648,7 +648,8 @@ export const DatabaseManagerView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleRestoreBackup(b.fileName)}
-                              disabled={isRestoringBackup || isResetting || isCreatingBackup || !!verifying}
+                              aria-busy={isRestoringBackup}
+                              disabled={isResetting || isCreatingBackup || !!verifying}
                               className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30 disabled:opacity-50"
                             >
                               استعادة هذه النسخة
@@ -671,13 +672,7 @@ export const DatabaseManagerView: React.FC = () => {
               </table>
             </div>
 
-            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs text-slate-600 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono" dir="ltr">{stats?.filePath || 'newsroom.sqlite'}</strong> مع كل عملية تحرير.</span>
-              </div>
-              <span className="font-mono text-slate-500">ACID Compliant SQLite Engine</span>
-            </div>
+            <p className="mt-3 text-xs text-slate-600">يُحفظ كل تعديل فور حدوثه في ملف <strong className="text-slate-800 font-mono" dir="ltr">{stats?.filePath || 'newsroom.sqlite'}</strong>؛ النسخ الاحتياطية لقطات منه في أوقات محددة.</p>
           </div>
         </div>
       )}

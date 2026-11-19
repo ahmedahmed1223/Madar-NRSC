@@ -18,10 +18,10 @@ export const PWAInstallButton: React.FC = () => {
         id="pwa-install-button"
         type="button"
         onClick={install}
-        className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+        className="hidden md:flex items-center gap-1.5 min-h-10 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors"
         title="تثبيت المنظومة كتطبيق رسمي مستقل على محطة العمل"
       >
-        <Download className="w-3.5 h-3.5" />
+        <Download className="w-3.5 h-3.5 text-blue-600" />
         <span>تثبيت المنظومة</span>
       </button>
     );
@@ -35,10 +35,10 @@ export const PWAInstallButton: React.FC = () => {
           id="pwa-ios-install-button"
           type="button"
           onClick={() => setShowIOSGuide(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+          className="flex items-center gap-1.5 min-h-10 px-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors"
           title="تثبيت التطبيق على أجهزة آبل / آيباد"
         >
-          <Download className="w-3.5 h-3.5 text-blue-400" />
+          <Download className="w-3.5 h-3.5 text-blue-600" />
           <span className="hidden sm:inline">تثبيت التطبيق</span>
         </button>
 
@@ -50,7 +50,8 @@ export const PWAInstallButton: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowIOSGuide(false)}
-                  className="p-1 text-slate-500 hover:text-slate-600 rounded-lg"
+                  aria-label="إغلاق"
+                  className="min-w-9 min-h-9 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 rounded-lg"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -84,7 +85,7 @@ export const PWAInstallButton: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowIOSGuide(false)}
-                className="mt-5 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors"
+                className="mt-5 w-full min-h-10 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors"
               >
                 حسناً، فهمت
               </button>

@@ -11,6 +11,7 @@ import { MAX_STATION_GROUPS, MAX_STATIONS, stationGroupsError, stationGroupsOf, 
 
 const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
 const COLLEAGUES = { one: 'زميل واحد', two: 'زميلان', few: 'زملاء', many: 'زميلاً', zero: 'لا زملاء' };
+const TYPE_ROW = 'grid grid-cols-[minmax(0,1fr)_6rem_2.75rem] sm:grid-cols-[minmax(0,1fr)_6rem_7.5rem_2.75rem] gap-2';
 const STEPS = { one: 'خطوة واحدة', two: 'خطوتان', few: 'خطوات', many: 'خطوة' };
 
 type Usage = Awaited<ReturnType<typeof apiService.getStationUsage>>;
@@ -312,25 +313,26 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         <p className="text-sm text-slate-600 max-w-3xl">
           الوزن (من 1 إلى 10) يعبّر عن ثقل هذا النوع من العمل. نقاط المهمة = الوزن × درجة التعقيد (بسيطة 1، متوسطة 2، معقدة 3)، وبها تُقارن أعباء الأفراد والمحطات.
         </p>
-        <div className="grid grid-cols-[minmax(0,1fr)_6rem_2.75rem] gap-2 px-1 text-xs font-bold text-slate-600" aria-hidden="true">
+        <div className={`${TYPE_ROW} px-1 text-xs font-bold text-slate-600`} aria-hidden="true">
           <span>النوع</span>
           <span>الوزن</span>
+          <span className="hidden sm:block">الاستخدام</span>
           <span />
         </div>
         <ul className="space-y-2">
           {types.map((type, index) => {
             const uses = typeUses.get(type.id) || 0;
             return (
-              <li key={type.id} className="grid grid-cols-[minmax(0,1fr)_6rem_2.75rem] gap-2 items-start">
+              <li key={type.id} className={`${TYPE_ROW} items-center`}>
                 <div>
                   <label htmlFor={`type-name-${type.id}`} className="sr-only">نوع المهمة {index + 1}</label>
-                  <input id={`type-name-${type.id}`} value={type.name} maxLength={60} required aria-describedby={uses ? `type-uses-${type.id}` : undefined} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, name: e.target.value } : t)))} className={INPUT} />
-                  {uses > 0 && <p id={`type-uses-${type.id}`} className="text-2xs text-slate-500 mt-0.5 px-1">مستخدم في {countLabel(uses, STEPS)}</p>}
+                  <input id={`type-name-${type.id}`} value={type.name} maxLength={60} required aria-describedby={`type-uses-${type.id}`} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, name: e.target.value } : t)))} className={INPUT} />
                 </div>
                 <div>
                   <label htmlFor={`type-weight-${type.id}`} className="sr-only">وزن {type.name || `نوع المهمة ${index + 1}`}</label>
                   <input id={`type-weight-${type.id}`} type="number" min={1} max={10} step={1} inputMode="numeric" value={type.weight} onChange={(e) => setTypes((list) => list.map((t) => (t.id === type.id ? { ...t, weight: Math.round(Number(e.target.value)) } : t)))} className={`${INPUT} tabular-nums`} />
                 </div>
+                <p id={`type-uses-${type.id}`} className="hidden sm:block text-xs text-slate-500">{uses ? `في ${countLabel(uses, STEPS)}` : 'غير مستخدم'}</p>
                 <button type="button" disabled={types.length === 1} onClick={() => void removeType(type)} aria-label={`حذف نوع ${type.name}`} title="حذف النوع" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 disabled:opacity-40">
                   <Trash2 className="w-4 h-4" aria-hidden="true" />
                 </button>

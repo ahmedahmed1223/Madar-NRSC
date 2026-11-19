@@ -391,7 +391,8 @@ body.dnd-dragging * {
  * on-air lower third: an ink band with a short signal tab at its start edge. A long title breaks
  * the band per line, as a two-line lower third does.
  */
-#app-main h1:not(.no-strap) {
+#app-main h1:not(.no-strap),
+h1.form-page-title {
   font-size: 1.25rem;
   letter-spacing: 0;
 }

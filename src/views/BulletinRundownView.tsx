@@ -316,7 +316,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       setSource(null);
       setPicked([]);
       setQuery('');
-      flash(true, approve ? `أُضيفت ${countLabel(completed, AR.story)} في آخر النشرة، واعتمدتَ ${signed} منها` : `أُضيفت ${countLabel(completed, AR.story)} كمسودات في آخر النشرة`);
+      flash(true, approve ? `أُضيفت ${countLabel(completed, AR.story)} في آخر النشرة، واعتمدتَ ${signed} منها` : `أُضيفت ${countLabel(completed, AR.story)} ${completed === 1 ? 'كمسودة' : 'كمسودات'} في آخر النشرة`);
     } catch (err: any) {
       setSourceError(`تأكد حفظ ${completed} قصة. ${err?.message || 'تعذر الحفظ'}؛ بقيت المواد غير المؤكدة محددة.`);
     } finally { setAddingSources(false); }

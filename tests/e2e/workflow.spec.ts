@@ -9,7 +9,8 @@ test('login lists the real demo accounts and signs in with one click', async ({ 
   await expect(list.getByRole('button', { name: /ماجد الحربي — طاقم فني/ })).toBeVisible();
   await list.getByRole('button', { name: /سارة عبد العزيز/ }).click();
   await expect(page.locator('main')).toBeVisible();
-  await expect(page.getByText('سارة عبد العزيز').first()).toBeVisible();
+  // The greeting names the colleague (the top bar shows the name only on very wide screens).
+  await expect(page.locator('main').getByText(/سارة عبد العزيز/).first()).toBeVisible();
   await context.close();
 });
 

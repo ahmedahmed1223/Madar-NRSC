@@ -249,8 +249,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
   }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
 
-  // Passed or claimed by someone else leaves a quality reviewer's queue; approvers keep passed stories.
-  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW' && awaitsMyReview(can, currentUser.id, n)).sort((a, b) =>
+  // The review tab lists everything under review (it replaces the table): a quality reviewer no
+  // longer sees what passed quality; what waits on me comes first, a colleague's claim is marked.
+  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW' && (can('news.approve') || !isQualityPassed(n))).sort((a, b) =>
+    Number(awaitsMyReview(can, currentUser.id, b)) - Number(awaitsMyReview(can, currentUser.id, a)) ||
     (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
 
   const handleRestore = (id: string) => {
@@ -352,7 +354,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           <button
             type="button"
             onClick={() => setIsArchiveOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all whitespace-nowrap"
           >
             <Archive className="w-4 h-4" />
             الأرشيف القديم
@@ -361,7 +363,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             type="button"
             data-tour="news-create"
             onClick={onCreateNews}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             إنشاء خبر جديد
@@ -698,13 +700,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     )}
                   </button>
                 </th>
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem] xl:min-w-[16rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
                 {showColumn('category') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
                 {showColumn('priority') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
                 {showColumn('author') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
-                <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
                 {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 whitespace-nowrap text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات تحريرية</th>
+                <th className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -864,7 +866,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
                       {/* Actions stay in view (sticky) while a narrow table scrolls. */}
                       <td className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
-                        <div className="flex flex-wrap sm:flex-nowrap items-center justify-center gap-0.5">
+                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5">
                           {/* Quick Preview */}
                           <button
                             type="button"

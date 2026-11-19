@@ -131,18 +131,19 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
   const width = WIDTHS[(size || maxWidth || '2xl') as string] || 'max-w-4xl';
   const page = (
     <section className={`form-page w-full ${width} mx-auto space-y-4`} aria-label={title}>
-      <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-2xs">
+      {/* A form page is a screen: its title is the strap, like every screen title (DESIGN.md). */}
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={requestClose}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors shrink-0"
+          className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-colors shrink-0"
         >
           <ArrowRight className="w-4 h-4" />
           رجوع
         </button>
-        <div className="min-w-0">
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 truncate">{title}</h1>
-          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        <div className="min-w-0 pt-0.5">
+          <h1 className="strap form-page-title">{title}</h1>
+          {subtitle && <p className="text-xs text-slate-600 mt-1.5">{subtitle}</p>}
         </div>
       </div>
       <div ref={bodyRef} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xs">

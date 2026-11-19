@@ -75,11 +75,13 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
     openEntry: (id) => go(id),
   };
 
-  // Bring the chapter or the entry into view when the address changes.
+  // Bring the entry into view when the address names one; a new chapter starts at its top (only
+  // when that top has scrolled away, so the title and the search stay in view on arrival).
   useEffect(() => {
     if (resultsOpen) return;
     const el = document.getElementById(target?.entry ? anchorId(target.entry.id) : 'guide-reading');
     if (!el) return;
+    if (!target?.entry && el.getBoundingClientRect().top >= 0) return;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('reduce-motion');
     el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
     if (target?.entry) (el.querySelector('h3, dt') as HTMLElement | null)?.focus({ preventScroll: true });
@@ -144,7 +146,7 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
   const renderEntry = (c: GuideChapter, entry: GuideEntry) => {
     const forWhom = c.part === 'roles' ? '' : familiesOf(entry);
     return (
-      <section key={entry.id} id={anchorId(entry.id)} aria-labelledby={`${anchorId(entry.id)}-title`} className="guide-entry scroll-mt-4 pt-8 first:pt-0">
+      <section key={entry.id} id={anchorId(entry.id)} aria-labelledby={`${anchorId(entry.id)}-title`} className="guide-entry scroll-mt-20 pt-8 first:pt-0">
         <div className="group flex items-start gap-2">
           <h3 id={`${anchorId(entry.id)}-title`} tabIndex={-1} className="flex-1 min-w-0 text-lg font-bold text-slate-900 leading-snug outline-none">
             <Highlight text={entry.title} query={marked} />
@@ -210,7 +212,7 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
         {glossary ? (
           <dl className="guide-prose divide-y divide-slate-200">
             {c.entries.map((e) => (
-              <div key={e.id} id={anchorId(e.id)} className="guide-entry scroll-mt-4 py-4 sm:grid sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
+              <div key={e.id} id={anchorId(e.id)} className="guide-entry scroll-mt-20 py-4 sm:grid sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
                 <dt tabIndex={-1} className="font-bold text-slate-900 outline-none">
                   <Highlight text={e.title} query={marked} />
                 </dt>
@@ -295,7 +297,7 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
                 setShowResults(false);
               }
             }}
-            placeholder="ابحث في الدليل: إعادة مهمة، تسليم المناوبة، Dropbox، العاجل…"
+            placeholder="ابحث في الدليل: كلمة أو سؤال…"
             autoComplete="off"
             className="w-full min-h-11 pr-9 pl-10 py-2.5 border border-slate-300 rounded-lg text-sm bg-white placeholder:text-slate-500"
           />
@@ -343,8 +345,8 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
         </select>
       </div>
 
-      <div className="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8 items-start">
-        <nav aria-label="فهرس الدليل" className="guide-toc hidden lg:block sticky top-4 max-h-[calc(100dvh-7rem)] overflow-y-auto pe-1 no-print">
+      <div className="guide-layout lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8 items-start">
+        <nav aria-label="فهرس الدليل" className="guide-toc hidden lg:block sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pe-1 no-print">
           {GUIDE_PARTS.map((part) => (
             <div key={part.id} className="mb-4">
               <h2 className="px-3 mb-1 text-xs font-bold text-slate-600">{part.title}</h2>
@@ -406,7 +408,7 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
               )}
             </section>
           ) : (
-            <div id="guide-reading" className="guide-reading scroll-mt-4 bg-white border border-slate-200 rounded-xl px-5 py-6 sm:px-10 sm:py-10">
+            <div id="guide-reading" className="guide-reading scroll-mt-20 bg-white border border-slate-200 rounded-xl px-5 py-6 sm:px-10 sm:py-10">
               <div className="max-w-[70ch] space-y-14">{chaptersShown.map(renderChapter)}</div>
               {printing !== 'all' && (
                 <nav aria-label="التنقل بين الفصول" className="guide-pager max-w-[70ch] mt-12 pt-6 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3">

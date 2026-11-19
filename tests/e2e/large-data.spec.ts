@@ -29,6 +29,8 @@ test('long lists draw a page at a time and still search the whole archive', asyn
   await expect(page.locator('main h3, main h2').filter({ hasText: 'ضيف أرشيفي 299' })).toHaveCount(1);
 
   await openNav(page, 'المهام');
+  // The list is the default view; the board draws each column a page at a time.
+  await page.getByRole('group', { name: 'طريقة العرض' }).getByRole('button', { name: 'لوحة', exact: true }).click();
   const column = page.locator('[aria-label="المهام المطلوبة"]').first();
   await expect(column.getByRole('button', { name: /عرض المزيد/ })).toContainText('170');
 

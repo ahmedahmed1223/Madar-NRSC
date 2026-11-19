@@ -74,7 +74,7 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     await manager.page.getByRole('button', { name: 'من غرفة الأخبار', exact: true }).click();
     await manager.page.locator('#form-page-root').getByRole('checkbox', { name: new RegExp(headline) }).check();
     await manager.page.locator('#form-page-root').getByRole('button', { name: /إضافة.*للنشرة/ }).click();
-    await expect(manager.page.getByText('أُضيفت 1 قصة كمسودات في آخر النشرة', { exact: true })).toBeVisible();
+    await expect(manager.page.getByText('أُضيفت قصة واحدة كمسودة في آخر النشرة', { exact: true })).toBeVisible();
     await manager.page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true }).click();
     const taskForm = manager.page.locator('#form-page-root');
     await taskForm.getByLabel('عنوان التكليف', { exact: true }).fill('تدقيق تجهيز القصة');

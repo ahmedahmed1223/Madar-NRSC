@@ -221,7 +221,7 @@ const versionOf = (r: { updatedAt?: string; createdAt?: string }) => `${r.update
 
 /** Search indexes of the unified search, memoised per record id + updatedAt. */
 const GLOBAL_INDEX = {
-  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: (n) => [n.title, n.shortTitle, n.keywords], body: (n) => [n.summary, n.locationName, htmlText(n.content)] }),
+  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: (n) => [n.title, n.shortTitle], body: (n) => [n.keywords, n.summary, n.locationName, htmlText(n.content)] }),
   programs: createSearchIndex<Program & { createdAt?: string }>({ id: (p) => p.id, version: versionOf, title: (p) => [p.name], body: (p) => [p.description, p.presenterName, p.producerName] }),
   episodes: createSearchIndex<Episode & { createdAt?: string }>({ id: (e) => e.id, version: versionOf, title: (e) => [e.title], body: (e) => [e.description, e.programName, e.episodeNumber, e.broadcastDate] }),
   guests: createSearchIndex<Guest & { createdAt?: string }>({ id: (g) => g.id, version: versionOf, title: (g) => [g.fullName], body: (g) => [g.organization, g.specialty, g.jobTitle] }),

@@ -1145,7 +1145,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                           aria-selected={activeNav === t.id}
                           onClick={() => setActiveNav(t.id)}
                           className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
-                            activeNav === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            activeNav === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                           }`}
                         >
                           {t.label}
