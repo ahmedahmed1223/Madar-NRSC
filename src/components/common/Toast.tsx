@@ -29,8 +29,8 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   toast,
   onDismiss,
 }) => {
-  // Reaching for a toast keeps it: keyboard focus always, the pointer when the toast offers an action.
-  // A plain message never lingers under the pointer, since it may sit over the button being clicked.
+  // Keyboard focus inside a toast keeps it until focus leaves. The pointer does not: a toast may
+  // appear over the control someone is about to press, and must clear on its own.
   const [held, setHeld] = useState(false);
   const duration = toast.duration ?? (toast.action ? 8000 : 4500);
   useEffect(() => {
@@ -67,8 +67,6 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   return (
     <div
       role={toast.type === 'error' ? 'alert' : 'status'}
-      onMouseEnter={() => toast.action && setHeld(true)}
-      onMouseLeave={() => setHeld(false)}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
       className={`pointer-events-auto relative overflow-hidden backdrop-blur-md border rounded-xl p-3.5 shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${styles.bg}`}

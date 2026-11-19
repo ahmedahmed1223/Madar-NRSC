@@ -33,8 +33,12 @@ test('colleagues write to each other, attach a file and point at a story; nobody
 
   // A reference to a story and a document go with the message.
   await thread.getByRole('button', { name: 'إشارة إلى خبر أو مادة' }).click();
-  await editor.page.getByRole('searchbox', { name: /بحث في الأخبار/ }).fill('القمة');
-  await editor.page.getByRole('button', { name: /القمة/ }).first().click();
+  const picker = editor.page.getByRole('region', { name: 'إشارة إلى مادة' });
+  await picker.getByRole('searchbox').fill('القمة');
+  await expect(picker.getByRole('listitem').first()).toContainText('القمة');
+  await picker.getByRole('listitem').first().getByRole('button').click();
+  await expect(picker).toHaveCount(0);
+  await expect(thread.getByRole('button', { name: 'إزالة الإشارة' })).toBeVisible();
   await editor.page.locator('input[type=file]').setInputFiles({ name: 'ملاحظات التحرير.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') });
   await expect(thread.getByText('جاهز')).toBeVisible();
   await thread.getByLabel('نص الرسالة').fill('راجع هذا الخبر قبل النشرة من فضلك');
