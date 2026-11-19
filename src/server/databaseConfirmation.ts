@@ -1,7 +1,10 @@
 import crypto from 'node:crypto';
 
 export interface DatabaseConfirmationBinding {
-  actorId: string; sessionId: string; action: 'restore' | 'reset'; sha256?: string;
+  /** restore/reset change the database; download/export hand a full copy (password hashes, 2FA secrets) to the browser. */
+  actorId: string; sessionId: string; action: 'restore' | 'reset' | 'download' | 'export'; sha256?: string;
+  /** The backup file a download confirmation is for. */
+  target?: string;
 }
 export class DatabaseConfirmations {
   private entries = new Map<string, { binding: DatabaseConfirmationBinding; expires: number }>();
@@ -18,7 +21,7 @@ export class DatabaseConfirmations {
     if (!entry) return false;
     if (entry.expires <= now) { this.entries.delete(token); return false; }
     if (entry.binding.actorId !== binding.actorId || entry.binding.sessionId !== binding.sessionId ||
-      entry.binding.action !== binding.action || entry.binding.sha256 !== binding.sha256) return false;
+      entry.binding.action !== binding.action || entry.binding.sha256 !== binding.sha256 || entry.binding.target !== binding.target) return false;
     this.entries.delete(token);
     return true;
   }

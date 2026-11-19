@@ -34,6 +34,11 @@ import {
   csrfGuard,
   getDummyHash,
   hashPassword,
+  markTemporaryPassword,
+  parseCookies,
+  passwordChangeGuard,
+  SESSION_COOKIE,
+  temporaryPasswordExpired,
   newSessionToken,
   requireAuth,
   requirePermission,
@@ -48,11 +53,17 @@ import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from '
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import { adminOverview } from './adminOverview';
+import { createFullBackup } from './backupDelivery';
+import { removeStation, StationRemovalError, stationUsage } from './stationRemoval';
+import { applyDepartmentSettings } from '../shared/departments';
+import { rememberStationSettings } from '../shared/stations';
 import { searchArchive } from './archiveSearch';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
 export const APP_VERSION = '4.0.0';
+/** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
+export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
@@ -97,6 +108,9 @@ function securityHeaders(config: AppConfig) {
 
 export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const app = express();
+  // Shared helpers (department names, station archive and groups) follow the stored settings.
+  applyDepartmentSettings(db.getRow('settings', 'singleton')?.d);
+  rememberStationSettings(db.getRow('settings', 'singleton')?.d);
   const sync = new SyncService(db, config.dataDir, config.newsActiveDays);
   let draining = false;
   const streams = new Set<Response>();
@@ -152,9 +166,14 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   // Probes bypass user traffic limits and session processing.
-  app.get('/api/health', (_req, res) => {
+  // Anonymous callers learn only that the server is up; the database and process identity
+  // (for spotting several instances behind one address) are for signed-in colleagues.
+  app.get('/api/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ status: 'ok', version: APP_VERSION, dbId: db.dbId, instance: INSTANCE_ID, timestamp: new Date().toISOString() });
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    const session = token ? db.getSession(sessionIdFromToken(token)) : null;
+    const signedIn = !!session && Date.parse(session.expiresAt) > Date.now();
+    res.json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString(), ...(signedIn ? { dbId: db.dbId, instance: INSTANCE_ID } : {}) });
   });
   app.get('/api/ready', (_req, res) => {
     const healthy = !draining && db.isHealthy();
@@ -173,6 +192,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.use('/api', (req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
   app.use('/api', csrfGuard);
   app.use('/api', sessionMiddleware(db, config));
+  // A temporary (or first) password opens nothing but the change-password screen.
+  app.use('/api', passwordChangeGuard(db));
   app.use('/api', apiLimiter);
 
   const audit = (
@@ -262,6 +283,10 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
         throw invalid;
       }
       if (!user || user.isActive === false || user.deletedAt) throw new HttpError(403, 'الحساب موقوف، يرجى مراجعة مدير النظام', 'INACTIVE');
+      if (cred.mustChangePassword && temporaryPasswordExpired(db, cred.userId)) {
+        audit(user, 'LOGIN_FAILED', 'USER', cred.userId, 'SECURITY', `كلمة مرور مؤقتة منتهية الصلاحية للحساب ${email}`, req.ip);
+        throw new HttpError(401, `انتهت صلاحية كلمة المرور المؤقتة (${config.tempPasswordHours} ساعة)؛ اطلب من مدير النظام إصدار كلمة جديدة`, 'TEMP_PASSWORD_EXPIRED');
+      }
 
       if (cred.totpEnabled && cred.totpSecret) {
         const code = typeof req.body?.totp === 'string' ? req.body.totp : '';
@@ -278,6 +303,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       db.resetFailedLogins(cred.userId);
       const token = newSessionToken();
       const session = db.createSession(sessionIdFromToken(token), user.id, config.sessionTtlMs, req.ip, req.get('user-agent'));
+      // At most MAX_SESSIONS_PER_USER devices: the least recently used sign-ins are ended.
+      db.listSessions(new Date().toISOString()).filter((s) => s.userId === user.id && s.id !== session.id).slice(MAX_SESSIONS_PER_USER - 1).forEach((s) => db.deleteSession(s.id));
       const updatedUser = { ...user, lastLogin: new Date().toISOString() };
       db.writeRow('users', user.id, updatedUser, db.getRow('users', user.id)!.p, user.id);
       audit(user, 'LOGIN', 'USER', user.id, 'INFO', `تسجيل دخول ناجح: ${user.fullName}`, req.ip);
@@ -316,7 +343,14 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     });
   });
 
-  app.get('/api/v1/auth/me', requireAuth, (req, res) => {
+  app.get('/api/v1/auth/me', (req, res, next) => {
+    // The sign-in screen asks with ?optional=1: «nobody signed in» is an answer, not an error (no 401 in the console).
+    if (!req.auth && req.query.optional === '1') {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ success: true, user: null });
+    }
+    next();
+  }, requireAuth, (req, res) => {
     const cred = db.getCredentials(req.auth!.user.id);
     res.json({ success: true, ...publicUser(req.auth!.user, !!cred?.mustChangePassword, req.auth!.permissions), trashRetentionDays: config.retention.trashDays });
   });
@@ -335,6 +369,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (weak) throw new HttpError(400, weak);
       if (newPassword === currentPassword) throw new HttpError(400, 'يجب أن تختلف كلمة المرور الجديدة عن الحالية');
       db.setPassword(user.id, cred.email, await hashPassword(newPassword), false);
+      markTemporaryPassword(db, user.id, 0);
       db.deleteUserSessions(user.id, req.auth!.sessionId);
       audit(user, 'PASSWORD_CHANGE', 'USER', user.id, 'SECURITY', `قام ${user.fullName} بتغيير كلمة المرور`, req.ip);
       res.json({ success: true });
@@ -355,8 +390,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       const owner = db.getCredentialsByEmail(target.email.toLowerCase());
       if (owner && owner.userId !== target.id) throw new HttpError(409, 'البريد الإلكتروني مستخدم لحساب آخر');
       db.setPassword(target.id, target.email.toLowerCase(), await hashPassword(req.body.password), true);
+      markTemporaryPassword(db, target.id, config.tempPasswordHours);
       db.deleteUserSessions(target.id);
-      audit(req.auth!.user, 'PASSWORD_RESET', 'USER', target.id, 'SECURITY', `تعيين كلمة مرور جديدة للمستخدم ${target.fullName}`, req.ip);
+      audit(req.auth!.user, 'PASSWORD_RESET', 'USER', target.id, 'SECURITY', `إصدار كلمة مرور مؤقتة للمستخدم ${target.fullName} (تنتهي بعد ${config.tempPasswordHours} ساعة)`, req.ip);
       res.json({ success: true });
     })
   );
@@ -564,7 +600,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.post('/api/v1/data/sync', requireAuth, (req, res) => {
     const ops = req.body?.ops;
-    if (!Array.isArray(ops) || ops.length === 0) throw new HttpError(400, 'ops array is required');
+    if (!Array.isArray(ops) || ops.length === 0) throw new HttpError(400, 'الطلب لا يحمل أي عملية مزامنة (ops)', 'NO_OPS');
     if (ops.length > MAX_OPS_PER_REQUEST) throw new HttpError(413, 'عدد العمليات في الطلب الواحد كبير جداً');
     const results = sync.apply(req.auth!, ops as SyncOp[], req.ip);
     res.json({ success: true, rev: db.currentRev(), dbId: db.dbId, results });
@@ -843,7 +879,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   };
   app.post('/api/v1/db/confirm-operation', dbAdmin, wrap(async (req, res) => {
     const action = req.body?.action;
-    if (action !== 'restore' && action !== 'reset') throw new HttpError(400, 'نوع العملية غير صالح');
+    if (!['restore', 'reset', 'download', 'export'].includes(action)) throw new HttpError(400, 'نوع العملية غير صالح');
     if (action === 'reset' && !config.allowDbReset) throw new HttpError(403, 'إعادة التهيئة معطلة على الخادم', 'DISABLED');
     const initial = currentDatabaseActor(req);
     const keys = [`actor:${initial.user.id}`, `ip:${req.ip}`];
@@ -862,14 +898,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     }
     if (counter !== null) db.setTotpLastCounter(auth.user.id, counter);
     let sha256: string | undefined;
+    let target: string | undefined;
     if (action === 'restore') {
       if (typeof req.body?.fileName !== 'string') throw new HttpError(400, 'اسم النسخة مطلوب');
       try { sha256 = (await db.verifyBackup(req.body.fileName)).sha256; }
       catch { throw new HttpError(400, 'تعذر التحقق من النسخة المختارة'); }
     }
+    if (action === 'download') {
+      if (typeof req.body?.fileName !== 'string') throw new HttpError(400, 'اسم النسخة مطلوب');
+      try { db.backupFilePath(req.body.fileName); } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
+      target = req.body.fileName;
+    }
     currentDatabaseActor(req);
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ success: true, data: confirmations.issue({ actorId: auth.user.id, sessionId: auth.sessionId, action, sha256 }) });
+    res.json({ success: true, data: confirmations.issue({ actorId: auth.user.id, sessionId: auth.sessionId, action, sha256, target }) });
   }));
   const databaseWork = async <T,>(work: () => Promise<T>): Promise<T> => {
     try { return await databaseOperationLock(db).run(work); }
@@ -911,12 +953,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       res.json({ success: true, data });
     } catch { throw new HttpError(400, 'تعذر التحقق: النسخة غير موجودة أو تالفة أو غير متوافقة'); }
   }));
+  /** A file holding every password hash and 2FA secret leaves the server only after the identity is confirmed again. */
+  const requireDownloadConfirmation = (req: Request, action: 'download' | 'export', target?: string) => {
+    const auth = currentDatabaseActor(req);
+    const token = req.query.confirmationToken;
+    if (typeof token !== 'string' || !token) throw new HttpError(401, 'أعد تأكيد هويتك قبل التنزيل', 'CONFIRMATION_REQUIRED');
+    if (!confirmations.consume(token, { actorId: auth.user.id, sessionId: auth.sessionId, action, target })) throw new HttpError(401, 'انتهى التأكيد؛ أعد تأكيد هويتك', 'CONFIRMATION_INVALID');
+    return auth;
+  };
   app.get('/api/v1/db/backups/download', dbAdmin, (req, res) => {
     let source: string;
+    const fileName = typeof req.query.fileName === 'string' ? req.query.fileName : '';
     try {
-      if (typeof req.query.fileName !== 'string') throw new Error();
-      source = db.backupFilePath(req.query.fileName);
+      if (!fileName) throw new Error();
+      source = db.backupFilePath(fileName);
     } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
+    const auth = requireDownloadConfirmation(req, 'download', fileName);
+    audit(auth.user, 'DB_BACKUP_DOWNLOAD', 'DATABASE', fileName, 'SECURITY', `تنزيل ملف النسخة الاحتياطية ${fileName}`, req.ip);
     res.setHeader('Cache-Control', 'no-store');
     res.download(source, path.basename(source), { dotfiles: 'allow' });
   });
@@ -931,6 +984,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   app.get('/api/v1/db/export', dbAdmin, (req, res) => {
+    requireDownloadConfirmation(req, 'export');
     const buffer = db.serialize();
     audit(req.auth!.user, 'DB_EXPORT', 'DATABASE', 'newsroom', 'SECURITY', 'تنزيل نسخة كاملة من قاعدة البيانات', req.ip);
     res.setHeader('Content-Type', 'application/x-sqlite3');
@@ -999,6 +1053,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
       await db.createBackup('prerestore', config.backupRetention);
       const removed = removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
+      // The administrator who removed the demo data may still sign in with the published demo password.
+      const own = db.getCredentials(req.auth!.user.id);
+      if (own && !own.mustChangePassword && (await verifyPassword(config.demoUserPassword, own.passwordHash))) {
+        db.setPassword(own.userId, own.email, own.passwordHash, true);
+      }
       const total = Object.values(removed).reduce((a, b) => a + b, 0);
       audit(req.auth!.user, 'DEMO_DATA_REMOVED', 'DATABASE', 'newsroom', 'SECURITY', `حذف البيانات التجريبية (${total} سجلاً)`, req.ip);
       changeBus.emit('rev', db.currentRev());
@@ -1014,12 +1073,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     '/api/v1/db/backups',
     dbAdmin,
     wrap(async (req, res) => {
-      let backup;
-      try { backup = await databaseWork(() => db.createBackup(undefined, config.backupRetention)); }
-      catch (error) { if (error instanceof HttpError) throw error; logger.error('manual backup failed'); await checkBackupIncidents(); throw new HttpError(500, 'فشل إنشاء النسخة الاحتياطية؛ تحقق من مساحة القرص وصلاحيات التخزين'); }
+      // The same full backup as the schedule: database snapshot + uploads + SHA-256 manifest (+ external copies).
+      let full;
+      try { full = await databaseWork(() => createFullBackup(db, config)); }
+      catch (error) {
+        if (error instanceof HttpError) throw error;
+        logger.error('manual backup failed', { error: String((error as Error)?.message || error) });
+        await checkBackupIncidents();
+        audit(req.auth!.user, 'DB_BACKUP_FAILED', 'DATABASE', 'newsroom', 'WARNING', 'تعذر إكمال النسخة الاحتياطية الكاملة (القاعدة والملفات)', req.ip);
+        throw new HttpError(500, 'فشل إنشاء النسخة الاحتياطية الكاملة؛ تحقق من مساحة القرص وصلاحيات التخزين والوجهة الخارجية');
+      }
       await checkBackupIncidents();
-      audit(req.auth!.user, 'DB_BACKUP', 'DATABASE', backup.fileName, 'INFO', `إنشاء نسخة احتياطية ${backup.fileName}`, req.ip);
-      res.json({ success: true, message: 'تم إنشاء نسخة احتياطية بنجاح', data: backup });
+      const backup = full.file;
+      audit(req.auth!.user, 'DB_BACKUP', 'DATABASE', backup.fileName, 'INFO', `نسخة احتياطية كاملة ${backup.fileName}: القاعدة و${full.uploads} ملفاً مع ملخص SHA-256${config.backupDirectory ? '، ونسخة في المجلد الخارجي' : ''}${config.backupRemote ? '، ونسخة سحابية' : ''}`, req.ip);
+      res.json({ success: true, message: 'تم إنشاء نسخة احتياطية كاملة بنجاح', data: { ...backup, uploads: full.uploads } });
     })
   );
 
@@ -1050,6 +1117,26 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       res.json({ success: true, message: 'تمت استعادة النسخة الاحتياطية بنجاح', data: db.stats() });
     })
   );
+
+  // --- Stations: removing one moves its people and open work ---------------------
+
+  app.get('/api/v1/admin/stations/:id/usage', requirePermission('system.settings'), (req: ApiRequest, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: stationUsage(db, req.params.id) });
+  });
+
+  app.post('/api/v1/admin/stations/:id/remove', requirePermission('system.settings'), (req: ApiRequest, res) => {
+    const replacementId = typeof req.body?.replacementId === 'string' && req.body.replacementId ? req.body.replacementId : undefined;
+    let result;
+    try { result = removeStation(db, req.params.id, replacementId, req.auth!.user); }
+    catch (error) { if (error instanceof StationRemovalError) throw new HttpError(error.status, error.message); throw error; }
+    const settings = db.getRow('settings', 'singleton')?.d;
+    applyDepartmentSettings(settings);
+    rememberStationSettings(settings);
+    audit(req.auth!.user, 'STATION_REMOVE', 'STATION', result.station.id, 'WARNING',
+      `حذف محطة «${result.station.name}»${result.replacement ? `: نُقل ${result.movedUsers} من الزملاء و${result.movedSteps} مهمة مفتوحة إلى «${result.replacement.name}»` : ''}؛ يبقى اسمها في سجل الأعمال المنجزة`, req.ip);
+    res.json({ success: true, data: { movedUsers: result.movedUsers, movedSteps: result.movedSteps } });
+  });
 
   registerStorageRoutes(app, { db, config, HttpError, wrap, audit });
 

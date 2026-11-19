@@ -267,7 +267,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <Moon className="w-4 h-4 text-indigo-600" />
           ساعات الهدوء
         </h2>
-        <p className="text-2xs text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت الخادم) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
+        <p className="text-2xs text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت المحطة المضبوط في الإعدادات) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>من</span>
           <input type="time" aria-label="بداية ساعات الهدوء" value={prefs.quietFrom || ''} onChange={(e) => update({ quietFrom: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />

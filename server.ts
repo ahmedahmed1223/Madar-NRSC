@@ -12,7 +12,8 @@ import { createScheduledBulletins, publishDueScheduledNews } from './src/server/
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
-import { deliverBackup } from './src/server/backupDelivery';
+import { createFullBackup } from './src/server/backupDelivery';
+import { deploymentWarnings, scanDemoPasswords } from './src/server/deploymentChecks';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
 import { backupStatus } from './src/server/databaseDiagnostics';
@@ -152,16 +153,13 @@ async function main() {
       backingUp = true;
       try {
         await databaseOperationLock(db).run(async () => {
-        const file = await db.createBackup('auto', config.backupRetention);
-        const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory,
-          remote: config.backupRemote, retention: config.backupRetention });
-        db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+        // Same full bundle as «نسخة احتياطية كاملة الآن» (database + uploads + SHA-256 manifest).
+        const result = await createFullBackup(db, config, 'auto');
         recordJob(JOBS.backup);
-        logger.info('complete backup created and delivered', result);
+        logger.info('complete backup created and delivered', { file: result.file.fileName, bundle: result.bundle, uploads: result.uploads });
         });
       } catch (err) {
         if (err instanceof DatabaseOperationBusy) return;
-        db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
         recordJob(JOBS.backup, err);
         logger.error('complete backup failed', { error: String(err) });
       } finally { backingUp = false; await checkBackupIncidents(); }
@@ -169,7 +167,14 @@ async function main() {
     timers.push(
       setInterval(backup, config.backupIntervalHours * 60 * 60 * 1000)
     );
+    // A server restarted more often than the interval would otherwise never back up: catch up shortly after start.
+    const status = backupStatus(db, config.backupIntervalHours);
+    if (!status.count || status.overdue) setTimeout(() => void backup(), 60_000).unref();
   }
+
+  // Deployment settings that put production at risk: loud in the log, and listed in «مراقبة النظام».
+  const warnDeployment = () => deploymentWarnings(db, config).forEach((w) => (w.level === 'error' ? logger.error : logger.warn)(`DEPLOYMENT WARNING: ${w.log}`));
+  void scanDemoPasswords(db, config).then(warnDeployment).catch((err) => logger.warn('demo password check failed', { error: String(err) }));
 
   const server = app.listen(config.port, config.host, () => {
     logger.info('server listening', { url: `http://localhost:${config.port}`, env: config.isProduction ? 'production' : 'development' });

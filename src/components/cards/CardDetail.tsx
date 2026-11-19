@@ -191,7 +191,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     const target = card.steps.find((s) => s.id === backTo);
     if (!target || !reason.trim()) return;
     const ok = `أُعيدت «${stepTypeName(stepTypes, target.type)}» ووصل السبب إلى ${stepAssigneeLabel(target, stations)}`;
-    if (act(() => apiService.sendBackCardStep(card.id, target.id, reason, REVIEW_STEP_TYPES.includes(step.type) ? step.id : undefined), ok)) setPanel(null);
+    if (act(() => apiService.sendBackCardStep(card.id, target.id, reason, step.id), ok)) setPanel(null);
   };
 
   const reassign = (step: CardStep) => {

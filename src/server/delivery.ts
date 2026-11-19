@@ -10,6 +10,7 @@ import type { AppConfig } from './config';
 import { logger } from './logger';
 import { prefsOf } from './notifications';
 import { categoryName, inQuietHours, wantsDelivery } from '../shared/notifications';
+import { validZone } from '../shared/dateFormat';
 
 const CURSOR_KEY = 'notify_delivery_rev';
 /** Notifications older than this when the worker sees them (e.g. after downtime) stay in the bell only. */
@@ -119,6 +120,24 @@ export function initializeNotificationDelivery(db: NewsroomDatabase): boolean {
   return true;
 }
 
+/**
+ * Minutes since midnight on the station clock (settings.defaultTimezone): quiet hours are the
+ * colleague's evening at the station, whatever time zone the server process runs in.
+ */
+export function stationMinutes(db: NewsroomDatabase, now = Date.now()): number {
+  const zone = validZone((db.getRow('settings', 'singleton')?.d as any)?.defaultTimezone);
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(now));
+    const value = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    const minutes = value('hour') * 60 + value('minute');
+    if (Number.isFinite(minutes)) return minutes;
+  } catch {
+    // An unknown zone falls back to the server clock.
+  }
+  const local = new Date(now);
+  return local.getHours() * 60 + local.getMinutes();
+}
+
 /** One delivery pass; concurrent calls share the run. */
 export function deliverPending(db: NewsroomDatabase, config: AppConfig, now = Date.now()): Promise<DeliveryStats> {
   if (running) return running;
@@ -143,8 +162,7 @@ export function deliverPending(db: NewsroomDatabase, config: AppConfig, now = Da
         const user = db.getRow('users', n.userId)?.d;
         if (!user || user.isActive === false) continue;
         const prefs = prefsOf(db, n.userId);
-        const local = new Date(now);
-        if (!n.urgent && inQuietHours(prefs, local.getHours() * 60 + local.getMinutes())) {
+        if (!n.urgent && inQuietHours(prefs, stationMinutes(db, now))) {
           stats.skipped++;
           continue;
         }

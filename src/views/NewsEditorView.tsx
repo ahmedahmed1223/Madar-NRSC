@@ -597,7 +597,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     return () => { observer.disconnect(); document.documentElement.style.removeProperty('--editor-actions-height'); };
   }, []);
   const savingRef = useRef(false);
-  const saveContent = async (stay: boolean, extra: Partial<NewsItem> = {}): Promise<NewsItem | null> => {
+  const saveContent = async (stay: boolean, extra: Partial<NewsItem> = {}, quiet = false): Promise<NewsItem | null> => {
     if (savingRef.current) return null;
     const badClip = videosError(videos);
     if (badClip) {
@@ -621,7 +621,22 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           if (!stay) onCancel();
         }
       }
-      else setSaveState(waitingForConnection() ? 'queued' : 'failed');
+      else if (waitingForConnection()) {
+        // Kept on this device and sent when the connection is back: the text is safe, carry on from it.
+        setSaveState('queued');
+        if (!quiet) notify({ type: 'warning', title: 'غير متصل: سيُرسل عند عودة الاتصال', message: QUEUED_MESSAGE });
+        if (!newsItem?.id) {
+          clearDraft();
+          onCancel();
+          return null;
+        }
+        const local = apiService.getNewsById(newsItem.id);
+        if (local) {
+          loadedSnapshotRef.current = snapshot;
+          setBaseUpdatedAt(local.updatedAt);
+          if (!stay && snapshot === JSON.stringify(formFieldsRef.current())) onCancel();
+        }
+      } else setSaveState('failed');
       return saved;
     } catch {
       setSaveState('failed');
@@ -705,7 +720,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       // Confirm the text save before changing its editorial status.
       let queued = false;
       if (isDirty && canEditContent) {
-        const saved = await saveContent(true);
+        const saved = await saveContent(true, {}, true);
         if (!saved) {
           // Offline the text is kept on this device and sent later; the status change can wait with it.
           if (!waitingForConnection()) return;

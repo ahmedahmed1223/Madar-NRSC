@@ -115,7 +115,7 @@ function ownScope(stations: Station[], own: Station): Set<string> {
  * - A general manager given stations or groups: the union of those stations' scopes (and their own station's).
  */
 export function stationScope(stations: Station[], who?: ScopeSubject, groups: StationGroup[] = rememberedGroups): Set<string> {
-  const subject = typeof who === 'object' && who !== null ? who : { stationId: who };
+  const subject: { stationId?: string | null; managedStationIds?: string[]; managedGroupIds?: string[] } = typeof who === 'object' && who !== null ? who : { stationId: typeof who === 'string' ? who : undefined };
   const managed = new Set<string>(subject.managedStationIds || []);
   for (const groupId of subject.managedGroupIds || []) groups.find((g) => g.id === groupId)?.stationIds.forEach((id) => managed.add(id));
   const known = [...managed].map((id) => stations.find((s) => s.id === id)).filter((s): s is Station => !!s);

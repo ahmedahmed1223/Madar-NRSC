@@ -71,7 +71,7 @@ export const applyDepartmentSettings = (settings: { departments?: Department[] }
 /** All known departments, archived included. */
 export const allDepartments = (): readonly Department[] => known;
 
-export const isDepartmentId = (v: unknown): v is DepartmentId => typeof v === 'string' && known.some((d) => d.id === v);
+export const isDepartmentId = (v: unknown): boolean => typeof v === 'string' && known.some((d) => d.id === v);
 
 export const departmentName = (id?: string | null) => {
   const d = known.find((x) => x.id === id);

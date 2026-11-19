@@ -277,10 +277,20 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- NEWS ACTIONS ---
   /** Returns the saved story, or null when the save was refused. `stay` keeps the editor open. */
+  /** No connection: the news write is kept on this device (awaitWrite answers at once, `queued`). */
+  const queuedOffline = async (newsId: string) => {
+    const state = dataStore.syncState();
+    if (state.browserOnline && state.online) return false;
+    // A short wait: only the immediate «queued» answer counts here; confirmSaved does the real wait.
+    return !!(await dataStore.awaitWrite('news', newsId, 1)).queued;
+  };
+
   const handleSaveNews = async (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): Promise<NewsItem | null> => {
     try {
       const saved = apiService.saveNews(newsData, currentUser);
       refreshData();
+      // Offline the write waits on this device; the editor says so once (no «تعذر الحفظ»).
+      if (await queuedOffline(saved.id)) return null;
       // «تم الحفظ» only once the server has stored it (the sync layer reports refusals).
       if (!await confirmSaved('news', saved.id, `تم حفظ الخبر: «${saved.title?.slice(0, 40)}»`)) return null;
       setSelectedNewsItem(saved);
@@ -299,6 +309,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
       refreshData();
+      if (await queuedOffline(newsId)) return false;
       return await confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
     } catch (err: any) {
       addToast({
@@ -980,6 +991,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 nextReviewId={nextReviewId}
                 reviewing={reviewQueueIds.includes(editorNewsItem?.id || '')}
                 onNextReview={id => handleEditNewsClick(id, true)}
+                reviewQueue={reviewQueueIds}
               />
             )}
 
