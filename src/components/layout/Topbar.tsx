@@ -1,4 +1,5 @@
 import { longToday } from '../common/StationClock';
+import { canRequestBreaking } from '../../shared/newsWorkflow';
 import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../shared/dateFormat';
 import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
@@ -346,7 +347,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   <FileText className="w-4 h-4 text-blue-600" />
                   خبر صحفي جديد
                 </button>}
-                {can('news.create') && <button
+                {canRequestBreaking(can) && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);

@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { awaitsMyReview } from '../../shared/newsWorkflow';
 import React from 'react';
 import { CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
@@ -116,6 +117,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   // Only stories this person can act on; a branch manager sees their stations' writers.
   const toReview: Row[] = canReview
     ? reviewableNews(newsList, currentUser, { canReview, stations, stationOf: (id) => stationOfUser.get(id) })
+        .filter((n) => awaitsMyReview((p) => RbacService.hasPermission(currentUser, p), me, n))
         .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
         .map((n) => ({ id: n.id, title: n.title, meta: n.authorName || 'بانتظار المراجعة', tone: 'amber' as const, onClick: () => onOpenNews(n.id) }))
     : [];

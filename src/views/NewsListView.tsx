@@ -29,7 +29,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { dataStore } from '../services/dataStore';
-import { transitionDenial, isBreakingLive } from '../shared/newsWorkflow';
+import { transitionDenial, isBreakingLive, awaitsMyReview, isQualityPassed, activeReviewClaim } from '../shared/newsWorkflow';
 import { isLockActive, EditLock } from '../shared/collections';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
@@ -249,7 +249,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep filters in memory. */ }
   }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page, contextKey]);
 
-  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW').sort((a, b) =>
+  // Passed or claimed by someone else leaves a quality reviewer's queue; approvers keep passed stories.
+  const reviewQueue = filteredNews.filter(n => n.status === 'UNDER_REVIEW' && awaitsMyReview(can, currentUser.id, n)).sort((a, b) =>
     (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || Date.parse(submittedForReview(a)) - Date.parse(submittedForReview(b)));
 
   const handleRestore = (id: string) => {
@@ -659,6 +660,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <Badge variant={pInfo.variant} size="sm">{pInfo.label}</Badge>
                       {item.authorName && <span className="text-xs text-slate-600">{item.authorName}</span>}
                       {lock && <span className="text-2xs font-bold text-amber-700">يحرره الآن: {lock.userName}</span>}
+                      {isQualityPassed(item) && <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800">اجتازت التدقيق</span>}
+                      {(() => {
+                        const claim = activeReviewClaim(item);
+                        return claim && claim.userId !== currentUser.id ? <span className="text-2xs font-bold text-slate-700">يراجعها {claim.userName}</span> : null;
+                      })()}
                       <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>
                         بانتظار المراجعة منذ {minutes < 60 ? countLabel(minutes, { ...AR.minute, zero: 'أقل من دقيقة' }) : countLabel(Math.floor(minutes / 60), AR.hour)}
                       </span>

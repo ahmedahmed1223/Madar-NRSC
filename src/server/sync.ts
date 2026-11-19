@@ -500,6 +500,22 @@ export class SyncService {
 
   /** The writer hears when an editor sends a story back, approves, publishes or rejects it. */
   private notifyNewsWorkflow(before: any, after: any, auth: AuthContext) {
+    // A quality pass reaches the approvers: the story is ready for their decision.
+    const passes = (logs: any[] | undefined) => (logs || []).filter((l: any) => l?.action === 'QUALITY_PASSED').length;
+    if (before && passes(after.workflowLogs) > passes(before.workflowLogs) && after.status === 'UNDER_REVIEW') {
+      const roles = auth.roles;
+      for (const row of this.db.listCollection('users')) {
+        const u = row.d;
+        if (!u || u.id === auth.user.id || u.isActive === false || u.deletedAt || !evaluatePermission(u, 'news.approve', roles)) continue;
+        writeNotification(this.db, {
+          userId: u.id,
+          title: `اجتاز التدقيق وينتظر الاعتماد — ${auth.user.fullName}`,
+          message: `«${after.title}»`,
+          linkUrl: `/news/${after.id}`,
+          category: 'news',
+        });
+      }
+    }
     if (!before || before.status === after.status || !after.authorId || after.authorId === auth.user.id) return;
     const note = [...(after.workflowLogs || [])].reverse().find((l: any) => l.toStatus === after.status)?.comment;
     const titles: Record<string, string> = {

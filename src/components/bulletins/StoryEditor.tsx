@@ -430,7 +430,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
 
-          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
+          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} title={story.slug} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
           <div className="sticky bottom-0 bg-white flex flex-wrap items-center justify-between gap-2 py-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && status === 'DRAFT' && (
