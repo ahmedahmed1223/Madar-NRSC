@@ -306,9 +306,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
 
           {stepId === 'categories' && (
             <div className="space-y-4 max-w-2xl">
-              <p className="text-sm text-slate-600">الأقسام الصحفية تصنّف الأخبار في القوائم والتقارير. يمكنك إعادة تسميتها وترتيبها لاحقاً من الإعدادات.</p>
+              <p className="text-sm text-slate-600">تصنيفات الأخبار (سياسة، اقتصاد، رياضة…) ترتّب المواد في القوائم والتقارير، وهي غير «الأقسام الإدارية» التي ينتمي إليها الزملاء. يمكنك إعادة تسميتها وترتيبها لاحقاً من الإعدادات.</p>
               {categories.length > 0 && (
-                <ul className="flex flex-wrap gap-2" aria-label="الأقسام الحالية">
+                <ul className="flex flex-wrap gap-2" aria-label="التصنيفات الحالية">
                   {categories.map((c) => (
                     <li key={c.id} className="inline-flex items-center gap-2 px-3 min-h-9 rounded-md border border-slate-200 bg-white text-sm">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.colorCode || c.color }} aria-hidden="true" />
@@ -325,18 +325,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                   if (!name) return;
                   void run(
                     async () => {
-                      if (categories.some((c) => c.nameAr === name)) throw new Error('القسم موجود');
+                      if (categories.some((c) => c.nameAr === name)) throw new Error('التصنيف موجود');
                       const saved = apiService.saveCategory({ nameAr: name, colorCode: CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length] });
-                      if (!(await confirmSaved('categories', saved.id, `أُضيف قسم ${name}`))) throw new Error('لم يؤكد الخادم الحفظ');
+                      if (!(await confirmSaved('categories', saved.id, `أُضيف تصنيف ${name}`))) throw new Error('لم يؤكد الخادم الحفظ');
                       setCategoryName('');
                     },
-                    `أُضيف قسم ${name}.`,
+                    `أُضيف تصنيف ${name}.`,
                     false
                   );
                 }}
               >
                 <div className="flex-1 min-w-48">
-                  <label htmlFor="setup-category" className={LABEL}>قسم جديد</label>
+                  <label htmlFor="setup-category" className={LABEL}>تصنيف جديد</label>
                   <input id="setup-category" maxLength={60} value={categoryName} onChange={(e) => setCategoryName(e.target.value)} placeholder="مثال: سياسة، اقتصاد، رياضة" className={INPUT} />
                 </div>
                 <button type="submit" disabled={busy || !categoryName.trim()} className="min-h-11 px-4 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-800 hover:bg-slate-50 inline-flex items-center gap-1.5 disabled:opacity-50">
