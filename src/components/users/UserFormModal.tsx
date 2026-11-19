@@ -6,14 +6,19 @@ import { DEPARTMENTS, departmentIdOf, departmentName } from '../../shared/depart
 import { RoleDefinition } from '../../services/rbacService';
 import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
+import { PermissionOverridesSection } from './PermissionOverridesSection';
+import { sameOverrides } from '../../services/permissionOverrides';
 import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check } from 'lucide-react';
 
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (userData: Partial<User>, initialPassword?: string) => void;
+  /** Resolves false when the save failed: the form then stays open with everything typed (undefined counts as saved). */
+  onSave: (userData: Partial<User>, initialPassword?: string) => void | boolean | Promise<boolean>;
   userToEdit?: User | null;
   roles: RoleDefinition[];
+  /** Show the per-user permission exceptions (needs users.manage_roles_permissions, and not on one's own account). */
+  canManageOverrides?: boolean;
 }
 
 
@@ -25,6 +30,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   onSave,
   userToEdit,
   roles,
+  canManageOverrides = false,
 }) => {
   const [fullName, setFullName] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
@@ -42,6 +48,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [isActive, setIsActive] = useState(true);
   const [initialPassword, setInitialPassword] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [customPermissions, setCustomPermissions] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (userToEdit) {
@@ -73,12 +81,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setTwoFactorEnabled(false);
       setIsActive(true);
     }
+    setCustomPermissions(userToEdit?.customPermissions || []);
     setInitialPassword('');
     setErrors({});
   }, [userToEdit, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const selectedRole = roles.find((r) => r.roleCode === role);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const newErrors: Record<string, string> = {};
 
     if (!fullName.trim()) newErrors.fullName = 'الاسم الكامل بالعربية مطلوب';
@@ -99,7 +111,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       return;
     }
 
-    onSave({
+    // Exceptions are sent only when they changed, so a profile edit never touches privileged fields.
+    const overridesChanged = canManageOverrides && !sameOverrides(customPermissions, userToEdit?.customPermissions);
+    setSaving(true);
+    let saved: void | boolean;
+    try {
+    saved = await onSave({
       id: userToEdit?.id,
       fullName: fullName.trim(),
       fullNameEn: fullNameEn.trim(),
@@ -114,8 +131,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       bio: bio.trim(),
       avatarUrl,
       isActive,
+      ...(overridesChanged ? { customPermissions } : {}),
     }, userToEdit ? undefined : initialPassword);
-    onClose();
+    } catch {
+      saved = false;
+    } finally {
+      setSaving(false);
+    }
+    if (saved !== false) onClose();
   };
 
   return (
@@ -395,6 +418,15 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </label>
         </div>
 
+        {canManageOverrides && (
+          <PermissionOverridesSection
+            value={customPermissions}
+            onChange={setCustomPermissions}
+            rolePermissions={selectedRole?.permissions || []}
+            allByRole={role === 'SUPER_ADMIN'}
+          />
+        )}
+
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
           <button
@@ -406,10 +438,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </button>
           <button
             type="submit"
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+            disabled={saving}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />
-            <span>{userToEdit ? 'حفظ التعديلات' : 'تسجيل المستخدم'}</span>
+            <span>{saving ? 'جارٍ الحفظ...' : userToEdit ? 'حفظ التعديلات' : 'تسجيل المستخدم'}</span>
           </button>
         </div>
       </form>

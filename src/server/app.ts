@@ -673,7 +673,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     windowMs: 60_000,
     max: 6,
     key: (req) => req.auth?.user.id || req.ip || 'unknown',
-    message: 'تم تحديث البرقيات قبل قليل، حاول بعد دقيقة',
+    message: 'تم تحديث المصادر قبل قليل، حاول بعد دقيقة',
   });
 
   app.post(

@@ -1145,7 +1145,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {/* Live Ticker Strap Preview Simulator */}
               {(shortTitle || title) && showTickerPreview && (
                 <div id="news-ticker-preview" className="theme-fixed mt-2 p-2.5 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-inner flex items-center gap-3 overflow-hidden">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-black text-2xs rounded tracking-wide shrink-0">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white font-bold text-2xs rounded tracking-wide shrink-0">
                     <Flame className="w-3 h-3" />
                     شريط الأخبار
                   </div>
@@ -1474,7 +1474,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setEventDate(new Date().toISOString().slice(0, 16))}
+                      onClick={() => setEventDate(toLocalInputValue(new Date()))}
                       className="text-2xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
                     >
                       الآن
@@ -1482,7 +1482,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        setEventDate(new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16))
+                        setEventDate(toLocalInputValue(new Date(Date.now() - 30 * 60000)))
                       }
                       className="text-2xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
                     >

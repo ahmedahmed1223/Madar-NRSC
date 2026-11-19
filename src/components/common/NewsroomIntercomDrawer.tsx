@@ -134,7 +134,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <Radio className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-white">المحادثة الداخلية بين الأقسام</h3>
+                <h3 className="text-xs font-bold text-white">المحادثة الداخلية بين الأقسام</h3>
                 <span className="text-2xs text-slate-400">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
@@ -190,7 +190,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <div className="flex items-center justify-between text-2xs">
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
-                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-2xs">
+                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-bold rounded text-2xs">
                         عاجل
                       </span>
                     )}

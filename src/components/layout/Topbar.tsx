@@ -134,6 +134,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   );
 
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
+  const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
+  // «إنشاء جديد» lists only what this colleague may create; with nothing to create it is not shown.
+  const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign'].some(can);
 
   // Floating menus close on Esc and whenever the screen changes.
   const [chat, setChat] = useState(intercomState.last || { open: false, unread: 0 });
@@ -238,7 +241,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Real synchronisation status with the server */}
         <div
-          className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap ${
+          className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap ${
             !syncStatus.online
               ? 'bg-red-50 text-red-700 border-red-200'
               : syncStatus.pending > 0
@@ -257,7 +260,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           role="status"
           title={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
           aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ المزامنة' : 'متصل بالخادم'}
-          className={`xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          className={`2xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
         />
 
         {/* Mobile Search Button */}
@@ -293,14 +296,14 @@ export const Topbar: React.FC<TopbarProps> = ({
         <PWAInstallButton />
 
         {/* Quick Create Dropdown */}
-        <div className="relative">
+        {canCreateAnything && <div className="relative">
           <button
             type="button"
             onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
             aria-label="إنشاء جديد"
             aria-haspopup="menu"
             aria-expanded={isCreateMenuOpen}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 px-3.5 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden xl:inline">إنشاء جديد</span>
@@ -311,7 +314,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsCreateMenuOpen(false)} />
               <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-right">
-                <button
+                {can('news.create') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -321,8 +324,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <FileText className="w-4 h-4 text-blue-600" />
                   خبر صحفي جديد
-                </button>
-                <button
+                </button>}
+                {can('programs.manage') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -332,8 +335,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <Tv className="w-4 h-4 text-emerald-700" />
                   برنامج تلفزيوني جديد
-                </button>
-                <button
+                </button>}
+                {can('episodes.create') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -343,8 +346,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <Video className="w-4 h-4 text-purple-600" />
                   حلقة برنامج جديدة
-                </button>
-                <button
+                </button>}
+                {can('tasks.create_assign') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -354,11 +357,11 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <CheckSquare className="w-4 h-4 text-amber-700" />
                   مهمة تحريرية جديدة
-                </button>
+                </button>}
               </div>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Team chat (was a floating button covering content) */}
         <button

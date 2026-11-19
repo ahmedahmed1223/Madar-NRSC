@@ -8,6 +8,7 @@ import { Plus, Video, Edit2, Trash2, Search, Eye, X } from 'lucide-react';
 import { Program, ProgramType, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { ProductionNameField } from '../components/common/ProductionNameField';
+import { ProgramTeamField } from '../components/programs/ProgramTeamField';
 
 interface ProgramsViewProps {
   programs: Program[];
@@ -56,15 +57,17 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const [channelName, setChannelName] = useState('');
   const [studioName, setStudioName] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const draft = useFormDraft(`program:${currentUser.id}:${editingProgram?.id || 'new'}`, isModalOpen,
     { name, shortName, description, typeId, presenterName, producerName, broadcastDays,
-      broadcastTime, durationMinutes, channelName, studioName, coverImageUrl }, value => {
+      broadcastTime, durationMinutes, channelName, studioName, coverImageUrl, teamMembers }, value => {
       setName(value.name); setShortName(value.shortName); setDescription(value.description);
       setTypeId(value.typeId); setPresenterName(value.presenterName); setProducerName(value.producerName);
       setBroadcastDays(value.broadcastDays); setBroadcastTime(value.broadcastTime);
       setDurationMinutes(value.durationMinutes); setChannelName(value.channelName);
       setStudioName(value.studioName); setCoverImageUrl(value.coverImageUrl);
+      setTeamMembers(Array.isArray(value.teamMembers) ? value.teamMembers : []);
     });
 
   const daysOfWeek = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
@@ -83,6 +86,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setChannelName('القناة الإخبارية الأولى');
     setStudioName('استوديو الأخبار الرئيسي (A1)');
     setCoverImageUrl('');
+    setTeamMembers([currentUser.fullName]);
     setIsModalOpen(true);
   };
 
@@ -100,6 +104,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setChannelName(prog.channelName);
     setStudioName(prog.studioName);
     setCoverImageUrl(prog.coverImageUrl || '');
+    setTeamMembers(prog.teamMembers || []);
     setIsModalOpen(true);
   };
 
@@ -143,6 +148,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       channelName,
       studioName,
       coverImageUrl: coverImageUrl || '',
+      teamMembers,
     });
 
     if (saved) { draft.clearDraft(); setIsModalOpen(false); }
@@ -162,7 +168,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             البرامج
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -537,6 +543,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               />
             </div>
           </div>
+
+          <ProgramTeamField value={teamMembers} onChange={setTeamMembers} />
 
           <div>
             <div className="flex items-center justify-between mb-1">

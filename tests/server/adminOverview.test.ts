@@ -89,15 +89,15 @@ describe('ending a colleague\'s sessions', () => {
 describe('background jobs', () => {
   it('remember their last run without leaking error details', async () => {
     resetJobRuns();
-    registerJob('جلب البرقيات', 5);
-    expect(jobRuns()).toEqual([{ name: 'جلب البرقيات', everyMinutes: 5 }]);
-    await trackJob('جلب البرقيات', () => 1);
+    registerJob('جلب المصادر', 5);
+    expect(jobRuns()).toEqual([{ name: 'جلب المصادر', everyMinutes: 5 }]);
+    await trackJob('جلب المصادر', () => 1);
     expect(jobRuns()[0]).toMatchObject({ ok: true, everyMinutes: 5 });
-    await expect(trackJob('جلب البرقيات', () => Promise.reject(new Error('password=secret')))).rejects.toThrow();
+    await expect(trackJob('جلب المصادر', () => Promise.reject(new Error('password=secret')))).rejects.toThrow();
     expect(jobRuns()[0].ok).toBe(false);
     expect(jobRuns()[0].error).not.toContain('secret');
     recordJob('النسخ الاحتياطي');
-    expect(adminOverview(server.db, server.config).alerts.some((a) => a.text.includes('جلب البرقيات'))).toBe(true);
+    expect(adminOverview(server.db, server.config).alerts.some((a) => a.text.includes('جلب المصادر'))).toBe(true);
     resetJobRuns();
   });
 

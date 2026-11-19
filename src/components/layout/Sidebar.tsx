@@ -8,6 +8,17 @@ import { RbacService } from '../../services/rbacService';
 import { dataStore } from '../../services/dataStore';
 import { apiService } from '../../services/api';
 import React, { useEffect, useRef, useState } from 'react';
+import { NAV_SECTIONS, defaultFolded, sectionOfScreen, sectionOrderFor, type NavSectionId } from '../../shared/navigation';
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' }>;
+  badge: string | null;
+  badgeColor?: string;
+  /** What waits there, summed on a folded section. */
+  count?: number;
+}
 import {
   LayoutDashboard,
   Newspaper,
@@ -32,6 +43,7 @@ import {
   Settings,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Radio,
   Sparkles,
   UserCog,
@@ -190,65 +202,98 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Open production-card steps assigned to me.
   const cardsBadge = currentUser ? apiService.getCards().filter((c) => c.status === 'OPEN').reduce((n, c) => n + c.steps.filter((s) => s.assigneeId === currentUser.id && s.status !== 'DONE' && s.status !== 'SKIPPED').length, 0) : 0;
   const newsBadgeText = newsBadge > 0 ? `${newsBadge} مراجعة` : null;
-  const navGroups: { label: string | null; items: { id: string; label: string; icon: any; badge: string | null; badgeColor?: string }[] }[] = [
-    { label: null, items: [{ id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null }] },
-    {
-      label: 'غرفة الأخبار',
-      items: [
-        { id: 'wires', label: 'البرقيات', icon: Rss, badge: null },
-        { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800' },
-        { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-500 text-white' },
-        { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800' },
-        { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
-        { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: 'bg-sky-100 text-sky-800' },
-      ],
-    },
-    {
-      label: 'البرامج',
-      items: [
-        { id: 'programs', label: 'البرامج', icon: Tv, badge: null },
-        { id: 'episodes', label: 'الحلقات', icon: Video, badge: null },
-        { id: 'calendar', label: 'جدول البث', icon: Calendar, badge: null },
-        { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
-      ],
-    },
-    {
-      label: 'الهواء والاستديو',
-      items: [
-        { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white' },
-        { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
-      ],
-    },
-    { label: 'الوسائط', items: [{ id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null }] },
-    {
-      label: 'الفريق',
-      items: [
-        { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white' },
-        { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
-        { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800' },
-        { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800' },
-        { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
-        { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
-      ],
-    },
-    {
-      label: 'الإدارة',
-      items: [
-        { id: 'workload', label: 'الأعباء والأداء', icon: Scale, badge: null },
-        { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
-        { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
-        { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
-        { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },
-      ],
-    },
-    {
-      label: 'المساعدة',
-      items: [
-        { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
-          { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-700 text-white' },
-      ],
-    },
-  ];
+
+  /** Every screen of the rail with its label, icon and the count that waits there. */
+  const ITEMS: Record<string, NavItem> = {
+    dashboard: { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null },
+    messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: 'bg-blue-600 text-white', count: messagesBadge },
+    tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: tasksBadge },
+    cards: { id: 'cards', label: 'بطاقات الإنتاج', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: 'bg-blue-100 text-blue-800', count: cardsBadge },
+    requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: 'bg-violet-100 text-violet-800', count: requestsBadge },
+    news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: 'bg-amber-100 text-amber-800', count: newsBadge },
+    wires: { id: 'wires', label: 'المصادر', icon: Rss, badge: null },
+    breaking: { id: 'breaking', label: 'العاجل', icon: Flame, badge: breakingCount > 0 ? `${breakingCount}` : null, badgeColor: 'bg-red-600 text-white', count: breakingCount },
+    bulletins: { id: 'bulletins', label: 'النشرات', icon: ListVideo, badge: toApprove > 0 ? `${toApprove} اعتماد` : null, badgeColor: 'bg-emerald-100 text-emerald-800', count: toApprove },
+    stories: { id: 'stories', label: 'التغطيات', icon: FolderGit2, badge: null },
+    diary: { id: 'diary', label: 'أجندة التغطية', icon: CalendarDays, badge: diaryBadge > 0 ? `${diaryBadge}` : null, badgeColor: 'bg-sky-100 text-sky-800', count: diaryBadge },
+    episodes: { id: 'episodes', label: 'الحلقات', icon: Video, badge: null },
+    programs: { id: 'programs', label: 'البرامج', icon: Tv, badge: null },
+    calendar: { id: 'calendar', label: 'جدول البث', icon: Calendar, badge: null },
+    guests: { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
+    'on-air': { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: 'bg-red-600 text-white', count: liveCount },
+    'studio-screen': { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
+    media: { id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null },
+    bookings: { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
+    roster: { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
+    workload: { id: 'workload', label: 'الأعباء والأداء', icon: Scale, badge: null },
+    reports: { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
+    audit: { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
+    users: { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
+    settings: { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },
+    help: { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
+    'whats-new': { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-emerald-700 text-white' },
+  };
+
+  // Sections follow the colleague's role; each folds, and the fold is remembered on this device.
+  const order = sectionOrderFor(currentUser);
+  const foldKey = `madar-nav-folded:${currentUser?.id || 'anon'}`;
+  const [folded, setFolded] = useState<Set<NavSectionId>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(foldKey) || 'null');
+      if (Array.isArray(saved)) return new Set(saved as NavSectionId[]);
+    } catch {
+      // Unreadable or blocked storage: start from the defaults.
+    }
+    return new Set(defaultFolded(order));
+  });
+  const toggleSection = (id: NavSectionId) =>
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(foldKey, JSON.stringify([...next]));
+      } catch {
+        // Lasts for this visit.
+      }
+      return next;
+    });
+  const activeSection = sectionOfScreen(activeIdentifier);
+  const navGroups = order.map((id) => ({ ...NAV_SECTIONS[id], entries: NAV_SECTIONS[id].items.map((item) => ITEMS[item]).filter(Boolean) }));
+
+  const navButton = (item: NavItem) => {
+    const Icon = item.icon;
+    const isActive =
+      activeIdentifier === item.id ||
+      (item.id === 'news' && ['news_list', 'news_create', 'news_edit', 'news-editor'].includes(activeIdentifier)) ||
+      (item.id === 'episodes' && activeIdentifier === 'episode-workspace') ||
+      (item.id === 'programs' && ['program-detail', 'program_detail'].includes(activeIdentifier)) ||
+      (item.id === 'settings' && ['database', 'tests', 'alerts'].includes(activeIdentifier));
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => handleNavigate(item.id)}
+        aria-current={isActive ? 'page' : undefined}
+        className={`nav-item w-full flex items-center gap-3 px-3 min-h-10 rounded-md text-xs font-semibold transition-colors relative ${
+          isActive ? 'nav-item-active text-white' : 'text-slate-300 hover:text-white hover:bg-white/5'
+        }`}
+        title={isCollapsed ? item.label : undefined}
+        aria-label={isCollapsed ? (item.badge ? `${item.label} (${item.badge})` : item.label) : undefined}
+      >
+        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-300' : 'text-slate-400'}`} aria-hidden="true" />
+        {!isCollapsed && (
+          <>
+            <span className="flex-1 text-right truncate">{item.label}</span>
+            {item.badge && (
+              <span className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 tabular-nums ${item.badgeColor || 'bg-slate-800 text-slate-300'}`}>{item.badge}</span>
+            )}
+          </>
+        )}
+        {isCollapsed && item.badge && <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500" />}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -266,21 +311,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         aria-label="القائمة الرئيسية"
         {...(isSmallScreen && !isMobileOpen ? { inert: true, 'aria-hidden': true } : {})}
         {...(isSmallScreen && isMobileOpen ? { role: 'dialog', 'aria-modal': true } : {})}
-        className={`theme-fixed bg-slate-900 text-slate-300 border-l border-slate-800 flex flex-col transition-all duration-300 select-none
+        className={`theme-fixed bg-slate-950 text-slate-300 border-l border-white/5 flex flex-col transition-all duration-300 select-none
           fixed inset-y-0 right-0 z-50 md:relative md:z-20
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'}
           ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'}
         `}
       >
         {/* Brand Header */}
-        <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4">
+        <div className="h-16 border-b border-white/5 flex items-center justify-between px-4">
           {!isCollapsed && (
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md shrink-0">
+              <div className="w-8 h-8 rounded-md bg-red-600 flex items-center justify-center text-white shrink-0">
                 <Radio className="w-5 h-5" />
               </div>
               <div className="truncate">
-                <span className="font-extrabold text-white text-sm block leading-tight tracking-tight">
+                <span className="font-bold text-white text-sm block leading-tight tracking-tight">
                   {APP_NAME}
                 </span>
                 <span className="text-2xs text-slate-400 block leading-tight">
@@ -291,7 +336,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {isCollapsed && (
-            <div className="mx-auto w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md">
+            <div className="mx-auto w-8 h-8 rounded-md bg-red-600 flex items-center justify-center text-white">
               <Radio className="w-5 h-5" />
             </div>
           )}
@@ -323,65 +368,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5" aria-label="التنقل">
+        {canSeeNav('dashboard') && navButton(ITEMS.dashboard)}
         {navGroups.map((group) => {
-          const items = group.items.filter((item) => canSeeNav(item.id));
+          const items = group.entries.filter((item) => canSeeNav(item.id));
           if (!items.length) return null;
+          // The section of the open screen never hides it.
+          const open = isCollapsed || !folded.has(group.id) || activeSection === group.id;
+          const waiting = items.reduce((sum, item) => sum + (item.count || 0), 0);
+          const listId = `nav-section-${group.id}`;
           return (
-            <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
-              {group.label && !isCollapsed && (
-                <div className="px-3 pt-3 pb-1 text-2xs font-bold text-slate-400 tracking-wide">{group.label}</div>
-              )}
-              {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
-        {items.map((item) => {
-          const Icon = item.icon;
-          const isActive =
-            activeIdentifier === item.id ||
-            (item.id === 'news' && ['news_list', 'news_create', 'news_edit', 'news-editor'].includes(activeIdentifier)) ||
-            (item.id === 'episodes' && activeIdentifier === 'episode-workspace') ||
-            (item.id === 'programs' && ['program-detail', 'program_detail'].includes(activeIdentifier));
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleNavigate(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all relative ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
-              }`}
-              title={isCollapsed ? item.label : undefined}
-              aria-label={isCollapsed ? (item.badge ? `${item.label} (${item.badge})` : item.label) : undefined}
-            >
-              <Icon
-                className={`w-4 h-4 shrink-0 ${
-                  isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                }`}
-              />
-
-              {!isCollapsed && (
-                <>
-                  <span className="flex-1 text-right truncate">{item.label}</span>
-                  {item.badge && (
-                    <span
-                      className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 ${
-                        item.badgeColor || 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
+            <div key={group.id} className="pt-2" role="group" aria-label={group.label}>
+              {isCollapsed ? (
+                <div className="mx-3 my-1.5 border-t border-slate-800" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => toggleSection(group.id)}
+                  aria-expanded={open}
+                  aria-controls={listId}
+                  className="w-full flex items-center gap-2 px-3 min-h-8 rounded-lg text-2xs font-bold text-slate-400 hover:text-slate-100 hover:bg-white/5"
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? '' : 'rotate-90'}`} aria-hidden="true" />
+                  <span className="flex-1 text-right">{group.label}</span>
+                  {!open && waiting > 0 && (
+                    <span className="min-w-5 px-1.5 rounded-full bg-blue-500 text-white text-3xs font-bold tabular-nums leading-5">{waiting > 99 ? '99+' : waiting}</span>
                   )}
-                </>
+                </button>
               )}
-
-              {/* Indicator dot if collapsed and has badge */}
-              {isCollapsed && item.badge && (
-                <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-red-500" />
+              {open && (
+                <div id={listId} className="space-y-0.5 mt-0.5">
+                  {items.map(navButton)}
+                </div>
               )}
-            </button>
-          );
-        })}
             </div>
           );
         })}
@@ -389,7 +408,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer: organisation, build version and live connection state */}
       {!isCollapsed && (
-        <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-2xs text-slate-400">
+        <div className="p-3 border-t border-white/5 text-2xs text-slate-400">
           <div className="flex items-center justify-between text-slate-400 mb-1">
             <span>الإصدار: v{__APP_VERSION__}</span>
             <span className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>

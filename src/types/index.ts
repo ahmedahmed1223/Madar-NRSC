@@ -566,6 +566,8 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */
+  setup?: import('../shared/setup').SetupState;
   onAirDisplayMode?: 'OPERATIONAL' | 'TEXT';
   studioDisplayMode?: 'OPERATIONAL' | 'TEXT';
   allowOfflineScriptEdits?: boolean;

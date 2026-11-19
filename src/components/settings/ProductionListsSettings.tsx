@@ -73,7 +73,7 @@ export function ProductionListsSettings({ currentUser }: { currentUser: User }) 
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={inactive} onChange={e => setInactive(e.target.checked)} />عرض الأسماء المعطلة</label>
       {canEdit && <button type="button" onClick={() => open()} className="inline-flex items-center gap-2 min-h-11 px-3 rounded-lg bg-blue-600 text-white"><Plus className="w-4 h-4" />{studio ? 'إضافة استديو' : 'إضافة اسم'}</button>}
     </div>
-    {!canEdit && <p className="text-sm text-slate-600">إدارة الاستديوهات تتطلب صلاحية إدارة الموارد.</p>}
+    {!canEdit && <p className="text-sm text-slate-600">{studio ? 'إدارة الاستديوهات تتطلب صلاحية إدارة الموارد.' : `إدارة قائمة ${tab === 'PRESENTER' ? 'المذيعين' : 'المخرجين'} تتطلب صلاحية إعدادات النظام.`}</p>}
     {visible.length === 0 && <p role="status" className="text-sm text-slate-600 py-4">لا توجد أسماء مطابقة</p>}
     <ul className="divide-y divide-slate-200">
       {visible.map(row => <li key={row.id} className="flex items-center gap-3 py-3">

@@ -359,7 +359,15 @@ export const POLICIES: Record<CollectionName, Policy> = {
     return null;
   },
   sources: referencedPolicy('sourceId', 'المصدر'),
-  programTypes: require('system.settings'),
+  programTypes: (input) => {
+    const base = require('system.settings')(input);
+    if (base) return base;
+    const { kind, before, after, list } = input;
+    if (!before || !(kind === 'delete' || isSoftDelete(before, after))) return null;
+    // A type still used by a programme cannot go (its programmes would lose their type).
+    const inUse = (list?.('programs') || []).filter((p: any) => !p.deletedAt && p.typeId === before.id).length;
+    return inUse ? `لا يمكن حذف نوع البرنامج لأن ${inUse} من البرامج تستخدمه؛ غيّر نوعها أولاً` : null;
+  },
   settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
@@ -447,7 +455,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (after?.deletedAt) return null;
     return rosterEntryError(after);
   },
-  wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
+  wires: () => 'المصادر تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
   offlineAirSessions: () => 'السجل المحلي يستورد عبر المسار المخصص ولا يعدل أو يحذف',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;

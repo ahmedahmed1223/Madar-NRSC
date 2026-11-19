@@ -102,7 +102,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             <Radio className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900 leading-tight">{APP_NAME} · {APP_TAGLINE}</h1>
+            <h1 className="text-lg font-bold text-slate-900 leading-tight">{APP_NAME} · {APP_TAGLINE}</h1>
             <p className="text-xs text-slate-500">سجّل الدخول بحسابك المؤسسي</p>
           </div>
         </div>

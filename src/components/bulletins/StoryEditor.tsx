@@ -295,7 +295,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   title={t.hint}
                   className={`p-2 rounded-lg border text-right ${type === t.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
-                  <span className="block text-2xs font-black font-mono">{t.code}</span>
+                  <span className="block text-2xs font-bold font-mono">{t.code}</span>
                   <span className="block text-2xs">{t.name}</span>
                 </button>
               ))}
@@ -365,7 +365,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             <span>READ {mmss(timing.read)}</span>
             {meta.clip && <span>CLIP {mmss(timing.clip)}</span>}
             {meta.manual && <span>EST {mmss(timing.manual)}</span>}
-            <span className="font-black text-emerald-700">TOTAL {mmss(timing.total)}</span>
+            <span className="font-bold text-emerald-700">TOTAL {mmss(timing.total)}</span>
           </div>
 
           <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">

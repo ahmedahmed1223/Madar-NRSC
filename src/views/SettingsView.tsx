@@ -21,6 +21,8 @@ import { ProductionListsSettings } from '../components/settings/ProductionListsS
 import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
 import { StationsSettings } from '../components/settings/StationsSettings';
 import { SystemMonitor } from '../components/settings/SystemMonitor';
+import { ProgramTypesSettings } from '../components/settings/ProgramTypesSettings';
+import { dataStore } from '../services/dataStore';
 import {
   Settings,
   Tv,
@@ -45,6 +47,8 @@ import {
   Tag,
   Network,
   Activity,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { Category, NewsSource, User, NewsItem } from '../types';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
@@ -56,15 +60,20 @@ interface SettingsViewProps {
   sources: NewsSource[];
   users: User[];
   newsList?: NewsItem[];
-  onSaveCategory: (cat: Partial<Category>) => void;
+  /** Resolves true once the server confirmed; undefined (legacy handlers) counts as saved. */
+  onSaveCategory: (cat: Partial<Category>) => void | boolean | Promise<boolean>;
   onDeleteCategory: (id: string) => void;
   onSaveSource: (source: Partial<NewsSource>) => boolean | Promise<boolean>;
   onDeleteSource: (id: string) => void;
   /** Opens «المستخدمون والصلاحيات». */
   onOpenUsers?: () => void;
+  /** Section to open with (e.g. 'sources' from the wires screen); wins over the remembered one. */
+  initialSection?: SettingsSection;
+  /** Source row to highlight, scroll to and open the feed editor of (with initialSection 'sources'). */
+  focusSourceId?: string | null;
 }
 
-type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
+export type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
   { id: 'stations', label: 'المحطات وبطاقات الإنتاج', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
@@ -76,10 +85,31 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
   { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
   { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
-  { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات البرقيات', icon: Rss },
+  { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
   { id: 'data', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
 ];
 const SECTION_KEY = 'nrcs-settings-section';
+const isSection = (value: unknown): value is SettingsSection => SECTIONS.some((x) => x.id === value);
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  REPORTER: 'مراسل',
+  NEWS_AGENCY: 'وكالة أنباء',
+  OFFICIAL_STATEMENT: 'بيان رسمي',
+  INTERVIEW: 'مقابلة',
+  SOCIAL_MEDIA: 'منصات التواصل',
+  SPECIAL_SOURCE: 'مصدر خاص',
+  OTHER: 'أخرى',
+};
+const sourceTypeLabel = (type?: string) => (type ? SOURCE_TYPE_LABELS[type] || type : '');
+const SOURCE_TYPE_SUGGESTIONS = ['وكالة أنباء عالمية', 'وكالة أنباء', 'مراسل خاص', 'بيان رسمي', 'مقابلة', 'منصات التواصل', 'مصدر خاص'];
+const RELIABILITY_OPTIONS = [
+  { value: 5, label: '5 — عالية جداً' },
+  { value: 4, label: '4 — عالية' },
+  { value: 3, label: '3 — متوسطة' },
+  { value: 2, label: '2 — ضعيفة' },
+  { value: 1, label: '1 — ضعيفة جداً' },
+];
+const sameName = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
 
 const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number> }> = ({ section, onChange, counts }) => (
   <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-3 gap-2">
@@ -144,15 +174,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveSource,
   onDeleteSource,
   onOpenUsers,
+  initialSection,
+  focusSourceId,
 }) => {
   const [section, setSection] = useState<SettingsSection>(() => {
+    if (isSection(initialSection)) return initialSection;
     try {
-      const saved = localStorage.getItem(SECTION_KEY) as SettingsSection | null;
-      return saved && SECTIONS.some((x) => x.id === saved) ? saved : 'station';
+      const saved = localStorage.getItem(SECTION_KEY);
+      return isSection(saved) ? saved : 'station';
     } catch {
       return 'station';
     }
   });
+  // A section asked for by another screen wins over the remembered one, and becomes the remembered one.
+  useEffect(() => {
+    if (!isSection(initialSection)) return;
+    setSection(initialSection);
+    try {
+      localStorage.setItem(SECTION_KEY, initialSection);
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  }, [initialSection]);
   const chooseSection = async (next: SettingsSection) => {
     if (saving) return;
     if (dirty && !await confirmDialog({ title: 'تغييرات غير محفوظة', message: 'الانتقال دون حفظ التغييرات؟', confirmLabel: 'تجاهل التغييرات' })) return;
@@ -234,12 +277,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Delete Category Confirmation Modal State
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   // New Source State
   const [newSourceName, setNewSourceName] = useState('');
   const [feedEditingId, setFeedEditingId] = useState<string | null>(null);
   const [newSourceType, setNewSourceType] = useState('وكالة أنباء عالمية');
   const [newSourceReliability, setNewSourceReliability] = useState(5);
+  const [addingSource, setAddingSource] = useState(false);
+
+  // Edit Source State
+  const [editingSource, setEditingSource] = useState<NewsSource | null>(null);
+  const [editSourceName, setEditSourceName] = useState('');
+  const [editSourceType, setEditSourceType] = useState('');
+  const [editSourceReliability, setEditSourceReliability] = useState(5);
+  const [savingSource, setSavingSource] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+
+  // A source opened from the wires screen (e.g. a failing feed): show it and open its feed editor.
+  const onSources = section === 'sources';
+  useEffect(() => {
+    if (!focusSourceId || !onSources) return;
+    setFeedEditingId(focusSourceId);
+    const t = setTimeout(() => document.getElementById(`source-row-${focusSourceId}`)?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }), 80);
+    return () => clearTimeout(t);
+  }, [focusSourceId, onSources]);
 
   // Count news per category
   const newsCountByCategory = useMemo(() => {
@@ -255,18 +318,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return counts;
   }, [newsList]);
 
+  // Categories in their editorial order (orderIndex), stored order breaking ties.
+  const orderedCategories = useMemo(
+    () => categories
+      .map((c, i) => ({ c, i }))
+      .sort((a, b) => (a.c.orderIndex ?? Number.MAX_SAFE_INTEGER) - (b.c.orderIndex ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
+      .map(({ c }) => c),
+    [categories]
+  );
+
   // Filtered categories
   const filteredCategories = useMemo(() => {
-    if (!categorySearch.trim()) return categories;
+    if (!categorySearch.trim()) return orderedCategories;
     const q = categorySearch.toLowerCase();
-    return categories.filter(
+    return orderedCategories.filter(
       (c) =>
         c.nameAr.toLowerCase().includes(q) ||
         (c.nameEn && c.nameEn.toLowerCase().includes(q)) ||
         (c.slug && c.slug.toLowerCase().includes(q)) ||
         (c.description && c.description.toLowerCase().includes(q))
     );
-  }, [categories, categorySearch]);
+  }, [orderedCategories, categorySearch]);
 
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -366,21 +438,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.readAsText(file);
   };
 
+  /** Runs App's save handler; true only when it reports success (undefined = legacy success). */
+  const saveCategory = async (cat: Partial<Category>): Promise<boolean> => {
+    try {
+      const result = await onSaveCategory(cat);
+      return result === undefined ? true : result === true;
+    } catch (err) {
+      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر حفظ القسم' });
+      return false;
+    }
+  };
+
   // Add new category
-  const handleAddCategory = (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCatNameAr.trim()) return;
+    if (!newCatNameAr.trim() || savingCategory) return;
+    if (categories.some((c) => sameName(c.nameAr, newCatNameAr))) {
+      notify({ type: 'warning', message: `يوجد قسم باسم (${newCatNameAr.trim()}) بالفعل.` });
+      return;
+    }
 
     const slug = newCatSlug.trim() || (newCatNameEn.trim() || newCatNameAr.trim()).toLowerCase().replace(/\s+/g, '-');
-    onSaveCategory({
+    const lastOrder = categories.reduce((max, c) => Math.max(max, c.orderIndex ?? 0), 0);
+    setSavingCategory(true);
+    const saved = await saveCategory({
       nameAr: newCatNameAr.trim(),
       nameEn: newCatNameEn.trim() || newCatNameAr.trim(),
       slug,
       color: newCatColor,
       colorCode: newCatColor,
       description: newCatDesc.trim(),
-      orderIndex: categories.length + 1,
+      orderIndex: Math.max(lastOrder, categories.length) + 1,
     });
+    setSavingCategory(false);
+    // A refused save keeps what was typed for another attempt.
+    if (!saved) return;
 
     // Reset Form
     setNewCatNameAr('');
@@ -401,11 +493,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // Save edited category
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCategory || !editNameAr.trim()) return;
+    if (!editingCategory || !editNameAr.trim() || savingCategory) return;
 
-    onSaveCategory({
+    setSavingCategory(true);
+    const saved = await saveCategory({
       id: editingCategory.id,
       nameAr: editNameAr.trim(),
       nameEn: editNameEn.trim() || editNameAr.trim(),
@@ -415,8 +508,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       description: editDesc.trim(),
       orderIndex: editingCategory.orderIndex,
     });
+    setSavingCategory(false);
+    if (saved) setEditingCategory(null);
+  };
 
-    setEditingCategory(null);
+  // Move a category one step up or down the editorial order: swap orderIndex with its neighbour.
+  const moveCategory = async (cat: Category, direction: -1 | 1) => {
+    if (reordering) return;
+    const index = orderedCategories.findIndex((c) => c.id === cat.id);
+    const neighbour = orderedCategories[index + direction];
+    if (index < 0 || !neighbour) return;
+    // Normally the two swap their orderIndex. Missing or duplicate indexes are first
+    // renumbered to the visible order, so the move is always what the list shows.
+    const distinct = orderedCategories.every((c, j) => c.orderIndex !== undefined && (j === 0 || c.orderIndex !== orderedCategories[j - 1].orderIndex));
+    const changes: { id: string; orderIndex: number }[] = [];
+    if (distinct) {
+      changes.push({ id: cat.id, orderIndex: neighbour.orderIndex as number }, { id: neighbour.id, orderIndex: cat.orderIndex as number });
+    } else {
+      const next = [...orderedCategories];
+      [next[index], next[index + direction]] = [next[index + direction], next[index]];
+      next.forEach((c, i) => { if (c.orderIndex !== i + 1) changes.push({ id: c.id, orderIndex: i + 1 }); });
+    }
+    setReordering(true);
+    try {
+      const saved = changes.map((change) => apiService.saveCategory(change));
+      const outcomes = await Promise.all(saved.map((c) => dataStore.awaitWrite('categories', c.id)));
+      const failed = outcomes.find((o) => !o.ok);
+      if (!failed) notify({ type: 'success', message: `نُقل قسم (${cat.nameAr}) ${direction < 0 ? 'إلى الأعلى' : 'إلى الأسفل'}` });
+      // A refusal is already announced with the server's reason (App's sync-error toast).
+      else if (failed.pending) notify({ type: 'warning', title: 'لم يؤكد الخادم ترتيب الأقسام بعد', message: failed.message || '' });
+    } catch (err) {
+      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر تغيير ترتيب الأقسام' });
+    } finally {
+      setReordering(false);
+    }
   };
 
   // Confirm delete
@@ -429,17 +554,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleAddSource = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSourceName.trim()) return;
+    if (!newSourceName.trim() || addingSource) return;
+    if (sources.some((s) => sameName(s.name, newSourceName))) {
+      notify({ type: 'warning', message: `يوجد مصدر باسم (${newSourceName.trim()}) بالفعل.` });
+      return;
+    }
+    setAddingSource(true);
     try {
-    if (!(await onSaveSource({
-      id: `src-${Date.now()}`,
-      name: newSourceName.trim(),
-      type: newSourceType,
-      reliabilityScore: Number(newSourceReliability) || 5,
-    }))) return;
-    setNewSourceName('');
+      if (!(await onSaveSource({
+        id: `src-${Date.now()}`,
+        name: newSourceName.trim(),
+        type: newSourceType.trim() || 'OTHER',
+        reliabilityScore: Number(newSourceReliability) || 5,
+      }))) return;
+      setNewSourceName('');
+      setNewSourceReliability(5);
     } catch (err) {
       notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر حفظ المصدر' });
+    } finally {
+      setAddingSource(false);
+    }
+  };
+
+  const handleStartEditSource = (src: NewsSource) => {
+    setEditingSource(src);
+    setEditSourceName(src.name);
+    setEditSourceType(sourceTypeLabel(src.type));
+    setEditSourceReliability(Math.min(5, Math.max(1, Math.round(Number(src.reliabilityScore) || 5))));
+    setSourceError(null);
+  };
+
+  const handleSaveSourceEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSource || savingSource) return;
+    const name = editSourceName.trim();
+    if (!name) { setSourceError('اسم المصدر مطلوب'); return; }
+    if (sources.some((s) => s.id !== editingSource.id && sameName(s.name, name))) { setSourceError('يوجد مصدر آخر بالاسم نفسه'); return; }
+    // An untouched type keeps its stored code; a changed one is stored as typed.
+    const typedType = editSourceType.trim();
+    const type = typedType === sourceTypeLabel(editingSource.type) ? editingSource.type : typedType || 'OTHER';
+    setSavingSource(true);
+    setSourceError(null);
+    try {
+      if (await onSaveSource({ id: editingSource.id, name, type, reliabilityScore: editSourceReliability })) {
+        notify({ type: 'success', message: name !== editingSource.name ? `حُفظ المصدر (${name})؛ تتحدث المواد المرتبطة به تلقائياً` : `حُفظ المصدر (${name})` });
+        setEditingSource(null);
+      } else {
+        setSourceError('لم يؤكد الخادم الحفظ؛ بقيت القيم المدخلة لإعادة المحاولة');
+      }
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : 'تعذر حفظ المصدر');
+    } finally {
+      setSavingSource(false);
     }
   };
 
@@ -447,7 +613,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className="space-y-6 pb-12">
       {/* Header */}
       <div>
-        <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2.5">
           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
             <Settings className="w-6 h-6" />
           </div>
@@ -579,15 +745,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </h3>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
+              <p className="text-lg font-bold text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
               <p className="text-2xs text-slate-500">حساب نشط</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive === false).length}</p>
+              <p className="text-lg font-bold text-slate-800">{users.filter((u) => u.isActive === false).length}</p>
               <p className="text-2xs text-slate-500">موقوف</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <p className="text-lg font-black text-slate-800">{users.filter((u) => u.twoFactorEnabled).length}</p>
+              <p className="text-lg font-bold text-slate-800">{users.filter((u) => u.twoFactorEnabled).length}</p>
               <p className="text-2xs text-slate-500">بالتحقق بخطوتين</p>
             </div>
           </div>
@@ -607,6 +773,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {section === 'editorial' && <NewsTemplatesSettings />}
       {section === 'production' && <ProductionListsSettings currentUser={apiService.getCurrentUser()} />}
+      {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ProgramTypesSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}
       {section === 'stations' && <StationsSettings />}
       {section === 'monitor' && <SystemMonitor />}
@@ -810,10 +977,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                disabled={savingCategory}
+                className="w-full min-h-11 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة وتفعيل القسم الصحفي</span>
+                <span>{savingCategory && !editingCategory ? 'جارٍ الحفظ...' : 'إضافة وتفعيل القسم الصحفي'}</span>
               </button>
             </form>
 
@@ -881,6 +1049,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               ) : (
                 filteredCategories.map((cat) => {
                   const color = cat.colorCode || cat.color || '#2563eb';
+                  const position = orderedCategories.findIndex((c) => c.id === cat.id);
                   const countById = newsCountByCategory[cat.id] || 0;
                   const countByName = newsCountByCategory[cat.nameAr] || 0;
                   const totalNews = Math.max(countById, countByName);
@@ -945,6 +1114,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
+                            disabled={reordering || position <= 0}
+                            onClick={() => void moveCategory(cat, -1)}
+                            className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 inline-flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            aria-label={`نقل قسم ${cat.nameAr} إلى الأعلى`}
+                            title="نقل إلى الأعلى في ترتيب الأقسام"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={reordering || position < 0 || position >= orderedCategories.length - 1}
+                            onClick={() => void moveCategory(cat, 1)}
+                            className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 inline-flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            aria-label={`نقل قسم ${cat.nameAr} إلى الأسفل`}
+                            title="نقل إلى الأسفل في ترتيب الأقسام"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`تعديل قسم ${cat.nameAr}`}
                             onClick={() => handleStartEdit(cat)}
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="تعديل بيانات ولون التصنيف"
@@ -954,6 +1144,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                           <button
                             type="button"
+                            aria-label={`حذف قسم ${cat.nameAr}`}
                             onClick={() => {
                               const inUse = (newsList || []).filter((n) => n.categoryId === cat.id).length;
                               if (inUse > 0) {
@@ -989,9 +1180,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>وكالات ومصادر الأخبار المعتمدة</span>
           </h3>
 
-          <form onSubmit={handleAddSource} className="space-y-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <form onSubmit={handleAddSource} className="space-y-2" aria-busy={addingSource}>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
               <div className="relative">
+                <label htmlFor="new-source-name-input" className="sr-only">اسم الوكالة أو المصدر</label>
                 <input
                   id="new-source-name-input"
                   type="text"
@@ -1013,9 +1205,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </div>
               <div className="relative">
+                <label htmlFor="new-source-type-input" className="sr-only">نوع المصدر</label>
                 <input
                   id="new-source-type-input"
                   type="text"
+                  list="source-type-suggestions"
                   value={newSourceType}
                   onChange={(e) => setNewSourceType(e.target.value)}
                   placeholder="نوع المصدر..."
@@ -1032,13 +1226,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 )}
               </div>
+              <div>
+                <label htmlFor="new-source-reliability-input" className="sr-only">موثوقية المصدر من 1 إلى 5</label>
+                <select
+                  id="new-source-reliability-input"
+                  value={newSourceReliability}
+                  onChange={(e) => setNewSourceReliability(Number(e.target.value))}
+                  title="موثوقية المصدر"
+                  className="w-full min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                >
+                  {RELIABILITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>موثوقية {o.label}</option>)}
+                </select>
+              </div>
               <button
                 type="submit"
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                disabled={addingSource}
+                className="min-h-11 sm:min-h-0 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold disabled:opacity-50"
               >
-                إضافة مصدر
+                {addingSource ? 'جارٍ الإضافة...' : 'إضافة مصدر'}
               </button>
             </div>
+            <datalist id="source-type-suggestions">
+              {SOURCE_TYPE_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
+            </datalist>
             <div className="flex flex-wrap gap-1">
               {['وكالة رويترز', 'وكالة فرانس برس', 'واس السعودية', 'بلومبرغ نيوز', 'مراسل ميداني'].map((srcPreset) => (
                 <button
@@ -1058,23 +1268,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="space-y-2">
             {sources.map((src) => (
-              <div key={src.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-              <div className="flex items-center justify-between">
-                <div>
-                  <strong className="text-slate-800 block">{src.name}</strong>
-                  <span className="text-2xs text-slate-500">{src.type}</span>
+              <div key={src.id} id={`source-row-${src.id}`} className={`p-2.5 bg-slate-50 rounded-lg border text-xs scroll-mt-24 ${focusSourceId === src.id ? 'border-blue-600 ring-2 ring-blue-500' : 'border-slate-200'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <strong className="text-slate-800 block break-words">{src.name}</strong>
+                  <span className="text-2xs text-slate-500">{sourceTypeLabel(src.type)}</span>
                   {src.feedUrl && (
                     <span className={`block text-2xs font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
                       {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 sm:gap-3 shrink-0">
                   <button
                     type="button"
+                    onClick={() => handleStartEditSource(src)}
+                    className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg p-1"
+                    title="تعديل اسم المصدر ونوعه وموثوقيته"
+                    aria-label={`تعديل المصدر ${src.name}`}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-expanded={feedEditingId === src.id}
                     onClick={() => setFeedEditingId(feedEditingId === src.id ? null : src.id)}
                     className="text-orange-500 hover:text-orange-700 p-1"
-                    title="ربط خلاصة RSS للبرقيات"
+                    title="ربط خلاصة RSS للمصادر"
                     aria-label={`خلاصة RSS للمصدر ${src.name}`}
                   >
                     <Rss className="w-4 h-4" />
@@ -1092,7 +1312,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }
                       if ((await confirmDialog(`حذف المصدر (${src.name}) نهائياً؟`))) onDeleteSource(src.id);
                     }}
-                    className="text-red-500 hover:text-red-700 p-1"
+                    className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg p-1"
+                    aria-label={`حذف المصدر ${src.name}`}
+                    title="حذف المصدر"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -1191,7 +1413,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {editingCategory && (
         <FormPage
           isOpen={true}
-          onClose={() => setEditingCategory(null)}
+          onClose={() => { if (savingCategory) return false; setEditingCategory(null); }}
           title={`تعديل القسم الصحفي: ${editingCategory.nameAr}`}
           subtitle="تعديل اسم وتخصيص لون التصنيف لتحديثه في كافة شاشات العمل"
           maxWidth="lg"
@@ -1331,10 +1553,88 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                disabled={savingCategory}
+                className="min-h-11 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>حفظ التعديلات</span>
+                <span>{savingCategory ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}</span>
+              </button>
+            </div>
+          </form>
+        </FormPage>
+      )}
+
+      {/* EDIT SOURCE */}
+      {editingSource && (
+        <FormPage
+          isOpen={true}
+          onClose={() => { if (savingSource) return false; setEditingSource(null); }}
+          title={`تعديل المصدر: ${editingSource.name}`}
+          subtitle="يتحدث الاسم الجديد في الأخبار ومواد الوكالات المرتبطة بالمصدر"
+          maxWidth="md"
+        >
+          <form onSubmit={handleSaveSourceEdit} className="space-y-4 text-sm" aria-busy={savingSource}>
+            <fieldset disabled={savingSource} className="space-y-4">
+              <div>
+                <label htmlFor="edit-source-name-input" className="block font-bold text-slate-700 mb-1">
+                  اسم المصدر <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="edit-source-name-input"
+                  type="text"
+                  required
+                  maxLength={120}
+                  value={editSourceName}
+                  onChange={(e) => { setEditSourceName(e.target.value); setSourceError(null); }}
+                  aria-invalid={!!sourceError}
+                  aria-describedby={sourceError ? 'edit-source-error' : undefined}
+                  className="w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-source-type-input" className="block font-bold text-slate-700 mb-1">نوع المصدر</label>
+                <input
+                  id="edit-source-type-input"
+                  type="text"
+                  list="source-type-suggestions-edit"
+                  maxLength={80}
+                  value={editSourceType}
+                  onChange={(e) => setEditSourceType(e.target.value)}
+                  className="w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                />
+                <datalist id="source-type-suggestions-edit">
+                  {SOURCE_TYPE_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
+                </datalist>
+              </div>
+              <div>
+                <label htmlFor="edit-source-reliability-input" className="block font-bold text-slate-700 mb-1">الموثوقية (من 1 إلى 5)</label>
+                <select
+                  id="edit-source-reliability-input"
+                  value={editSourceReliability}
+                  onChange={(e) => setEditSourceReliability(Number(e.target.value))}
+                  className="w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                >
+                  {RELIABILITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </fieldset>
+            {sourceError && <p id="edit-source-error" role="alert" className="text-rose-700 font-bold">{sourceError}</p>}
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={savingSource}
+                onClick={() => setEditingSource(null)}
+                className="min-h-11 px-4 text-slate-700 hover:bg-slate-100 rounded-lg font-bold disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={savingSource}
+                className="min-h-11 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{savingSource ? 'جارٍ الحفظ...' : sourceError ? 'إعادة محاولة الحفظ' : 'حفظ المصدر'}</span>
               </button>
             </div>
           </form>

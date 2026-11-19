@@ -11,6 +11,9 @@ import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, C
 import { AppView } from '../components/layout/Sidebar';
 
 import { MyWorkPanel } from '../components/dashboard/MyWorkPanel';
+import { useSetupReminder } from '../components/setup/SetupWizard';
+import { sectionOrderFor } from '../shared/navigation';
+import { setupCommand } from '../services/uiEvents';
 interface DashboardViewProps {
   newsList: NewsItem[];
   breakingNews?: BreakingNews[];
@@ -105,35 +108,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
+  const canSetup = RbacService.hasPermission(currentUser, 'system.settings');
+  // Each role sees the panels of its job: the news queues for writers and editors, the broadcast
+  // schedule for programme and air staff and for managers, the guest directory for those who book guests.
+  const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
+  const domain = sectionOrderFor(currentUser)[1];
+  const showQueues = can('news.create') || can('news.review');
+  const showSchedule = can('programs.view') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
+  const showGuests = can('guests.view') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
+  const setup = useSetupReminder(currentUser);
+
   return (
     <div className="space-y-6">
-      {/* Welcome & Live Banner */}
-      <div className="bg-white rounded-3xl p-6 text-slate-900 shadow-xs border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-              مركز العمليات الإخبارية والإنتاج المباشر
-            </span>
-            {/* The top bar already shows the clock and date from lg up. */}
-            <StationClock className="px-2.5 py-1 rounded-full bg-white border border-slate-200 lg:hidden" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+      {/* Greeting: the screen title strap, one line on the day, and the actions this colleague may take */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-2 min-w-0">
+          <StationClock className="inline-flex px-2.5 py-1 rounded-md bg-white border border-slate-200 lg:hidden" />
+          <h1>
             مرحباً، {currentUser.fullName}
           </h1>
-          <p className="text-slate-600 text-xs sm:text-sm max-w-2xl leading-relaxed">
+          <p className="text-slate-600 text-sm max-w-2xl leading-relaxed">
             اليوم: {countLabel(todayEpisodes.length, { zero: 'لا حلقات مجدولة', one: 'حلقة واحدة مجدولة', two: 'حلقتان مجدولتان', few: 'حلقات مجدولة', many: 'حلقة مجدولة' })}،
             و{countLabel(pendingReviewNewsCount, { zero: 'لا أخبار تنتظر التدقيق', one: 'خبر واحد ينتظر التدقيق والاعتماد', two: 'خبران ينتظران التدقيق والاعتماد', few: 'أخبار تنتظر التدقيق والاعتماد', many: 'خبراً ينتظر التدقيق والاعتماد' })}.
           </p>
         </div>
 
         {/* Fast Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Only actions this user may take: a button that answers "not allowed" is noise. */}
           {RbacService.hasPermission(currentUser, 'news.create') && <button
             type="button"
             onClick={onCreateNews}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+            className="flex items-center gap-1.5 px-4 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors"
           >
             <Plus className="w-4 h-4" />
             خبر صحفي جديد
@@ -141,13 +147,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {RbacService.hasPermission(currentUser, 'episodes.create') && <button
             type="button"
             onClick={onCreateEpisode}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-1.5 px-4 min-h-10 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-colors"
           >
             <Video className="w-4 h-4 text-purple-600" />
             إعداد حلقة جديدة
           </button>}
         </div>
       </div>
+
+      {canSetup && setup.pending && (
+        <section data-tour="setup-wizard" aria-label="الإعداد السريع" className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-bold text-slate-900">أكمل إعداد «مدار» لفريقك</h2>
+            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة: المؤسسة، المحطات، الأقسام الصحفية، الفريق، الأمان والنسخ الاحتياطي.</p>
+          </div>
+          <div className="h-1.5 sm:w-32 rounded-full bg-white overflow-hidden" aria-hidden="true">
+            <div className="h-full bg-blue-600" style={{ width: `${(setup.done / setup.total) * 100}%` }} />
+          </div>
+          <button type="button" onClick={() => setupCommand.emit('open')} className="min-h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0">
+            {setup.done ? 'متابعة الإعداد' : 'بدء الإعداد السريع'}
+          </button>
+        </section>
+      )}
 
       <MyWorkPanel
         currentUser={currentUser}
@@ -187,96 +208,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Newsroom */}
-        <div
-          onClick={() => onNavigate('NEWS_LIST')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-500">إجمالي الأخبار</span>
-            <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-              <Newspaper className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-slate-800">{newsList.length}</span>
-            <span className="text-xs text-emerald-700 font-semibold">{publishedNewsCount} منشور</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500 flex items-center gap-1">
-            <FileCheck className="w-3.5 h-3.5 text-amber-500" />
-            <span>{pendingReviewNewsCount} قيد المراجعة والتدقيق</span>
-          </div>
-        </div>
-
-        {/* Card 2: Breaking News */}
-        <div
-          onClick={() => onNavigate('BREAKING_NEWS')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-500">الأخبار العاجلة</span>
-            <div className="p-2.5 rounded-xl bg-red-50 text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors">
-              <Flame className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-slate-800">{activeBreakingCount}</span>
-            <span className="text-xs text-red-600 font-semibold">على شريط البث</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500">
-            <span>من إجمالي {breakingNews.length} خبراً عاجلاً مسجلاً</span>
-          </div>
-        </div>
-
-        {/* Card 3: Episodes */}
-        <div
-          onClick={() => onNavigate('EPISODES')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-500">حلقات البرامج</span>
-            <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-              <Video className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-slate-800">{episodes.length}</span>
-            <span className="text-xs text-purple-600 font-semibold">{programs.length} برامج</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500">
-            <span>{countLabel(todayEpisodes.length, { zero: 'لا حلقات', one: 'حلقة واحدة', two: 'حلقتان', few: 'حلقات', many: 'حلقة' })} للبث اليوم</span>
-          </div>
-        </div>
-
-        {/* Card 4: Open Tasks */}
-        <div
-          onClick={() => onNavigate('TASKS')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-500">المهام التحريرية</span>
-            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-              <CheckSquare className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-slate-800">{openTasks.length}</span>
-            <span className="text-xs text-amber-700 font-semibold">مفتوحة</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500">
-            <span>من إجمالي {tasks.length} مهمة إجمالية</span>
-          </div>
-        </div>
-      </div>
+      {/* The day in four numbers: one ruled strip, each cell opens its screen */}
+      <section aria-label="مؤشرات غرفة الأخبار" className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y lg:divide-y-0 divide-x divide-x-reverse divide-slate-200 overflow-hidden">
+        {[
+          { label: 'الأخبار', value: newsList.length, note: `${publishedNewsCount} منشور · ${pendingReviewNewsCount} قيد المراجعة`, go: 'NEWS_LIST' as AppView, tone: 'text-slate-900' },
+          { label: 'العاجل على الشريط', value: activeBreakingCount, note: `من ${breakingNews.length} عاجل مسجل`, go: 'BREAKING_NEWS' as AppView, tone: activeBreakingCount ? 'text-red-700' : 'text-slate-900' },
+          { label: 'حلقات البرامج', value: episodes.length, note: `${programs.length} برامج · ${countLabel(todayEpisodes.length, { zero: 'لا حلقات اليوم', one: 'حلقة اليوم', two: 'حلقتان اليوم', few: 'حلقات اليوم', many: 'حلقة اليوم' })}`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
+          { label: 'مهام مفتوحة', value: openTasks.length, note: `من ${tasks.length} مهمة`, go: 'TASKS' as AppView, tone: 'text-slate-900' },
+        ].map((cell) => (
+          <button key={cell.label} type="button" onClick={() => onNavigate(cell.go)} className="text-right p-4 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors min-w-0">
+            <span className="block text-xs font-semibold text-slate-600">{cell.label}</span>
+            <span className={`block font-mono text-3xl font-bold tabular-nums leading-tight mt-1 ${cell.tone}`}>{cell.value}</span>
+            <span className="block text-2xs text-slate-500 mt-1 truncate">{cell.note}</span>
+          </button>
+        ))}
+      </section>
 
       {/* Main Two-Column Operational Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${showSchedule || showQueues ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
         {/* Left Column (2 Cols in Arabic RTL): Upcoming Broadcast Schedule & News Flow */}
-        <div className="lg:col-span-2 space-y-6">
+        {(showSchedule || showQueues) && <div className="lg:col-span-2 space-y-6">
           {/* Upcoming Episodes / Playout */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+          {showSchedule && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="w-5 h-5 text-blue-600" />
@@ -330,9 +284,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ))}
             </div>
           </div>
+          )}
 
           {/* Workflow Queues (Editorial Flow) */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+          {showQueues && (
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <Newspaper className="w-5 h-5 text-emerald-700" />
@@ -507,12 +463,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
           </div>
-        </div>
+          )}
+        </div>}
 
         {/* Right Column: Editorial Tasks & Guest Directory Preview */}
         <div className="space-y-6">
           {/* Urgent Editorial Tasks */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-5 h-5 text-amber-700" />
@@ -567,7 +524,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Quick Guests Directory Access */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+          {showGuests && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-purple-600" />
@@ -600,6 +558,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ))}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

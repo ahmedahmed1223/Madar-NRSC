@@ -775,7 +775,7 @@ export class SyncService {
             const recipients = new Set<string>();
             if ((assigned || deadline) && after.assigneeId) recipients.add(after.assigneeId);
             if (status && after.creatorId) recipients.add(after.creatorId);
-            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, '/tasks', 'assignment');
+            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment');
           }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'messages' && !before) this.notifyMessage(after);
@@ -814,9 +814,28 @@ export class SyncService {
         // Category renames are propagated by the server (system write): the renamer may lack
         // rights on every story, and stories may be locked by their editors.
         if (collection === 'categories' && before && before.nameAr !== after.nameAr) {
-          for (const newsRow of this.db.listCollection('news')) {
-            if (newsRow.d?.categoryId === id && newsRow.d.categoryName !== after.nameAr) {
-              this.db.writeRow('news', newsRow.id, { ...newsRow.d, categoryName: after.nameAr }, newsRow.p, null);
+          for (const target of ['news', 'stories'] as const) {
+            for (const ref of this.db.listCollection(target)) {
+              if (ref.d?.categoryId === id && ref.d.categoryName !== after.nameAr) {
+                this.db.writeRow(target, ref.id, { ...ref.d, categoryName: after.nameAr }, ref.p, null);
+              }
+            }
+          }
+        }
+        // Source renames follow the same rule: news and agency wires carry the name for display.
+        if (collection === 'sources' && before && before.name !== after.name && typeof after.name === 'string') {
+          for (const target of ['news', 'wires'] as const) {
+            for (const ref of this.db.listCollection(target)) {
+              if (ref.d?.sourceId === id && ref.d.sourceName !== after.name) {
+                this.db.writeRow(target, ref.id, { ...ref.d, sourceName: after.name }, ref.p, null);
+              }
+            }
+          }
+        }
+        if (collection === 'programTypes' && before && before.nameAr !== after.nameAr && typeof after.nameAr === 'string') {
+          for (const ref of this.db.listCollection('programs')) {
+            if (ref.d?.typeId === id && ref.d.typeName !== after.nameAr) {
+              this.db.writeRow('programs', ref.id, { ...ref.d, typeName: after.nameAr }, ref.p, null);
             }
           }
         }

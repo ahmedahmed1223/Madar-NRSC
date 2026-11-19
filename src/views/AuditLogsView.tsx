@@ -1,9 +1,16 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { matchesQuery } from '../shared/search';
-import React, { useState } from 'react';
-import { Shield, Search, X } from 'lucide-react';
-import { AuditLog } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Shield, Search, X, Download } from 'lucide-react';
+import { ActivityLog, AuditLog } from '../types';
 import { Badge } from '../components/common/Badge';
+import { FilterTabs } from '../components/common/FilterTabs';
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
+import { apiService } from '../services/api';
+import { dataStore } from '../services/dataStore';
+import { downloadCsv } from '../services/csvExport';
+import { filterLogRows, logUsers } from '../services/logFilters';
+import { localDateString } from '../shared/dates';
 
 interface AuditLogsViewProps {
   logs: AuditLog[];
@@ -29,22 +36,82 @@ const ENTITY_LABELS: Record<string, string> = {
 };
 const entityName = (e: string) => ENTITY_LABELS[e] || e;
 
+// The server writes actionType/targetEntity/timestamp; older rows may use action/entityType/createdAt.
+const actionOf = (log: AuditLog) => log.actionType || log.action || '';
+const entityOf = (log: AuditLog) => log.targetEntity || log.entityType || '';
+const timeOf = (log: AuditLog) => log.timestamp || log.createdAt || '';
+const fullTime = (iso: string) =>
+  iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+const FIELD = 'min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+
+type LogTab = 'AUDIT' | 'ACTIVITY';
+
 export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
+  const [tab, setTab] = useState<LogTab>('AUDIT');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState('ALL');
+  const [fromDay, setFromDay] = useState('');
+  const [toDay, setToDay] = useState('');
+  const [userId, setUserId] = useState('ALL');
 
-  // The server writes actionType/targetEntity/timestamp; older rows may use action/entityType/createdAt.
-  const actionOf = (log: AuditLog) => log.actionType || log.action || '';
-  const entityOf = (log: AuditLog) => log.targetEntity || log.entityType || '';
-  const timeOf = (log: AuditLog) => log.timestamp || log.createdAt || '';
+  // The activity log (who did what in the newsroom) is read here and follows live changes.
+  const [activity, setActivity] = useState<ActivityLog[]>(() => apiService.getActivityLogs());
+  useEffect(
+    () =>
+      dataStore.subscribe((evt) => {
+        if (evt.type === 'data-changed' && evt.collections.includes('activityLogs')) setActivity(apiService.getActivityLogs());
+      }),
+    []
+  );
 
-  const filteredLogs = (logs || []).filter((log) => {
-    if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
-    if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), ENTITY_LABELS[entityOf(log)], actionOf(log), ACTION_LABELS[actionOf(log)]);
+  const filter = { fromDay, toDay, userId };
+  const filteredLogs = useMemo(
+    () =>
+      filterLogRows(logs || [], filter, timeOf, (l) => l.userId).filter((log) => {
+        if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
+        if (searchQuery.trim()) {
+          return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), ENTITY_LABELS[entityOf(log)], actionOf(log), ACTION_LABELS[actionOf(log)]);
+        }
+        return true;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [logs, fromDay, toDay, userId, selectedAction, searchQuery]
+  );
+  const filteredActivity = useMemo(
+    () =>
+      filterLogRows(activity, filter, (a) => a.timestamp, (a) => a.userId).filter(
+        (a) => !searchQuery.trim() || matchesQuery(searchQuery, a.userName, a.summaryAr, a.entityTitle, a.entityType, ENTITY_LABELS[a.entityType], a.action, ACTION_LABELS[a.action])
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activity, fromDay, toDay, userId, searchQuery]
+  );
+  const resetKey = `${tab}|${fromDay}|${toDay}|${userId}|${selectedAction}|${searchQuery}`;
+  const auditPage = useIncremental(filteredLogs, 100, resetKey);
+  const activityPage = useIncremental(filteredActivity, 100, resetKey);
+
+  const userOptions = useMemo(() => {
+    const merged = [
+      ...logUsers(logs || [], (l) => l.userId, (l) => l.userName),
+      ...logUsers(activity, (a) => a.userId, (a) => a.userName),
+    ];
+    const byId = new Map(merged.map((u) => [u.id, u]));
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  }, [logs, activity]);
+
+  const exportCsv = () => {
+    const stamp = localDateString();
+    if (tab === 'AUDIT') {
+      downloadCsv(`سجل-التدقيق-${stamp}.csv`, [
+        ['التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'نوع الإجراء', 'الكيان المتأثر', 'معرف الكيان', 'الخطورة', 'التفاصيل', 'عنوان IP'],
+        ...filteredLogs.map((l) => [fullTime(timeOf(l)), l.userName, l.userId, actionName(actionOf(l)), entityName(entityOf(l)), l.targetId || '', l.severity || '', l.details, l.ipAddress || '']),
+      ]);
+    } else {
+      downloadCsv(`سجل-النشاط-${stamp}.csv`, [
+        ['التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'الإجراء', 'النوع', 'العنوان', 'الملخص'],
+        ...filteredActivity.map((a) => [fullTime(a.timestamp), a.userName, a.userId, actionName(a.action), entityName(a.entityType), a.entityTitle, a.summaryAr]),
+      ]);
     }
-    return true;
-  });
+  };
 
 
   const getActionBadge = (action: string) => {
@@ -66,19 +133,24 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
     }
   };
 
-  const hasActiveFilters = searchQuery.trim() !== '' || selectedAction !== 'ALL';
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedAction !== 'ALL' || !!fromDay || !!toDay || userId !== 'ALL';
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedAction('ALL');
+    setFromDay('');
+    setToDay('');
+    setUserId('ALL');
   };
+  const shownCount = tab === 'AUDIT' ? filteredLogs.length : filteredActivity.length;
+  const totalCount = tab === 'AUDIT' ? (logs || []).length : activity.length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-600" />
             <span>سجل التدقيق</span>
           </h1>
@@ -86,10 +158,31 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             تسجيل غير قابل للتعديل لجميع العمليات والاعتمادات والنشر وتغيير الصلاحيات في النظام
           </p>
         </div>
-        <div className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 self-start sm:self-auto">
-          إجمالي السجلات: <span className="text-slate-800 font-mono">{filteredLogs.length}</span> من <span className="font-mono">{logs.length}</span>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+            السجلات: <span className="text-slate-800 font-mono">{shownCount}</span> من <span className="font-mono">{totalCount}</span>
+          </div>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={shownCount === 0}
+            className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" aria-hidden="true" />
+            تصدير CSV
+          </button>
         </div>
       </div>
+
+      <FilterTabs<LogTab>
+        label="نوع السجل"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'AUDIT', label: 'سجل التدقيق', count: filteredLogs.length, tone: 'blue' },
+          { id: 'ACTIVITY', label: 'سجل النشاط', count: filteredActivity.length, tone: 'slate' },
+        ]}
+      />
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
@@ -120,7 +213,8 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {tab === 'AUDIT' && (<>
             <label htmlFor="audit-action-filter" className="text-xs text-slate-500 shrink-0 font-medium">نوع الإجراء:</label>
             <select
               id="audit-action-filter"
@@ -138,6 +232,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                   </option>
                 ))}
             </select>
+            </>)}
 
             {hasActiveFilters && (
               <button
@@ -152,7 +247,29 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
           </div>
         </div>
 
+        {/* Date range and colleague */}
+        <div className="flex flex-wrap items-end gap-3 pt-3 border-t border-slate-100">
+          <div>
+            <label htmlFor="audit-from-day" className="block text-2xs font-bold text-slate-600 mb-1">من تاريخ</label>
+            <input id="audit-from-day" type="date" value={fromDay} max={toDay || undefined} onChange={(e) => setFromDay(e.target.value)} className={FIELD} dir="ltr" />
+          </div>
+          <div>
+            <label htmlFor="audit-to-day" className="block text-2xs font-bold text-slate-600 mb-1">إلى تاريخ</label>
+            <input id="audit-to-day" type="date" value={toDay} min={fromDay || undefined} onChange={(e) => setToDay(e.target.value)} className={FIELD} dir="ltr" />
+          </div>
+          <div>
+            <label htmlFor="audit-user-filter" className="block text-2xs font-bold text-slate-600 mb-1">المستخدم</label>
+            <select id="audit-user-filter" value={userId} onChange={(e) => setUserId(e.target.value)} className={`${FIELD} min-w-48`}>
+              <option value="ALL">كل المستخدمين</option>
+              {userOptions.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {/* Action quick tags */}
+        {tab === 'AUDIT' && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 text-xs">
           <span className="text-2xs font-bold text-slate-500 ml-1">تصفية سريعة:</span>
           {[
@@ -178,9 +295,11 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {/* Audit Log Table */}
+      {tab === 'AUDIT' ? (
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
         <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="جدول سجل التدقيق (يمكن تمريره أفقياً)">
           <table className="w-full text-right text-xs">
@@ -211,12 +330,10 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => (
+                auditPage.visible.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3 px-4 tabular-nums text-slate-500 whitespace-nowrap">
-                      {timeOf(log)
-                        ? new Date(timeOf(log)).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                        : ''}
+                      {fullTime(timeOf(log))}
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-800">{log.userName}</div>
@@ -240,7 +357,55 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             </tbody>
           </table>
         </div>
+        <ShowMore remaining={auditPage.remaining} onMore={auditPage.showMore} onAll={auditPage.showAll} noun="سجل" className="border-t border-slate-100" />
       </div>
+      ) : (
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="جدول سجل النشاط (يمكن تمريره أفقياً)">
+          <table className="w-full text-right text-xs">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
+                <th className="py-3 px-4">التاريخ والوقت</th>
+                <th className="py-3 px-3">المستخدم</th>
+                <th className="py-3 px-3">الإجراء</th>
+                <th className="py-3 px-3">النوع</th>
+                <th className="py-3 px-4">الملخص</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-sans">
+              {filteredActivity.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
+                    لا يوجد نشاط يطابق معايير البحث أو التصفية الحالية.
+                    {hasActiveFilters && (
+                      <button type="button" onClick={handleResetFilters} className="text-blue-600 hover:underline font-bold mr-2">
+                        إعادة تعيين الفلاتر
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                activityPage.visible.map((a) => (
+                  <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-3 px-4 tabular-nums text-slate-500 whitespace-nowrap">{fullTime(a.timestamp)}</td>
+                    <td className="py-3 px-3 font-bold text-slate-800">{a.userName}</td>
+                    <td className="py-3 px-3">{getActionBadge(a.action)}</td>
+                    <td className="py-3 px-3 font-semibold text-slate-700">
+                      <span className="bg-slate-100 px-2 py-0.5 rounded text-2xs">{entityName(a.entityType)}</span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">
+                      {a.summaryAr}
+                      {a.entityTitle && <span className="block text-2xs text-slate-500 mt-0.5">{a.entityTitle}</span>}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <ShowMore remaining={activityPage.remaining} onMore={activityPage.showMore} onAll={activityPage.showAll} noun="سجل" className="border-t border-slate-100" />
+      </div>
+      )}
     </div>
   );
 };

@@ -9,6 +9,7 @@ import {
 import { canOpenScreen } from '../shared/screens';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
+import { roleInUseError } from './roleUsage';
 
 export * from '../shared/rbac';
 
@@ -41,7 +42,8 @@ export class RbacService {
     return roles;
   }
 
-  static deleteRole(roleId: string): { success: boolean; error?: string; roles: RoleDefinition[] } {
+  /** Refuses while any (non-deleted) account still holds the role: pass the current user list. */
+  static deleteRole(roleId: string, users: Pick<User, 'role' | 'customRoleId' | 'deletedAt'>[] = []): { success: boolean; error?: string; roles: RoleDefinition[] } {
     const roles = this.getRoleDefinitions();
     const target = roles.find((r) => r.id === roleId);
 
@@ -52,6 +54,9 @@ export class RbacService {
     if (target.isSystemRole) {
       return { success: false, error: 'لا يمكن حذف الأدوار الأساسية للنظام', roles };
     }
+
+    const inUse = roleInUseError(target, users);
+    if (inUse) return { success: false, error: inUse, roles };
 
     const filtered = roles.filter((r) => r.id !== roleId);
     this.saveRoleDefinitions(filtered);

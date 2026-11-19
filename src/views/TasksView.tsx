@@ -8,8 +8,10 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
-import React, { useState } from 'react';
-import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown } from 'lucide-react';
+import { confirmDialog } from '../services/dialogs';
+import { TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, isMyTask, relatedTaskPath } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
@@ -38,6 +40,10 @@ interface TasksViewProps {
   /** Resolves false when the server refused the task (the form then stays open). */
   onSaveTask: (task: Partial<EditorialTask>) => boolean | void | Promise<boolean | void>;
   onDeleteTask: (taskId: string) => void;
+  /** Opens an in-app address (e.g. '/bulletins/<id>') for the record a task was created from. */
+  onOpenLink?: (path: string) => void;
+  /** A task to highlight and scroll to (notifications link to /tasks/<id>). */
+  focusId?: string | null;
 }
 
 const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 0, HIGH: 1, NORMAL: 2, MEDIUM: 2, LOW: 3 };
@@ -56,12 +62,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
   currentUser,
   onSaveTask,
   onDeleteTask,
+  onOpenLink,
+  focusId,
 }) => {
   // Assignees may still move their own tasks; creating, reassigning and deleting need tasks.create_assign.
   const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
   const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>('KANBAN');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [mineOnly, setMineOnly] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
   // Each kanban column draws a page at a time: years of finished tasks would otherwise fill the board.
   const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
   const columnLimit = (status: string) => columnLimits[status] ?? 30;
@@ -116,7 +126,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setPriority(t.priority);
     setDueDate(toLocalInputValue(t.dueDate || new Date()));
     setAssigneeId(t.assigneeId || t.assignedToId || currentUser.id);
-    setStatus(t.status);
+    setStatus(normalizeTaskStatus(t.status) as TaskStatus);
     setIsModalOpen(true);
   };
 
@@ -149,32 +159,187 @@ export const TasksView: React.FC<TasksViewProps> = ({
     onSaveTask({ id: taskId, status: newStatus });
   };
 
+  const handleDelete = async (t: EditorialTask) => {
+    const ok = await confirmDialog({
+      title: 'حذف المهمة',
+      message: `حذف المهمة «${t.title}»؟ سيختفي التكليف من لوحة المسؤول عنه.`,
+      confirmLabel: 'حذف المهمة',
+      danger: true,
+    });
+    if (ok) onDeleteTask(t.id);
+  };
+
+  // A bulletin story opens its bulletin; the story itself has no address of its own.
+  const bulletinOfStory = (storyId: string) => apiService.getBulletinStories().find((s) => s.id === storyId)?.bulletinId;
+  const relatedChip = (task: EditorialTask) => {
+    if (!task.relatedEntityId || !task.relatedEntityType || task.relatedEntityType === 'GENERAL') return null;
+    const kind = RELATED_ENTITY_LABELS[task.relatedEntityType] || 'سجل';
+    const text = `${kind}: ${task.relatedEntityTitle || 'بلا عنوان'}`;
+    const path = relatedTaskPath(task, bulletinOfStory);
+    if (!path || !onOpenLink) {
+      return (
+        <span className="inline-flex items-center gap-1 max-w-full px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-2xs font-semibold">
+          <Link2 className="w-3 h-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{text}</span>
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenLink(path)}
+        title={`فتح ${text}`}
+        className="inline-flex items-center gap-1 max-w-full min-h-8 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-2xs font-semibold focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        <Link2 className="w-3 h-3 shrink-0" aria-hidden="true" />
+        <span className="truncate">{text}</span>
+      </button>
+    );
+  };
+
+  // A notification link (/tasks/<id>) brings that task into view: clear the filters that might hide it, then scroll to it.
+  useEffect(() => {
+    if (!focusId) return;
+    const task = tasks.find((t) => t.id === focusId);
+    if (!task) return;
+    const st = normalizeTaskStatus(task.status);
+    setActiveTab('KANBAN');
+    setSearchQuery('');
+    setSelectedStatus('ALL');
+    setMineOnly(false);
+    if (st === 'CANCELLED') setShowCancelled(true);
+    setColumnLimits((c) => ({ ...c, [st]: Math.max(c[st] ?? 30, tasks.filter((x) => normalizeTaskStatus(x.status) === st).length) }));
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusId)}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el?.focus({ preventScroll: true });
+    }, 60);
+    return () => window.clearTimeout(timer);
+    // Only when the target changes (not on every task update).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, tasks.some((t) => t.id === focusId)]);
+
   // One status vocabulary for the board and the table (older tasks use DONE for completed).
   const assigneeOf = (t: EditorialTask) =>
     t.assigneeName || t.assignedToName || apiService.getUsers().find((u) => u.id === (t.assigneeId || t.assignedToId))?.fullName || 'غير مسندة';
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
+    if (mineOnly && !isMyTask(t, currentUser.id)) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
     }
     return true;
   });
 
-  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}`);
+  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${mineOnly}`);
 
-  const columns: { status: TaskStatus; label: string; color: string }[] = [
-    { status: 'TODO', label: 'المهام المطلوبة', color: 'border-slate-300' },
-    { status: 'IN_PROGRESS', label: 'قيد التنفيذ', color: 'border-blue-400' },
-    { status: 'IN_REVIEW', label: 'قيد المراجعة والتدقيق', color: 'border-amber-400' },
-    { status: 'COMPLETED', label: 'مكتملة ومنجزة', color: 'border-emerald-400' },
+  const columns = TASK_BOARD_COLUMNS;
+  const isFinished = (s: TaskStatus) => s === 'COMPLETED' || s === 'CANCELLED';
+  const focusRing = (id: string) => (focusId === id ? 'ring-2 ring-blue-500 ring-offset-2' : '');
+
+  const quickMoves: { status: TaskStatus; label: string; className: string }[] = [
+    { status: 'TODO', label: '← مطلوبة', className: 'bg-slate-100 hover:bg-slate-200 text-slate-600' },
+    { status: 'IN_PROGRESS', label: 'قيد التنفيذ', className: 'bg-blue-50 hover:bg-blue-100 text-blue-700' },
+    { status: 'IN_REVIEW', label: 'قيد المراجعة', className: 'bg-amber-50 hover:bg-amber-100 text-amber-800' },
+    { status: 'COMPLETED', label: 'إنجاز ✓', className: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700' },
   ];
+
+  const renderCard = (t: EditorialTask, colStatus: TaskStatus) => (
+    <SortableItem
+      key={t.id}
+      id={t.id}
+      container={`col:${colStatus}`}
+      label={t.title}
+      data-task-id={t.id}
+      tabIndex={-1}
+      className={`bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 outline-hidden ${focusRing(t.id)}`}
+    >
+      {({ handle }) => (
+      <>
+      <div className="flex items-start justify-between gap-2">
+        {handle}
+        <Badge
+          variant={
+            t.priority === 'URGENT'
+              ? 'danger'
+              : t.priority === 'HIGH'
+              ? 'warning'
+              : 'default'
+          }
+          size="sm"
+        >
+          {priorityLabel(t.priority)}
+        </Badge>
+        <div className="flex items-center gap-1">
+          {canAssign && (
+          <button
+            type="button"
+            onClick={() => handleOpenEdit(t)}
+            aria-label={`تعديل المهمة: ${t.title}`}
+            title="تعديل المهمة"
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+          )}
+          {canAssign && (
+          <button
+            type="button"
+            onClick={() => void handleDelete(t)}
+            aria-label={`حذف المهمة: ${t.title}`}
+            title="حذف المهمة"
+            className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          )}
+        </div>
+      </div>
+
+      <h4 className="text-xs font-bold text-slate-800 leading-snug">{t.title}</h4>
+
+      {t.description && (
+        <p className="text-2xs text-slate-500 line-clamp-2">{t.description}</p>
+      )}
+
+      {relatedChip(t)}
+
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-500">
+        <div className="flex items-center gap-1">
+          <UserIcon className="w-3 h-3 text-slate-500" />
+          <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
+        </div>
+        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-500'}`}>
+          <OverdueBadge task={t} />
+          <Clock className="w-3 h-3" />
+          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''}</span>
+        </div>
+      </div>
+
+      {/* Quick Move Buttons */}
+      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-1">
+        {quickMoves.filter((m) => m.status !== colStatus).map((m) => (
+          <button
+            key={m.status}
+            type="button"
+            onClick={() => handleQuickStatusChange(t.id, m.status)}
+            className={`min-h-7 text-2xs px-2 py-0.5 rounded font-semibold ${m.className}`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      </>
+      )}
+    </SortableItem>
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             المهام
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -231,7 +396,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="tasks-status-filter" className="text-xs text-slate-600 font-medium">الحالة:</label>
           <select
             id="tasks-status-filter"
@@ -240,11 +405,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
             className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
           >
             <option value="ALL">جميع الحالات</option>
-            <option value="TODO">مطلوبة</option>
-            <option value="IN_PROGRESS">قيد التنفيذ</option>
-            <option value="IN_REVIEW">مراجعة</option>
-            <option value="COMPLETED">مكتملة</option>
+            {TASK_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          <label htmlFor="tasks-mine-only" className="inline-flex items-center gap-2 min-h-11 px-3 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+            <input
+              id="tasks-mine-only"
+              type="checkbox"
+              checked={mineOnly}
+              onChange={(e) => setMineOnly(e.target.checked)}
+              className="w-4 h-4 accent-blue-600"
+            />
+            مهامي فقط
+          </label>
         </div>
       </div>
 
@@ -265,10 +437,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
             });
           }}
         >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {columns.map((col) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
+          {columns.filter((col) => !col.collapsible).map((col) => {
             // Open columns lead with what is urgent and due first; finished work shows the latest first.
-            const colTasks = filteredTasks.filter((t) => t.status === col.status).sort((a, b) => compareForBoard(a, b, col.status === 'COMPLETED'));
+            const colTasks = filteredTasks.filter((t) => t.status === col.status).sort((a, b) => compareForBoard(a, b, isFinished(col.status)));
 
             return (
               <SortableList
@@ -285,114 +457,48 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </div>
 
                 <div className="space-y-3 flex-1 overflow-y-auto">
-                  {colTasks.slice(0, columnLimit(col.status)).map((t) => (
-                    <SortableItem
-                      key={t.id}
-                      id={t.id}
-                      container={`col:${col.status}`}
-                      label={t.title}
-                      className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5"
-                    >
-                      {({ handle }) => (
-                      <>
-                      <div className="flex items-start justify-between gap-2">
-                        {handle}
-                        <Badge
-                          variant={
-                            t.priority === 'URGENT'
-                              ? 'danger'
-                              : t.priority === 'HIGH'
-                              ? 'warning'
-                              : 'default'
-                          }
-                          size="sm"
-                        >
-                          {priorityLabel(t.priority)}
-                        </Badge>
-                        <div className="flex items-center gap-1">
-                          {canAssign && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(t)}
-                            aria-label={`تعديل المهمة: ${t.title}`}
-                            title="تعديل المهمة"
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          )}
-                          {canAssign && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteTask(t.id)}
-                            aria-label={`حذف المهمة: ${t.title}`}
-                            title="حذف المهمة"
-                            className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <h4 className="text-xs font-bold text-slate-800 leading-snug">{t.title}</h4>
-
-                      {t.description && (
-                        <p className="text-2xs text-slate-500 line-clamp-2">{t.description}</p>
-                      )}
-
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-500">
-                        <div className="flex items-center gap-1">
-                          <UserIcon className="w-3 h-3 text-slate-500" />
-                          <span className="font-semibold text-slate-700">{assigneeOf(t)}</span>
-                        </div>
-                        <div className={`flex items-center gap-1 tabular-nums ${overdueDays(t) ? 'text-red-600' : 'text-slate-500'}`}>
-                          <OverdueBadge task={t} />
-                          <Clock className="w-3 h-3" />
-                          <span>{t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''}</span>
-                        </div>
-                      </div>
-
-                      {/* Quick Move Buttons */}
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1">
-                        {col.status !== 'TODO' && (
-                          <button
-                            type="button"
-                            onClick={() => handleQuickStatusChange(t.id, 'TODO')}
-                            className="min-h-7 text-2xs px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-semibold"
-                          >
-                            ← مطلوبة
-                          </button>
-                        )}
-                        {col.status !== 'IN_PROGRESS' && (
-                          <button
-                            type="button"
-                            onClick={() => handleQuickStatusChange(t.id, 'IN_PROGRESS')}
-                            className="min-h-7 text-2xs px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700 font-semibold"
-                          >
-                            قيد التنفيذ
-                          </button>
-                        )}
-                        {col.status !== 'COMPLETED' && (
-                          <button
-                            type="button"
-                            onClick={() => handleQuickStatusChange(t.id, 'COMPLETED')}
-                            className="min-h-7 text-2xs px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 rounded text-emerald-700 font-semibold"
-                          >
-                            إنجاز ✓
-                          </button>
-                        )}
-                      </div>
-                      </>
-                      )}
-                    </SortableItem>
-                  ))}
+                  {colTasks.slice(0, columnLimit(col.status)).map((t) => renderCard(t, col.status))}
                   <ShowMore remaining={Math.max(0, colTasks.length - columnLimit(col.status))} onMore={() => setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }))} noun="مهمة" className="!py-1" />
                 </div>
               </SortableList>
             );
           })}
         </div>
+        {columns.filter((col) => col.collapsible).map((col) => {
+          const colTasks = filteredTasks.filter((t) => t.status === col.status).sort((a, b) => compareForBoard(a, b, true));
+          return (
+            <section key={col.status} className="mt-4 bg-slate-50/80 rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowCancelled((v) => !v)}
+                aria-expanded={showCancelled}
+                aria-controls={`tasks-col-${col.status}`}
+                className="w-full min-h-11 flex items-center justify-between gap-2 px-4 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <span className="flex items-center gap-2">
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showCancelled ? '' : 'rotate-90'}`} aria-hidden="true" />
+                  {col.label}
+                </span>
+                <span className="min-w-5 h-5 px-1 rounded-full bg-white text-slate-700 text-2xs font-bold flex items-center justify-center shadow-2xs font-mono">
+                  {colTasks.length}
+                </span>
+              </button>
+              {showCancelled && (
+                <div id={`tasks-col-${col.status}`}>
+                <SortableList
+                  id={`col:${col.status}`}
+                  aria-label={col.label}
+                  className="p-3 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 min-h-16"
+                >
+                  {colTasks.length === 0 && <p className="text-2xs text-slate-500 py-2">لا توجد مهام ملغاة.</p>}
+                  {colTasks.slice(0, columnLimit(col.status)).map((t) => renderCard(t, col.status))}
+                  <ShowMore remaining={Math.max(0, colTasks.length - columnLimit(col.status))} onMore={() => setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }))} noun="مهمة" className="!py-1 col-span-full" />
+                </SortableList>
+                </div>
+              )}
+            </section>
+          );
+        })}
         </SortableScope>
       ) : (
         /* LIST VIEW */
@@ -410,8 +516,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {taskListPage.visible.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50/70">
-                  <td className="py-3 px-4 font-bold text-slate-800">{t.title}</td>
+                <tr key={t.id} data-task-id={t.id} tabIndex={-1} className={`hover:bg-slate-50/70 outline-hidden ${focusId === t.id ? 'bg-blue-50' : ''}`}>
+                  <td className="py-3 px-4 font-bold text-slate-800">
+                    <div className="space-y-1">
+                      <div>{t.title}</div>
+                      {relatedChip(t)}
+                    </div>
+                  </td>
                   <td className="py-3 px-3">
                     <Badge variant={t.priority === 'URGENT' ? 'danger' : 'default'} size="sm">
                       {priorityLabel(t.priority)}
@@ -426,7 +537,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </td>
                   <td className="py-3 px-3">
                     <Badge
-                      variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : 'warning'}
+                      variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : t.status === 'BLOCKED' ? 'danger' : t.status === 'CANCELLED' ? 'default' : 'warning'}
                       size="sm"
                     >
                       {statusLabel(t.status, 'task')}
@@ -448,7 +559,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       {canAssign && (
                       <button
                         type="button"
-                        onClick={() => onDeleteTask(t.id)}
+                        onClick={() => void handleDelete(t)}
                         aria-label={`حذف المهمة: ${t.title}`}
                         title={`حذف المهمة: ${t.title}`}
                         className="w-11 h-11 inline-flex items-center justify-center text-red-700 hover:bg-red-50 rounded"
@@ -565,10 +676,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
               >
-                <option value="TODO">مطلوبة</option>
-                <option value="IN_PROGRESS">قيد التنفيذ</option>
-                <option value="IN_REVIEW">مراجعة وتدقيق</option>
-                <option value="COMPLETED">مكتملة ومسلمة</option>
+                {TASK_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>

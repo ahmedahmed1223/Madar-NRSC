@@ -92,7 +92,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             تنبيهاتي
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            كل التنبيهات تظهر في الجرس دائماً؛ هنا تختار ما يصلك أيضاً على بريدك وعلى هاتفك أو حاسوبك، وأي برقيات تريد أن تُنبَّه لها.
+            كل التنبيهات تظهر في الجرس دائماً؛ هنا تختار ما يصلك أيضاً على بريدك وعلى هاتفك أو حاسوبك، وأي مواد تريد أن تُنبَّه لها.
           </p>
         </div>
         <button
@@ -216,18 +216,18 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
       </section>
 
       {/* Wires */}
-      <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات البرقيات">
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات المصادر">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Radio className="w-4 h-4 text-red-600" />
-          البرقيات العاجلة وكلمات المتابعة
+          المواد العاجلة وكلمات المتابعة
         </h2>
         <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
           <input type="checkbox" className="w-4 h-4 accent-red-600" checked={prefs.flashAlerts} onChange={(e) => update({ flashAlerts: e.target.checked })} />
           <Zap className="w-3.5 h-3.5 text-red-600" />
-          نبّهني فور وصول برقية عاجلة من أي وكالة
+          نبّهني فور وصول مادة عاجلة من أي وكالة
         </label>
         <div>
-          <p className="text-xs text-slate-600 mb-2">نبّهني عندما تحوي برقية إحدى هذه الكلمات أو الأسماء (تُطابق دون اعتبار للتشكيل والهمزات):</p>
+          <p className="text-xs text-slate-600 mb-2">نبّهني عندما تحوي مادة إحدى هذه الكلمات أو الأسماء (تُطابق دون اعتبار للتشكيل والهمزات):</p>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {prefs.watchWords.map((w) => (
               <span key={w} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-2 py-1">

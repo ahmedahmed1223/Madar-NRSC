@@ -1527,7 +1527,9 @@ export class ApiService {
 
   static saveCategory(cat: Partial<Category>): Category {
     const all = this.getCategories();
-    const colorVal = cat.colorCode || cat.color || '#2563eb';
+    const existing = cat.id ? all.find((c) => c.id === cat.id) : undefined;
+    // A partial update (e.g. only orderIndex) keeps the stored colour.
+    const colorVal = cat.colorCode || cat.color || existing?.colorCode || existing?.color || '#2563eb';
 
     if (cat.id) {
       const idx = all.findIndex((c) => c.id === cat.id);
@@ -1826,6 +1828,36 @@ export class ApiService {
 
   static getProgramTypes(): ProgramType[] {
     return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
+  }
+
+  /** Adds or renames a program type. Programs pick up a new name from the server (see server sync). */
+  static saveProgramType(data: Partial<ProgramType>): ProgramType {
+    const nameAr = (data.nameAr ?? '').trim();
+    if (!nameAr) throw new Error('اسم نوع البرنامج مطلوب');
+    if (nameAr.length > 80) throw new Error('اسم نوع البرنامج حتى 80 حرفاً');
+    const all = this.getProgramTypes();
+    const key = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (all.some((t) => t.id !== data.id && key(t.nameAr || t.name || '') === key(nameAr))) throw new Error('يوجد نوع برنامج بالاسم نفسه');
+    const idx = data.id ? all.findIndex((t) => t.id === data.id) : -1;
+    const next: ProgramType = { ...(idx >= 0 ? all[idx] : { id: data.id || newId('ptype') }), ...data, nameAr, name: nameAr };
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(STORAGE_KEYS.PROGRAM_TYPES, all);
+    return next;
+  }
+
+  /** Programs (not deleted) still classified under a program type. */
+  static countProgramsOfType(id: string): number {
+    return getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => !p.deletedAt && p.typeId === id).length;
+  }
+
+  static deleteProgramType(id: string): void {
+    const inUse = this.countProgramsOfType(id);
+    if (inUse > 0) {
+      const count = inUse === 1 ? 'برنامج واحد' : inUse === 2 ? 'برنامجين' : inUse <= 10 ? `${inUse} برامج` : `${inUse} برنامجاً`;
+      throw new Error(`لا يمكن حذف نوع البرنامج لأنه مستخدم في ${count}؛ انقل البرامج إلى نوع آخر أولاً`);
+    }
+    setStored(STORAGE_KEYS.PROGRAM_TYPES, this.getProgramTypes().filter((t) => t.id !== id));
   }
 
   // --- SETTINGS ---

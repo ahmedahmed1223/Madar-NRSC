@@ -45,5 +45,11 @@ export async function openNav(page: Page, label: string) {
   if (await page.locator('aside').getAttribute('aria-hidden') === 'true') {
     await page.getByRole('button', { name: 'فتح القائمة الرئيسية', exact: true }).click();
   }
-  await page.locator('aside nav button', { hasText: label }).first().click();
+  // Sections of the rail fold; open them all when the screen is in a folded one.
+  const item = page.locator('aside nav button', { hasText: label }).first();
+  if (!(await item.isVisible().catch(() => false))) {
+    const folded = page.locator('aside nav button[aria-expanded="false"]');
+    while (await folded.count()) await folded.first().click();
+  }
+  await item.click();
 }

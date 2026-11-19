@@ -136,7 +136,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
           )}
           <span className="min-w-0 flex-1">
             <span className="flex items-center justify-between gap-2">
-              <span className={`text-sm truncate ${count ? 'font-extrabold text-slate-900' : 'font-bold text-slate-800'}`}>{t.name}</span>
+              <span className={`text-sm truncate ${count ? 'font-bold text-slate-900' : 'font-bold text-slate-800'}`}>{t.name}</span>
               {t.last?.timestamp && <span className="text-2xs text-slate-500 shrink-0 tabular-nums">{stationDay(t.last.timestamp) === stationDay(Date.now()) ? timeOnly(t.last.timestamp) : formatDay(stationDay(t.last.timestamp))}</span>}
             </span>
             <span className="flex items-center justify-between gap-2">
@@ -176,12 +176,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
         <nav aria-label="المحادثات" className={`${channel ? 'hidden @4xl:flex' : 'flex'} flex-col min-w-0 min-h-0 @4xl:border-l border-slate-200`}>
           <div className="p-3 space-y-2 border-b border-slate-200">
             <div className="flex gap-2">
-              <button type="button" onClick={() => setPicking(true)} className="flex-1 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+              <button type="button" data-tour="message-new" onClick={() => setPicking(true)} className="flex-1 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
                 <Plus className="w-4 h-4" />
                 رسالة جديدة
               </button>
               {RbacService.hasPermission(currentUser, 'messages.groups') && (
-                <button type="button" onClick={() => setGroupForm('new')} className="flex-1 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">
+                <button type="button" data-tour="group-new" onClick={() => setGroupForm('new')} className="flex-1 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">
                   <Users className="w-4 h-4" />
                   مجموعة جديدة
                 </button>

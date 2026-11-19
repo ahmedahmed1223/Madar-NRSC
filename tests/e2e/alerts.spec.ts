@@ -6,8 +6,8 @@ test('each colleague sets their own alerts: channels, watch words, quiet hours',
   await page.getByRole('button', { name: /^الإشعارات/ }).click();
   await page.getByRole('button', { name: 'ما يصلني على البريد والجوال' }).click();
   await expect(page.getByRole('heading', { name: 'تنبيهاتي' })).toBeVisible();
-  await page.getByLabel('البرقيات العاجلة وكلمات المتابعة — الجهاز').check();
-  await page.getByText('نبّهني فور وصول برقية عاجلة').click();
+  await page.getByLabel('المواد العاجلة وكلمات المتابعة — الجهاز').check();
+  await page.getByText('نبّهني فور وصول مادة عاجلة').click();
   await page.getByLabel('كلمة متابعة').fill('أوبك');
   await page.getByLabel('كلمة متابعة').press('Enter');
   await page.getByLabel('بداية ساعات الهدوء').fill('23:00');

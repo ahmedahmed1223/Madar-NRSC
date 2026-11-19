@@ -17,6 +17,8 @@ import { RbacService, RoleDefinition, ALL_PERMISSIONS } from '../services/rbacSe
 import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
+import { confirmSaved } from '../services/confirmSave';
+import { roleInUseError } from '../services/roleUsage';
 import {
   Users as UsersIcon,
   UserCheck,
@@ -106,7 +108,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   }, []);
 
   // --- USER ACTIONS ---
-  const handleSaveUser = async (userData: Partial<User>, initialPassword?: string) => {
+  /** Resolves true once the server accepted the account; false keeps the form open with what was typed. */
+  const handleSaveUser = async (userData: Partial<User>, initialPassword?: string): Promise<boolean> => {
     try {
       const saved = ApiService.saveUser(userData);
       loadData();
@@ -116,9 +119,13 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         if (!synced) throw new Error('تعذر حفظ المستخدم على الخادم، حاول مرة أخرى');
         await authClient.setUserPassword(saved.id, initialPassword);
       }
-      showToast(`تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
+      const ok = await confirmSaved('users', saved.id, `تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
+      loadData();
+      return ok;
     } catch (e: any) {
       notify({ type: 'warning', message: e.message || 'تعذر حفظ المستخدم' });
+      loadData();
+      return false;
     }
   };
 
@@ -153,6 +160,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     if (!(await confirmDialog(`إلغاء التحقق بخطوتين للمستخدم ${user.fullName}؟ استخدم ذلك فقط إذا فقد جهاز المصادقة.`))) return;
     try {
       await authClient.resetUserTwoFactor(user.id);
+      loadData();
       showToast(`تم إلغاء التحقق بخطوتين للمستخدم ${user.fullName}`);
     } catch (e: any) {
       notify({ type: 'warning', message: e.message || 'تعذر إلغاء التحقق بخطوتين' });
@@ -189,7 +197,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       denyRoles();
       return;
     }
-    const res = RbacService.deleteRole(roleId);
+    const res = RbacService.deleteRole(roleId, ApiService.getUsers());
     if (!res.success) {
       notify({ type: 'warning', message: res.error || 'تعذر حذف الدور' });
     } else {
@@ -283,7 +291,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div>
           <div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">المستخدمون والصلاحيات</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">المستخدمون والصلاحيات</h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">الحسابات والأدوار والأقسام وأمان الدخول.</p>
             </div>
           </div>
@@ -320,7 +328,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">إجمالي طاقم الشبكة</span>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">{users.length} موظف</div>
+            <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">{users.length} موظف</div>
             <span className="text-2xs text-slate-500 mt-0.5 block">{departmentsList.length} أقسام تخصصية</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 items-center justify-center">
@@ -331,7 +339,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">الحسابات النشطة</span>
-            <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">{activeCount} مفعل</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-700 mt-1">{activeCount} مفعل</div>
             <span className="text-2xs text-slate-500 mt-0.5 block">{suspendedCount} حساب مجمد</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 items-center justify-center">
@@ -342,7 +350,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">مصفوفة الصلاحيات</span>
-            <div className="text-xl sm:text-2xl font-black text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
+            <div className="text-xl sm:text-2xl font-bold text-purple-600 mt-1">{ALL_PERMISSIONS.length} إذن</div>
             <span className="text-2xs text-slate-500 mt-0.5 block">{roles.length} أدوار معرفة</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 items-center justify-center">
@@ -353,7 +361,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-slate-500">التأمين والمصادقة (2FA)</span>
-            <div className="text-xl sm:text-2xl font-black text-indigo-600 mt-1">{twoFactorRate}%</div>
+            <div className="text-xl sm:text-2xl font-bold text-indigo-600 mt-1">{twoFactorRate}%</div>
             <span className="text-2xs text-slate-500 mt-0.5 block">معايير الأمان الإخباري</span>
           </div>
           <div className="hidden sm:flex shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center">
@@ -565,7 +573,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                       <div className="flex items-start gap-3">
                         <Avatar src={user.avatarUrl} name={user.fullName} className="w-14 h-14 rounded-2xl border-2 border-slate-100 shadow-xs shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-black text-slate-900 truncate">{user.fullName}</h3>
+                          <h3 className="text-sm font-bold text-slate-900 truncate">{user.fullName}</h3>
                           {user.fullNameEn && (
                             <p className="text-2xs text-slate-500 font-sans truncate" dir="ltr">
                               {user.fullNameEn}
@@ -784,6 +792,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
             setIsRoleModalOpen(true);
           }}
           onDeleteRole={handleDeleteRole}
+          roleDeleteBlocker={(role) => roleInUseError(role, users)}
           onAddNewRole={() => {
             setRoleToEdit(null);
             setIsRoleModalOpen(true);
@@ -799,6 +808,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         onSave={handleSaveUser}
         userToEdit={userToEdit}
         roles={isSuper ? roles : roles.filter((r) => r.roleCode !== 'SUPER_ADMIN')}
+        canManageOverrides={canManageRoles && userToEdit?.id !== currentUser.id}
       />
 
       <RoleEditModal

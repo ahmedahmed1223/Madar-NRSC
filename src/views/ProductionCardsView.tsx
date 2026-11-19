@@ -214,6 +214,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         {canManage && (
           <button
             type="button"
+            data-tour="card-create"
             onClick={() => {
               setEditing(null);
               setFormOpen(true);

@@ -132,10 +132,20 @@ export const DatabaseManagerView: React.FC = () => {
     }
   };
 
+  // Busy from the moment the operation is asked for until it completes or is cancelled,
+  // so the other database actions stay disabled meanwhile.
+  const endOperation = () => {
+    setOperation(null);
+    setIsResetting(false);
+    setIsRestoringBackup(false);
+  };
+
   const handleReset = async () => {
-    if (operation) return;
+    if (operation || isResetting || isRestoringBackup) return;
+    setIsResetting(true);
     const current = await loadStats();
     if (current?.resetEnabled) setOperation({ action: 'reset' });
+    else setIsResetting(false);
   };
 
   const handleCreateBackup = async () => {
@@ -170,8 +180,10 @@ export const DatabaseManagerView: React.FC = () => {
   };
 
   const handleRestoreBackup = async (fileName: string) => {
-    if (operation) return;
+    if (operation || isResetting || isRestoringBackup) return;
+    setIsRestoringBackup(true);
     if (await loadStats()) setOperation({ action: 'restore', fileName });
+    else setIsRestoringBackup(false);
   };
   const handleRehearse = async (fileName: string) => {
     if (rehearsalGuard.current) return;
@@ -193,10 +205,10 @@ export const DatabaseManagerView: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12 font-sans" dir="rtl">
-      {operation && <DatabaseOperationConfirmation action={operation.action} fileName={operation.fileName} totpRequired={stats?.confirmationTotpRequired === true} onClose={() => setOperation(null)} onComplete={updated => {
+      {operation && <DatabaseOperationConfirmation action={operation.action} fileName={operation.fileName} totpRequired={stats?.confirmationTotpRequired === true} onClose={endOperation} onComplete={updated => {
         setStats(current => ({ ...current, ...updated }));
         setFeedbackMessage(operation.action === 'restore' ? 'تمت استعادة قاعدة البيانات بنجاح' : 'تمت إعادة تهيئة قاعدة البيانات بنجاح');
-        setOperation(null); void loadBackups();
+        endOperation(); void loadBackups();
         if (consoleEnabled) void handleRunQuery(QUERY_PRESETS[0].sql);
       }}/>
       }
@@ -223,13 +235,27 @@ export const DatabaseManagerView: React.FC = () => {
                 <Database className="w-3.5 h-3.5 text-indigo-600" />
                 محرك SQLite 3 الأصلي
               </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                متصل ونشط على القرص
-              </span>
+              {stats ? (
+                stats.isHealthy ? (
+                  <span role="status" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                    سليمة ومتصلة
+                  </span>
+                ) : (
+                  <span role="status" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 text-red-700 text-xs font-semibold border border-red-200">
+                    <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
+                    فحص السلامة لم ينجح
+                  </span>
+                )
+              ) : (
+                <span role="status" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold border border-slate-200">
+                  <span className="w-2 h-2 rounded-full bg-slate-400" aria-hidden="true" />
+                  {isLoading ? 'جارٍ فحص الحالة...' : 'الحالة غير معروفة'}
+                </span>
+              )}
             </div>
             
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
               النسخ الاحتياطي وقاعدة البيانات
             </h1>
             <p className="text-sm text-slate-500 max-w-2xl leading-relaxed">
@@ -251,7 +277,7 @@ export const DatabaseManagerView: React.FC = () => {
             <button
               type="button"
               onClick={handleReset}
-              disabled={isResetting}
+              disabled={isResetting || isRestoringBackup || isCreatingBackup}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all border border-slate-300 disabled:opacity-50 active:scale-95"
             >
               <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
@@ -681,10 +707,10 @@ export const DatabaseManagerView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleRestoreBackup(b.fileName)}
-                              disabled={isRestoringBackup || isCreatingBackup || !!verifying}
-                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30"
+                              disabled={isRestoringBackup || isResetting || isCreatingBackup || !!verifying}
+                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30 disabled:opacity-50"
                             >
-                              استعادة هذه النسخة
+                              {isRestoringBackup && operation?.fileName === b.fileName ? 'جارٍ الاستعادة...' : 'استعادة هذه النسخة'}
                             </button>
                             <a
                               href={`/api/v1/db/backups/download?fileName=${encodeURIComponent(b.fileName)}`}

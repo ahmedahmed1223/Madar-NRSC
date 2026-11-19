@@ -46,6 +46,7 @@ const MediaLibraryView = lazyWithRetry(() => import('./views/MediaLibraryView').
 const ReportsView = lazyWithRetry(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
 const AuditLogsView = lazyWithRetry(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
 const UsersView = lazyWithRetry(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
+import type { SettingsSection } from './views/SettingsView';
 const SettingsView = lazyWithRetry(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
@@ -72,7 +73,9 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
-import { navigateTo, routeChanged } from './services/uiEvents';
+import { navigateTo, routeChanged, setupCommand } from './services/uiEvents';
+import { TourHost } from './components/help/TourHost';
+import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 
 interface AppProps {
@@ -317,7 +320,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       addToast({
         type: 'warning',
         title: 'حذف الخبر',
-        message: 'تم نقل الخبر إلى الأرشيف (Soft Delete)',
+        message: 'نُقل الخبر إلى سلة المحذوفات؛ يستعيده من يملك صلاحية الحذف.',
       });
     } catch (err: any) {
       addToast({
@@ -425,7 +428,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       summary: (wire.summary || '').slice(0, 400),
       content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
       sourceId: known?.id,
-      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
+      internalNotes: `محرر من مادة ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
     });
     setActiveNav('news-editor');
   };
@@ -468,7 +471,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       refreshData();
       addToast(
         on
-          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة 4 ساعات` }
+          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة ${apiService.getSettings().breakingDurationHours ?? 4} ساعات` }
           : { type: 'info', title: 'أُوقف الخبر العاجل', message: 'أُزيل الخبر من شريط العاجل' }
       );
     } catch (err: any) {
@@ -581,23 +584,25 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       apiService.deleteStory(id, currentUser);
       refreshData();
       addToast({
-        title: 'تمت أرشفة القصة',
-        message: 'تم نقل التغطية إلى الأرشيف بنجاح',
+        title: 'حُذفت التغطية',
+        message: 'تم حذف التغطية؛ بقيت أخبارها في قائمة الأخبار.',
         type: 'info',
       });
-    } catch {
-      // ignore
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'تعذر حذف التغطية', message: err?.message || 'رفض الخادم العملية' });
     }
   };
 
   // --- MEDIA ACTIONS ---
-  const handleUploadMedia = (mediaData: Partial<MediaAsset>) => {
+  /** True once the server has stored the new library item; the upload page stays open otherwise. */
+  const handleUploadMedia = async (mediaData: Partial<MediaAsset>): Promise<boolean> => {
     try {
-      apiService.saveMediaAsset(mediaData, currentUser);
+      const saved = apiService.saveMediaAsset(mediaData, currentUser);
       refreshData();
-      addToast({ type: 'success', title: 'تمت إضافة المادة', message: 'حُفظت المادة في مكتبة الوسائط' });
+      return await confirmSaved('media', saved.id, 'حُفظت المادة في مكتبة الوسائط');
     } catch (err: any) {
       addToast({ type: 'error', title: 'تعذر حفظ المادة', message: err.message || 'حدث خطأ' });
+      return false;
     }
   };
 
@@ -607,22 +612,20 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- SETTINGS ACTIONS ---
-  const handleSaveCategory = (cat: Partial<Category>) => {
+  /** True once the server has stored the category (a refusal is announced by the sync layer). */
+  const handleSaveCategory = async (cat: Partial<Category>): Promise<boolean> => {
     try {
       const isNew = !cat.id;
       const saved = apiService.saveCategory(cat);
       refreshData();
-      addToast({
-        title: isNew ? 'تمت إضافة القسم بنجاح' : 'تم تحديث بيانات ولون القسم',
-        message: `تم حفظ وتطبيق قسم "${saved.nameAr}" على غرفة الأخبار ولوحة التحكم`,
-        type: 'success',
-      });
+      return await confirmSaved('categories', saved.id, isNew ? `أُضيف القسم «${saved.nameAr}»` : `حُفظ القسم «${saved.nameAr}»`);
     } catch (err: any) {
       addToast({
         title: 'خطأ في حفظ القسم',
         message: err.message || 'تعذر حفظ القسم الصحفي',
         type: 'error',
       });
+      return false;
     }
   };
 
@@ -685,6 +688,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
   useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
+  const [setupOpen, setSetupOpen] = useState(false);
+  /** Settings opened on a section from another screen (e.g. «المصادر» → feed settings); cleared on leaving. */
+  const [settingsTarget, setSettingsTarget] = useState<{ section: SettingsSection; sourceId?: string } | null>(null);
+  useEffect(() => {
+    if (activeNav !== 'settings') setSettingsTarget(null);
+  }, [activeNav]);
+  useEffect(() => setupCommand.on(() => setSetupOpen(true)), []);
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
@@ -872,6 +882,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onCreateEpisode={() => {
                   setFilterProgramId(null);
                   setActiveNav('episodes');
+                  // The episodes screen opens its form directly.
+                  setOpenNewEpisode((n) => n + 1);
                 }}
                 onNavigate={(view: any) => {
                   // A record on a list screen (e.g. cards/<id>) opens through the link router.
@@ -924,7 +936,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onConvert={handleConvertWire}
                 onOpenNews={handleEditNewsClick}
-                onOpenSettings={() => setActiveNav('settings')}
+                onOpenSettings={(section, sourceId) => {
+                  setSettingsTarget(section ? { section: section as SettingsSection, sourceId } : null);
+                  setActiveNav('settings');
+                }}
                 onOpenAlerts={() => setActiveNav('alerts')}
                 focusWireId={focusId}
               />
@@ -1063,6 +1078,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onSaveTask={handleSaveTask}
                 onDeleteTask={handleDeleteTask}
+                onOpenLink={openLink}
+                focusId={focusId}
               />
             )}
 
@@ -1135,6 +1152,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveSource={handleSaveSource}
                 onDeleteSource={handleDeleteSource}
                 onOpenUsers={() => setActiveNav('users')}
+                initialSection={settingsTarget?.section}
+                focusSourceId={settingsTarget?.sourceId}
               />
             )}
 
@@ -1210,6 +1229,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-12 w-full empty:hidden" />
         </div>
       </div>
+
+      <TourHost currentUser={currentUser} />
+      {RbacService.hasPermission(currentUser, 'system.settings') && <SetupWizard isOpen={setupOpen} onClose={() => setSetupOpen(false)} currentUser={currentUser} />}
 
       {/* Global Command Palette (Ctrl + K) */}
       <CommandPalette

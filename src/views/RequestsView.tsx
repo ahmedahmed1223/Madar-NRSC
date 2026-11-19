@@ -4,7 +4,7 @@ import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, CheckCircle2, Link2, Plus, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Edit2, Link2, Plus, Trash2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -44,6 +44,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<DeptRequest | null>(null);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -92,7 +93,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
           <p className="text-xs text-slate-500 mt-1">مونتاج، جرافيك، تجهيز استديو، صوت، إضاءة، أرشيف... كل طلب يصل للقسم المعني ويُتابَع حتى الإنجاز.</p>
         </div>
         {canCreate && (
-          <button type="button" onClick={() => setFormOpen(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start">
+          <button type="button" onClick={() => { setEditing(null); setFormOpen(true); }} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start">
             <Plus className="w-4 h-4" />
             طلب جديد
           </button>
@@ -239,6 +240,25 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                     إلغاء الطلب
                   </button>
                 )}
+                {isRequester && r.status === 'OPEN' && (
+                  <button type="button" onClick={() => { setEditing(r); setFormOpen(true); }} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                    <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    تعديل
+                  </button>
+                )}
+                {isRequester && r.status === 'OPEN' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await confirmDialog({ title: 'حذف الطلب', message: `حذف الطلب «${r.title}» نهائياً؟ لن يظهر لقسم ${departmentName(r.departmentId)} بعد الآن.`, confirmLabel: 'حذف الطلب', danger: true });
+                      if (ok) act(() => apiService.deleteRequest(r.id), 'حُذف الطلب');
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-bold hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    حذف
+                  </button>
+                )}
                 {(isRequester || canManage) && r.status === 'DONE' && (
                   <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'أُعيد فتح الطلب')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إعادة فتح
@@ -250,7 +270,12 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
         })}
       </div>
 
-      <RequestFormPage isOpen={formOpen} onClose={() => setFormOpen(false)} onCreated={(text) => setMessage({ ok: true, text })} />
+      <RequestFormPage
+        isOpen={formOpen}
+        editing={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onCreated={(text) => { setRequests(apiService.getRequests()); setMessage({ ok: true, text }); }}
+      />
 
       {doneFor && (
         <MediaPicker

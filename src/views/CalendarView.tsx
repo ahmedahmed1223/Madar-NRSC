@@ -86,7 +86,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div>
           <div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">جدول البث</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">جدول البث</h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">حلقات الأسبوع حسب اليوم أو الاستوديو، مع كشف تعارض الاستوديوهات.</p>
             </div>
           </div>
@@ -257,7 +257,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       : 'bg-slate-50 border-slate-200 text-slate-700'
                   }`}
                 >
-                  <div className="text-xs font-black">{day.name}</div>
+                  <div className="text-xs font-bold">{day.name}</div>
                   <div className="text-2xs tabular-nums mt-0.5 opacity-90">{day.displayDate}</div>
                 </div>
 
@@ -288,7 +288,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         >
                           <div className="flex flex-wrap items-center justify-between gap-1 text-2xs">
                             <span
-                              className={`font-mono font-black px-1.5 py-0.5 rounded tabular-nums ${
+                              className={`font-mono font-bold px-1.5 py-0.5 rounded tabular-nums ${
                                 isLive
                                   ? 'bg-red-600 text-white'
                                   : 'bg-blue-50 text-blue-700'
@@ -345,7 +345,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                         {studioName}
                       </h4>

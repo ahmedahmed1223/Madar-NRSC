@@ -1,11 +1,15 @@
 @import "tailwindcss";
 @import "./styles/fonts.css";
+@import "./styles/theme-light.css";
 @import "./styles/theme-dark.css";
 
 /* A calm «live» pulse: slow and never fading below 60%, used only on small live dots/icons. */
 @theme {
-  /* Muted text one step darker than Tailwind's slate-500 so it reads at 4.5:1 on the page grey. */
-  --color-slate-500: oklch(50% 0.046 257.417);
+  /* Corners closer to broadcast graphics than to Tailwind's soft defaults (DESIGN.md). */
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.875rem;
   /*
    * Timecodes and IDs stay monospaced, but Arabic letters inside them take the UI's Arabic face
    * instead of a system monospace fallback (DejaVu, Courier New) that draws Arabic poorly.
@@ -227,7 +231,7 @@
 :is(.rich-editor, .rich-content) ol { list-style: decimal; padding-inline-start: 1.5em; }
 :is(.rich-editor, .rich-content) li + li { margin-top: 0.25em; }
 :is(.rich-editor, .rich-content) blockquote {
-  border-inline-start: 4px solid var(--color-blue-500);
+  border-inline-start: 1px solid var(--color-blue-500);
   background: var(--color-slate-50);
   padding: 0.6em 1em;
   border-radius: 0.5rem;
@@ -271,6 +275,53 @@ body.dnd-dragging * {
 .animate-toast-progress {
   animation: toast-progress linear forwards;
   transform-origin: right center;
+}
+
+/*
+ * The strap: the signature of the «مدار» identity (DESIGN.md). The screen title is drawn as an
+ * on-air lower third: an ink band with a short signal tab at its start edge. A long title breaks
+ * the band per line, as a two-line lower third does.
+ */
+#app-main h1:not(.no-strap) {
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+#app-main h1:not(.no-strap),
+.strap {
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background: var(--color-slate-900);
+  color: var(--color-slate-50);
+  padding: 0.2em 0.7em 0.25em 0.6em;
+  border-radius: 2px;
+  box-shadow: inset -0.375rem 0 0 var(--color-blue-500);
+  padding-inline-start: 0.95em;
+  line-height: 1.85;
+  font-weight: 700;
+}
+#app-main h1:not(.no-strap) svg,
+.strap svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  color: var(--color-blue-300);
+  margin-inline-end: 0.4em;
+}
+:root.dark #app-main h1:not(.no-strap),
+:root.dark .strap {
+  box-shadow: inset -0.375rem 0 0 var(--color-blue-600);
+}
+:root.dark #app-main h1:not(.no-strap) svg,
+:root.dark .strap svg {
+  color: var(--color-blue-600);
+}
+@media print {
+  #app-main h1 {
+    background: none;
+    color: #000;
+    box-shadow: none;
+    padding: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -333,4 +384,19 @@ details[open] > summary.flex::after {
     display: inline-block;
     padding-block: 0.4rem;
   }
+}
+
+/* The active screen in the rail: a lower-third strap with the signal tab at its start edge. */
+.nav-item-active {
+  background: oklch(100% 0 0 / 0.09);
+  box-shadow: inset -0.25rem 0 0 var(--color-blue-400);
+}
+
+/* Interactive tour: the screen dims except a window around the control being explained. */
+.tour-hole {
+  box-shadow: 0 0 0 9999px oklch(16% 0.038 266 / 0.55), 0 0 0 2px var(--color-blue-400);
+  transition: top 180ms ease-out, left 180ms ease-out, width 180ms ease-out, height 180ms ease-out;
+}
+:root.dark .tour-hole {
+  box-shadow: 0 0 0 9999px oklch(8% 0.02 266 / 0.7), 0 0 0 2px var(--color-blue-600);
 }
