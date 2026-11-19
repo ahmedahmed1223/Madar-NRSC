@@ -42,7 +42,7 @@ test('a rejected editorial transition keeps the editor and reviewer notes open',
   const row = data.collections.news.find((entry: any) => entry.id === id);
   expect(row).toBeTruthy();
   await page.goto(`/news/${row.id}`);
-  await page.getByRole('button', { name: 'إعادة للكاتب مع ملاحظات', exact: true }).click();
+  await page.getByRole('button', { name: 'إعادة مع سبب', exact: true }).click();
   await page.locator('#status-transition-comment').fill('راجع الأرقام ومصدر التصريح');
   await page.route('**/api/v1/data/sync', async route => {
     const body = route.request().postDataJSON();
@@ -53,8 +53,8 @@ test('a rejected editorial transition keeps the editor and reviewer notes open',
       results: body.ops.map(() => ({ ok: false, code: 'CONFLICT', message: 'اختبار رفض التحديث', current: row })),
     } });
   });
-  await page.getByRole('button', { name: 'تأكيد ونقل الحالة', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'تأكيد ونقل الحالة', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'إعادة للكاتب', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'إعادة للكاتب', exact: true })).toBeEnabled();
   await expect(page.locator('#status-transition-comment')).toHaveValue('راجع الأرقام ومصدر التصريح');
   await expect(page.locator('#news-headline-input')).toBeVisible();
   await page.unroute('**/api/v1/data/sync');

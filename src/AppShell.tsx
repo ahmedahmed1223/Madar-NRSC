@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { authClient, SessionInfo } from './services/authClient';
 import { dataStore } from './services/dataStore';
-import { setUnauthorizedHandler } from './services/http';
+import { setPasswordChangeHandler, setUnauthorizedHandler } from './services/http';
 import { LoginView } from './components/auth/LoginView';
 import { ChangePasswordView } from './components/auth/ChangePasswordView';
 
@@ -52,6 +52,13 @@ export default function AppShell() {
       if (hadSession) setNotice('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
       setPhase('login');
     });
+    // The server holds every request back until a temporary password is replaced: show that screen.
+    setPasswordChangeHandler(() => {
+      if (!authClient.getSession()) return;
+      authClient.requirePasswordChange();
+      dataStore.stop();
+      setPhase('change-password');
+    });
     // Opened without a connection (the app itself comes from the offline cache): wait for it.
     const boot = () => {
       if (navigator.onLine === false) return setPhase('offline');
@@ -65,6 +72,7 @@ export default function AppShell() {
     boot();
     return () => {
       setUnauthorizedHandler(null);
+      setPasswordChangeHandler(null);
       window.removeEventListener('online', onOnline);
     };
   }, [enter]);

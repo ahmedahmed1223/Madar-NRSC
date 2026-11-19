@@ -1,14 +1,17 @@
-import { countLabel } from '../shared/labels';
+import { countLabel } from '../shared/arabicPlural';
+import { isHandledBy, MONITOR_MEDIA } from '../shared/wires';
+import { addManualObservation, addWireToCard, deleteManualObservation, sendWireToColleague, toggleWireHandled } from '../services/newsReview';
+import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { matchesQuery } from '../shared/search';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon, Zap, Eye, BellRing, Edit2 } from 'lucide-react';
+import { Rss, RefreshCw, Search, ExternalLink, FilePlus2, CheckCircle2, AlertTriangle, Settings as SettingsIcon, Zap, Eye, BellRing, Edit2, Check, Send, ClipboardList, Tv, Plus, Trash2 } from 'lucide-react';
 import { isFlashWire, watchWordHits } from '../shared/notifications';
 import type { NewsItem, NewsSource, User, WireItem } from '../types';
 import { apiService, WireStatusInfo } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { dataStore } from '../services/dataStore';
-import { promptDialog } from '../services/dialogs';
+import { confirmDialog, promptDialog } from '../services/dialogs';
 import { notify } from '../services/notify';
 
 interface WiresViewProps {
@@ -52,7 +55,16 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusWireId || null);
   const [now, setNow] = useState(Date.now());
-  const [only, setOnly] = useState<'ALL' | 'FLASH' | 'WATCH'>('ALL');
+  const [only, setOnly] = useState<'ALL' | 'FLASH' | 'WATCH' | 'TODO' | 'DONE'>('ALL');
+  // One open panel at a time under an item: send to a colleague, or add to a card.
+  const [panel, setPanel] = useState<{ wireId: string; kind: 'send' | 'card' } | null>(null);
+  const [panelTarget, setPanelTarget] = useState('');
+  const [panelNote, setPanelNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const emptyManual = () => ({ sourceName: '', medium: 'TV' as const as NonNullable<WireItem['medium']>, at: toLocalInputValue(), title: '', summary: '', link: '' });
+  const [manual, setManual] = useState(emptyManual);
+  const canWrite = can('news.create');
   const watchWords = useMemo(() => apiService.getMyNotificationPrefs().watchWords, []);
   const [renaming, setRenaming] = useState<string | null>(null);
   const canManageSources = can('system.settings');
@@ -87,9 +99,78 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
     return [...wires]
       .filter((w) => sourceFilter === 'ALL' || w.sourceId === sourceFilter)
       .filter((w) => !q || matchesQuery(q, w.title, w.summary, w.sourceName))
-      .filter((w) => only === 'ALL' || (only === 'FLASH' ? w.flash || isFlashWire(w) : watchWordHits(`${w.title}\n${w.summary}`, watchWords).length > 0))
+      .filter((w) => !w.deletedAt)
+      .filter((w) =>
+        only === 'ALL'
+          ? true
+          : only === 'FLASH'
+          ? w.flash || isFlashWire(w)
+          : only === 'WATCH'
+          ? watchWordHits(`${w.title}\n${w.summary}`, watchWords).length > 0
+          : only === 'DONE'
+          ? isHandledBy(w, currentUser.id)
+          : !isHandledBy(w, currentUser.id)
+      )
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-  }, [wires, query, sourceFilter, only, watchWords]);
+  }, [wires, query, sourceFilter, only, watchWords, currentUser.id]);
+  const todoCount = useMemo(() => wires.filter((w) => !w.deletedAt && !isHandledBy(w, currentUser.id)).length, [wires, currentUser.id]);
+  const colleagues = useMemo(() => apiService.getUsers().filter((u) => u.id !== currentUser.id && u.isActive !== false).sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar')), [currentUser.id]);
+  const openCards = useMemo(() => (can('cards.work') || can('cards.manage') ? apiService.getCards().filter((c) => c.status === 'OPEN') : []), [panel?.kind]);
+  const manualSourceNames = useMemo(() => [...new Set(wires.filter((w) => w.manual).map((w) => w.sourceName))].slice(0, 30), [wires]);
+
+  /** Writes, then reports what the server said (offline: kept on this device). */
+  const confirm = async (collection: 'wires' | 'messages' | 'productionCards', id: string, ok: string) => {
+    const outcome = await dataStore.awaitWrite(collection, id);
+    if (outcome.ok) notify({ type: 'success', message: ok });
+    else if (outcome.pending) notify({ type: 'warning', title: outcome.queued ? 'غير متصل: سيُرسل عند عودة الاتصال' : 'لم يؤكد الخادم بعد', message: outcome.message || '' });
+    return outcome.ok || !!outcome.pending;
+  };
+  const act = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      notify({ type: 'error', title: 'لم يتم الإجراء', message: err instanceof Error ? err.message : 'تعذر الحفظ' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const openPanel = (wireId: string, kind: 'send' | 'card') => {
+    setPanel(panel?.wireId === wireId && panel.kind === kind ? null : { wireId, kind });
+    setPanelTarget('');
+    setPanelNote('');
+  };
+  const submitPanel = (w: WireItem) =>
+    act(async () => {
+      if (!panel || !panelTarget) return;
+      if (panel.kind === 'send') {
+        sendWireToColleague(w, panelTarget, panelNote);
+        const name = colleagues.find((c) => c.id === panelTarget)?.fullName || 'الزميل';
+        notify({ type: 'success', message: `أُرسلت المادة إلى ${name}` });
+      } else {
+        const card = addWireToCard(w, panelTarget, panelNote);
+        await confirm('productionCards', card.id, `أُضيفت المادة إلى بطاقة «${card.title}»`);
+      }
+      setPanel(null);
+    });
+  const submitManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    void act(async () => {
+      const wire = addManualObservation({
+        sourceName: manual.sourceName,
+        medium: manual.medium,
+        publishedAt: fromLocalInputValue(manual.at) || new Date().toISOString(),
+        title: manual.title,
+        summary: manual.summary,
+        link: manual.link,
+      });
+      if (await confirm('wires', wire.id, 'أُضيف الرصد إلى المصادر')) {
+        setManual(emptyManual());
+        setManualOpen(false);
+      }
+    });
+  };
   const flashCount = useMemo(() => wires.filter((w) => w.flash || isFlashWire(w)).length, [wires]);
 
   const handleRefresh = async () => {
@@ -159,10 +240,21 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
           <p className="text-xs text-slate-500 mt-1">
             مواد تُجلب آلياً من خلاصات الوكالات والمصادر المعتمدة
             {status && status.pollMinutes > 0 ? ` كل ${status.pollMinutes} دقائق` : ''}
-            {status ? `، وتُحفظ ${countLabel(status.retentionDays, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}` : ''}. حوّل أي مادة إلى مسودة خبر لتحريرها ومراجعتها.
+            {status ? `، وتُحفظ ${countLabel(status.retentionDays, { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}` : ''}، ومعها ما يرصده الديسك يدوياً من القنوات والمنصات. حوّل أي مادة إلى مسودة خبر، أو أرسلها لزميل، أو أضفها إلى بطاقة.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canWrite && (
+            <button
+              type="button"
+              aria-expanded={manualOpen}
+              onClick={() => setManualOpen((v) => !v)}
+              className="inline-flex items-center gap-2 min-h-11 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold"
+            >
+              <Plus className="w-4 h-4" />
+              رصد يدوي
+            </button>
+          )}
           {canManageSources && (
             <button
               type="button"
@@ -189,12 +281,69 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
 
       {error && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-bold">{error}</div>}
 
+      {manualOpen && canWrite && (
+        <form onSubmit={submitManual} aria-label="رصد يدوي" className="bg-orange-50/60 border border-orange-200 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <p className="sm:col-span-2 text-xs text-slate-700 font-semibold flex items-center gap-1.5">
+            <Tv className="w-4 h-4 text-orange-600" />
+            ما رأيته على قناة أو منصة: يظهر للديسك مع مواد الوكالات.
+          </p>
+          <label className="text-xs font-bold text-slate-700">
+            القناة أو المنصة
+            <input required maxLength={120} list="manual-source-names" value={manual.sourceName} onChange={(e) => setManual({ ...manual, sourceName: e.target.value })} placeholder="مثال: قناة الجزيرة، حساب وزارة الصحة" className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg text-sm bg-white" />
+            <datalist id="manual-source-names">
+              {manualSourceNames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-bold text-slate-700">
+              الوسيلة
+              <select value={manual.medium} onChange={(e) => setManual({ ...manual, medium: e.target.value as NonNullable<WireItem['medium']> })} className="mt-1 w-full min-h-11 px-2 border border-slate-300 rounded-lg text-sm bg-white">
+                {MONITOR_MEDIA.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-bold text-slate-700">
+              الوقت
+              <input type="datetime-local" required value={manual.at} max={toLocalInputValue()} onChange={(e) => setManual({ ...manual, at: e.target.value })} className="mt-1 w-full min-h-11 px-2 border border-slate-300 rounded-lg text-sm bg-white" dir="ltr" />
+            </label>
+          </div>
+          <label className="sm:col-span-2 text-xs font-bold text-slate-700">
+            ما رُصد (سطر واحد)
+            <input required minLength={3} maxLength={300} value={manual.title} onChange={(e) => setManual({ ...manual, title: e.target.value })} className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg text-sm bg-white" />
+          </label>
+          <label className="sm:col-span-2 text-xs font-bold text-slate-700">
+            التفاصيل والنص (اختياري)
+            <textarea rows={3} maxLength={4000} value={manual.summary} onChange={(e) => setManual({ ...manual, summary: e.target.value })} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white" />
+          </label>
+          <label className="text-xs font-bold text-slate-700">
+            الرابط (اختياري)
+            <input type="url" inputMode="url" maxLength={1000} value={manual.link} onChange={(e) => setManual({ ...manual, link: e.target.value })} placeholder="https://" dir="ltr" className="mt-1 w-full min-h-11 px-3 border border-slate-300 rounded-lg text-sm bg-white text-left" />
+          </label>
+          <div className="flex items-end gap-2">
+            <button type="submit" disabled={busy} className="min-h-11 px-4 inline-flex items-center gap-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold disabled:opacity-50">
+              <Plus className="w-4 h-4" /> إضافة الرصد
+            </button>
+            <button type="button" onClick={() => setManualOpen(false)} className="min-h-11 px-3 rounded-lg text-xs text-slate-600 hover:bg-slate-100">
+              إلغاء
+            </button>
+          </div>
+        </form>
+      )}
+
       {feedSources.length === 0 ? (
         <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-3">
           <Rss className="w-8 h-8 text-slate-300 mx-auto" />
-          <p className="text-sm font-bold text-slate-700">لم تُربط أي خلاصة وكالة بعد</p>
+          <p className="text-sm font-bold text-slate-700">{canManageSources ? 'لم تُربط أي خلاصة وكالة بعد' : 'لم تُضف مصادر بعد؛ اطلب من مدير النظام إضافتها'}</p>
           <p className="text-xs text-slate-500">
-            أضف رابط خلاصة RSS أو Atom لأحد المصادر من «الإعدادات ← الوكالات والمصادر» ليبدأ الخادم بجلب المصادر.
+            {canManageSources
+              ? 'أضف رابط خلاصة RSS أو Atom لأحد المصادر من «الإعدادات ← الوكالات والمصادر» ليبدأ الخادم بجلب المصادر.'
+              : 'تصل مواد الوكالات هنا تلقائياً حين يربط مدير النظام خلاصاتها.'}
+            {canWrite ? ' وإلى ذلك الحين أضف ما ترصده من القنوات والمنصات بزر «رصد يدوي».' : ''}
           </p>
           {canManageSources && (
             <button
@@ -302,11 +451,13 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
               {renaming === sourceFilter ? 'جارٍ الحفظ...' : 'تعديل'}
             </button>
           )}
-          <div className="flex gap-1.5" role="group" aria-label="نوع المواد">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="نوع المواد">
             {([
               ['ALL', 'الكل', null],
               ['FLASH', `العاجل (${flashCount})`, Zap],
               ['WATCH', 'كلماتي', Eye],
+              ['TODO', `لم أتابعها (${todoCount})`, null],
+              ['DONE', 'تابعتها', Check],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -336,9 +487,9 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
       )}
 
       <div className="space-y-2">
-        {feedSources.length > 0 && filtered.length === 0 && (
+        {(feedSources.length > 0 || wires.length > 0) && filtered.length === 0 && (
           <p className="text-xs text-slate-500 text-center py-8">
-            {wires.length === 0 ? 'لم تصل مواد بعد. ستظهر هنا فور جلبها من الخلاصات.' : 'لا توجد مواد مطابقة للبحث.'}
+            {wires.length === 0 ? 'لم تصل مواد بعد. ستظهر هنا فور جلبها من الخلاصات.' : only === 'TODO' ? 'تابعت كل المواد المعروضة.' : 'لا توجد مواد مطابقة للبحث.'}
           </p>
         )}
         {filtered.slice(0, limit).map((w) => {
@@ -360,7 +511,13 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                     <Zap className="w-3 h-3" /> عاجل
                   </span>
                 )}
+                {w.manual && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-slate-800 text-white font-bold">
+                    <Tv className="w-3 h-3" /> رصد يدوي{w.medium ? ` · ${MONITOR_MEDIA.find((m) => m.id === w.medium)?.label || ''}` : ''}
+                  </span>
+                )}
                 <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-bold">{sourceById.get(w.sourceId)?.name || w.sourceName}</span>
+                {w.manual && w.createdByName && <span>رصدها {w.createdByName}</span>}
                 {hits.map((h) => (
                   <span key={h} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
                     <Eye className="w-3 h-3" /> {h}
@@ -372,6 +529,12 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                     {c}
                   </span>
                 ))}
+                {!!w.handled?.length && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold" title={w.handled.map((h) => h.userName).join('، ')}>
+                    <Check className="w-3 h-3" />
+                    {isHandledBy(w, currentUser.id) ? (w.handled.length > 1 ? `تابعتها أنت و${countLabel(w.handled.length - 1, { one: 'زميل', two: 'زميلان', few: 'زملاء', many: 'زميلاً' })}` : 'تابعتها') : `تابعها ${w.handled.map((h) => h.userName).slice(0, 2).join('، ')}`}
+                  </span>
+                )}
                 {used && (
                   <button
                     type="button"
@@ -402,6 +565,34 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                     تحرير خبر من المادة
                   </button>
                 )}
+                <button
+                  type="button"
+                  aria-pressed={isHandledBy(w, currentUser.id)}
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      const done = !isHandledBy(w, currentUser.id);
+                      toggleWireHandled(w.id);
+                      await confirm('wires', w.id, done ? 'سُجّلت متابعتك للمادة' : 'أُلغيت علامة المتابعة');
+                    })
+                  }
+                  className={`inline-flex items-center gap-1 min-h-9 px-3 rounded-lg text-xs font-bold border disabled:opacity-50 ${
+                    isHandledBy(w, currentUser.id) ? 'bg-emerald-700 border-emerald-700 text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  تمت المتابعة
+                </button>
+                <button type="button" aria-expanded={panel?.wireId === w.id && panel.kind === 'send'} onClick={() => openPanel(w.id, 'send')} className="inline-flex items-center gap-1 min-h-9 px-3 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Send className="w-3.5 h-3.5" />
+                  إرسال لزميل
+                </button>
+                {(can('cards.work') || can('cards.manage')) && (
+                  <button type="button" aria-expanded={panel?.wireId === w.id && panel.kind === 'card'} onClick={() => openPanel(w.id, 'card')} className="inline-flex items-center gap-1 min-h-9 px-3 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    إضافة إلى بطاقة
+                  </button>
+                )}
                 {w.link && (
                   <a
                     href={w.link}
@@ -413,7 +604,58 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                     المصدر الأصلي
                   </a>
                 )}
+                {w.manual && (w.createdById === currentUser.id || canManageSources) && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label={`حذف الرصد ${w.title.slice(0, 40)}`}
+                    onClick={() =>
+                      void act(async () => {
+                        if (!(await confirmDialog('حذف مادة الرصد اليدوي؟'))) return;
+                        deleteManualObservation(w.id);
+                        await confirm('wires', w.id, 'حُذفت مادة الرصد');
+                      })
+                    }
+                    className="inline-flex items-center gap-1 min-h-9 px-2 rounded-lg text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+              {panel?.wireId === w.id && (
+                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
+                  <select
+                    aria-label={panel.kind === 'send' ? 'الزميل' : 'البطاقة'}
+                    value={panelTarget}
+                    onChange={(e) => setPanelTarget(e.target.value)}
+                    className="min-h-11 px-2 border border-slate-300 rounded-lg text-xs bg-white sm:w-56"
+                  >
+                    <option value="">{panel.kind === 'send' ? 'اختر الزميل…' : openCards.length ? 'اختر البطاقة…' : 'لا بطاقات جارية'}</option>
+                    {panel.kind === 'send'
+                      ? colleagues.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.fullName}
+                          </option>
+                        ))
+                      : openCards.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title}
+                          </option>
+                        ))}
+                  </select>
+                  <input
+                    aria-label="ملاحظة"
+                    value={panelNote}
+                    maxLength={500}
+                    onChange={(e) => setPanelNote(e.target.value)}
+                    placeholder={panel.kind === 'send' ? 'سطر للزميل (اختياري)' : 'لماذا تهم البطاقة (اختياري)'}
+                    className="min-h-11 flex-1 px-3 border border-slate-300 rounded-lg text-xs"
+                  />
+                  <button type="button" disabled={!panelTarget || busy} onClick={() => void submitPanel(w)} className="min-h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50">
+                    {panel.kind === 'send' ? 'إرسال' : 'إضافة'}
+                  </button>
+                </div>
+              )}
             </article>
           );
         })}

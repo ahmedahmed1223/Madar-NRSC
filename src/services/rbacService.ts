@@ -29,12 +29,18 @@ export class RbacService {
   static saveRole(role: RoleDefinition): RoleDefinition[] {
     const roles = this.getRoleDefinitions();
     const existingIndex = roles.findIndex((r) => r.id === role.id);
-    if (existingIndex !== -1) {
-      const current = roles[existingIndex];
+    // The code is the role's identity: empty or shared codes are refused on create and on update (the server checks too).
+    const code = String(role.roleCode || '').trim();
+    const current = existingIndex !== -1 ? roles[existingIndex] : null;
+    if (!current || (!current.isSystemRole && current.roleCode !== code)) {
+      if (!code) throw new Error('رمز الدور مطلوب');
+      if (!/^[A-Z][A-Z0-9_]{1,39}$/.test(code)) throw new Error('رمز الدور: حروف إنجليزية كبيرة وأرقام وشرطة سفلية (_) فقط');
+      if (roles.some((r) => r.id !== role.id && r.roleCode === code) || DEFAULT_ROLE_DEFINITIONS.some((r) => r.roleCode === code)) throw new Error('يوجد دور بنفس الرمز مسبقاً');
+    }
+    if (current) {
       // A role's identity and system flag never change through an edit.
       roles[existingIndex] = { ...current, ...role, id: current.id, isSystemRole: current.isSystemRole, roleCode: current.isSystemRole ? current.roleCode : role.roleCode };
     } else {
-      if (roles.some((r) => r.roleCode === role.roleCode)) throw new Error('يوجد دور بنفس الرمز مسبقاً');
       roles.push({ ...role, isSystemRole: false });
     }
 

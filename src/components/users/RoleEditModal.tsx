@@ -13,7 +13,8 @@ import { Shield, Check, CheckSquare, Square } from 'lucide-react';
 interface RoleEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (role: RoleDefinition) => void;
+  /** Returns an error message when the role was refused (the form stays open and shows it). */
+  onSave: (role: RoleDefinition) => void | string | null;
   roleToEdit?: RoleDefinition | null;
 }
 
@@ -87,13 +88,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
 
     if (!nameAr.trim()) newErrors.nameAr = 'اسم الدور بالعربية مطلوب';
     if (!roleCode.trim()) newErrors.roleCode = 'رمز الدور البرمجي مطلوب';
+    else if (!roleToEdit?.isSystemRole && !/^[A-Z][A-Z0-9_]{1,39}$/.test(roleCode.trim().toUpperCase().replace(/\s+/g, '_'))) newErrors.roleCode = 'رمز الدور: حروف إنجليزية وأرقام وشرطة سفلية (_) فقط، ويبدأ بحرف';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    onSave({
+    const refused = onSave({
       id: roleToEdit?.id || `role-${Date.now()}`,
       roleCode: roleCode.trim().toUpperCase().replace(/\s+/g, '_'),
       nameAr: nameAr.trim(),
@@ -107,6 +109,11 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       // Kept in sidebar order; a role without a list opens every screen its permissions allow.
       ...(screens ? { screens: ASSIGNABLE_SCREENS.filter((nav) => screens.includes(nav)) } : {}),
     });
+    if (refused) {
+      // A duplicate code belongs next to the code field; anything else above the actions.
+      setErrors(/الرمز/.test(refused) ? { roleCode: refused } : { form: refused });
+      return;
+    }
     onClose();
   };
 
@@ -166,11 +173,17 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
               type="text"
               value={roleCode}
               disabled={roleToEdit?.isSystemRole}
-              onChange={(e) => setRoleCode(e.target.value)}
+              onChange={(e) => {
+                setRoleCode(e.target.value);
+                if (errors.roleCode || errors.form) setErrors((prev) => ({ ...prev, roleCode: '', form: '' }));
+              }}
               placeholder="ROLE_COORDINATOR"
-              className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left font-mono disabled:bg-slate-100 disabled:text-slate-500"
+              aria-invalid={!!errors.roleCode}
+              aria-describedby={errors.roleCode ? 'role-edit-modal-code-error' : undefined}
+              className={`w-full text-xs px-3 py-2 bg-white border rounded-xl focus:outline-none focus:border-blue-500 text-left font-mono disabled:bg-slate-100 disabled:text-slate-500 ${errors.roleCode ? 'border-red-500 bg-red-50/20' : 'border-slate-200'}`}
               dir="ltr"
             />
+            {errors.roleCode && <p id="role-edit-modal-code-error" role="alert" className="text-2xs text-red-600 mt-1 font-bold">{errors.roleCode}</p>}
           </div>
 
           <div className="md:col-span-2">
@@ -370,6 +383,12 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
             </div>
           )}
         </fieldset>
+
+        {(errors.form || errors.roleCode || errors.nameAr) && (
+          <p role="alert" className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            {errors.form || errors.roleCode || errors.nameAr}
+          </p>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">

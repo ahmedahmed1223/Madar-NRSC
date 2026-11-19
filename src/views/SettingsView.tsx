@@ -21,6 +21,8 @@ import { NewsTemplatesSettings } from '../components/settings/NewsTemplatesSetti
 import { ProductionListsSettings } from '../components/settings/ProductionListsSettings';
 import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
 import { StationsSettings } from '../components/settings/StationsSettings';
+import { DepartmentsSettings } from '../components/settings/DepartmentsSettings';
+import { OrgStructureSettings } from '../components/settings/OrgStructureSettings';
 import { SystemMonitor } from '../components/settings/SystemMonitor';
 import { StorageSettings } from '../components/settings/StorageSettings';
 import { ProgramTypesSettings } from '../components/settings/ProgramTypesSettings';
@@ -52,6 +54,8 @@ import {
   Cloud,
   ChevronUp,
   ChevronDown,
+  Building2,
+  Workflow,
 } from 'lucide-react';
 import { Category, NewsSource, User, NewsItem } from '../types';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
@@ -76,10 +80,12 @@ interface SettingsViewProps {
   focusSourceId?: string | null;
 }
 
-export type SettingsSection = 'station' | 'stations' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
+export type SettingsSection = 'station' | 'stations' | 'structure' | 'departments' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
 const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
   { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
-  { id: 'stations', label: 'المحطات والتكليفات', hint: 'المحطة الرئيسية والفروع وارتباطها وأنواع المهام وأوزانها', icon: Network },
+  { id: 'stations', label: 'المحطات والتكليفات', hint: 'المحطة الرئيسية والفروع ومجموعات المحطات وارتباطها وأنواع المهام وأوزانها', icon: Network },
+  { id: 'departments', label: 'الأقسام الإدارية', hint: 'أقسام المؤسسة ورؤساؤها ومحطاتها (غرفة التحرير، الإنتاج، المونتاج…)', icon: Building2 },
+  { id: 'structure', label: 'الهيكل التنظيمي', hint: 'المحطات والمجموعات والأقسام ورؤساؤها وعدد الزملاء', icon: Workflow },
   { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
   { id: 'production', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات', icon: Users },
   { id: 'airDisplay', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
@@ -88,7 +94,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
   { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
   { id: 'storage', label: 'التخزين', hint: 'Dropbox وGoogle Drive والمجلد المشترك وجسر مدار', icon: Cloud },
   { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
-  { id: 'categories', label: 'الأقسام الصحفية', hint: 'تصنيفات الأخبار وألوانها', icon: Layers },
+  { id: 'categories', label: 'تصنيفات الأخبار', hint: 'تصنيفات المواد الإخبارية وألوانها (غير الأقسام الإدارية)', icon: Layers },
   { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
   { id: 'data', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
 ];
@@ -775,6 +781,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ProgramTypesSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}
       {section === 'stations' && <StationsSettings />}
+      {section === 'departments' && <DepartmentsSettings />}
+      {section === 'structure' && <OrgStructureSettings onOpenSection={(next) => void chooseSection(next)} />}
       {section === 'monitor' && <SystemMonitor />}
       {section === 'storage' && <StorageSettings />}
       {section === 'categories' && (
@@ -786,7 +794,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span>الأقسام الصحفية وألوانها</span>
+                <span>تصنيفات الأخبار وألوانها</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-mono font-bold">
                   {categories.length} أقسام
                 </span>
@@ -1370,10 +1378,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="space-y-3 text-xs">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <strong className="text-slate-800 block font-bold text-xs">
-                تصدير نسخة كاملة (ملف JSON)
+                تصدير بيانات العمل الحالية (JSON)
               </strong>
               <p className="text-slate-500 text-2xs">
-                تنزيل ملف كامل لبيانات غرفة الأخبار، التصنيفات، والتغطيات.
+                ما نزل إلى هذا المتصفح من بيانات العمل (الأخبار الجارية، التصنيفات، التغطيات…) في ملف واحد. ليس نسخة احتياطية: لا يشمل الحسابات وكلمات المرور ولا الملفات المرفوعة ولا الأخبار المؤرشفة الأقدم من مدة العمل. النسخة الاحتياطية الكاملة من «قاعدة البيانات» ← «نسخة احتياطية كاملة الآن».
               </p>
               <button
                 type="button"
@@ -1381,16 +1389,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-all shadow-xs"
               >
                 <Download className="w-3.5 h-3.5" />
-                تحميل النسخة الاحتياطية (JSON)
+                تنزيل بيانات العمل (JSON)
               </button>
             </div>
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <strong className="text-slate-800 block font-bold text-xs">
-                استعادة من ملف نسخة احتياطية
+                إضافة سجلات من ملف تصدير
               </strong>
               <p className="text-slate-500 text-2xs">
-                استيراد ملف نسخة احتياطية واستئناف العمل فوراً.
+                يضيف من ملف التصدير السجلات غير الموجودة فقط، ولا يستبدل ما هو موجود.
               </p>
               <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer">
                 <Upload className="w-3.5 h-3.5" />

@@ -13,7 +13,9 @@ import { stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
-import { RbacService, RoleDefinition, ALL_PERMISSIONS } from '../services/rbacService';
+import { RbacService, RoleDefinition, ALL_PERMISSIONS, findUserRole } from '../services/rbacService';
+import { temporaryPassword, webRandom } from '../shared/passwords';
+import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
@@ -36,6 +38,7 @@ import {
   Edit2,
   CheckCircle,
   Download,
+  LogOut,
 } from 'lucide-react';
 
 interface UsersViewProps {
@@ -56,14 +59,17 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [twoFactorFilter, setTwoFactorFilter] = useState<'ALL' | 'ON' | 'OFF'>('ALL');
+  /** 'ALL', a station id, or 'NONE' (central management, or a station that was removed). */
+  const [stationFilter, setStationFilter] = useState<string>('ALL');
   const [sort, toggleSort] = usePersistentSort<UserSortKey>('nrcs_sort_users', { key: 'name', dir: 'asc' }, USER_SORT_KEYS);
-  const filtersActive = !!searchQuery.trim() || selectedRoleFilter !== 'ALL' || selectedDepartmentFilter !== 'ALL' || selectedStatusFilter !== 'ALL' || twoFactorFilter !== 'ALL';
+  const filtersActive = !!searchQuery.trim() || selectedRoleFilter !== 'ALL' || selectedDepartmentFilter !== 'ALL' || selectedStatusFilter !== 'ALL' || twoFactorFilter !== 'ALL' || stationFilter !== 'ALL';
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedRoleFilter('ALL');
     setSelectedDepartmentFilter('ALL');
     setSelectedStatusFilter('ALL');
     setTwoFactorFilter('ALL');
+    setStationFilter('ALL');
   };
 
   // Modals
@@ -115,9 +121,15 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       loadData();
       if (initialPassword) {
         // The account must exist on the server before credentials can be attached.
-        const synced = await ApiService.flushSync();
-        if (!synced) throw new Error('تعذر حفظ المستخدم على الخادم، حاول مرة أخرى');
-        await authClient.setUserPassword(saved.id, initialPassword);
+        const accepted = await dataStore.awaitWrite('users', saved.id);
+        if (!accepted.ok) throw new Error(accepted.message || 'تعذر حفظ المستخدم على الخادم، حاول مرة أخرى');
+        try {
+          await authClient.setUserPassword(saved.id, initialPassword);
+        } catch (err) {
+          // No account without a password: the new record is withdrawn so the form can be sent again.
+          ApiService.deleteUser(saved.id);
+          throw err;
+        }
       }
       const ok = await confirmSaved('users', saved.id, `تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
       loadData();
@@ -167,29 +179,44 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     }
   };
 
-  /** Issues a random temporary password; the user must replace it at next sign-in. */
+  /** Issues a random temporary password (no look-alike characters); it must be replaced at next sign-in and expires if unused. */
   const handleResetPassword = async (user: User) => {
-    if (!(await confirmDialog(`إصدار كلمة مرور مؤقتة جديدة للمستخدم ${user.fullName}؟ سيتم إنهاء جلساته الحالية.`))) return;
-    const bytes = new Uint8Array(9);
-    crypto.getRandomValues(bytes);
-    const temp = `${btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '')}7a`;
+    if (!(await confirmDialog(`إصدار كلمة مرور مؤقتة جديدة لـ ${user.fullName}؟ تُنهى جلساته الحالية.`))) return;
+    const temp = temporaryPassword(webRandom);
     try {
       await authClient.setUserPassword(user.id, temp);
-      await promptDialog({ title: 'كلمة المرور المؤقتة', message: `انسخها وسلّمها إلى ${user.fullName} بشكل آمن؛ سيُطلب منه تغييرها عند الدخول.`, defaultValue: temp, copyOnly: true });
+      await promptDialog({ title: 'كلمة المرور المؤقتة', message: `انسخها وسلّمها إلى ${user.fullName} بشكل آمن. تصلح لأول دخول فقط ويُطلب تغييرها فوراً، وتنتهي صلاحيتها إن لم تُستخدم خلال المدة التي يحددها الخادم (72 ساعة افتراضياً).`, defaultValue: temp, copyOnly: true });
     } catch (e: any) {
       notify({ type: 'warning', message: e.message || 'تعذر إعادة تعيين كلمة المرور' });
     }
   };
 
+  /** Signs a colleague out of every device (a lost phone, a shared computer left signed in). */
+  const handleRevokeSessions = async (user: User) => {
+    if (!(await confirmDialog({ title: 'إنهاء الجلسات', message: `تسجيل خروج ${user.fullName} من كل الأجهزة الآن؟ يعود للدخول بكلمة مروره.`, confirmLabel: 'إنهاء الجلسات', cancelLabel: 'تراجع', danger: true }))) return;
+    try {
+      await authClient.revokeUserSessions(user.id);
+      showToast(`أُنهيت جلسات ${user.fullName} على كل الأجهزة`);
+    } catch (e: any) {
+      notify({ type: 'warning', message: e.message || 'تعذر إنهاء الجلسات' });
+    }
+  };
+
   // --- ROLE & RBAC ACTIONS ---
-  const handleSaveRole = (roleData: RoleDefinition) => {
+  /** Returns the reason when the role is refused (duplicate or empty code), for the form to show. */
+  const handleSaveRole = (roleData: RoleDefinition): string | null => {
     if (!canManageRoles) {
       denyRoles();
-      return;
+      return 'صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات';
     }
-    RbacService.saveRole(roleData);
+    try {
+      RbacService.saveRole(roleData);
+    } catch (e: any) {
+      return e?.message || 'تعذر حفظ الدور';
+    }
     loadData();
-    showToast(`تم تحديث إعدادات الدور: ${roleData.nameAr}`);
+    void confirmSaved('roles', roleData.id, `تم حفظ الدور: ${roleData.nameAr}`).then(loadData);
+    return null;
   };
 
   const handleDeleteRole = (roleId: string) => {
@@ -222,7 +249,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
     }
 
     const updatedRole = { ...targetRole, permissions: updatedPerms };
-    RbacService.saveRole(updatedRole);
+    try {
+      RbacService.saveRole(updatedRole);
+    } catch (e: any) {
+      notify({ type: 'warning', message: e?.message || 'تعذر حفظ الدور' });
+    }
     loadData();
   };
 
@@ -254,7 +285,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const filteredUsers = sortList(users.filter((u) => {
     const matchesSearch = matchesQuery(searchQuery, u.fullName, u.fullNameEn, u.email, u.staffId, u.jobTitle, u.department, departmentName(departmentIdOf(u)), u.phone, u.stationId ? stationName(stations, u.stationId) : '');
 
-    const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
+    const matchesRole = selectedRoleFilter === 'ALL' || findUserRole(u, roles)?.id === selectedRoleFilter;
+    const knownStation = !!u.stationId && stations.some((st) => st.id === u.stationId);
+    const matchesStation = stationFilter === 'ALL' || (stationFilter === 'NONE' ? !knownStation : u.stationId === stationFilter);
     const matchesDept = selectedDepartmentFilter === 'ALL' || departmentIdOf(u) === selectedDepartmentFilter;
     const matchesStatus =
       selectedStatusFilter === 'ALL'
@@ -264,7 +297,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         : !u.isActive;
 
     const matches2fa = twoFactorFilter === 'ALL' || (twoFactorFilter === 'ON' ? !!u.twoFactorEnabled : !u.twoFactorEnabled);
-    return matchesSearch && matchesRole && matchesDept && matchesStatus && matches2fa;
+    return matchesSearch && matchesRole && matchesDept && matchesStatus && matches2fa && matchesStation;
   }), sort, (u, key) =>
     key === 'name' ? u.fullName : key === 'role' ? u.role : key === 'department' ? departmentName(departmentIdOf(u)) : key === 'status' ? (u.isActive ? 0 : 1) : u.lastLogin || ''
   );
@@ -428,10 +461,25 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
               >
                 <option value="ALL">كافة الأدوار التحريرية</option>
                 {roles.map((r) => (
-                  <option key={r.id} value={r.roleCode}>
+                  <option key={r.id} value={r.id}>
                     {r.nameAr}
                   </option>
                 ))}
+              </select>
+
+              <select
+                aria-label="المحطة"
+                value={stationFilter}
+                onChange={(e) => setStationFilter(e.target.value)}
+                className="w-full sm:w-auto min-h-11 sm:min-h-0 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+              >
+                <option value="ALL">كل المحطات</option>
+                {stations.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.name}
+                  </option>
+                ))}
+                <option value="NONE">بلا محطة</option>
               </select>
 
               <select
@@ -533,7 +581,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
           {viewMode === 'GRID' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredUsers.map((user) => {
-                const roleBadge = RbacService.getRoleBadge(user.role);
+                const roleBadge = RbacService.getRoleBadge(user.customRoleId || user.role);
                 const isCurrentActive = currentUser.id === user.id;
 
                 return (
@@ -560,6 +608,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                               حسابك النشط
                             </span>
                           )}
+                          {!user.isActive && (
+                            <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">مجمّد</span>
+                          )}
                           <span
                             className={`w-2.5 h-2.5 rounded-full ${
                               user.isActive ? 'bg-emerald-500' : 'bg-red-500'
@@ -581,6 +632,9 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                           )}
                           <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{user.jobTitle}</p>
                           <p className="text-2xs text-slate-500 truncate">{departmentName(departmentIdOf(user))}{user.stationId ? ` — ${stationName(stations, user.stationId)}` : ''}</p>
+                          <p className="text-2xs text-slate-500 truncate">
+                            آخر دخول: {user.lastLogin ? new Date(user.lastLogin).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'لم يدخل بعد'}
+                          </p>
                         </div>
                       </div>
 
@@ -624,11 +678,22 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                         }`}
                       >
                         <KeyRound className="w-3.5 h-3.5" />
-                        <span>{isCurrentActive ? 'الحساب الحالي' : 'كلمة مرور مؤقتة'}</span>
+                        <span>{isCurrentActive ? 'الحساب الحالي' : 'إصدار كلمة مرور مؤقتة'}</span>
                       </button>
                       )}
 
                       <div className="flex items-center gap-1">
+                        {!isCurrentActive && canSuspend && canTouch(user) && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRevokeSessions(user)}
+                            className="p-1.5 bg-white hover:bg-rose-100 text-rose-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                            title="إنهاء الجلسات على كل الأجهزة (جهاز مفقود أو حاسوب مشترك)"
+                            aria-label={`إنهاء جلسات ${user.fullName}`}
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {user.twoFactorEnabled && !isCurrentActive && canSuspend && canTouch(user) && (
                           <button
                             type="button"
@@ -702,7 +767,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {filteredUsers.map((user) => {
-                      const roleBadge = RbacService.getRoleBadge(user.role);
+                      const roleBadge = RbacService.getRoleBadge(user.customRoleId || user.role);
                       const isCurrent = currentUser.id === user.id;
 
                       return (
@@ -740,7 +805,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 user.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                               }`}
                             >
-                              {user.isActive ? 'نشط' : 'مجمد'}
+                              {user.isActive ? 'نشط' : 'مجمّد'}
                             </span>
                           </td>
 
@@ -754,7 +819,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-2xs font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                 title="إصدار كلمة مرور مؤقتة"
                               >
-                                كلمة مرور
+                                كلمة مرور مؤقتة
                               </button>
                               )}
                               {(canEditProfile || canManageRoles) && canTouch(user) && (

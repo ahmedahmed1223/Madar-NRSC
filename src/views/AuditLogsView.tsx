@@ -11,20 +11,14 @@ import { dataStore } from '../services/dataStore';
 import { downloadCsv } from '../services/csvExport';
 import { filterLogRows, logUsers } from '../services/logFilters';
 import { localDateString } from '../shared/dates';
+import { AUDIT_ACTION_LABELS, readableAuditDetails } from '../shared/auditTrail';
 
 interface AuditLogsViewProps {
   logs: AuditLog[];
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  CREATE: 'إنشاء', UPDATE: 'تعديل', DELETE: 'حذف', RESTORE: 'استعادة', PUBLISH: 'نشر', UNPUBLISH: 'إلغاء نشر',
-  STATUS_CHANGE: 'تغيير حالة', LOGIN: 'تسجيل دخول', LOGOUT: 'تسجيل خروج', LOGIN_FAILED: 'محاولة دخول فاشلة',
-  SETTINGS_UPDATE: 'تعديل إعدادات', SECURITY_VIOLATION: 'محاولة غير مصرح بها', PASSWORD_CHANGE: 'تغيير كلمة المرور',
-  PASSWORD_RESET: 'إعادة تعيين كلمة المرور', TWO_FACTOR_ENABLED: 'تفعيل التحقق بخطوتين', TWO_FACTOR_DISABLED: 'إلغاء التحقق بخطوتين',
-  DB_EXPORT: 'تنزيل قاعدة البيانات', DB_RESET: 'إعادة تهيئة البيانات', DB_RESTORE: 'استعادة نسخة احتياطية', BACKUP_CREATE: 'نسخة احتياطية',
-  DEMO_DATA_REMOVED: 'حذف البيانات التجريبية', ROLE_CHANGE: 'تغيير الدور والصلاحيات', USER_SUSPEND: 'إيقاف حساب',
-  USER_DELETE: 'حذف مستخدم', USER_CREATE: 'إضافة مستخدم',
-};
+/** Every action the server writes, in Arabic (shared with the server's audit trail). */
+const ACTION_LABELS = AUDIT_ACTION_LABELS;
 const actionName = (a: string) => ACTION_LABELS[a] || a;
 
 /** What the action touched, in Arabic (the codes stay searchable). */
@@ -32,7 +26,7 @@ const ENTITY_LABELS: Record<string, string> = {
   AUTH: 'الدخول', USER: 'مستخدم', NEWS: 'خبر', BREAKING_NEWS: 'عاجل', EPISODE: 'حلقة', PROGRAM: 'برنامج', GUEST: 'ضيف',
   STORY: 'تغطية', TASK: 'مهمة', MEDIA: 'وسائط', BULLETIN: 'نشرة', BULLETIN_FORMAT: 'قالب نشرة', BULLETIN_STORY: 'قصة نشرة',
   DIARY: 'أجندة', BOOKING: 'حجز', RESOURCE: 'مورد', REQUEST: 'طلب قسم', SETTINGS: 'الإعدادات', BACKUP: 'النسخ الاحتياطي',
-  BROADCAST: 'البث', ROLE: 'دور', DATABASE: 'قاعدة البيانات',
+  BROADCAST: 'البث', ROLE: 'دور', DATABASE: 'قاعدة البيانات', STATION: 'محطة', DEPARTMENT: 'الأقسام الإدارية', PRODUCTION_CARD: 'تكليف', STORAGE: 'التخزين',
 };
 const entityName = (e: string) => ENTITY_LABELS[e] || e;
 
@@ -42,6 +36,7 @@ const entityOf = (log: AuditLog) => log.targetEntity || log.entityType || '';
 const timeOf = (log: AuditLog) => log.timestamp || log.createdAt || '';
 const fullTime = (iso: string) =>
   iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+const SEVERITY_LABELS: Record<string, string> = { INFO: 'معلومة', WARNING: 'تحذير', SECURITY: 'أمني' };
 const FIELD = 'min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
 
 type LogTab = 'AUDIT' | 'ACTIVITY';
@@ -70,7 +65,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
       filterLogRows(logs || [], filter, timeOf, (l) => l.userId).filter((log) => {
         if (selectedAction !== 'ALL' && actionOf(log) !== selectedAction) return false;
         if (searchQuery.trim()) {
-          return matchesQuery(searchQuery, log.userName, log.details, entityOf(log), ENTITY_LABELS[entityOf(log)], actionOf(log), ACTION_LABELS[actionOf(log)]);
+          return matchesQuery(searchQuery, log.userName, readableAuditDetails(log.details), entityOf(log), ENTITY_LABELS[entityOf(log)], actionOf(log), ACTION_LABELS[actionOf(log)]);
         }
         return true;
       }),
@@ -102,13 +97,14 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
     const stamp = localDateString();
     if (tab === 'AUDIT') {
       downloadCsv(`سجل-التدقيق-${stamp}.csv`, [
-        ['التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'نوع الإجراء', 'الكيان المتأثر', 'معرف الكيان', 'الخطورة', 'التفاصيل', 'عنوان IP'],
-        ...filteredLogs.map((l) => [fullTime(timeOf(l)), l.userName, l.userId, actionName(actionOf(l)), entityName(entityOf(l)), l.targetId || '', l.severity || '', l.details, l.ipAddress || '']),
+        // ISO time first: sortable and importable; the Arabic time stays for reading.
+        ['الوقت (ISO 8601)', 'التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'رمز الإجراء', 'نوع الإجراء', 'الكيان المتأثر', 'معرف الكيان', 'الخطورة', 'التفاصيل', 'عنوان IP'],
+        ...filteredLogs.map((l) => [timeOf(l), fullTime(timeOf(l)), l.userName, l.userId, actionOf(l), actionName(actionOf(l)), entityName(entityOf(l)), l.targetId || '', SEVERITY_LABELS[l.severity || ''] || l.severity || '', readableAuditDetails(l.details), l.ipAddress || '']),
       ]);
     } else {
       downloadCsv(`سجل-النشاط-${stamp}.csv`, [
-        ['التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'الإجراء', 'النوع', 'العنوان', 'الملخص'],
-        ...filteredActivity.map((a) => [fullTime(a.timestamp), a.userName, a.userId, actionName(a.action), entityName(a.entityType), a.entityTitle, a.summaryAr]),
+        ['الوقت (ISO 8601)', 'التاريخ والوقت', 'المستخدم', 'معرف المستخدم', 'الإجراء', 'النوع', 'العنوان', 'الملخص'],
+        ...filteredActivity.map((a) => [a.timestamp, fullTime(a.timestamp), a.userName, a.userId, actionName(a.action), entityName(a.entityType), a.entityTitle, a.summaryAr]),
       ]);
     }
   };
@@ -257,6 +253,12 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             <label htmlFor="audit-to-day" className="block text-2xs font-bold text-slate-600 mb-1">إلى تاريخ</label>
             <input id="audit-to-day" type="date" value={toDay} min={fromDay || undefined} onChange={(e) => setToDay(e.target.value)} className={FIELD} dir="ltr" />
           </div>
+          {fromDay && toDay && fromDay > toDay && (
+            <p role="alert" className="basis-full text-xs font-bold text-amber-800">
+              تاريخ «من» بعد تاريخ «إلى»، فلا يمكن أن تطابق أي سجلات. بدّل التاريخين أو صحّح أحدهما.
+              <button type="button" onClick={() => { setFromDay(toDay); setToDay(fromDay); }} className="ms-2 underline text-blue-700">تبديل التاريخين</button>
+            </p>
+          )}
           <div>
             <label htmlFor="audit-user-filter" className="block text-2xs font-bold text-slate-600 mb-1">المستخدم</label>
             <select id="audit-user-filter" value={userId} onChange={(e) => setUserId(e.target.value)} className={`${FIELD} min-w-48`}>
@@ -279,6 +281,10 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             { id: 'CREATE', label: 'إنشاء' },
             { id: 'UPDATE', label: 'تعديل' },
             { id: 'DELETE', label: 'حذف' },
+            { id: 'ROLE_CHANGE', label: 'تغيير دور' },
+            { id: 'PERMISSION_OVERRIDE', label: 'استثناءات صلاحيات' },
+            { id: 'USER_SUSPEND', label: 'تجميد' },
+            { id: 'ROLE_UPDATE', label: 'تعديل دور' },
           ].map((tag) => (
             <button
               key={tag.id}
@@ -346,7 +352,8 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-700 leading-relaxed max-w-md">
-                      {log.details}
+                      {log.severity === 'SECURITY' && <span className="inline-block me-1.5 text-2xs font-bold px-1.5 rounded bg-rose-100 text-rose-800">أمني</span>}
+                      {readableAuditDetails(log.details)}
                     </td>
                     <td className="py-3 px-3 font-mono text-slate-500 text-2xs" dir="ltr">
                       {log.ipAddress || '—'}

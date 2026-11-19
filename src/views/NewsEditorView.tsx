@@ -4,10 +4,10 @@ import { FieldBreakingForm } from '../components/news/FieldBreakingForm';
 import { spokenReadTime } from '../shared/readTime';
 import { dataStore, QUEUED_MESSAGE } from '../services/dataStore';
 import { claimReview, passQuality, releaseReview, closeBreakingRequest } from '../services/newsReview';
-import { activeReviewClaim, canRequestBreaking, canReviewNews, claimDenial, isQualityPassed, qualityPassDenial, REVIEW_DECISIONS } from '../shared/newsWorkflow';
+import { activeReviewClaim, canRequestBreaking, canReviewNews, claimDenial, isQualityPassed, qualityPassDenial } from '../shared/newsWorkflow';
 import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
-import { confirmDialog } from '../services/dialogs';
+import { confirmDialog, promptDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { ProofreadButton } from '../components/editor/WritingAids';
 import { contentDenial, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
@@ -18,6 +18,7 @@ import { CommentThread } from '../components/comments/CommentThread';
 import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { apiService } from '../services/api';
+import { countLabel } from '../shared/arabicPlural';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { NewsVideosEditor } from '../components/news/NewsVideosEditor';
 import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
@@ -56,7 +57,6 @@ import {
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { RichTextEditor } from '../components/editor/RichTextEditor';
 import { Badge } from '../components/common/Badge';
-import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
@@ -65,6 +65,13 @@ import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitio
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
+
+const WORKFLOW_ACTION_LABELS: Record<string, string> = {
+  QUALITY_PASSED: 'اجتازت التدقيق',
+  REVIEW_CLAIMED: 'استلم المراجعة',
+  REVIEW_RELEASED: 'أعاد الخبر إلى طابور المراجعة',
+  BREAKING_REQUESTED: 'أرسله عاجلاً من الميدان',
+};
 
 interface NewsEditorViewProps {
   newsItem?: NewsItem | null;
@@ -520,9 +527,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const underReview = newsItem?.status === 'UNDER_REVIEW';
   const reviewClaim = activeReviewClaim(newsItem);
   const mayClaim = underReview && claimDenial(can, currentUser.id, newsItem) === null;
-  const mayPassQuality = underReview && qualityPassDenial(can, currentUser.id, newsItem) === null;
+  // Approvers decide directly; the pass is for reviewers without publishing authority.
+  const mayPassQuality = underReview && !can('news.approve') && qualityPassDenial(can, currentUser.id, newsItem) === null;
   const qualityPassed = !!newsItem && isQualityPassed(newsItem);
-  const reviewMode = underReview && !!newsItem && newsItem.authorId !== currentUser.id && canReviewNews(can);
+  // Review mode whenever this person has a review decision to take on the story (not its author's withdraw).
+  const reviewMode = underReview && !!newsItem && canReviewNews(can) && (transitions.some((t) => t === 'APPROVED' || t === 'NEEDS_REVISION' || t === 'REJECTED') || mayPassQuality || mayClaim || !!reviewClaim);
   const canPostReview = !!newsItem?.id && (canEditContent || can('news.review') || can('news.edit_any'));
   const queueIndex = newsItem?.id ? reviewQueue.indexOf(newsItem.id) : -1;
   const queuePosition = queueIndex >= 0 && reviewQueue.length > 1 ? `${queueIndex + 1} من ${reviewQueue.length}` : null;
@@ -708,6 +717,37 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   }, []);
 
   const needsComment = pendingStatus === 'NEEDS_REVISION' || pendingStatus === 'REJECTED';
+  const writerName = newsItem?.authorName || 'الكاتب';
+  const dialogCopy =
+    pendingStatus === 'NEEDS_REVISION'
+      ? {
+          title: 'إعادة الخبر للكاتب',
+          explain: `يعود الخبر إلى ${writerName} بحالة «مُعاد للتعديل» ليعدّله ثم يرسله للمراجعة من جديد. يصله سببك في تنبيه وفي سجل سير العمل.`,
+          label: 'سبب الإعادة (مطلوب)',
+          placeholder: 'مثال: الرقم في الفقرة الثانية يحتاج مصدراً رسمياً',
+          reasons: ['المصدر غير موثق', 'أرقام بحاجة لتدقيق', 'الصياغة', 'العنوان لا يطابق النص', 'ينقص رد الطرف الآخر'],
+          confirm: 'إعادة للكاتب',
+        }
+      : pendingStatus === 'REJECTED'
+      ? {
+          title: 'رفض الخبر نهائياً',
+          explain: 'يخرج الخبر من المراجعة ولا يُنشر ولا يُدرج في النشرات. لا يعود إلى المراجعة إلا إذا أعاده كاتبه مسودةً وبدأ من جديد. إن كان يحتاج تعديلاً فقط فاختر «إعادة مع سبب».',
+          label: 'سبب الرفض (مطلوب)',
+          placeholder: 'مثال: الخبر غير مؤكد من أي مصدر مستقل',
+          reasons: ['غير مؤكد', 'مكرر لخبر منشور', 'خارج سياسة التحرير', 'تجاوزه الحدث'],
+          confirm: 'رفض نهائي',
+        }
+      : {
+          title: `نقل الخبر إلى «${pendingStatus ? NEWS_STATUS_LABELS[pendingStatus] : ''}»`,
+          explain:
+            pendingStatus === 'APPROVED'
+              ? 'يصبح الخبر معتمداً وجاهزاً للنشر والإدراج في النشرات. يمكنك إضافة ملاحظة تُسجَّل في سجل سير العمل.'
+              : 'أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل سير العمل (اختياري):',
+          label: 'ملاحظات المراجعة (اختيارية)',
+          placeholder: pendingStatus === 'APPROVED' ? 'مثال: تم تدقيق الأسماء، مطابقة المصادر، والتأكد من الصياغة اللغوية...' : 'ملاحظة للزملاء (اختيارية)',
+          reasons: [] as string[],
+          confirm: 'تأكيد ونقل الحالة',
+        };
   const scheduleInvalid = pendingStatus === 'SCHEDULED' && (!scheduleAt || Date.parse(fromLocalInputValue(scheduleAt)) < Date.now());
 
   const [statusSubmitting, setStatusSubmitting] = useState(false);
@@ -755,6 +795,64 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     }
   };
 
+  /** Review bookkeeping (claim, release, quality pass, breaking request): written, then confirmed. */
+  const runReview = async (action: () => NewsItem, done: string): Promise<boolean> => {
+    if (!newsItem?.id || reviewBusy) return false;
+    setReviewBusy(true);
+    try {
+      const updated = action();
+      // Our own bookkeeping write is the new base: the text in the form stays valid on top of it.
+      setBaseUpdatedAt(updated.updatedAt);
+      const outcome = await dataStore.awaitWrite('news', newsItem.id);
+      if (outcome.ok) notify({ type: 'success', message: done });
+      else if (outcome.queued) notify({ type: 'warning', title: 'غير متصل: سيُرسل عند عودة الاتصال', message: QUEUED_MESSAGE });
+      else if (outcome.pending) notify({ type: 'warning', title: 'لم يؤكد الخادم بعد', message: outcome.message || '' });
+      return outcome.ok || !!outcome.pending;
+    } catch (err: any) {
+      notify({ type: 'error', title: 'لم يُسجَّل الإجراء', message: err?.message || 'تعذر الحفظ' });
+      return false;
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
+  const handlePassQuality = async () => {
+    if (!newsItem?.id) return;
+    const note = await promptDialog({
+      title: 'اجتازت التدقيق',
+      message: 'يُسجَّل باسمك ووقتك أنك دققت هذا النص، فيخرج من طابور الجودة ويرى المعتمد شارة «اجتازت التدقيق». لا يعني ذلك اعتماده أو نشره.',
+      label: 'ملاحظة للمعتمد (اختيارية)',
+      placeholder: 'مثال: الأسماء والأرقام مطابقة للمصدر',
+      confirmLabel: 'تسجيل اجتياز التدقيق',
+    });
+    if (note === null) return;
+    const ok = await runReview(() => passQuality(newsItem.id, note), `اجتازت التدقيق: «${newsItem.title.slice(0, 40)}»`);
+    if (ok && nextReviewId && onNextReview) onNextReview(nextReviewId);
+    else if (ok && reviewing) onCancel();
+  };
+
+  /** A note on the headline or lead (review threads anchor in the body): goes to the team discussion. */
+  const noteOnHeadline = (excerpt: string, note: string) => {
+    if (!newsItem?.id) return;
+    try {
+      apiService.addComment({ kind: 'news', id: newsItem.id, title: newsItem.title }, `ملاحظة تدقيق على العنوان أو المقدمة: «${excerpt}» — ${note}`, []);
+      notify({ type: 'success', message: 'أُضيفت الملاحظة إلى نقاش الفريق على الخبر' });
+    } catch (err: any) {
+      notify({ type: 'error', message: err?.message || 'تعذر إضافة الملاحظة' });
+    }
+  };
+
+  /** Quotes the text selected in the body for a review note. */
+  const trackSelection = () => {
+    const sel = window.getSelection();
+    const box = document.getElementById('news-body-editor');
+    if (!sel || sel.isCollapsed || !box || !sel.anchorNode || !box.contains(sel.anchorNode) || !box.contains(sel.focusNode)) {
+      setSelectedQuote('');
+      return;
+    }
+    setSelectedQuote(sel.toString().replace(/\s+/g, ' ').trim().slice(0, 2000));
+  };
+
   const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
     UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق', className: 'bg-amber-700 hover:bg-amber-800' },
     APPROVED: { label: 'اعتماد الخبر للنشر', className: 'bg-purple-600 hover:bg-purple-700' },
@@ -765,6 +863,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
     ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
   };
+
+  if (fieldBreaking && !newsItem) {
+    return <FieldBreakingForm currentUser={currentUser} onCancel={onCancel} onOpenFullEditor={() => setFieldBreaking(false)} />;
+  }
 
   return (
     <div className="space-y-3 sm:space-y-6">
@@ -1113,31 +1215,31 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       </details>}
 
-      {/* Broadcast Timing & Production Tools Banner */}
-      <div className="text-slate-800 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+      {/* Broadcast Timing & Production Tools Banner (in review mode the text comes first) */}
+      {!reviewMode && <div className="text-slate-800 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-xs text-slate-500 block">زمن الإلقاء المقدر:</span>
-              <strong className="text-sm tabular-nums text-emerald-700">{textStats.timeFormatted} دقيقة</strong>
+              <span className="text-xs text-slate-500 block">زمن الإلقاء (المقدمة والنص):</span>
+              <strong className="text-sm tabular-nums text-emerald-700">{textStats.label}</strong>
             </div>
           </div>
 
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
-            <span className="text-xs text-slate-500 block">عدد الكلمات:</span>
-            <span className="tabular-nums font-bold text-slate-800">{textStats.words} كلمة</span>
+            <span className="text-xs text-slate-500 block">الكلمات المقروءة:</span>
+            <span className="tabular-nums font-bold text-slate-800">{countLabel(textStats.words, { one: 'كلمة واحدة', two: 'كلمتان', few: 'كلمات', many: 'كلمة' })}</span>
           </div>
 
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
           <div>
             <span className="text-xs text-slate-500 block">عدد الأحرف:</span>
-            <span className="tabular-nums text-slate-700">{textStats.chars} حرف</span>
+            <span className="tabular-nums text-slate-700">{countLabel(textStats.chars, { one: 'حرف واحد', two: 'حرفان', few: 'أحرف', many: 'حرفاً' })}</span>
           </div>
         </div>
 
@@ -1205,7 +1307,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           </button>
         </div>
         </details>
-      </div>
+      </div>}
 
       {/* Main Grid: Content Area & Metadata Sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1254,6 +1356,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   ref={headlineRef}
                   rows={1}
                   required
+                  readOnly={ro}
                   value={title}
                   onKeyDown={(e) => {
                     // A headline is one line of copy: Enter does not break it (Ctrl/Cmd+Enter still sends).
@@ -1268,7 +1371,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   placeholder="اكتب عنواناً جذاباً ودقيقاً يصف جوهر الحدث..."
                   className="block w-full resize-none overflow-hidden leading-snug pl-10 pr-4 py-3 bg-white border border-slate-300 aria-[invalid=true]:border-rose-500 rounded-xl text-base font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
-                {title && (
+                {title && !ro && (
                   <button
                     type="button"
                     onClick={() => setTitle('')}
@@ -1307,7 +1410,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       معاينة الشريط
                     </button>
                   )}
-                  {title && !shortTitle && (
+                  {title && !shortTitle && !ro && (
                     <button
                       type="button"
                       onClick={handleGenerateShortTitle}
@@ -1325,12 +1428,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   id="news-short-title-input"
                   type="text"
                   value={shortTitle}
+                  readOnly={ro}
                   onChange={(e) => setShortTitle(e.target.value)}
                   placeholder="عنوان مختصر ومكثف لا يتجاوز 10 كلمات..."
                   className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   maxLength={120}
                 />
-                {shortTitle && (
+                {shortTitle && !ro && (
                   <button
                     type="button"
                     onClick={() => setShortTitle('')}
@@ -1367,7 +1471,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <span className="text-2xs tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                     {(summary.match(/\S+/g) || []).length} كلمة
                   </span>
-                  {summary && (
+                  {summary && !ro && (
                     <button
                       type="button"
                       onClick={() => setSummary('')}
@@ -1380,7 +1484,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </div>
               </div>
 
-              {canEditContent && (
+              {canEditContent ? (
                 <div className="flex justify-end mb-1">
                   <ProofreadButton value={`${title}\n${summary}`} onFix={(next) => {
                     const [t, ...rest] = next.split('\n');
@@ -1388,12 +1492,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     setSummary(rest.join('\n'));
                   }} />
                 </div>
+              ) : canPostReview && (
+                <div className="flex justify-end mb-1">
+                  <ProofreadButton value={`${title}\n${summary}`} onSuggest={(sg) => noteOnHeadline(sg.excerpt, sg.note)} />
+                </div>
               )}
               <textarea
                 id="news-summary-textarea"
                 rows={3}
                 lang="ar"
                 spellCheck
+                readOnly={ro}
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder="يجيب عن الأسئلة الصحفية الستة (من، ماذا، أين، متى، لماذا، كيف)..."
@@ -1401,7 +1510,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               />
 
               {/* Quick Lead Templates */}
-              {!summary && (
+              {!summary && !ro && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className="text-2xs text-slate-500 font-bold">بدايات سريعة:</span>
                   {LEAD_STARTERS.map((starter, idx) => (
@@ -1425,14 +1534,33 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label className="block text-xs font-bold text-slate-700">
                 محتوى التقرير الصحفي الكامل *
               </label>
-              <span className="text-2xs text-slate-500">يمكن حفظ مسودة ناقصة؛ العنوان والنص مطلوبان للإرسال للمراجعة والنشر</span>
+              {ro ? (
+                canPostReview && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={!selectedQuote}
+                    onClick={() => {
+                      setReviewSeed({ quote: selectedQuote, key: Date.now() });
+                      setSelectedQuote('');
+                    }}
+                    title={selectedQuote ? `«${selectedQuote.slice(0, 60)}»` : 'حدّد بالفأرة جملة من النص أولاً'}
+                    className="min-h-9 inline-flex items-center gap-1.5 px-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 text-xs font-bold disabled:opacity-50"
+                  >
+                    <MessageSquarePlus className="w-4 h-4" />
+                    ملاحظة على المقطع المحدد
+                  </button>
+                )
+              ) : (
+                <span className="text-2xs text-slate-500">يمكن حفظ مسودة ناقصة؛ العنوان والنص مطلوبان للإرسال للمراجعة والنشر</span>
+              )}
             </div>
             {contentError?.field === 'content' && (
               <p id="news-content-error" role="alert" className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                 {contentError.message}
               </p>
             )}
-            <div id="news-body-editor">
+            <div id="news-body-editor" onMouseUp={trackSelection} onKeyUp={trackSelection} onTouchEnd={() => window.setTimeout(trackSelection, 0)}>
             <RichTextEditor
               value={content}
               onChange={(val) => {
@@ -1440,11 +1568,26 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 if (contentError?.field === 'content') setContentError(null);
               }}
               readOnly={!canEditContent}
-              minHeight="400px"
+              readTimeLead={summary}
+              onProofSuggestion={ro && canPostReview ? (sg) => setReviewSeed({ quote: sg.excerpt, note: sg.note, key: Date.now() }) : undefined}
+              minHeight={reviewMode ? '240px' : '400px'}
               placeholder="اكتب تفاصيل القصة الإخبارية كاملة، التصريحات، الخلفيات، والتحليلات الميدانية..."
             />
             </div>
           </div>
+
+          {/* Review notes sit right under the text they quote */}
+          {newsItem?.id && (
+            <ReviewThreads
+              collection="news"
+              entityId={newsItem.id}
+              text={newsItem.content || ''}
+              version={newsItem.updatedAt || 'legacy'}
+              canPost={!saving && canPostReview}
+              title={newsItem.title}
+              seed={reviewSeed}
+            />
+          )}
 
           {/* Embargo */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
@@ -1458,6 +1601,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 id="news-embargo"
                 type="datetime-local"
                 value={embargoUntil}
+                readOnly={ro}
                 onChange={(e) => setEmbargoUntil(e.target.value)}
                 className="px-3 py-2 border border-slate-300 rounded-xl text-xs"
               />
@@ -1466,10 +1610,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 value={embargoNote}
                 onChange={(e) => setEmbargoNote(e.target.value)}
                 disabled={!embargoUntil}
+                readOnly={ro}
                 placeholder="مثال: بطلب من الوزارة حتى المؤتمر الصحفي"
                 className="flex-1 min-w-[12rem] px-3 py-2 border border-slate-300 rounded-xl text-xs disabled:bg-slate-50"
               />
-              {embargoUntil && (
+              {embargoUntil && !ro && (
                 <button type="button" onClick={() => { setEmbargoUntil(''); setEmbargoNote(''); }} className="text-2xs text-rose-600 font-bold hover:underline">
                   إزالة الحظر
                 </button>
@@ -1484,7 +1629,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <Info className="w-4 h-4 text-blue-500" />
                 ملاحظات داخلية لغرفة الأخبار وهيئة التحرير والمخرج
               </label>
-              {internalNotes && (
+              {internalNotes && !ro && (
                 <button
                   type="button"
                   onClick={() => setInternalNotes('')}
@@ -1497,11 +1642,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <textarea id="news-editor-view-field-1"
               rows={2}
               value={internalNotes}
+              readOnly={ro}
               onChange={(e) => setInternalNotes(e.target.value)}
               placeholder="تعليمات للمذيعين، التحقق من الترجمة، توجيهات المخرج..."
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
             />
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {!ro && <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <span className="text-2xs text-slate-500 font-bold">توجيهات نموذجية:</span>
               {DIRECTIVE_PRESETS.map((preset, idx) => (
                 <button
@@ -1515,7 +1661,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   {preset}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -1540,6 +1686,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <input
                 type="checkbox"
                 aria-label="خبر عاجل للبث"
+                disabled={ro}
                 checked={isBreaking}
                 onChange={(e) => setIsBreaking(e.target.checked)}
                 className="w-5 h-5 text-red-600 rounded-md focus:ring-red-500 cursor-pointer"
@@ -1552,6 +1699,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label htmlFor="news-story-select" className="block text-xs font-bold text-slate-700 mb-1">القصة / التغطية المرتبطة</label>
               <select
                 id="news-story-select"
+                disabled={ro}
                 value={storyId}
                 onChange={(e) => setStoryId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
@@ -1572,6 +1720,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label htmlFor="news-category-select" className="block text-xs font-bold text-slate-700 mb-1">القسم الصحفي *</label>
               <select
                 id="news-category-select"
+                disabled={ro}
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1589,6 +1738,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label htmlFor="news-source-select" className="block text-xs font-bold text-slate-700 mb-1">مصدر الخبر *</label>
               <select
                 id="news-source-select"
+                disabled={ro}
                 value={sourceId}
                 onChange={(e) => setSourceId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
@@ -1606,6 +1756,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               <label htmlFor="news-priority-select" className="block text-xs font-bold text-slate-700 mb-1">الأولوية والخطورة</label>
               <select
                 id="news-priority-select"
+                disabled={ro}
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as NewsPriority)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs bg-white font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1625,7 +1776,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <MapPin className="w-3.5 h-3.5 text-slate-500" />
                     مكان الحدث والمكتب
                   </label>
-                  {locationName && (
+                  {locationName && !ro && (
                     <button
                       type="button"
                       onClick={() => setLocationName('')}
@@ -1640,6 +1791,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     id="news-location-input"
                     type="text"
                     list="newsroom-glossary"
+                    readOnly={ro}
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
                     placeholder="مثال: الرياض، القاهرة، جنيف..."
@@ -1648,7 +1800,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <GlossaryDatalist id="newsroom-glossary" />
                 </div>
                 {/* Location Quick Presets */}
-                <div className="mt-1.5 flex flex-wrap gap-1">
+                {!ro && <div className="mt-1.5 flex flex-wrap gap-1">
                   {LOCATION_PRESETS.map((loc) => (
                     <button
                       key={loc}
@@ -1663,7 +1815,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                       {loc}
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
 
               <div>
@@ -1672,7 +1824,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     <Calendar className="w-3.5 h-3.5 text-slate-500" />
                     تاريخ وتوقيت وقوع الحدث
                   </label>
-                  <div className="flex items-center gap-1">
+                  {!ro && <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setEventDate(toLocalInputValue(new Date()))}
@@ -1689,12 +1841,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     >
                       -30د
                     </button>
-                  </div>
+                  </div>}
                 </div>
                 <input
                   id="news-event-date-input"
                   type="datetime-local"
                   value={eventDate}
+                  readOnly={ro}
                   onChange={(e) => setEventDate(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   dir="ltr"
@@ -1733,12 +1886,16 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                           })}
                         </span>
                       </div>
-                      <p className="text-2xs text-slate-600">
-                        غيّر الحالة إلى:{' '}
-                        <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">
-                          {NEWS_STATUS_LABELS[log.toStatus] || log.toStatus}
-                        </span>
-                      </p>
+                      {log.action ? (
+                        <p className="text-2xs font-bold text-emerald-800">{WORKFLOW_ACTION_LABELS[log.action] || log.action}</p>
+                      ) : (
+                        <p className="text-2xs text-slate-600">
+                          غيّر الحالة إلى:{' '}
+                          <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">
+                            {NEWS_STATUS_LABELS[log.toStatus] || log.toStatus}
+                          </span>
+                        </p>
+                      )}
                       {log.comment && (
                         <p className="text-2xs text-slate-500 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
                           "{log.comment}"
@@ -1782,7 +1939,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
                   رابط الصورة البارزة (URL)
                 </label>
-                {mainImageUrl && (
+                {mainImageUrl && !ro && (
                   <button
                     type="button"
                     onClick={() => setMainImageUrl('')}
@@ -1800,6 +1957,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 autoCapitalize="none"
                 spellCheck="false"
                 value={mainImageUrl}
+                readOnly={ro}
                 onChange={(e) => setMainImageUrl(e.target.value)}
                 placeholder="https://...jpg"
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1807,7 +1965,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               />
 
               {/* Recent images from the media library */}
-              {IMAGE_PRESETS.length > 0 && (
+              {IMAGE_PRESETS.length > 0 && !ro && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 <span className="text-2xs text-slate-500 font-bold">من مكتبة الوسائط:</span>
                 {IMAGE_PRESETS.map((img) => (
@@ -1854,7 +2012,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <Tag className="w-3.5 h-3.5 text-blue-500" />
                 الكلمات المفتاحية والوسوم
               </label>
-              {keywords.length > 0 && (
+              {keywords.length > 0 && !ro && (
                 <button
                   type="button"
                   onClick={() => setKeywords([])}
@@ -1865,7 +2023,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               )}
             </div>
 
-            <div className="relative">
+            {!ro && <div className="relative">
               <input
                 id="news-tag-input"
                 type="text"
@@ -1875,10 +2033,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 placeholder="اكتب الوسم واضغط Enter للإضافة..."
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
-            </div>
+            </div>}
 
             {/* Trending Suggestions */}
-            <div>
+            {!ro && <div>
               <span className="text-2xs text-slate-500 font-bold block mb-1">
                 وسوم مقترحة وشائعة:
               </span>
@@ -1907,7 +2065,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   );
                 })}
               </div>
-            </div>
+            </div>}
+
+            {ro && keywords.length === 0 && <p className="text-2xs text-slate-500">لا وسوم.</p>}
 
             {/* Active Tags */}
             {keywords.length > 0 && (
@@ -1918,14 +2078,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-600 text-white shadow-2xs"
                   >
                     <span>#{tag}</span>
-                    <button
+                    {!ro && <button
                       type="button"
                       onClick={() => handleRemoveTag(tag)}
                       className="hover:text-amber-200 text-white"
                       title="حذف الوسم"
                     >
                       <X className="w-3 h-3" />
-                    </button>
+                    </button>}
                   </span>
                 ))}
               </div>
@@ -1934,14 +2094,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
       </div>
 
-      {/* Status Transition Comment Modal */}
+      {/* Status Transition Comment Modal: returning and rejecting say plainly what each does */}
       <Modal isOpen={showCommentModal} onClose={() => { if (!statusSubmitting) setShowCommentModal(false); }}
-        title={`نقل الخبر إلى «${pendingStatus ? NEWS_STATUS_LABELS[pendingStatus] : ''}»`} maxWidth="md">
+        title={dialogCopy.title} maxWidth="md">
           <div className="space-y-4 text-right" aria-busy={statusSubmitting}>
-            <p className="text-xs text-slate-500">
-              {needsComment
-                ? 'اكتب ملاحظاتك للكاتب (إلزامية) لتُسجل في سجل سير العمل:'
-                : 'أدخل ملاحظات التدقيق أو المراجعة لتسجيلها في سجل سير العمل (اختياري):'}
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {dialogCopy.explain}
               {isDirty && canEditContent && <span className="block mt-1 text-amber-700 font-semibold">سيتم حفظ تعديلاتك غير المحفوظة أولاً.</span>}
             </p>
             {pendingStatus === 'SCHEDULED' && (
@@ -1960,15 +2118,37 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               </div>
             )}
             <label htmlFor="status-transition-comment" className="block text-sm font-semibold text-slate-700">
-              ملاحظات المراجعة {needsComment ? '(مطلوبة)' : '(اختيارية)'}
+              {dialogCopy.label}
             </label>
+            {dialogCopy.reasons.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="أسباب جاهزة">
+                {dialogCopy.reasons.map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    disabled={statusSubmitting}
+                    onClick={() => setStatusComment((prev) => (prev.includes(reason) ? prev : prev.trim() ? `${prev.trim()}، ${reason}` : reason))}
+                    className="min-h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs text-slate-700"
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               id="status-transition-comment"
               rows={3}
               value={statusComment}
               disabled={statusSubmitting}
               onChange={(e) => setStatusComment(e.target.value)}
-              placeholder="مثال: تم تدقيق الأسماء، مطابقة المصادر، والتأكد من الصياغة اللغوية..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.repeat && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void handleConfirmStatus();
+                }
+              }}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              placeholder={dialogCopy.placeholder}
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <div className="flex justify-end gap-2 pt-2">
@@ -1984,9 +2164,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 type="button"
                 onClick={handleConfirmStatus}
                 disabled={statusSubmitting || (needsComment && !statusComment.trim()) || scheduleInvalid}
-                className="min-h-11 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs disabled:opacity-50"
+                className={`min-h-11 px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-xs disabled:opacity-50 ${pendingStatus === 'REJECTED' ? 'bg-red-700 hover:bg-red-800' : pendingStatus === 'NEEDS_REVISION' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
-                {statusSubmitting ? 'جارٍ تأكيد التحديث...' : 'تأكيد ونقل الحالة'}
+                {statusSubmitting ? 'جارٍ تأكيد التحديث...' : dialogCopy.confirm}
               </button>
             </div>
           </div>
@@ -1998,6 +2178,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           onClose={() => setIsHistoryOpen(false)}
           newsId={newsItem.id}
           canRestore={canEditContent}
+          current={{ title, summary, content, status: newsItem.status, updatedAt: newsItem.updatedAt, updatedByName: undefined }}
           onRestore={(data) => {
             // Loaded as unsaved changes on top of the current version.
             setTitle(data.title || '');
@@ -2028,7 +2209,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         }
       />
 
-      {newsItem?.id && <ReviewThreads collection="news" entityId={newsItem.id} text={content} version={newsItem.updatedAt || 'legacy'} canPost={!saving && (canEditContent || can('news.review'))} />}
       <RequestFormPage
         isOpen={!!requestDraft}
         onClose={() => setRequestDraft(null)}

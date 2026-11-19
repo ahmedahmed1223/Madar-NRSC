@@ -13,7 +13,9 @@ import { navigateTo, tourCommand } from '../../services/uiEvents';
 import { SINGLETON_ID } from '../../shared/collections';
 import { DEPARTMENTS, departmentName } from '../../shared/departments';
 import { validZone } from '../../shared/dateFormat';
-import { SETUP_STEPS, setupDoneCount, setupProgress, type SetupState, type SetupStepId } from '../../shared/setup';
+import { SETUP_STEPS, setupDoneCount, setupProgress, setupSkipped, type SetupState, type SetupStepId } from '../../shared/setup';
+import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
+import { confirmDialog } from '../../services/dialogs';
 import { stationsOf } from '../../shared/stations';
 
 const INPUT = 'w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
@@ -21,13 +23,8 @@ const LABEL = 'block text-sm font-bold text-slate-700 mb-1';
 const ZONES = ['Asia/Gaza', 'Asia/Jerusalem', 'Asia/Beirut', 'Europe/Istanbul', 'Asia/Amman', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Qatar', 'Africa/Cairo', 'Europe/London', 'UTC'];
 const CATEGORY_COLORS = ['#0e7490', '#b91c1c', '#7c3aed', '#047857', '#b45309', '#1d4ed8', '#be185d', '#475569'];
 
-/** A strong first password for a new colleague (they change it at first sign-in). */
-function suggestPassword() {
-  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  const digits = '23456789';
-  const pick = (set: string, n: number) => Array.from(crypto.getRandomValues(new Uint32Array(n)), (v) => set[v % set.length]).join('');
-  return `${pick(letters, 6)}${pick(digits, 3)}${pick(letters, 3)}`;
-}
+/** A strong first password for a new colleague, without look-alike characters (they change it at first sign-in). */
+const suggestPassword = () => temporaryPassword(webRandom);
 
 /** Facts the progress is computed from, read from the live data. */
 function useFacts(open: boolean, currentUser: User) {
@@ -40,12 +37,14 @@ function useFacts(open: boolean, currentUser: User) {
       }),
     []
   );
+  // Read for the home reminder too (not only inside the wizard), so both count the same steps.
+  const canSeeRuntime = RbacService.hasPermission(currentUser, 'system.settings');
   useEffect(() => {
-    if (!open) return;
+    if (!open && !canSeeRuntime) return;
     void apiFetch<{ data: { backupIntervalHours: number } }>('/api/v1/admin/runtime')
       .then((r) => setBackups((r.data.backupIntervalHours || 0) > 0))
       .catch(() => setBackups(false));
-  }, [open]);
+  }, [open, canSeeRuntime]);
   return useMemo(() => {
     const settings = apiService.getSettings();
     const me = apiService.getUsers().find((u) => u.id === currentUser.id);
@@ -87,6 +86,7 @@ interface SetupWizardProps {
 export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, currentUser }) => {
   const { settings, facts } = useFacts(isOpen, currentUser);
   const progress = setupProgress(facts);
+  const skipped = setupSkipped(facts);
   const firstOpen = SETUP_STEPS.find((s) => !progress[s.id])?.id || 'finish';
   const [stepId, setStepId] = useState<SetupStepId>(firstOpen);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -135,6 +135,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // --- Stations ---
+  const [stationsDirty, setStationsDirty] = useState(false);
+
   // --- Categories ---
   const [categoryName, setCategoryName] = useState('');
   const categories = apiService.getCategories();
@@ -142,17 +145,22 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
   // --- Team ---
   const roles = RbacService.getRoleDefinitions().filter((r) => r.roleCode !== 'SUPER_ADMIN' || currentUser.role === 'SUPER_ADMIN');
   const stations = stationsOf(settings);
-  const blankMember = () => ({ fullName: '', email: '', role: 'JOURNALIST', stationId: '', departmentId: 'newsroom', jobTitle: '', password: suggestPassword() });
+  const blankMember = () => ({ fullName: '', email: '', roleId: roles.find((r) => r.roleCode === 'JOURNALIST')?.id || roles[0]?.id || '', stationId: '', departmentId: 'newsroom', jobTitle: '', password: suggestPassword() });
   const [member, setMember] = useState(blankMember);
   const [added, setAdded] = useState<{ name: string; email: string; password: string }[]>([]);
   const addMember = () =>
     run(
       async () => {
         if (!member.fullName.trim() || !/^\S+@\S+\.\S+$/.test(member.email.trim())) throw new Error('الاسم والبريد الإلكتروني الصحيح مطلوبان');
-        const role = roles.find((r) => r.roleCode === member.role);
+        // Same rule as the server, checked before anything is created: a refused password never leaves an account behind.
+        const weak = validatePasswordStrength(member.password);
+        if (weak) throw new Error(`كلمة المرور الأولى: ${weak}`);
+        const email = member.email.trim().toLowerCase();
+        if (apiService.getUsers().some((u) => !u.deletedAt && u.email.toLowerCase() === email)) throw new Error('البريد الإلكتروني مستخدم لحساب آخر');
+        const role = roles.find((r) => r.id === member.roleId);
         const saved = apiService.saveUser({
           fullName: member.fullName.trim(),
-          email: member.email.trim().toLowerCase(),
+          email,
           role: (role?.isSystemRole ? role.roleCode : 'VIEWER') as UserRole,
           customRoleId: role && !role.isSystemRole ? role.id : undefined,
           jobTitle: member.jobTitle.trim() || role?.nameAr || 'محرر',
@@ -162,12 +170,20 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
           isActive: true,
         });
         // The account must exist on the server before it gets a password.
-        if (!(await apiService.flushSync())) throw new Error('تعذر حفظ الحساب على الخادم، حاول مرة أخرى');
-        await authClient.setUserPassword(saved.id, member.password);
+        const accepted = await dataStore.awaitWrite('users', saved.id);
+        if (!accepted.ok) throw new Error(accepted.message || 'تعذر حفظ الحساب على الخادم، حاول مرة أخرى');
+        try {
+          await authClient.setUserPassword(saved.id, member.password);
+        } catch (err) {
+          // No account without a password: withdraw it, so correcting and retrying works.
+          apiService.deleteUser(saved.id);
+          await dataStore.awaitWrite('users', saved.id).catch(() => undefined);
+          throw err;
+        }
         setAdded((list) => [...list, { name: saved.fullName, email: saved.email, password: member.password }]);
         setMember(blankMember());
       },
-      'أُضيف الحساب؛ سلّم الزميل بريده وكلمة المرور الأولى، وسيُطلب منه تغييرها عند الدخول.',
+      'أُضيف الحساب؛ سلّم بيانات الدخول بشكل آمن، وتُغيَّر كلمة المرور الأولى عند أول دخول.',
       false
     );
 
@@ -199,10 +215,10 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                   >
                     <span
                       className={`w-6 h-6 shrink-0 rounded-full text-2xs font-bold flex items-center justify-center tabular-nums ${
-                        progress[step.id] ? 'bg-emerald-600 text-white' : current ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700'
+                        progress[step.id] ? 'bg-emerald-600 text-white' : skipped[step.id] ? 'bg-amber-400 text-amber-950' : current ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {progress[step.id] ? <Check className="w-3.5 h-3.5" aria-label="مكتملة" /> : i + 1}
+                      {progress[step.id] ? <Check className="w-3.5 h-3.5" aria-label="مكتملة" /> : skipped[step.id] ? <span aria-label="تُجووزت">!</span> : i + 1}
                     </span>
                     <span className="min-w-0">
                       <span className="block whitespace-nowrap">{step.title}</span>
@@ -269,13 +285,21 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
 
           {stepId === 'stations' && (
             <div className="space-y-2">
-              <p className="text-sm text-slate-600">ثلاث محطات افتراضية جاهزة للتعديل. حدّد الرئيسية والفروع، واحفظ قبل المتابعة.</p>
-              <StationsSettings />
+              <p className="text-sm text-slate-600">
+                {stations.length === 0 ? 'لا محطات بعد؛ أضف محطتك الأولى.' : `${stations.length} ${stations.length === 1 ? 'محطة' : stations.length === 2 ? 'محطتان' : stations.length <= 10 ? 'محطات' : 'محطة'}${facts.stationsConfigured ? '' : ' افتراضية'} جاهزة للتعديل.`} حدّد الرئيسية والفروع، واحفظ قبل المتابعة.
+              </p>
+              <StationsSettings onDirtyChange={setStationsDirty} />
               <StepActions
                 busy={busy}
                 onBack={() => go(-1)}
                 primary="تمت مراجعة المحطات، متابعة"
-                onPrimary={() => void run(() => confirmStep('stations'), 'سُجّلت مراجعة المحطات.')}
+                onPrimary={() =>
+                  void (async () => {
+                    // Unsaved station edits are never dropped silently.
+                    if (stationsDirty && !(await confirmDialog({ title: 'تعديلات المحطات لم تُحفظ', message: 'المتابعة الآن تتجاهل ما عدّلته في المحطات. اضغط «حفظ» أسفل المحطات أولاً، أو تابع دون حفظ.', confirmLabel: 'المتابعة دون حفظ', cancelLabel: 'العودة للحفظ', danger: true }))) return;
+                    await run(() => confirmStep('stations'), 'سُجّلت مراجعة المحطات.');
+                  })()
+                }
               />
             </div>
           )}
@@ -344,9 +368,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                 </div>
                 <div>
                   <label htmlFor="setup-member-role" className={LABEL}>الدور</label>
-                  <select id="setup-member-role" value={member.role} onChange={(e) => setMember({ ...member, role: e.target.value })} className={INPUT}>
+                  <select id="setup-member-role" value={member.roleId} onChange={(e) => setMember({ ...member, roleId: e.target.value })} className={INPUT}>
                     {roles.map((r) => (
-                      <option key={r.id} value={r.roleCode}>{r.nameAr}</option>
+                      <option key={r.id} value={r.id}>{r.nameAr}{r.isSystemRole ? '' : ' (دور مخصص)'}</option>
                     ))}
                   </select>
                 </div>
@@ -369,7 +393,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                 </div>
                 <div>
                   <label htmlFor="setup-member-password" className={LABEL}>كلمة المرور الأولى</label>
-                  <input id="setup-member-password" dir="ltr" required minLength={10} value={member.password} onChange={(e) => setMember({ ...member, password: e.target.value })} className={`${INPUT} font-mono`} />
+                  <input id="setup-member-password" dir="ltr" required minLength={10} value={member.password} onChange={(e) => setMember({ ...member, password: e.target.value })} aria-describedby="setup-member-password-hint" className={`${INPUT} font-mono`} />
+                  <p id="setup-member-password-hint" className="text-xs text-slate-500 mt-1">10 أحرف على الأقل بحروف وأرقام.</p>
                 </div>
                 <div className="sm:col-span-2 lg:col-span-3">
                   <button type="submit" disabled={busy} className="min-h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold inline-flex items-center gap-1.5 disabled:opacity-50">
@@ -417,7 +442,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                   فتح الإعدادات ← مراقبة النظام
                 </button>
               </div>
-              <StepActions busy={busy} onBack={() => go(-1)} primary="تمت المراجعة، متابعة" onPrimary={() => void run(() => confirmStep('security'), 'سُجّلت مراجعة الأمان.')} />
+              {!(facts.adminTwoFactor && facts.backups) && (
+                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  الخطوة لا تكتمل إلا بتفعيل التحقق بخطوتين لحسابك وضبط النسخ الدوري. يمكنك المتابعة الآن، وتبقى الخطوة «تُجووزت» حتى يتحقق الشرطان.
+                </p>
+              )}
+              <StepActions
+                busy={busy}
+                onBack={() => go(-1)}
+                primary={facts.adminTwoFactor && facts.backups ? 'متابعة' : 'المتابعة دون إكمالها'}
+                onPrimary={() => void run(() => confirmStep('security'), facts.adminTwoFactor && facts.backups ? 'اكتملت خطوة الأمان والنسخ.' : 'تُجووزت خطوة الأمان والنسخ؛ أكملها لاحقاً من هنا.')}
+              />
             </div>
           )}
 
@@ -425,7 +460,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
             <div className="space-y-4 max-w-2xl">
               <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white">
                 {SETUP_STEPS.filter((s) => s.id !== 'finish').map((s) => (
-                  <CheckRow key={s.id} ok={progress[s.id]} title={s.title} hint={s.hint} onOpen={() => setStepId(s.id)} />
+                  <CheckRow key={s.id} ok={progress[s.id]} skipped={skipped[s.id]} title={s.title} hint={s.hint} onOpen={() => setStepId(s.id)} />
                 ))}
               </ul>
               {settings.setup?.completedAt ? (
@@ -487,14 +522,14 @@ const StepActions: React.FC<{ busy: boolean; primary: string; onPrimary?: () => 
   </div>
 );
 
-const CheckRow: React.FC<{ ok: boolean; title: string; hint: string; onOpen?: () => void }> = ({ ok, title, hint, onOpen }) => (
+const CheckRow: React.FC<{ ok: boolean; skipped?: boolean; title: string; hint: string; onOpen?: () => void }> = ({ ok, skipped, title, hint, onOpen }) => (
   <li className="flex items-start gap-3 px-4 py-3">
     <span className={`mt-0.5 w-6 h-6 shrink-0 rounded-full flex items-center justify-center ${ok ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'}`}>
       {ok ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <span className="text-xs font-bold" aria-hidden="true">!</span>}
     </span>
     <span className="flex-1 min-w-0">
       <span className="block text-sm font-bold text-slate-900">
-        {title} <span className={`text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-amber-800'}`}>{ok ? 'مكتملة' : 'لم تكتمل'}</span>
+        {title} <span className={`text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-amber-800'}`}>{ok ? 'مكتملة' : skipped ? 'تُجووزت' : 'لم تكتمل'}</span>
       </span>
       <span className="block text-xs text-slate-600 mt-0.5">{hint}</span>
     </span>

@@ -36,8 +36,9 @@ test('confirmed review advances to the next item from the filtered queue', async
   await page.getByRole('searchbox', { name: 'البحث في الأخبار' }).fill('رحلة المراجعة');
   await page.getByRole('tab', { name: /قيد المراجعة/ }).click();
   await page.getByRole('region', { name: 'طابور مراجعة الأخبار' }).getByRole('button', { name: 'رحلة المراجعة 1', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'فتح الخبر التالي بعد إنهاء المراجعة' })).toBeChecked();
-  await page.getByRole('button', { name: 'اعتماد الخبر للنشر', exact: true }).click();
+  // Review mode: the position in the filtered queue and «اعتماد والتالي».
+  await expect(page.getByLabel(/في طابور المراجعة/)).toHaveText(/^\d+ من \d+$/);
+  await page.getByRole('button', { name: 'اعتماد والتالي', exact: true }).click();
   await page.getByRole('button', { name: 'تأكيد ونقل الحالة', exact: true }).click();
   await expect(page.locator('#news-headline-input')).toHaveValue('رحلة المراجعة 2');
   await close();

@@ -76,7 +76,8 @@ import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/produc
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
 import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
-import { departmentIdOf } from '../shared/departments';
+import { applyDepartmentSettings, departmentIdOf } from '../shared/departments';
+import { rememberStationSettings } from '../shared/stations';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
   Bulletin,
@@ -264,7 +265,6 @@ export class ApiService {
       if (idx !== -1) {
         users[idx] = { ...users[idx], ...user };
         setStored(STORAGE_KEYS.USERS, users);
-        this.logAudit('SETTINGS_UPDATE', 'USER', user.id, 'INFO', `تحديث بيانات المستخدم: ${user.fullName}`);
         return users[idx];
       }
     }
@@ -284,14 +284,13 @@ export class ApiService {
       staffId: user.staffId || '',
       bio: user.bio || '',
       twoFactorEnabled: user.twoFactorEnabled ?? false,
-      lastLogin: new Date().toISOString(),
+      // Empty until the first sign-in (the server sets it at login).
       customPermissions: user.customPermissions || [],
       isActive: user.isActive !== undefined ? user.isActive : true,
       createdAt: user.createdAt || new Date().toISOString(),
     };
     users.push(newUser);
     setStored(STORAGE_KEYS.USERS, users);
-    this.logAudit('SETTINGS_UPDATE', 'USER', newUser.id, 'INFO', `إضافة مستخدم جديد: ${newUser.fullName} (${newUser.role})`);
     return newUser;
   }
 
@@ -306,7 +305,6 @@ export class ApiService {
 
     const filtered = users.filter((u) => u.id !== id);
     setStored(STORAGE_KEYS.USERS, filtered);
-    this.logAudit('SETTINGS_UPDATE', 'USER', id, 'WARNING', `تم حذف حساب المستخدم: ${target.fullName}`);
     return true;
   }
 
@@ -321,13 +319,6 @@ export class ApiService {
 
     users[idx].isActive = !users[idx].isActive;
     setStored(STORAGE_KEYS.USERS, users);
-    this.logAudit(
-      'SETTINGS_UPDATE',
-      'USER',
-      id,
-      'INFO',
-      `تم ${users[idx].isActive ? 'تنشيط' : 'تجميد'} حساب المستخدم: ${users[idx].fullName}`
-    );
     return users[idx];
   }
 
@@ -466,9 +457,6 @@ export class ApiService {
       contentDenial(item, toStatus)?.message ||
       null;
     if (denial) {
-      if (/صلاحيات/.test(denial)) {
-        this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'WARNING', `محاولة غير مصرح بها لنقل الخبر إلى ${toStatus}: ${currentUser.fullName}`);
-      }
       throw new Error(denial);
     }
 
@@ -1944,7 +1932,11 @@ export class ApiService {
 
   // --- SETTINGS ---
   static getSettings(): SystemSettings {
-    return getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const settings = getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    // Department names, station groups and removed stations' names follow the shared settings everywhere.
+    applyDepartmentSettings(settings);
+    rememberStationSettings(settings);
+    return settings;
   }
 
   static saveSettings(settings: Partial<SystemSettings>): SystemSettings {
@@ -2061,7 +2053,7 @@ export class ApiService {
       ? { liveLock: true, lockedById: user.id, lockedByName: user.fullName, lockedAt: new Date().toISOString() }
       : { liveLock: false };
     setStored(COLLECTIONS.broadcastState.storageKey, next);
-    this.logAudit('SETTINGS_UPDATE', 'BROADCAST', 'live-lock', 'WARNING', locked ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر');
+    // Audited by the server once the change is accepted (BROADCAST_LOCK / BROADCAST_UNLOCK).
     return next;
   }
 
@@ -2233,32 +2225,7 @@ export class ApiService {
     return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
   }
 
-  static logAudit(
-    actionType: AuditLog['actionType'],
-    targetEntity: string,
-    targetId: string,
-    severity: AuditLog['severity'],
-    details: string
-  ): void {
-    const all = this.getAuditLogs();
-    const user = this.getCurrentUser();
-    const newAudit: AuditLog = {
-      id: newId('aud'),
-      userId: user.id,
-      userName: user.fullName,
-      userRole: user.role,
-      actionType,
-      targetEntity,
-      targetId,
-      severity,
-      details,
-      ipAddress: '192.168.1.15',
-      timestamp: new Date().toISOString(),
-    };
-    all.unshift(newAudit);
-    if (all.length > 200) all.length = 200;
-    setStored(STORAGE_KEYS.AUDIT_LOGS, all);
-  }
+  // Audit entries are written by the server alone (see src/server/sync.ts and the auditLogs policy).
 
   // --- GLOBAL SEARCH ---
   /**
@@ -2348,6 +2315,26 @@ export class ApiService {
     return (await apiFetch<{ data: { token: string; expiresAt: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: input, confirmationErrors: true })).data;
   }
 
+  /** Confirms the identity again before a full database file leaves the server; returns the one-time download link. */
+  static async confirmedDownloadUrl(kind: 'download' | 'export', input: { fileName?: string; password: string; totp?: string }): Promise<string> {
+    const { token } = (await apiFetch<{ data: { token: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: { action: kind, ...input }, confirmationErrors: true })).data;
+    return kind === 'download'
+      ? `/api/v1/db/backups/download?fileName=${encodeURIComponent(input.fileName || '')}&confirmationToken=${encodeURIComponent(token)}`
+      : `/api/v1/db/export?confirmationToken=${encodeURIComponent(token)}`;
+  }
+
+  /** Colleagues, general managers and open card steps still belonging to a station. */
+  static async getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number }> {
+    return (await apiFetch<{ data: any }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/usage`)).data;
+  }
+
+  /** Removes a station on the server, moving its colleagues and open work to `replacementId`. */
+  static async removeStation(stationId: string, replacementId?: string): Promise<{ movedUsers: number; movedSteps: number }> {
+    const res = (await apiFetch<{ data: { movedUsers: number; movedSteps: number } }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/remove`, { method: 'POST', json: { replacementId } })).data;
+    await dataStore.pull();
+    return res;
+  }
+
   static async createBackup(): Promise<DbBackupFileInfo | null> {
     const res = await apiFetch<{ data: DbBackupFileInfo }>('/api/v1/db/backups', { method: 'POST' });
     return res.data;
@@ -2424,7 +2411,6 @@ export class ApiService {
         added += fresh.length;
       }
     });
-    this.logAudit('SETTINGS_UPDATE', 'BACKUP', 'import', 'WARNING', `استيراد نسخة JSON: إضافة ${added} سجل وتخطي ${skipped}`);
     return { added, skipped };
   }
 }

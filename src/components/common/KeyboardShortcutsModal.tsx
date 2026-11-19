@@ -25,7 +25,8 @@ const SHORTCUTS: ShortcutItem[] = [
   // Editorial & News
   { keys: ['Ctrl', 'Alt', 'N'], description: 'إنشاء خبر أو تقرير صحفي جديد فوراً', category: 'EDITORIAL' },
   { keys: ['Ctrl/Cmd', 'S'], description: 'حفظ الخبر أو قصة النشرة أو تكليف النشرة المفتوح', category: 'EDITORIAL' },
-  { keys: ['Ctrl/Cmd', 'Enter'], description: 'إرسال مسودة الخبر للمراجعة أو قصة النشرة للاعتماد؛ إرسال الرد عند تركيز حقله', category: 'EDITORIAL' },
+  { keys: ['Ctrl/Cmd', 'Enter'], description: 'إرسال مسودة الخبر للمراجعة، أو اعتماد الخبر قيد المراجعة (بعد التأكيد)، أو قصة النشرة للاعتماد؛ إرسال الرد عند تركيز حقله', category: 'EDITORIAL' },
+  { keys: ['Ctrl/Cmd', 'Shift', 'Enter'], description: 'إعادة الخبر قيد المراجعة للكاتب مع سبب', category: 'EDITORIAL' },
 
   // Broadcast & Studio
   { keys: ['Ctrl', 'Alt', 'L'], description: 'تبديل قفل البث المباشر المشترك (يمنع حذف البرامج والحلقات لكل المستخدمين)', category: 'BROADCAST' },

@@ -40,9 +40,9 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     // The note shows at once; the field clears only after the server confirms it.
     await expect(reviews.getByLabel('ملاحظة المراجعة', { exact: true })).toHaveValue('');
     await expect(reviews.getByText('حدد مصدر التحقق من الاستعدادات', { exact: true })).toBeVisible();
-    await editor.page.getByRole('button', { name: 'إعادة للكاتب مع ملاحظات', exact: true }).click();
+    await editor.page.getByRole('button', { name: 'إعادة مع سبب', exact: true }).click();
     await editor.page.locator('#status-transition-comment').fill('استكمل توثيق المصدر');
-    await editor.page.getByRole('button', { name: 'تأكيد ونقل الحالة', exact: true }).click();
+    await editor.page.getByRole('button', { name: 'إعادة للكاتب', exact: true }).click();
     await leave(editor.page);
     await writer.page.goto(`/news/${newsId}`);
     const writerReviews = writer.page.getByRole('region', { name: 'ملاحظات مراجعة النص' });

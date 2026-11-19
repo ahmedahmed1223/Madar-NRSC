@@ -218,6 +218,14 @@ export function addManualObservation(input: ManualObservation, user: User = apiS
   return wire;
 }
 
+/** Removes a manual observation (its author, or a system administrator; the server checks). */
+export function deleteManualObservation(wireId: string): WireItem {
+  return updateWire(wireId, (w) => {
+    if (!w.manual) throw new Error('مواد الوكالات لا تُحذف يدوياً');
+    return { ...w, deletedAt: new Date().toISOString() };
+  });
+}
+
 /** «إرسال لزميل»: a direct message pointing at the item. */
 export function sendWireToColleague(wire: WireItem, colleagueId: string, note: string, user: User = apiService.getCurrentUser()) {
   const lines = [
