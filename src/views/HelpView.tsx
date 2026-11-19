@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, Search, Sparkles } from 'lucide-react';
 import type { User } from '../types';
 import { HELP_ARTICLES } from '../content/help';
+import { scoreFields } from '../shared/arabicSearch';
 import { departmentIdOf, departmentName } from '../shared/departments';
 import { toursFor } from '../components/help/TourHost';
 import { setupCommand, tourCommand } from '../services/uiEvents';
@@ -21,15 +22,14 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
   const [onlyMine, setOnlyMine] = useState(false);
   const [activeId, setActiveId] = useState<string>(HELP_ARTICLES[0].id);
 
+  // Arabic-aware search over the whole guide; with a query the best match comes first.
   const articles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const mine = (a: (typeof HELP_ARTICLES)[number]) => Number(a.departments.includes(myDept));
     return HELP_ARTICLES.filter((a) => !onlyMine || a.departments.length === 0 || a.departments.includes(myDept))
-      .filter((a) => {
-        if (!q) return true;
-        const text = [a.title, a.summary, ...a.keywords, ...a.sections.flatMap((s) => [s.heading, ...s.steps])].join(' ').toLowerCase();
-        return text.includes(q);
-      })
-      .sort((a, b) => Number(b.departments.includes(myDept)) - Number(a.departments.includes(myDept)));
+      .map((a) => ({ a, score: query.trim() ? scoreFields(query, a.title, a.summary, a.keywords, a.sections.flatMap((s) => [s.heading, ...s.steps])) : 0 }))
+      .filter((x) => x.score !== null)
+      .sort((x, y) => (y.score ?? 0) - (x.score ?? 0) || mine(y.a) - mine(x.a))
+      .map((x) => x.a);
   }, [query, onlyMine, myDept]);
 
   const active = articles.find((a) => a.id === activeId) || articles[0];

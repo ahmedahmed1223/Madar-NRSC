@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { matchesQuery } from '../../shared/search';
 import { Keyboard, Search, HelpCircle, X } from 'lucide-react';
 import { Modal } from './Modal';
 
@@ -45,9 +46,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
   if (!isOpen) return null;
 
   const filtered = SHORTCUTS.filter((sc) => {
-    const matchesSearch =
-      sc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sc.keys.some((k) => k.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = matchesQuery(searchQuery, sc.description, sc.keys, sc.keys.join('+'));
     const matchesCategory = selectedCategory === 'ALL' || sc.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });

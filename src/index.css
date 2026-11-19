@@ -176,8 +176,31 @@
 }
 
 @media print {
-  header, nav, aside, button, .no-print {
-    display: none !important;
+  /*
+   * Printing («طباعة / حفظ PDF») prints the whole page content, not one clipped screen:
+   * the app's fixed-height shell and its scroll container grow with the content, the app chrome
+   * (rail, top bar, connection banner, breaking ticker, toasts, overlays) is left out, and
+   * headings, names and the chosen filters stay on the sheet.
+   */
+  @page {
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-body,
+  .app-scroll {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .app-shell,
+  .app-body,
+  .app-scroll {
+    display: block !important;
   }
 
   body {
@@ -186,21 +209,99 @@
     font-size: 11pt !important;
   }
 
+  /* App chrome: everything around the page content. */
+  .app-shell > :not(.app-body),
+  .app-body > :not(.app-scroll),
+  .app-scroll > :not(#app-main),
+  .app-topbar,
+  .no-print,
+  #app-main [role='tablist'],
+  #app-main nav {
+    display: none !important;
+  }
+
+  #app-main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Nothing inside the page clips or scrolls on paper. */
+  #app-main :is(.overflow-auto, .overflow-x-auto, .overflow-y-auto, .overflow-hidden, .overflow-x-hidden) {
+    overflow: visible !important;
+  }
+  #app-main :is([class*='max-h-'], [class*='h-[']) {
+    max-height: none !important;
+  }
+  #app-main .truncate,
+  #app-main [class*='line-clamp'] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    -webkit-line-clamp: unset !important;
+  }
+  #app-main table {
+    min-width: 0 !important;
+  }
+  #app-main .sticky {
+    position: static !important;
+  }
+
+  /* Buttons that are pure controls are left out ... */
+  #app-main button:not(.print-text) {
+    display: none !important;
+  }
+  /* ... but names and figures shown as buttons (in tables, lists, or marked .print-text) print as text. */
+  #app-main :is(td, th, li, dd, [role='cell'], [role='rowheader']) button:not([aria-label]:has(> svg:only-child)) {
+    display: inline !important;
+  }
+  #app-main :is(td, th, li, dd, [role='cell'], [role='rowheader']) button,
+  #app-main button.print-text {
+    background: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #000000 !important;
+    text-decoration: none !important;
+    min-height: 0 !important;
+  }
+  #app-main :is(td, th, li, dd) button:not(.print-text) {
+    padding: 0 !important;
+  }
+
+  .print-only {
+    display: revert !important;
+  }
+
+  /* Tables: the header repeats on each page and a row never splits across pages. */
   table {
     border-collapse: collapse !important;
     width: 100% !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr,
+  li,
+  [role='row'],
+  .print-keep {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   th, td {
     border: 1px solid #94a3b8 !important;
     padding: 6px 8px !important;
   }
-
-  .print-only {
-    display: block !important;
-  }
 }
-
 
 /* Night mode: modal backdrops stay dark instead of following the remapped greys. */
 :root.dark :is(.bg-slate-900\/60, .bg-slate-900\/80, .bg-slate-900\/90, .bg-slate-950\/40, .bg-slate-950\/60, .bg-slate-950\/80, .bg-slate-950\/90):not(.theme-fixed, .theme-fixed *) {

@@ -41,6 +41,19 @@ describe('news archive window', () => {
     expect(full.body.data.title).toContain('قمة المناخ');
   });
 
+  it('searches the archive with Arabic normalisation, stems and «هل تقصد»', async () => {
+    putNews('nws-old-ar', { status: 'ARCHIVED', title: 'مؤتمر الصحفيين في غزة', summary: 'نقابة الصحافة تطالب بالحماية' }, 120);
+    const reporter = await loginAgent(server.app, 'reporter@akhbar.tv');
+    const ids = async (q: string) => (await reporter.get('/api/v1/archive/news').query({ q })).body.data.items.map((i: any) => i.id);
+    expect(await ids('بالمؤتمر غزه')).toEqual(['nws-old-ar']);
+    expect(await ids('صحفي')).toEqual(['nws-old-ar']);
+    expect(await ids('"مؤتمر الصحفيين"')).toEqual(['nws-old-ar']);
+    expect(await ids('مؤتمر -غزة')).toEqual([]);
+    const miss = await reporter.get('/api/v1/archive/news').query({ q: 'المؤتمررات' });
+    expect(miss.body.data.total).toBe(0);
+    expect(miss.body.data.suggestion).toBeTruthy();
+  });
+
   it('only editors can bring a story back, and it then syncs to everyone', async () => {
     const reporter = await loginAgent(server.app, 'reporter@akhbar.tv');
     const denied = await reporter.post('/api/v1/archive/news/nws-old-pub/reactivate').set(H);

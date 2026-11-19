@@ -58,3 +58,31 @@ export function relatedTaskPath(
       return null;
   }
 }
+
+/**
+ * Whether this colleague may move the task between statuses: task managers (tasks.create_assign)
+ * move any task, an assignee moves their own (the server applies the same rule).
+ */
+export function canChangeTaskStatus(task: Pick<EditorialTask, 'assigneeId'>, userId: string, canAssign: boolean): boolean {
+  return canAssign || (!!task.assigneeId && task.assigneeId === userId);
+}
+
+export type TaskView = 'LIST' | 'KANBAN';
+const VIEW_KEY = 'madar-tasks-view';
+
+/** The list is the default; a colleague's own choice is remembered on this device. */
+export function savedTaskView(): TaskView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'KANBAN' ? 'KANBAN' : 'LIST';
+  } catch {
+    return 'LIST';
+  }
+}
+
+export function saveTaskView(view: TaskView): void {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // Storage blocked: the choice lasts for this visit.
+  }
+}

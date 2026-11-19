@@ -309,15 +309,16 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
         </div>
 
-        {/* Reading size, full screen, and source toggle for advanced edits */}
-        <div className="flex items-center gap-2">
+        {/* Reading size, full screen, and source toggle for advanced edits.
+            Wraps onto another line on narrow phones instead of being clipped by the frame. */}
+        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
           {!readOnly && <ProofreadButton value={value} html onFix={(next) => onChange(next)} />}
           <TextSizeControls label="نص الخبر" text={text} fullscreen={fs} />
           <button
             type="button"
             onClick={() => setIsSource(!isSource)}
             aria-pressed={isSource}
-            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
               isSource ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
             }`}
             title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'} aria-label={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}

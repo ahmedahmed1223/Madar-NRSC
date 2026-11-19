@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { matchesQuery } from '../../shared/search';
 import { Check, FileText, Film, Image as ImageIcon, Loader2, Music, Search, Upload } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { apiService } from '../../services/api';
@@ -29,12 +30,12 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
   const fileRef = useRef<HTMLInputElement>(null);
 
   const items = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     return apiService
       .getMedia()
       .filter((m: any) => !m.deletedAt)
       .filter((m) => type === 'ALL' || m.mediaType === type)
-      .filter((m) => !q || `${m.title || ''} ${m.fileName || ''} ${(m.tags || []).join(' ')}`.toLowerCase().includes(q));
+      .filter((m) => !q || matchesQuery(q, m.title, m.fileName, m.tags || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, type, version, isOpen]);
 

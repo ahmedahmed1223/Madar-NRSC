@@ -61,6 +61,8 @@ export interface NewsArchivePage {
     publishDate: string | null;
     updatedAt: string;
   }[];
+  /** «هل تقصد»: a corrected query that finds more, when this one found little or nothing. */
+  suggestion?: string;
 }
 
 export interface WireStatusInfo {
@@ -73,6 +75,7 @@ import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
 import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
+import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
 import { departmentIdOf } from '../shared/departments';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
@@ -1520,6 +1523,32 @@ export class ApiService {
     if (!this.cardActor().canManage) throw new Error('حذف بطاقات الإنتاج لمسؤولي التكليف');
     const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
     setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
+  // --- WORKFLOW TEMPLATES (assignments are created from them) ---
+  static getWorkflowTemplates(): WorkflowTemplate[] {
+    return getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []).filter((t) => !t.deletedAt);
+  }
+
+  /** Creates or replaces a template after checking it with the rules the server enforces. */
+  static saveWorkflowTemplate(template: WorkflowTemplate): WorkflowTemplate {
+    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
+    const idx = all.findIndex((t) => t.id === template.id);
+    const error = templateChangeError(idx === -1 ? null : all[idx], template, this.cardActor().canManage);
+    if (error) throw new Error(error);
+    const saved = { ...template, name: template.name.trim(), updatedAt: new Date().toISOString() };
+    if (idx === -1) setStored(COLLECTIONS.workflowTemplates.storageKey, [saved, ...all]);
+    else {
+      all[idx] = saved;
+      setStored(COLLECTIONS.workflowTemplates.storageKey, all);
+    }
+    return saved;
+  }
+
+  static deleteWorkflowTemplate(id: string): void {
+    if (!this.cardActor().canManage) throw new Error('قوالب سير العمل لمسؤولي التكليف');
+    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
+    setStored(COLLECTIONS.workflowTemplates.storageKey, all.map((t) => (t.id === id ? { ...t, deletedAt: new Date().toISOString() } : t)));
   }
 
   // --- TAXONOMY & CONFIG ---

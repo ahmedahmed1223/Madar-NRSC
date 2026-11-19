@@ -765,7 +765,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
-    <div className="h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">
+    <div className="app-shell h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">
       <a
         href="#app-main"
         onClick={(e) => {
@@ -787,7 +787,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         <BreakingNewsTicker items={breakingNewsItems} onOpenNews={(newsId) => newsId && handleEditNewsClick(newsId)} />
       )}
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="app-body flex flex-1 overflow-hidden relative">
         {/* Main Application Sidebar */}
         <Sidebar
           activeNav={activeNav}
@@ -807,7 +807,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         />
 
         {/* Center Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
+        <div className="app-scroll flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
           {/* Topbar */}
           <Topbar
             currentUser={currentUser}

@@ -11,7 +11,7 @@ import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
 import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown } from 'lucide-react';
 import { confirmDialog } from '../services/dialogs';
-import { TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, isMyTask, relatedTaskPath } from '../services/taskBoard';
+import { TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
@@ -67,10 +67,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
 }) => {
   // Assignees may still move their own tasks; creating, reassigning and deleting need tasks.create_assign.
   const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
-  const [activeTab, setActiveTab] = useState<'KANBAN' | 'LIST'>('KANBAN');
+  const [activeTab, setActiveTabState] = useState<TaskView>(savedTaskView);
+  const setActiveTab = (view: TaskView) => {
+    setActiveTabState(view);
+    saveTaskView(view);
+  };
+  /** Status buttons and dragging only on tasks this colleague may move (the server refuses the rest). */
+  const canMove = (t: EditorialTask) => canChangeTaskStatus(t, currentUser.id, canAssign);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [mineOnly, setMineOnly] = useState(false);
+  // Colleagues who only carry out tasks start on their own; task managers see the whole team.
+  const [mineOnly, setMineOnly] = useState(!canAssign);
   const [showCancelled, setShowCancelled] = useState(false);
   // Each kanban column draws a page at a time: years of finished tasks would otherwise fill the board.
   const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
@@ -203,7 +210,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     const task = tasks.find((t) => t.id === focusId);
     if (!task) return;
     const st = normalizeTaskStatus(task.status);
-    setActiveTab('KANBAN');
+    setActiveTabState('KANBAN');
     setSearchQuery('');
     setSelectedStatus('ALL');
     setMineOnly(false);
@@ -250,6 +257,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       id={t.id}
       container={`col:${colStatus}`}
       label={t.title}
+      disabled={!canMove(t)}
       data-task-id={t.id}
       tabIndex={-1}
       className={`bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 outline-hidden ${focusRing(t.id)}`}
@@ -316,8 +324,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       </div>
 
-      {/* Quick Move Buttons */}
-      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-1">
+      {/* Quick Move Buttons: only on tasks this colleague may move */}
+      {canMove(t) && <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-1">
         {quickMoves.filter((m) => m.status !== colStatus).map((m) => (
           <button
             key={m.status}
@@ -328,7 +336,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             {m.label}
           </button>
         ))}
-      </div>
+      </div>}
       </>
       )}
     </SortableItem>
@@ -426,6 +434,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           onDrop={({ id, from, to }) => {
             if (from === to) return;
             const task = tasks.find((x) => x.id === id);
+            if (task && !canMove(task)) return;
             const status = to.slice(4) as TaskStatus;
             const previous = task?.status;
             handleQuickStatusChange(id, status);
@@ -536,12 +545,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     </div>
                   </td>
                   <td className="py-3 px-3">
-                    <Badge
-                      variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : t.status === 'BLOCKED' ? 'danger' : t.status === 'CANCELLED' ? 'default' : 'warning'}
-                      size="sm"
-                    >
-                      {statusLabel(t.status, 'task')}
-                    </Badge>
+                    {canMove(t) && t.status !== 'CANCELLED' ? (
+                      <select
+                        aria-label={`حالة المهمة: ${t.title}`}
+                        value={t.status}
+                        onChange={(e) => handleQuickStatusChange(t.id, e.target.value as TaskStatus)}
+                        className="min-h-9 px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 font-semibold"
+                      >
+                        {TASK_STATUS_OPTIONS.filter((o) => canAssign || o.value !== 'CANCELLED').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <Badge
+                        variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : t.status === 'BLOCKED' ? 'danger' : t.status === 'CANCELLED' ? 'default' : 'warning'}
+                        size="sm"
+                      >
+                        {statusLabel(t.status, 'task')}
+                      </Badge>
+                    )}
                   </td>
                   <td className="py-3 px-4 text-center">
                     <div className="flex items-center justify-center gap-1">

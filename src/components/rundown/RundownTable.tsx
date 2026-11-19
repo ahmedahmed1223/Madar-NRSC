@@ -1,4 +1,5 @@
 import { newId } from '../../shared/ids';
+import { matchesQuery } from '../../shared/search';
 import React, { useEffect, useState } from 'react';
 import {
   RundownSegment,
@@ -19,7 +20,8 @@ import { RbacService } from '../../services/rbacService';
 import { segmentReadiness } from '../../shared/production';
 import { departmentName } from '../../shared/departments';
 import { TeleprompterModal } from './TeleprompterModal';
-import { formatSecondsToTime, apiService } from '../../services/api';
+import { apiService } from '../../services/api';
+import { minutesLabel, segmentClock } from '../../shared/durations';
 
 interface RundownTableProps {
   segments: RundownSegment[];
@@ -73,15 +75,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
   const displayedSegments = segments.filter((s) => {
     if (filterType !== 'ALL' && s.segmentType !== filterType) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = s.title.toLowerCase().includes(q);
-      const matchScript = s.scriptText?.toLowerCase().includes(q);
-      const matchPresenter = s.presenterName?.toLowerCase().includes(q);
-      const matchGuest = s.guestName?.toLowerCase().includes(q);
-      const matchNotes = s.notes?.toLowerCase().includes(q);
-      if (!matchTitle && !matchScript && !matchPresenter && !matchGuest && !matchNotes) return false;
-    }
+    if (searchQuery.trim() && !matchesQuery(searchQuery, s.title, s.scriptText, s.presenterName, s.guestName, s.notes)) return false;
     return true;
   });
 
@@ -214,8 +208,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
             </div>
             <div>
               <span className="text-xs text-slate-500 block">إجمالي زمن الرانداون</span>
-              <strong className="text-lg font-bold font-mono text-slate-800">
-                {formatSecondsToTime(totalRundownSeconds)}
+              <strong className="text-lg font-bold tabular-nums text-slate-800">
+                {minutesLabel(totalRundownSeconds)}
               </strong>
             </div>
           </div>
@@ -225,7 +219,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           <div>
             <span className="text-xs text-slate-500 block">المدة المقررة للحلقة</span>
             <span className="text-sm font-semibold text-slate-700">
-              {plannedDurationMinutes} دقيقة ({formatSecondsToTime(plannedSeconds)})
+              {minutesLabel(plannedSeconds)}
             </span>
           </div>
 
@@ -239,11 +233,11 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               </Badge>
             ) : differenceSeconds > 0 ? (
               <Badge variant="danger" size="md" dot>
-                فائض في الوقت: +{formatSecondsToTime(differenceSeconds)}
+                فائض في الوقت: {minutesLabel(differenceSeconds)}
               </Badge>
             ) : (
               <Badge variant="warning" size="md" dot>
-                عجز في الوقت: -{formatSecondsToTime(Math.abs(differenceSeconds))}
+                عجز في الوقت: {minutesLabel(differenceSeconds)}
               </Badge>
             )}
           </div>
@@ -433,9 +427,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               ) : (
                 displayedSegments.map((seg, idx) => {
                   const badgeInfo = typeBadges[seg.segmentType] || { label: seg.segmentType, variant: 'default' };
-                  const durationMins = Math.floor(seg.durationSeconds / 60);
-                  const durationSecs = seg.durationSeconds % 60;
-                  const durationStr = `${durationMins.toString().padStart(2, '0')}:${durationSecs.toString().padStart(2, '0')}`;
+                  const durationStr = segmentClock(seg.durationSeconds || 0);
 
                   return (
                     <SortableItem

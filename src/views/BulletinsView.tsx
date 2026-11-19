@@ -15,6 +15,8 @@ import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
 import { moveInArray, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { addDaysIso, localDateString } from '../shared/dates';
+import { timingDelta } from '../shared/bulletinReadiness';
+import { AR, countLabel } from '../shared/arabicPlural';
 import { departmentIdOf } from '../shared/departments';
 import {
   Bulletin,
@@ -277,14 +279,14 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 const ready = live.filter((s) => s.status === 'READY').length;
                 const isLive = onAirIds.has(b.id);
                 const status = isLive ? 'ON_AIR' : b.status;
-                const off = Math.abs(timing.overUnder) > 30;
+                const delta = timingDelta(timing.overUnder);
                 return (
                   <button
                     key={b.id}
                     type="button"
                     onClick={() => onOpenBulletin(b.id)}
                     aria-label={`فتح ${b.title}`}
-                    className="text-right bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all space-y-3"
+                    className="print-text text-right bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -305,17 +307,14 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                       <p>التقديم: <strong className="text-slate-700">{b.anchors.join('، ') || '—'}</strong></p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-2xs">
-                      <span className="font-bold text-slate-700">{live.length} قصة</span>
+                      <span className="font-bold text-slate-700">{countLabel(live.length, { ...AR.story, zero: 'لا قصص' })}</span>
                       <span className="text-emerald-700 font-bold">{approved} معتمدة</span>
                       {ready > 0 && <span className="text-amber-700 font-bold">{ready} بانتظار الاعتماد</span>}
                       <span
-                        className={`font-bold mr-auto ${off ? (timing.overUnder > 0 ? 'text-rose-700' : 'text-amber-700') : 'text-emerald-700'}`}
-                        title="الفرق بين زمن القصص المعتمدة والمخططة ومدة النشرة"
+                        className={`font-bold mr-auto ${delta.state === 'OVER' ? 'text-rose-700' : delta.state === 'SHORT' ? 'text-amber-700' : 'text-emerald-700'}`}
+                        title={`مجموع زمن القصص مقارنة بمدة النشرة المخططة (${mmss(timing.planned)})`}
                       >
-                        {off ? (timing.overUnder > 0 ? 'زيادة ' : 'نقص ') : 'في الوقت '}
-                        <span className="font-mono tabular-nums" dir="ltr">
-                          {off ? mmss(Math.abs(timing.overUnder)) : ''}
-                        </span>
+                        {delta.text}
                       </span>
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden>
@@ -342,7 +341,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">{f.name}</h3>
                     <p className="text-2xs text-slate-500">
-                      {bulletinKindName(f.kind)} · <span dir="ltr">{f.startTime}</span> · {Math.round(f.plannedSeconds / 60)} دقيقة · {f.stories.length} قصة
+                      {bulletinKindName(f.kind)} · <span dir="ltr">{f.startTime}</span> · {countLabel(Math.round(f.plannedSeconds / 60), AR.minute)} · {countLabel(f.stories.length, { ...AR.story, zero: 'لا قصص' })}
                     </p>
                   </div>
                   {canManage && (
@@ -419,7 +418,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 <select aria-label="القالب" value={form.formatId} onChange={(e) => pickFormatForForm(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
                   {formats.map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.name} ({f.stories.length} قصة)
+                      {f.name} ({countLabel(f.stories.length, { ...AR.story, zero: 'لا قصص' })})
                     </option>
                   ))}
                 </select>

@@ -10,9 +10,8 @@ test('connection feedback remains in layout on desktop and mobile without claimi
       await expect.poll(async () => (await page.locator('aside').boundingBox())?.x ?? width).toBeGreaterThanOrEqual(width);
     }
     await page.context().setOffline(true);
-    const status = page.getByRole('status').filter({ hasText: 'الجهاز دون اتصال' });
+    const status = page.getByRole('status').filter({ hasText: 'غير متصل' });
     await expect(status).toBeVisible();
-    await expect(page.getByText('تحقق من حالة حفظ كل محرر قبل مغادرته.')).toBeVisible();
     const rect = await status.boundingBox();
     const header = await page.locator('header').boundingBox();
     expect(header!.y).toBeGreaterThanOrEqual(rect!.y + rect!.height);

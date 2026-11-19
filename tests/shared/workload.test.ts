@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STEP_TYPES, type CardStep, type ProductionCard } from '../../src/shared/productionCards';
-import { collectWork, comparePeriods, dailyTrend, employeeFile, HIGH_LOAD_FACTOR, LOAD_LEVEL_RULE, loadByPerson, loadByStation, minutesLabel, previousPeriod, producedAt, productionSummary, type Period } from '../../src/shared/workload';
+import { collectWork, comparePeriods, dailyTrend, employeeFile, groupLoad, heavyThreshold, HIGH_LOAD_FACTOR, LOAD_LEVEL_RULE, loadByPerson, loadByStation, minutesLabel, previousPeriod, producedAt, productionSummary, type Period } from '../../src/shared/workload';
 import { buildHandover, handoverText } from '../../src/shared/handover';
 import type { Station } from '../../src/shared/stations';
 
@@ -254,5 +254,25 @@ describe('reviews, trend and comparison', () => {
   it('states the rating rule with the same factors it uses', () => {
     expect(LOAD_LEVEL_RULE).toContain('1.5');
     expect(HIGH_LOAD_FACTOR).toBe(1.5);
+  });
+});
+
+describe('teams', () => {
+  it('gathers people into teams with who is free now', () => {
+    const people = loadByPerson(items, users, week);
+    const teams = groupLoad(people, (r) => String((r as any).stationId || ''), (id) => stations.find((s) => s.id === id)?.name || 'بدون محطة');
+    const beirut = teams.find((t) => t.id === 'beirut')!;
+    expect(beirut.people).toBe(2);
+    expect(beirut.members.map((m) => m.id)).toContain('b2');
+    // Gaza's only person carries a blocked step, so Gaza leads the list.
+    expect(teams[0].blocked + teams[0].overdue).toBeGreaterThan(0);
+    expect(teams.reduce((n, t) => n + t.people, 0)).toBe(people.length);
+    const free = people.filter((p) => p.open === 0).length;
+    expect(teams.reduce((n, t) => n + t.free, 0)).toBe(free);
+  });
+  it('marks heavy load above 1.5 times the average', () => {
+    const rows = [{ openPoints: 10 }, { openPoints: 2 }, { openPoints: 0 }].map((r, i) => ({ ...loadByPerson([], [users[0]], week)[0], id: String(i), ...r }));
+    expect(heavyThreshold(rows)).toBe(6);
+    expect(heavyThreshold([])).toBe(Infinity);
   });
 });

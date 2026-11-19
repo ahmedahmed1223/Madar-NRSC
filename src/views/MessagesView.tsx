@@ -57,6 +57,48 @@ const ICON_BTN = 'min-h-11 min-w-11 inline-flex items-center justify-center roun
 const sizeLabel = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} م.ب` : `${Math.max(1, Math.round(bytes / 1024))} ك.ب`);
 const preview = (m?: ChatMessage) => (!m ? '' : m.text || (m.attachments?.length ? `مرفق: ${m.attachments[0].name}` : m.ref ? m.ref.title : ''));
 
+/**
+ * Height that keeps an element's bottom on screen above a phone's on-screen keyboard.
+ * The keyboard shrinks the visual viewport, not the layout one, so `dvh` alone does not see it.
+ * Returns null while no keyboard is open (or the page is pinch-zoomed): CSS sizing applies then.
+ */
+function useKeyboardSafeHeight(ref: React.RefObject<HTMLElement | null>, onOpen: () => void) {
+  const [height, setHeight] = useState<number | null>(null);
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const el = ref.current;
+        const keyboard = vv.scale < 1.01 && window.innerHeight - vv.height > 120;
+        if (!el || !keyboard) {
+          setHeight(null);
+          return;
+        }
+        const top = Math.max(el.getBoundingClientRect().top, vv.offsetTop);
+        const next = Math.max(180, Math.round(vv.offsetTop + vv.height - top));
+        setHeight((prev) => {
+          if (prev === null) openRef.current();
+          return prev === next ? prev : next;
+        });
+      });
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [ref]);
+  return height;
+}
+
 /** Messaging: direct conversations, groups, and the open channels of the newsroom, stations and departments. */
 export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, channel, onChannel, onOpenLink }) => {
   const me = currentUser.id;
@@ -284,6 +326,14 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // With the keyboard open the conversation fits above it, and the newest message stays in view.
+  const keyboardHeight = useKeyboardSafeHeight(sectionRef, () =>
+    requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (list) list.scrollTop = list.scrollHeight;
+    })
+  );
 
   const recent = useMemo(() => messages.filter((m) => m.channel === thread.channel), [messages, thread.channel]);
   const shown = useMemo(() => {
@@ -359,8 +409,13 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
 
   let lastDay = '';
   return (
-    <section aria-label={`محادثة ${thread.name}`} className="flex flex-col min-w-0 min-h-0 h-[calc(100dvh-9rem)] @4xl:h-auto">
-      <header className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-200">
+    <section
+      ref={sectionRef}
+      aria-label={`محادثة ${thread.name}`}
+      className="flex flex-col min-w-0 min-h-0 h-[calc(100dvh-9rem)] @4xl:h-auto"
+      style={keyboardHeight !== null ? { height: keyboardHeight } : undefined}
+    >
+      <header className="shrink-0 flex items-center gap-3 px-3 py-2.5 border-b border-slate-200">
         <button type="button" onClick={onBack} aria-label="العودة إلى المحادثات" className={`${ICON_BTN} @4xl:hidden`}>
           <ArrowRight className="w-4 h-4" />
         </button>
@@ -439,11 +494,12 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
           e.preventDefault();
           send();
         }}
-        className="border-t border-slate-200 p-3 space-y-2"
+        className="shrink-0 border-t border-slate-200 p-3 space-y-2 bg-white"
       >
         {error && <p role="alert" className="text-xs font-bold text-rose-700">{error}</p>}
         {(pending.length > 0 || ref) && (
-          <ul className="flex flex-wrap gap-2">
+          // Many attachments scroll inside this strip instead of pushing the text box off screen.
+          <ul aria-label="المرفقات" className="flex flex-wrap gap-2 max-h-20 overflow-y-auto overscroll-contain">
             {ref && (
               <li className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs text-blue-800 max-w-full">
                 <Link2 className="w-3.5 h-3.5 shrink-0" />
@@ -499,7 +555,7 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
             <Send className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-x-4">
+        <div className={`flex flex-wrap items-center justify-between gap-x-4 ${keyboardHeight !== null && !urgent ? 'hidden' : ''}`}>
           <label className="inline-flex items-center gap-2 min-h-11 text-xs text-slate-700">
             <input type="checkbox" className="w-4 h-4" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
             رسالة عاجلة (تصل حتى في ساعات الهدوء)

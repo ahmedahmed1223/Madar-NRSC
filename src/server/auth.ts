@@ -4,10 +4,11 @@ import type { User } from '../types/index';
 import { computeEffectivePermissions, evaluatePermission, RoleDefinition, DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
+import { MIN_PASSWORD_LENGTH, temporaryPassword, validatePasswordStrength } from '../shared/passwords';
 
 export const SESSION_COOKIE = 'nrcs_sid';
 export const CSRF_HEADER = 'x-nrcs-client';
-export const MIN_PASSWORD_LENGTH = 10;
+export { MIN_PASSWORD_LENGTH };
 export const MAX_FAILED_LOGINS = 5;
 export const LOCKOUT_MS = 15 * 60 * 1000;
 
@@ -44,19 +45,11 @@ export function getDummyHash() {
   return dummyHash;
 }
 
-export function validatePasswordStrength(password: unknown): string | null {
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    return `كلمة المرور يجب ألا تقل عن ${MIN_PASSWORD_LENGTH} أحرف`;
-  }
-  if (password.length > 200) return 'كلمة المرور طويلة جداً';
-  if (!/[A-Za-z؀-ۿ]/.test(password) || !/\d/.test(password)) {
-    return 'كلمة المرور يجب أن تحتوي على حروف وأرقام';
-  }
-  return null;
-}
+export { validatePasswordStrength };
 
+/** Generated passwords (first administrator, temporary passwords): no characters that read alike (I l 1 O 0). */
 export function generatePassword(): string {
-  return `${crypto.randomBytes(9).toString('base64url')}9a`;
+  return temporaryPassword((n) => new Uint32Array(crypto.randomBytes(n * 4).buffer));
 }
 
 export function newSessionToken(): string {
@@ -186,4 +179,41 @@ export function csrfGuard(req: Request, res: Response, next: NextFunction) {
     return res.status(403).json({ success: false, error: 'طلب غير موثوق (CSRF)', code: 'CSRF' });
   }
   next();
+}
+
+/** Meta key holding when a temporary password (issued by an administrator) stops working. */
+export const tempPasswordKey = (userId: string) => `temp_password_expires:${userId}`;
+
+/** Marks the password just set by an administrator as temporary for `hours`; pass 0 to clear the mark. */
+export function markTemporaryPassword(db: NewsroomDatabase, userId: string, hours: number, now = Date.now()) {
+  db.setMeta(tempPasswordKey(userId), hours > 0 ? new Date(now + hours * 3600_000).toISOString() : '');
+}
+
+/** A temporary password that was not replaced in time no longer opens the account. */
+export function temporaryPasswordExpired(db: NewsroomDatabase, userId: string, now = Date.now()): boolean {
+  const at = db.getMeta(tempPasswordKey(userId));
+  return !!at && Number.isFinite(Date.parse(at)) && Date.parse(at) <= now;
+}
+
+/** What a signed-in user may still reach while their password must be changed. */
+const OPEN_WHILE_PASSWORD_CHANGE = new Set(['/api/v1/auth/me', '/api/v1/auth/logout', '/api/v1/auth/change-password']);
+
+/**
+ * Enforces «change your password» on the server: while the account carries a temporary password
+ * (or the first administrator's), every API call but the three above answers 403
+ * PASSWORD_CHANGE_REQUIRED, so the temporary password never works for real work.
+ */
+export function passwordChangeGuard(db: NewsroomDatabase) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.auth) return next();
+    const cred = db.getCredentials(req.auth.user.id);
+    if (!cred?.mustChangePassword) return next();
+    if (temporaryPasswordExpired(db, req.auth.user.id)) {
+      db.deleteUserSessions(req.auth.user.id);
+      return res.status(401).json({ success: false, error: 'انتهت صلاحية كلمة المرور المؤقتة؛ اطلب من مدير النظام إصدار كلمة جديدة', code: 'TEMP_PASSWORD_EXPIRED' });
+    }
+    const path = req.originalUrl.split('?')[0];
+    if (OPEN_WHILE_PASSWORD_CHANGE.has(path)) return next();
+    return res.status(403).json({ success: false, error: 'غيّر كلمة المرور المؤقتة أولاً لمتابعة العمل', code: 'PASSWORD_CHANGE_REQUIRED' });
+  };
 }

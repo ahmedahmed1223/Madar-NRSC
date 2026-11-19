@@ -34,6 +34,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default(isProduction ? 'info' : 'debug'),
 
     SESSION_TTL_HOURS: int(12, 1),
+    // A temporary password issued by an administrator stops working after this many hours.
+    TEMP_PASSWORD_HOURS: int(72, 1),
     COOKIE_SECURE: bool(isProduction),
 
     ADMIN_EMAIL: z.string().email().optional().or(z.literal('').transform(() => undefined)),
@@ -42,6 +44,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
     SEED_DEMO_DATA: bool(!isProduction),
     DEMO_USER_PASSWORD: z.string().default('Madar@Demo2026'),
+    // Demo accounts share one published password: production refuses them unless this is set on purpose.
+    ALLOW_DEMO_IN_PRODUCTION: bool(false),
 
     ENABLE_SQL_CONSOLE: bool(!isProduction),
     ALLOW_DB_RESET: bool(!isProduction),
@@ -93,8 +97,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   const c = parsed.data;
 
+  // Checked on every start; the letters-and-digits rule is applied when the account is created (seed.ts).
   if (c.ADMIN_PASSWORD && c.ADMIN_PASSWORD.length < 10) {
     throw new Error('ADMIN_PASSWORD must be at least 10 characters');
+  }
+  if (isProduction && c.SEED_DEMO_DATA && !c.ALLOW_DEMO_IN_PRODUCTION) {
+    throw new Error('SEED_DEMO_DATA=true is refused in production: demo accounts share a published password. Set SEED_DEMO_DATA=false (or ALLOW_DEMO_IN_PRODUCTION=true for a demo server only).');
   }
 
   const geminiKey = c.GEMINI_API_KEY && c.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY' ? c.GEMINI_API_KEY : undefined;
@@ -117,6 +125,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     trustProxy,
     logLevel: c.LOG_LEVEL,
     sessionTtlMs: c.SESSION_TTL_HOURS * 60 * 60 * 1000,
+    tempPasswordHours: c.TEMP_PASSWORD_HOURS,
+    /** The process time zone (TZ); scheduled jobs and logs follow it, so production should set it. */
+    timeZone: env.TZ || undefined,
     cookieSecure: c.COOKIE_SECURE,
     admin: { email: c.ADMIN_EMAIL, password: c.ADMIN_PASSWORD, name: c.ADMIN_NAME },
     seedDemoData: c.SEED_DEMO_DATA,

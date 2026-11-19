@@ -1,5 +1,7 @@
 import { arabicDate } from '../shared/dates';
-import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { evaluateBulletinReadiness, stationClock, storyPresenter, timingDelta } from '../shared/bulletinReadiness';
+import { AR, countLabel } from '../shared/arabicPlural';
+import { stationTimeZone } from '../shared/dates';
 import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
 import { AssignmentForm } from '../components/bulletins/AssignmentForm';
 import { totalVideoSeconds, videoLines, videosOf } from '../shared/newsVideos';
@@ -169,10 +171,9 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const myApprovals = air.filter((s) => s.status === 'READY' && isApprover(bulletin, actor, s)).length;
   const onAir = apiService.getOnAir(bulletin.id);
   const liveId = onAir?.status === 'LIVE' ? onAir.currentSegmentId : null;
-  const now = new Date();
-  const secondsNow = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const isToday = bulletin.date === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const toAir = isToday ? timing.start - secondsNow : null;
+  // Air times are station times: count down on the station's clock, not this computer's.
+  const clock = stationClock(stationTimeZone(apiService.getSettings()?.defaultTimezone));
+  const toAir = bulletin.date === clock.date ? timing.start - clock.seconds : null;
   const locks = apiService.getEditLocks();
   const lockOf = (id: string) => locks.find((l) => l.id === `bulletinStories:${id}` && l.userId !== currentUser.id && new Date(l.expiresAt || 0).getTime() > Date.now());
 
@@ -276,10 +277,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     });
   };
 
-  const addPicked = async () => {
+  /** Adds the picked items; with `approve`, an approver signs the new stories off at once (news already approved upstream). */
+  const addPicked = async (approve = false) => {
     if (addingSources || !picked.length) return;
     setAddingSources(true); setSourceError('');
     let completed = 0;
+    let signed = 0;
     try {
       for (const id of picked) {
         const key = `${source}:${id}`;
@@ -298,6 +301,14 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           sourceWrites.current.set(key, storyId);
         }
         await confirmedWrite('bulletinStories', storyId);
+        if (approve) {
+          const story = apiService.getBulletinStories(bulletin.id).find((x) => x.id === storyId);
+          if (story && isApprover(bulletin, actor, story)) {
+            if (story.status === 'DRAFT' && !(await saveStoryConfirmed(story, { status: 'READY' }))) throw new Error('تعذر إرسال القصة للاعتماد');
+            const ready = apiService.getBulletinStories(bulletin.id).find((x) => x.id === storyId) || story;
+            if (await saveStoryConfirmed(ready, { status: 'APPROVED' })) signed++;
+          }
+        }
         completed++;
         sourceWrites.current.delete(key);
         setPicked(current => current.filter(item => item !== id));
@@ -305,7 +316,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       setSource(null);
       setPicked([]);
       setQuery('');
-      flash(true, `أُضيفت ${completed} قصة كمسودات في آخر النشرة`);
+      flash(true, approve ? `أُضيفت ${countLabel(completed, AR.story)} في آخر النشرة، واعتمدتَ ${signed} منها` : `أُضيفت ${countLabel(completed, AR.story)} كمسودات في آخر النشرة`);
     } catch (err: any) {
       setSourceError(`تأكد حفظ ${completed} قصة. ${err?.message || 'تعذر الحفظ'}؛ بقيت المواد غير المؤكدة محددة.`);
     } finally { setAddingSources(false); }
@@ -351,7 +362,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
 
   const users = apiService.getUsers().filter((u) => u.isActive !== false);
   const show = bulletinAsShow(bulletin, all);
-  const off = timing.overUnder;
+  const delta = timingDelta(timing.overUnder, 10);
 
   return (
     <div className="space-y-4" data-testid="bulletin-rundown">
@@ -418,12 +429,12 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             { label: 'النهاية المحددة', value: clockOf(timing.hardOut) },
             { label: 'المخطط', value: mmss(timing.planned) },
             { label: 'المجموع', value: mmss(timing.total) },
-            { label: Math.abs(off) <= 10 ? 'في الوقت' : off > 0 ? 'زيادة' : 'نقص', value: mmss(Math.abs(off)), tone: Math.abs(off) <= 10 ? 'text-emerald-700' : off > 0 ? 'text-rose-600' : 'text-amber-700' },
+            { label: delta.state === 'ON_TIME' ? 'في الوقت' : `${delta.verdict} عن المخطط`, value: delta.amount || '—', rtl: true, tone: delta.state === 'ON_TIME' ? 'text-emerald-700' : delta.state === 'OVER' ? 'text-rose-600' : 'text-amber-700' },
             { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'على الهواء' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-700' : '' },
           ].map((c) => (
             <div key={c.label}>
               <div className="text-2xs text-slate-500 font-sans">{c.label}</div>
-              <div className={`text-sm sm:text-lg font-bold ${c.tone || ''}`} dir="ltr">
+              <div className={`text-sm sm:text-lg font-bold ${c.rtl ? 'font-sans' : ''} ${c.tone || ''}`} dir={c.rtl ? 'rtl' : 'ltr'}>
                 {c.value}
               </div>
             </div>
@@ -431,7 +442,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-2xs">
-          <span className="font-bold text-slate-700">{air.length} قصة على الهواء</span>
+          <span className="font-bold text-slate-700">{countLabel(air.length, { ...AR.story, zero: 'لا قصص' })} على الهواء</span>
           <span className="text-emerald-700 font-bold">{approvedCount} معتمدة</span>
           {readyCount > 0 && <span className="text-amber-700 font-bold">{readyCount} بانتظار الاعتماد{myApprovals > 0 ? ` (${myApprovals} بانتظارك)` : ''}</span>}
           <span className="text-slate-500">مسار الاعتماد: {approvalStepsOf(bulletin).map((st) => approvalStepName(st, bulletin)).join(' ← ')}</span>
@@ -631,7 +642,9 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   <td className="p-2 text-center font-mono font-bold text-blue-700 hidden sm:table-cell" title={t.name}>
                     {t.code}
                   </td>
-                  <td className="p-2 hidden lg:table-cell">{s.anchorName || bulletin.anchors[0] || ''}</td>
+                  <td className="p-2 hidden lg:table-cell">
+                    {s.anchorName || <span className="text-slate-500" title="مذيع النشرة؛ لم يُحدَّد مذيع لهذه القصة">{storyPresenter(bulletin, s)}</span>}
+                  </td>
                   <td className="p-2 text-center">
                     {(() => {
                       // Change the status straight from the rundown: only moves this colleague may make.
@@ -878,9 +891,15 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             <button type="button" onClick={() => setSource(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
               إلغاء
             </button>
-            <button type="button" disabled={!picked.length} onClick={addPicked} className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl disabled:opacity-50">
+            <button type="button" disabled={!picked.length} onClick={() => void addPicked(false)} className={`px-5 py-2 text-xs font-bold rounded-xl disabled:opacity-50 ${source === 'NEWS' && approver ? 'border border-slate-300 text-slate-700 bg-white' : 'bg-blue-600 text-white'}`}>
               إضافة {picked.length ? `(${picked.length})` : ''} للنشرة
             </button>
+            {/* The news is already approved upstream: an approver of this bulletin signs it off in the same step. */}
+            {source === 'NEWS' && approver && (
+              <button type="button" disabled={!picked.length} onClick={() => void addPicked(true)} className="px-5 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl disabled:opacity-50">
+                إضافة واعتماد {picked.length ? `(${picked.length})` : ''}
+              </button>
+            )}
           </div>
           </fieldset>
         </div>

@@ -3,7 +3,10 @@ import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
 import { Save, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
-import { apiService, formatSecondsToTime } from '../../services/api';
+import { apiService } from '../../services/api';
+import { minutesLabel, minutesOf, segmentClock } from '../../shared/durations';
+import { countLabel } from '../../shared/arabicPlural';
+import { EP_NOUNS } from '../../shared/episodeNouns';
 import { newId } from '../../shared/ids';
 import { recalculateRundown } from '../../shared/rundown';
 import { segmentReadiness, requestStatusName } from '../../shared/production';
@@ -268,15 +271,15 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-2xs font-bold text-slate-500">{meta.label}</span>
               <span className="text-sm font-bold text-slate-800">{seg.title}</span>
-              <span className="text-2xs font-mono text-slate-500" dir="ltr">
-                {formatSecondsToTime(seg.durationSeconds || 0).slice(3)}
+              <span className="text-2xs font-bold tabular-nums text-slate-500" title="مدة الفقرة">
+                {segmentClock(seg.durationSeconds || 0)}
               </span>
               {seg.segmentType !== 'BREAK' && (
                 <span
                   className={`text-2xs font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
                   title={items.map((i) => `${i.label}: ${i.detail}`).join('\n')}
                 >
-                  {ready ? 'جاهزة' : `${items.filter((i) => i.state !== 'ready').length} نواقص`}
+                  {ready ? 'جاهزة' : countLabel(items.filter((i) => i.state !== 'ready').length, EP_NOUNS.gap)}
                 </span>
               )}
             </div>
@@ -292,7 +295,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 })}
                 {TALK_SEGMENT_TYPES.has(seg.segmentType) && (
                   <span className={`text-2xs font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
-                    {qCount ? `${qCount} سؤال` : 'بلا أسئلة'}
+                    {countLabel(qCount, EP_NOUNS.question)}
                   </span>
                 )}
               </div>
@@ -323,12 +326,12 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const saveTemplate = async () => {
     if (!program || savingTemplate) return;
     const template = templateFromEpisode(episode);
-    if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${program.template.segments.length} فقرة) ببنية هذه الحلقة؟`))) return;
+    if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${countLabel(program.template.segments.length, EP_NOUNS.segment)}) ببنية هذه الحلقة؟`))) return;
     try {
       setSavingTemplate(true); setNotice(null); setTemplateError(false);
       apiService.saveProgram({ id: program.id, template: { ...template, updatedAt: new Date().toISOString(), updatedByName: currentUser.fullName } });
       if (await confirmSaved('programs', program.id, 'تم حفظ قالب البرنامج')) {
-        setNotice(`حُفظت البنية (${template.topics.length} محور، ${template.segments.length} فقرة) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
+        setNotice(`حُفظت البنية (${countLabel(template.topics.length, EP_NOUNS.topic)}، ${countLabel(template.segments.length, EP_NOUNS.segment)}) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
       } else { setTemplateError(true); setNotice('لم يؤكد الخادم حفظ قالب البرنامج. بقيت بنية الحلقة دون تغيير؛ أعد المحاولة.'); }
     } catch (err: any) {
       setTemplateError(true);
@@ -359,7 +362,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
         {[
-          { label: 'المدة المخططة', value: `${formatSecondsToTime(totalSeconds).slice(0, 5)} من ${formatSecondsToTime(plannedSeconds).slice(0, 5)}`, warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
+          { label: 'المدة المخططة', value: plannedSeconds > 0 ? minutesOf(totalSeconds, plannedSeconds) : minutesLabel(totalSeconds), warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
           { label: 'المحاور', value: String(topics.length), warn: topics.length === 0 },
           { label: 'الضيوف المؤكدون', value: `${bookedGuests} من ${guestsInShow.size}`, warn: bookedGuests < guestsInShow.size },
           { label: 'حوارات لها أسئلة', value: `${talkWithQuestions} من ${talk.length}`, warn: talkWithQuestions < talk.length },
@@ -367,7 +370,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
         ].map((c) => (
           <div key={c.label} className={`p-3 rounded-xl border ${c.warn ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
             <div className="text-2xs font-bold text-slate-500">{c.label}</div>
-            <div className="text-lg font-bold text-slate-800 font-mono" dir="ltr" style={{ textAlign: 'right' }}>
+            <div className="text-lg font-bold text-slate-800 tabular-nums">
               {c.value}
             </div>
           </div>
@@ -471,12 +474,12 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 </h4>
                 {topic?.angle && <p className="text-xs text-slate-600 mt-0.5">الزاوية: {topic.angle}</p>}
                 <div className="flex flex-wrap items-center gap-2 mt-1 text-2xs">
-                  <span className={`font-mono font-bold ${over ? 'text-rose-700' : 'text-slate-600'}`} dir="ltr">
-                    {formatSecondsToTime(actual).slice(3)}
-                    {target ? ` / ${formatSecondsToTime(target).slice(3)}` : ''}
+                  <span className={`tabular-nums font-bold ${over ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {segmentClock(actual)}
+                    {target ? ` من ${segmentClock(target)}` : ''}
                   </span>
                   {over && <span className="text-rose-700 font-bold">يتجاوز المدة المستهدفة</span>}
-                  <span className="text-slate-500">{segments.length} فقرة</span>
+                  <span className="text-slate-500">{countLabel(segments.length, EP_NOUNS.segment)}</span>
                 </div>
                 {target > 0 && (
                   <div className="w-48 h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden" aria-hidden>

@@ -58,6 +58,8 @@ export const COLLECTIONS = {
   bookings: { storageKey: 'nrcs_bookings_v1', kind: 'list' },
   /** Production cards that travel with an item between stations (see shared/productionCards). */
   productionCards: { storageKey: 'madar_production_cards_v1', kind: 'list' },
+  /** Workflow templates assignments are created from (see shared/workflowTemplates). */
+  workflowTemplates: { storageKey: 'madar_workflow_templates_v1', kind: 'list' },
   /** Group conversations; a row is visible to its members only (see shared/chat). */
   conversations: { storageKey: 'madar_conversations_v1', kind: 'list' },
   /** Where each colleague has read up to, per channel; id = userId (private). */

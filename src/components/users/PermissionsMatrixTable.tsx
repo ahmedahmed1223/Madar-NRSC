@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { matchesQuery } from '../../shared/search';
 import {
   ALL_PERMISSIONS,
   PERMISSION_CATEGORIES,
@@ -47,11 +48,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
   };
 
   const filteredPermissions = ALL_PERMISSIONS.filter((perm) => {
-    const matchesSearch =
-      perm.nameAr.includes(searchQuery) ||
-      perm.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      perm.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      perm.description.includes(searchQuery);
+    const matchesSearch = matchesQuery(searchQuery, perm.nameAr, perm.nameEn, perm.code, perm.description);
 
     const matchesCat = selectedCategory === 'ALL' || perm.category === selectedCategory;
 

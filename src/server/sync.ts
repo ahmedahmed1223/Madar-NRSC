@@ -740,6 +740,10 @@ export class SyncService {
           after = { ...after, name: String(after.name).trim(), ownerId: before?.ownerId || auth.user.id, ownerName: before?.ownerName || auth.user.fullName, createdAt: before?.createdAt || now, updatedAt: now };
         }
         if (collection === 'chatReads') after = { id, userId: auth.user.id, seen: after.seen, updatedAt: new Date().toISOString() };
+        if (collection === 'workflowTemplates' && !after.deletedAt) {
+          const now = new Date().toISOString();
+          after = { ...after, name: String(after.name).trim(), builtIn: before?.builtIn === true || undefined, createdById: before?.createdById ?? auth.user.id, createdByName: before?.createdByName ?? auth.user.fullName, createdAt: before?.createdAt ?? now, updatedAt: now };
+        }
         if (collection === 'productionCards' && !after.deletedAt) {
           // Stamped after the policy so the rules compare exactly what the browser sent.
           const users = new Map<string, any>(this.listData('users').map((u: any) => [u.id, u]));

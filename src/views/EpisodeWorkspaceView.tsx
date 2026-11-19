@@ -1,4 +1,7 @@
 import { arabicDate } from '../shared/dates';
+import { minutesGap, minutesLabel, minutesOf } from '../shared/durations';
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -100,7 +103,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const plannedSeconds = (episode.rundown || []).reduce((sum, seg: any) => sum + (Number(seg.durationSeconds) || 0), 0);
   const timingGap = plannedSeconds - slotSeconds; // negative = under, positive = over
   const timingOk = slotSeconds === 0 || Math.abs(timingGap) <= Math.max(60, slotSeconds * 0.05);
-  const mmssOf = (sec: number) => `${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, '0')}`;
+  const gap = minutesGap(plannedSeconds, slotSeconds);
   const [showBlockers, setShowBlockers] = useState(false);
   const [focusSegment, setFocusSegment] = useState<{ id: string; key: string; sequence: number } | undefined>();
   const resolveBlocker = (blocker: typeof readiness.blockers[number]) => {
@@ -140,7 +143,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       void alertDialog({ title: 'الحلقة غير جاهزة للبث', message:
         readiness.total === 0
           ? 'لا يمكن اعتماد حلقة بلا فقرات للبث.'
-          : `لا يمكن اعتماد الحلقة للبث بعد: ${readiness.blockers.length} عنصر غير جاهز.\n\n` +
+          : `لا يمكن اعتماد الحلقة للبث بعد. النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}.\n\n` +
               readiness.blockers.slice(0, 6).map((b) => `• ${b.segmentTitle}: ${b.detail} (${departmentName(b.departmentId)})`).join('\n')
        });
       return;
@@ -148,8 +151,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !timingOk) {
       const msg =
         timingGap < 0
-          ? `الرانداون أقصر من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة (المخطط ${mmssOf(plannedSeconds)} من ${mmssOf(slotSeconds)}).`
-          : `الرانداون أطول من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة.`;
+          ? `الرانداون أقصر من مدة الحلقة بـ ${minutesLabel(timingGap)} (المخطط ${minutesOf(plannedSeconds, slotSeconds)}).`
+          : `الرانداون أطول من مدة الحلقة بـ ${minutesLabel(timingGap)} (المخطط ${minutesOf(plannedSeconds, slotSeconds)}).`;
       if (!(await confirmDialog(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`))) return;
     }
     onSaveEpisode({ id: episode.id, status: newStatus });
@@ -223,14 +226,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-800">
-              جاهزية البث: {readiness.readySegments} من {readiness.total} فقرة جاهزة
+              جاهزية البث: {readiness.readySegments} من {countLabel(readiness.total, EP_NOUNS.segment)} جاهزة
             </h2>
             <p className="text-2xs text-slate-500 mt-0.5">
               {readiness.ready
                 ? 'كل الأقسام سلّمت المواد المطلوبة.'
                 : readiness.total === 0
                 ? 'أضف فقرات الرانداون أولاً.'
-                : `${readiness.blockers.length} عنصر ينتظر التحرير أو المونتاج أو الأقسام الأخرى.`}
+                : `بانتظار التحرير أو المونتاج أو الأقسام الأخرى: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}.`}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -249,8 +252,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             role={timingOk ? undefined : 'status'}
             className={`mt-2 text-2xs font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
           >
-            خطة الوقت: {mmssOf(plannedSeconds)} مخطط من {mmssOf(slotSeconds)}
-            {timingOk ? ' — مكتملة' : timingGap < 0 ? ` — ينقص ${mmssOf(timingGap)} دقيقة` : ` — يزيد ${mmssOf(timingGap)} دقيقة`}
+            خطة الوقت: {minutesOf(plannedSeconds, slotSeconds)}
+            {timingOk ? ' — مكتملة' : ` — ${gap.text}`}
           </p>
         )}
         {showBlockers && readiness.blockers.length > 0 && (
@@ -394,7 +397,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>تحضير الحلقة ({(episode.topics || []).length} محور)</span>
+          <span>تحضير الحلقة ({countLabel((episode.topics || []).length, EP_NOUNS.topic)})</span>
         </button>
 
         <button

@@ -132,6 +132,16 @@ export interface WireItem {
   fetchedAt: string;
   /** Marked urgent/flash by the agency (detected at ingest). */
   flash?: boolean;
+  /** «رصد يدوي»: a TV / social / web observation entered by the monitoring desk (sourceId 'manual'). */
+  manual?: boolean;
+  /** Where a manual observation was seen (channel, platform). */
+  medium?: 'TV' | 'SOCIAL' | 'WEB' | 'OTHER';
+  createdById?: string;
+  createdByName?: string;
+  /** «تمت المتابعة», per colleague. */
+  handled?: { userId: string; userName: string; at: string }[];
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
 // New Type: Story (representing the overarching event or coverage)
@@ -166,6 +176,11 @@ export interface NewsWorkflowLog {
   };
   comment?: string;
   timestamp: string;
+  /**
+   * Review bookkeeping that does not change the status (fromStatus === toStatus):
+   * a quality pass, a reviewer claiming or releasing the story, a breaking request from the field.
+   */
+  action?: 'QUALITY_PASSED' | 'REVIEW_CLAIMED' | 'REVIEW_RELEASED' | 'BREAKING_REQUESTED';
 }
 
 export interface NewsItem {
@@ -214,6 +229,12 @@ export interface NewsItem {
   breakingUntil?: string;
   internalNotes?: string;
   workflowLogs: NewsWorkflowLog[];
+  /** «اجتازت التدقيق»: a quality reviewer passed this text (no publishing authority). See shared/newsWorkflow. */
+  qualityCheck?: import('../shared/newsWorkflow').NewsQualityCheck;
+  /** «أراجعها الآن»: the reviewer working on the story, so two reviewers do not take the same item. */
+  reviewClaim?: import('../shared/newsWorkflow').NewsReviewClaim;
+  /** Sent from the field as breaking; going on air stays the editors' decision (news.breaking_push). */
+  breakingRequest?: import('../shared/newsWorkflow').NewsBreakingRequest;
   viewsCount: number;
   createdAt: string;
   updatedAt: string;

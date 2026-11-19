@@ -86,3 +86,141 @@ export function findStudioConflicts(all: SchedulableEpisode[]): Set<string> {
   }
   return ids;
 }
+
+// ---------------------------------------------------------------------------
+// Bulletins on the broadcast calendar
+// ---------------------------------------------------------------------------
+
+/** What occupies a studio slot on the broadcast calendar. */
+export type AirSlotKind = 'episode' | 'bulletin' | 'scheduled-bulletin';
+
+export interface AirSlot extends SchedulableEpisode {
+  /** Unique across kinds: the episode id, `bulletin:<id>` or `format:<formatId>:<date>`. */
+  id: string;
+  kind: AirSlotKind;
+  /** The record to open: episode id, bulletin id, or format id (a scheduled bulletin not created yet). */
+  refId: string;
+  title: string;
+  programName?: string;
+  programId?: string;
+  presenterName?: string;
+}
+
+interface BulletinLike {
+  id: string;
+  title: string;
+  kind?: string;
+  date: string;
+  startTime: string;
+  plannedSeconds?: number;
+  studioName?: string;
+  anchors?: string[];
+  status?: string;
+  deletedAt?: string | null;
+}
+
+interface FormatLike {
+  id: string;
+  name: string;
+  startTime: string;
+  plannedSeconds?: number;
+  studioName?: string;
+  anchors?: string[];
+  deletedAt?: string | null;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** "20:00" + 1800 s → "20:30" (wraps past midnight). */
+export function addSecondsToTime(hhmm: string, seconds: number): string {
+  const start = toMinutes(hhmm);
+  if (start === null) return '';
+  const end = (start + Math.ceil(Math.max(0, seconds) / 60)) % (24 * 60);
+  return `${pad2(Math.floor(end / 60))}:${pad2(end % 60)}`;
+}
+
+const slotMinutes = (plannedSeconds?: number) => Math.max(1, Math.ceil((Number(plannedSeconds) || 0) / 60));
+
+export function episodeSlot(ep: SchedulableEpisode & { programId?: string; presenterName?: string }): AirSlot {
+  return { ...ep, kind: 'episode', refId: ep.id, title: ep.title || '' };
+}
+
+/** A created bulletin; its slot runs from its start for its planned length. */
+export function bulletinSlot(b: BulletinLike, kindName = 'نشرة'): AirSlot {
+  const minutes = slotMinutes(b.plannedSeconds);
+  return {
+    id: `bulletin:${b.id}`,
+    kind: 'bulletin',
+    refId: b.id,
+    title: b.title,
+    programName: kindName,
+    studioName: b.studioName,
+    broadcastDate: b.date,
+    startTime: b.startTime,
+    endTime: addSecondsToTime(b.startTime, minutes * 60),
+    durationMinutes: minutes,
+    presenterName: (b.anchors || []).join('، '),
+    status: b.status,
+    deletedAt: b.deletedAt || undefined,
+  };
+}
+
+/** A bulletin the schedule plans for `date` that nobody has created yet (it will use the format's studio). */
+export function scheduledBulletinSlot(f: FormatLike, date: string): AirSlot {
+  const minutes = slotMinutes(f.plannedSeconds);
+  return {
+    id: `format:${f.id}:${date}`,
+    kind: 'scheduled-bulletin',
+    refId: f.id,
+    title: f.name,
+    programName: 'نشرة مجدولة',
+    studioName: f.studioName,
+    broadcastDate: date,
+    startTime: f.startTime,
+    endTime: addSecondsToTime(f.startTime, minutes * 60),
+    durationMinutes: minutes,
+    presenterName: (f.anchors || []).join('، '),
+    deletedAt: f.deletedAt || undefined,
+  };
+}
+
+export interface StudioClash {
+  studioName: string;
+  a: AirSlot;
+  b: AirSlot;
+  /** Minutes both bookings hold the studio. */
+  overlapMinutes: number;
+}
+
+/**
+ * Every pair of slots booked in the same studio at overlapping times, earliest first.
+ * Back-to-back slots do not clash; deleted and cancelled ones are ignored.
+ */
+export function findStudioClashes(slots: AirSlot[]): StudioClash[] {
+  const byStudio = new Map<string, { slot: AirSlot; start: number; end: number }[]>();
+  for (const slot of slots) {
+    if (!isScheduled(slot)) continue;
+    const w = episodeWindow(slot);
+    if (!w) continue;
+    const key = normStudio(slot.studioName);
+    if (!byStudio.has(key)) byStudio.set(key, []);
+    byStudio.get(key)!.push({ slot, ...w });
+  }
+  const clashes: (StudioClash & { at: number })[] = [];
+  for (const list of byStudio.values()) {
+    list.sort((x, y) => x.start - y.start || x.end - y.end);
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length && list[j].start < list[i].end; j++) {
+        const overlap = Math.min(list[i].end, list[j].end) - list[j].start;
+        if (overlap <= 0) continue;
+        clashes.push({ studioName: list[i].slot.studioName || '', a: list[i].slot, b: list[j].slot, overlapMinutes: overlap, at: list[j].start });
+      }
+    }
+  }
+  return clashes.sort((x, y) => x.at - y.at).map(({ at: _at, ...c }) => c);
+}
+
+/** Only the clashes between a bulletin (created or scheduled) and a programme episode. */
+export function bulletinEpisodeClashes(slots: AirSlot[]): StudioClash[] {
+  return findStudioClashes(slots).filter((c) => (c.a.kind === 'episode') !== (c.b.kind === 'episode'));
+}

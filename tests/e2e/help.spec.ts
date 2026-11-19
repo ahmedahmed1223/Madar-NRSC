@@ -14,7 +14,9 @@ test('help exposes comprehensive guides and searches full article contents', asy
     await expect(page.getByRole('article').getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
   await page.getByRole('searchbox', { name: 'بحث في المساعدة' }).fill('تحديث عرضي');
-  await expect(nav.getByRole('button')).toHaveCount(1);
+  // Every guide that mentions it matches (Arabic-aware: «التحديث العرضي»); the best match comes first.
+  await expect(nav.getByRole('button').first()).toContainText('حماية المسودات والتحديث العرضي');
+  await expect(nav.getByRole('button')).not.toHaveCount(HELP_ARTICLES.length);
   await expect(page.getByRole('article')).toContainText('افتح النموذج نفسه بالحساب نفسه');
   await page.getByRole('searchbox', { name: 'بحث في المساعدة' }).fill('لايوجدهذاالموضوع');
   await expect(page.getByText('لا توجد نتائج. جرّب كلمات أخرى.')).toBeVisible();

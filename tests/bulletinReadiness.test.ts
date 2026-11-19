@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { durationWords, evaluateBulletinReadiness, scheduledBulletinExists, storyPresenter, timingDelta } from '../src/shared/bulletinReadiness';
+import { durationWords, stationClock, evaluateBulletinReadiness, scheduledBulletinExists, storyPresenter, timingDelta } from '../src/shared/bulletinReadiness';
 describe('bulletin readiness', () => {
   const bulletin: any = { id: 'b', approvalSteps: [] };
   const story: any = { id: 's', type: 'READER', script: 'نص صالح للقراءة على الهواء', anchorName: 'مذيع', status: 'APPROVED', approvals: [], bulletinId: 'b' };
@@ -59,5 +59,14 @@ describe('scheduled bulletin matching', () => {
     expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'y', date: '2026-11-18', formatId: 'fmt-main', kind: 'MAIN', startTime: '20:00' }])).toBe(false);
     expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'z', date: '2026-11-19', formatId: 'fmt-noon', kind: 'MAIN', startTime: '20:00' }])).toBe(false);
     expect(scheduledBulletinExists(format, '2026-11-19', [{ id: 'w', date: '2026-11-19', formatId: 'fmt-main', kind: 'MAIN', startTime: '20:00', deletedAt: '2026-11-19T01:00:00Z' }])).toBe(false);
+  });
+});
+
+describe('station clock for the countdown to air', () => {
+  it('reads the day and time in the station zone, not the computer\'s', () => {
+    const at = new Date('2026-11-19T21:30:15Z');
+    expect(stationClock('Asia/Riyadh', at)).toEqual({ date: '2026-11-20', seconds: 30 * 60 + 15 });
+    expect(stationClock('Asia/Gaza', at)).toEqual({ date: '2026-11-19', seconds: 23 * 3600 + 30 * 60 + 15 });
+    expect(stationClock('Not/AZone', at).date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

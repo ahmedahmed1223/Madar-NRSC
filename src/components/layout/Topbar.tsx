@@ -24,7 +24,10 @@ import {
   KeyRound,
   LogOut,
   MessageSquare,
+  ClipboardList,
+  Flame,
 } from 'lucide-react';
+import { findUserRole } from '../../shared/rbac';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
 import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
@@ -136,7 +139,31 @@ export const Topbar: React.FC<TopbarProps> = ({
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
   // «إنشاء جديد» lists only what this colleague may create; with nothing to create it is not shown.
-  const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign'].some(can);
+  const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign', 'cards.manage'].some(can);
+  const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
+
+  /** Opens the production cards screen with its «بطاقة جديدة» form. */
+  const createCard = () => {
+    onNavigate?.('/cards');
+    // The cards screen loads on demand; press its own «بطاقة جديدة» once it is on screen.
+    let tries = 0;
+    const press = () => {
+      const button = document.querySelector<HTMLButtonElement>('[data-tour="card-create"]');
+      if (button) button.click();
+      else if (++tries < 60) window.setTimeout(press, 50);
+    };
+    window.setTimeout(press, 0);
+  };
+
+  /** A breaking-news alert: the new-story form, flagged so the editor opens in breaking mode. */
+  const createBreaking = () => {
+    try {
+      sessionStorage.setItem('madar-new-news-breaking', '1');
+    } catch {
+      // Storage blocked: the form opens as a normal story.
+    }
+    onNavigate?.('/news/new?breaking=1');
+  };
 
   // Floating menus close on Esc and whenever the screen changes.
   const [chat, setChat] = useState(intercomState.last || { open: false, unread: 0 });
@@ -169,20 +196,11 @@ export const Topbar: React.FC<TopbarProps> = ({
     setNotifications(ApiService.getMyNotifications());
   };
 
-  const roleLabels: Record<string, string> = {
-    SUPER_ADMIN: 'مدير النظام العام',
-    ADMIN: 'مدير قطاع الأخبار',
-    EDITOR: 'رئيس تحرير أول',
-    JOURNALIST: 'محرر صحفي',
-    PRODUCER: 'منتج برامج',
-    PRESENTER: 'مذيع ومقدم',
-    REPORTER: 'مراسل ميداني',
-    MEDIA: 'فني وسائط وأرشيف',
-    VIEWER: 'مطلع',
-  };
+  // The role's own name as defined in «المستخدمون والصلاحيات» (one name everywhere), else the job title.
+  const roleName = findUserRole(currentUser, RbacService.getRoleDefinitions())?.nameAr?.split(' (')[0] || currentUser.jobTitle;
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+    <header className="app-topbar no-print h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
       {/* Right side (RTL Start): Station Live Clock & Search */}
       <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
         {/* Mobile menu trigger */}
@@ -219,13 +237,13 @@ export const Topbar: React.FC<TopbarProps> = ({
             className={`flex items-center gap-1.5 min-h-6 px-1 rounded-md disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-2xs tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
+            <span className={`font-bold text-2xs tracking-wider hidden ${isLiveLockActive ? 'lg:inline' : '2xl:inline'}`}>{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
           </button>
-          <span className="text-slate-300 hidden lg:inline">|</span>
+          <span className="text-slate-300 hidden 2xl:inline">|</span>
           <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
             <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span className="tabular-nums">{timeStr || '00:00'}</span>
-            <span className="hidden lg:inline font-sans text-2xs font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
+            <span className="hidden 2xl:inline font-sans text-2xs font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
             {clockLabel && <span className="font-sans text-2xs text-slate-500">{clockLabel}</span>}
           </div>
           {zoneMismatch && (
@@ -283,6 +301,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="hidden xl:flex shrink-0 items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />
+          <span className="2xl:hidden">بحث…</span>
           <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
           <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-2xs font-mono text-slate-500" dir="ltr">
             Ctrl + K
@@ -306,7 +325,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             className="flex items-center gap-1.5 px-3.5 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden xl:inline">إنشاء جديد</span>
+            <span className="hidden 2xl:inline">إنشاء جديد</span>
+            <span className="hidden xl:inline 2xl:hidden">جديد</span>
             <ChevronDown className="w-3 h-3 opacity-80 hidden sm:block" />
           </button>
 
@@ -324,6 +344,28 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <FileText className="w-4 h-4 text-blue-600" />
                   خبر صحفي جديد
+                </button>}
+                {can('news.create') && <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false);
+                    createBreaking();
+                  }}
+                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
+                >
+                  <Flame className="w-4 h-4 text-red-600" />
+                  خبر عاجل
+                </button>}
+                {can('cards.manage') && canOpen('cards') && <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false);
+                    createCard();
+                  }}
+                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
+                >
+                  <ClipboardList className="w-4 h-4 text-blue-600" />
+                  بطاقة إنتاج
                 </button>}
                 {can('programs.manage') && <button
                   type="button"
@@ -422,7 +464,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onOpenShortcuts}
-            className="hidden xl:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+            className="hidden 2xl:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
             title="اختصارات لوحة المفاتيح والإنتاج السريع (?)"
           >
             <Keyboard className="w-5 h-5" />
@@ -441,12 +483,12 @@ export const Topbar: React.FC<TopbarProps> = ({
             aria-expanded={isUserMenuOpen}
           >
             <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" />
-            <div className="text-right hidden xl:block max-w-[9rem] min-w-0">
+            <div className="text-right hidden 2xl:block max-w-[9rem] min-w-0">
               <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
                 {currentUser.fullName}
               </span>
               <span className="text-2xs text-blue-600 font-semibold block leading-tight truncate">
-                {roleLabels[currentUser.role] || currentUser.jobTitle}
+                {roleName}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
@@ -462,7 +504,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                     {currentUser.email}
                   </span>
                   <span className="text-2xs text-blue-600 font-semibold block mt-0.5">
-                    {roleLabels[currentUser.role] || currentUser.jobTitle} - {currentUser.department}
+                    {roleName} - {currentUser.department}
                   </span>
                 </div>
                 <div className="py-1 space-y-0.5">

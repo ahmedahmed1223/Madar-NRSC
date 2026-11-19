@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AR, countLabel } from '../../shared/arabicPlural';
 import type { BulletinStory } from '../../shared/bulletins';
 import type { ReadinessIssue } from '../../shared/bulletinReadiness';
 import type { User } from '../../types';
@@ -29,7 +30,7 @@ export function ReadinessPanel({ issues, stories, users, onOpen }: { issues: Rea
   const name = (id?: string) => users.find(u => u.id === id)?.fullName;
 
   return <section aria-label="جاهزية النشرة" className="border-y border-slate-200 py-3 space-y-2">
-    <h2 className="font-bold flex gap-2 items-center">{blockers.length ? <AlertTriangle className="w-4 h-4 text-rose-700" /> : <CheckCircle2 className="w-4 h-4 text-emerald-700" />}جاهزية النشرة: {blockers.length ? `${blockers.length} مانع` : 'لا موانع مسجلة'}{warnings > 0 && <span className="text-sm font-semibold text-amber-800"> · {warnings} تنبيه</span>}{groups.length > 0 && <span className="text-sm font-semibold text-slate-600"> · في {groups.length} {groups.length === 1 ? 'قصة' : 'قصص'}</span>}</h2>
+    <h2 className="font-bold flex gap-2 items-center">{blockers.length ? <AlertTriangle className="w-4 h-4 text-rose-700" /> : <CheckCircle2 className="w-4 h-4 text-emerald-700" />}جاهزية النشرة: {blockers.length ? countLabel(blockers.length, AR.blocker) : 'لا موانع مسجلة'}{warnings > 0 && <span className="text-sm font-semibold text-amber-800"> · {countLabel(warnings, AR.warning)}</span>}{groups.length > 0 && <span className="text-sm font-semibold text-slate-600"> · في {countLabel(groups.length, AR.story)}</span>}</h2>
     {groups.length > 0 && <ul className="divide-y divide-slate-200">{groups.map(({ storyId, story, list }) => {
       const owners = [...new Set(list.map(i => name(i.responsibleId) || 'غير مسند'))];
       return <li key={storyId}><button type="button" onClick={() => story && onOpen(story)} className="min-h-11 w-full text-right py-2 flex flex-wrap items-start gap-x-4 gap-y-1">

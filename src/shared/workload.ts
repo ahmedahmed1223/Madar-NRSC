@@ -447,3 +447,44 @@ export const minutesLabel = (minutes: number) => {
   const m = minutes % 60;
   return h ? (m ? `${h} س ${m} د` : `${h} س`) : `${m} د`;
 };
+
+export interface TeamRow extends LoadRow {
+  /** People in the team with nothing open now. */
+  free: number;
+  /** The people's rows, heaviest open load first. */
+  members: (LoadRow & Record<string, unknown>)[];
+}
+
+/**
+ * People's rows gathered into teams (by department, station or role): totals per team and who
+ * in it is free now. Teams are listed with the most late and blocked work first.
+ */
+export function groupLoad<R extends LoadRow>(rows: R[], teamOf: (row: R) => string, teamName: (id: string) => string): TeamRow[] {
+  const teams = new Map<string, TeamRow>();
+  for (const row of rows) {
+    const id = teamOf(row) || '';
+    const team = teams.get(id) || { ...emptyRow(id, teamName(id), 0), free: 0, members: [] };
+    team.people += 1;
+    team.open += row.open;
+    team.openPoints += row.openPoints;
+    team.openMinutes += row.openMinutes;
+    team.overdue += row.overdue;
+    team.blocked += row.blocked;
+    team.done += row.done;
+    team.donePoints += row.donePoints;
+    team.spentMinutes += row.spentMinutes;
+    if (row.open === 0) team.free += 1;
+    team.members.push(row as LoadRow & Record<string, unknown>);
+    teams.set(id, team);
+  }
+  for (const team of teams.values()) team.members.sort((a, b) => b.openPoints - a.openPoints || a.name.localeCompare(b.name, 'ar'));
+  return [...teams.values()].sort((a, b) => b.overdue + b.blocked - (a.overdue + a.blocked) || b.openPoints - a.openPoints || a.name.localeCompare(b.name, 'ar'));
+}
+
+/** A person is heavily loaded when their open points exceed 1.5× the average of the people compared. */
+export function heavyThreshold(rows: LoadRow[]): number {
+  const people = rows.filter((r) => r.people > 0);
+  if (!people.length) return Infinity;
+  const average = people.reduce((sum, r) => sum + r.openPoints, 0) / people.length;
+  return average > 0 ? average * HIGH_LOAD_FACTOR : Infinity;
+}

@@ -26,7 +26,8 @@ import { localDateString } from '../shared/dates';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { departmentIdOf, departmentName } from '../shared/departments';
-import { generatePassword, hashPassword } from './auth';
+import { generatePassword, hashPassword, validatePasswordStrength } from './auth';
+import { BUILT_IN_TEMPLATES } from '../shared/workflowTemplates';
 import { logger } from './logger';
 
 /** Reference data every installation needs. */
@@ -122,6 +123,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   ensureSystemRoles(db);
   applyDefaultScreens(db);
   grantNewPermissions(db);
+  seedWorkflowTemplates(db);
   if (demoAllowed) {
     await ensureDemoUsers(db, config);
     seedDemoBulletins(db);
@@ -215,6 +217,16 @@ function applyDefaultScreens(db: NewsroomDatabase) {
       if (row.d?.isSystemRole && defaults && !Array.isArray(row.d.screens)) db.writeRow('roles', row.id, { ...row.d, screens: defaults }, row.p, null);
     }
     db.setMeta('role_screens_defaults', '1');
+  });
+}
+
+/** Starter workflow templates («نشرة أخبار»، «تقرير ميداني»…), added once; administrators then edit or archive them. */
+function seedWorkflowTemplates(db: NewsroomDatabase) {
+  if (db.getMeta('workflow_templates_seeded') === '1') return;
+  db.transaction(() => {
+    const now = new Date().toISOString();
+    seedList(db, 'workflowTemplates', BUILT_IN_TEMPLATES.map((t) => ({ ...t, createdAt: now, updatedAt: now })));
+    db.setMeta('workflow_templates_seeded', '1');
   });
 }
 
@@ -333,6 +345,8 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
 
   const email = (config.admin.email || 'admin@madar.local').toLowerCase();
   const generated = !config.admin.password;
+  const weak = config.admin.password ? validatePasswordStrength(config.admin.password) : null;
+  if (weak) throw new Error('ADMIN_PASSWORD must contain letters and digits (at least 10 characters)');
   const password = config.admin.password || generatePassword();
   const hash = await hashPassword(password);
 
@@ -354,7 +368,8 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
       };
       db.writeRow('users', userId, admin, -1, null);
     }
-    db.setPassword(userId, email, hash, generated);
+    // Whether generated or taken from ADMIN_PASSWORD (which stays in a file on disk), it is changed at first sign-in.
+    db.setPassword(userId, email, hash, true);
   });
 
   if (generated) {
@@ -364,7 +379,7 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
       password,
     });
   } else {
-    logger.info('initial administrator created', { email });
+    logger.info('initial administrator created from ADMIN_PASSWORD (change it at first login, then remove ADMIN_PASSWORD from the environment file)', { email });
   }
 }
 

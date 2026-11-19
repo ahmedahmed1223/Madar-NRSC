@@ -1,4 +1,5 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { matchesQuery } from '../../shared/search';
 import { confirmDialog } from '../../services/dialogs';
 import React, { useMemo, useRef, useState } from 'react';
 import { AtSign, MessageSquareText, Send, Trash2 } from 'lucide-react';
@@ -25,7 +26,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ target, currentUse
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const comments = apiService.getComments(target);
   const users = useMemo(() => apiService.getUsers().filter((u) => u.isActive !== false && u.id !== currentUser.id), [currentUser.id]);
-  const suggestions = mentionQuery === null ? [] : users.filter((u) => u.fullName.includes(mentionQuery)).slice(0, 6);
+  const suggestions = mentionQuery === null ? [] : users.filter((u) => matchesQuery(mentionQuery, u.fullName, u.fullNameEn)).slice(0, 6);
 
   const onChange = (value: string) => {
     setText(value);

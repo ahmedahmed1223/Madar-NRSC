@@ -1,3 +1,5 @@
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 import { arabicDate } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
@@ -507,8 +509,8 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">فقرات الرانداون:</span>
-                      <span className="font-bold text-blue-600 font-mono">
-                        {(ep.rundown || ep.rundownSegments || []).length} فقرة
+                      <span className="font-bold text-blue-600 tabular-nums">
+                        {countLabel((ep.rundown || ep.rundownSegments || []).length, EP_NOUNS.segment)}
                       </span>
                     </div>
                   </div>

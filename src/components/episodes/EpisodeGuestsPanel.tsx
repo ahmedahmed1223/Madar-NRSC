@@ -1,4 +1,6 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { countLabel } from '../../shared/arabicPlural';
+import { EP_NOUNS } from '../../shared/episodeNouns';
 import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
 import React, { useState } from 'react';
@@ -101,7 +103,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
 
   const removeGuest = async (key: string, name: string) => {
     const inSegments = guestSegments(episode, key).length;
-    if (!(await confirmDialog(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments} فقرة؟` : `إزالة ${name} من الحلقة؟`))) return;
+    if (!(await confirmDialog(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments === 1 ? 'فقرة واحدة' : inSegments === 2 ? 'فقرتين' : countLabel(inSegments, EP_NOUNS.segment)}؟` : `إزالة ${name} من الحلقة؟`))) return;
     if (inSegments) onUpdateRundown(rundown.map((s) => (segmentGuests(s).some((g) => g.guestId === key) ? withSegmentGuests(s, segmentGuests(s).filter((g) => g.guestId !== key)) : s)));
     saveList(list.filter((g) => guestKey(g) !== key));
   };

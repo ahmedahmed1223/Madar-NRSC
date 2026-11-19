@@ -79,11 +79,11 @@ export const EpisodeDetailsFields: React.FC<EpisodeDetailsFieldsProps> = ({ valu
               aria-pressed={values.durationMinutes === m}
               aria-label={`${m} دقيقة`}
               onClick={() => onChange({ durationMinutes: m })}
-              className={`min-h-11 min-w-11 px-2 text-2xs rounded-lg font-mono ${
+              className={`min-h-11 min-w-11 px-2 text-2xs rounded-lg tabular-nums ${
                 values.durationMinutes === m ? 'bg-blue-600 text-white font-bold' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              {m}د
+              {m} د
             </button>
           ))}
         </div>

@@ -4,10 +4,11 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import pkg from './package.json' with { type: 'json' };
 import { offlineAirManifest } from './src/build/offlineAirManifest.ts';
+import { appAssetsManifest } from './src/build/appAssetsManifest.ts';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), offlineAirManifest()],
+    plugins: [react(), tailwindcss(), offlineAirManifest(), appAssetsManifest()],
     build: { rolldownOptions: { input: { app: path.resolve(import.meta.dirname, 'index.html'), offlineAir: path.resolve(import.meta.dirname, 'offline-air.html') } } },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),

@@ -87,3 +87,24 @@ export function scheduledBulletinExists(
       (!b.deletedAt && b.date === date && (b.formatId === format.id || (!b.formatId && b.kind === format.kind && b.startTime === format.startTime)))
   );
 }
+
+/**
+ * The station's calendar day and seconds since its midnight, for counting down to air times
+ * (which are station times). Falls back to this computer's clock when no zone is set.
+ */
+export function stationClock(timeZone?: string, at: Date = new Date()): { date: string; seconds: number } {
+  if (timeZone) {
+    try {
+      const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+          .formatToParts(at)
+          .map((p) => [p.type, p.value])
+      );
+      return { date: `${parts.year}-${parts.month}-${parts.day}`, seconds: Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second) };
+    } catch {
+      // Unknown zone: use the device clock below.
+    }
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { date: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`, seconds: at.getHours() * 3600 + at.getMinutes() * 60 + at.getSeconds() };
+}

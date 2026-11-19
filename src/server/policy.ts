@@ -15,6 +15,7 @@ import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED } from '../shared/productionCards';
+import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
 import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
 import { stationsOf } from '../shared/stations';
@@ -516,6 +517,10 @@ export const POLICIES: Record<CollectionName, Policy> = {
     }
     return cardChangeError(before, after, actor, ctx);
   },
+  workflowTemplates: ({ auth, kind, before, after }) => {
+    if (kind === 'delete') return auth.can('cards.manage') ? null : 'قوالب سير العمل لمسؤولي التكليف';
+    return templateChangeError(before, after, auth.can('cards.manage'));
+  },
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
@@ -534,6 +539,7 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'notificationPrefs':
       return data?.userId === auth.user.id;
     case 'productionCards':
+    case 'workflowTemplates':
       return auth.can('cards.view');
     case 'messages':
       return canReadMessage(data, auth.user.id);

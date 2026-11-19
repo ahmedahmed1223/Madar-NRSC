@@ -1,5 +1,6 @@
 import { ShowMore, useIncremental } from '../components/common/ShowMore';
-import { countLabel } from '../shared/labels';
+import { AR, countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
@@ -226,7 +227,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             {
               id: 'schedule',
               label: 'جدول بث الحلقات المعروضة',
-              hint: `${filteredEpisodes.length} حلقة حسب البرنامج والحالة والبحث`,
+              hint: `${countLabel(filteredEpisodes.length, { ...AR.episode, zero: 'لا حلقات' })} حسب البرنامج والحالة والبحث`,
               build: () => episodesScheduleDoc(filteredEpisodes, selectedProgId === 'ALL' ? 'كل البرامج' : programs.find((p) => p.id === selectedProgId)?.name || '', docContext()),
             },
           ]}
@@ -354,7 +355,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                           <span>{ep.studioName}</span>
                           {/* Narrow screens: the folded columns. */}
                           <span className="lg:hidden tabular-nums">ح {ep.episodeNumber} · م {ep.seasonNumber}</span>
-                          <span className="md:hidden">{countLabel(rundownCount, { zero: 'بلا فقرات', one: 'فقرة واحدة', two: 'فقرتان', few: 'فقرات', many: 'فقرة' })}</span>
+                          <span className="md:hidden">{countLabel(rundownCount, EP_NOUNS.segment)}</span>
                         </div>
                         <div className="sm:hidden mt-1">
                           <Badge variant={sInfo.variant} size="sm">
@@ -388,7 +389,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       <td className="py-3.5 px-3 text-center hidden md:table-cell">
                         <span className="inline-flex items-center gap-1 font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
                           <ListOrdered className="w-3.5 h-3.5" />
-                          {countLabel(rundownCount, { zero: '0 فقرات', one: 'فقرة', two: 'فقرتان', few: 'فقرات', many: 'فقرة' })}
+                          {countLabel(rundownCount, EP_NOUNS.segment)}
                         </span>
                       </td>
 
@@ -396,7 +397,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       <td className="py-3.5 px-3 text-center hidden md:table-cell">
                         <span className="inline-flex items-center gap-1 font-mono font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
                           <Users className="w-3.5 h-3.5" />
-                          {countLabel(guestsCount, { zero: 'بلا ضيوف', one: 'ضيف', two: 'ضيفان', few: 'ضيوف', many: 'ضيفاً' })}
+                          {countLabel(guestsCount, EP_NOUNS.guest)}
                         </span>
                       </td>
 
@@ -495,7 +496,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <legend className="px-1 text-xs font-bold text-slate-700">بنية الحلقة</legend>
             <div role="radiogroup" aria-label="بنية الحلقة" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
-                { id: 'TEMPLATE' as const, name: 'من قالب البرنامج', hint: programTemplate ? `${programTemplate.topics.length} محور · ${programTemplate.segments.length} فقرة` : 'لا يوجد قالب محفوظ لهذا البرنامج', disabled: !programTemplate?.segments.length },
+                { id: 'TEMPLATE' as const, name: 'من قالب البرنامج', hint: programTemplate ? `${countLabel(programTemplate.topics.length, EP_NOUNS.topic)} · ${countLabel(programTemplate.segments.length, EP_NOUNS.segment)}` : 'لا يوجد قالب محفوظ لهذا البرنامج', disabled: !programTemplate?.segments.length },
                 { id: 'COPY' as const, name: 'نسخ بنية حلقة سابقة', hint: previousEpisodes.length ? 'المحاور والفقرات والمدد بدون الضيوف والأسئلة' : 'لا حلقات سابقة لها رانداون', disabled: previousEpisodes.length === 0 },
                 { id: 'BLANK' as const, name: 'حلقة فارغة', hint: 'تبني المحاور والفقرات بنفسك', disabled: false },
               ].map((o) => (

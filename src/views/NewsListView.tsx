@@ -8,6 +8,11 @@ import { NEWS_COLUMNS, sanitizeNewsListPreferences } from '../shared/newsListPre
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
+import { buildVocabulary, completeQuery, didYouMean, matchingRecentSearches, FEW_RESULTS } from '../shared/arabicSearch';
+import { clearRecentSearches, loadRecentSearches, rememberSearch } from '../services/recentSearches';
+import { Highlight } from '../components/common/Highlight';
+import { DidYouMean, SearchHints, type SearchHint } from '../components/common/SearchHints';
+import { AR, countLabel } from '../shared/arabicPlural';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsListDoc } from '../services/documents/builders';
@@ -53,6 +58,8 @@ const STATUS_RANK: Record<string, number> = { DRAFT: 0, IN_PROGRESS: 1, NEEDS_RE
 const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
   key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
+const RESULT_FORMS = { one: 'نتيجة واحدة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجة' };
+
 const submittedForReview = (item: NewsItem) => [...(item.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || item.updatedAt;
 
 export const NewsListView: React.FC<NewsListViewProps> = ({
@@ -86,6 +93,10 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
   const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
   const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(currentUser.id, 'news'));
   // Categories are filtered by id; a name saved by an earlier version is mapped to its id.
   const [selectedCategory, setSelectedCategory] = useState(() => {
     const saved = textValue('selectedCategory', 'ALL');
@@ -175,6 +186,35 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const currentPage = Math.min(page, pageCount - 1);
   const pagedNews = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
+  // The newsroom's own words, for suggestions and «هل تقصد» (built only once the search is used).
+  const wantsVocabulary = searchFocused || !!searchQuery.trim();
+  const vocabulary = useMemo(
+    () => (wantsVocabulary ? buildVocabulary(sourceList.flatMap((n) => [n.title, n.shortTitle, n.summary, n.authorName, n.categoryName, n.sourceName, n.locationName, ...(n.keywords || [])])) : null),
+    [wantsVocabulary, sourceList]
+  );
+  const searchFields = (item: NewsItem) => [item.title, item.shortTitle, item.summary, item.authorName, item.categoryName, item.sourceName, item.locationName, item.keywords || []];
+  const correction = useMemo(() => {
+    if (!vocabulary || !searchQuery.trim() || filteredNews.length > FEW_RESULTS) return null;
+    const fixed = didYouMean(searchQuery, vocabulary);
+    if (!fixed) return null;
+    const more = sourceList.filter((item) => matchesQuery(fixed, ...searchFields(item))).length;
+    return more > filteredNews.length ? fixed : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vocabulary, searchQuery, filteredNews.length, sourceList]);
+  const searchHints: SearchHint[] = useMemo(() => {
+    if (!searchFocused) return [];
+    const past = matchingRecentSearches(recentSearches, searchQuery, searchQuery.trim() ? 2 : 5).map((q): SearchHint => ({ query: q, kind: 'recent' }));
+    const next = vocabulary ? completeQuery(searchQuery, vocabulary, 5).map((c): SearchHint => ({ query: c.query, label: c.word, kind: 'completion' })) : [];
+    return [...next.filter((c) => !past.some((h) => h.query === c.query)), ...past];
+  }, [searchFocused, recentSearches, searchQuery, vocabulary]);
+  const applySearch = (q: string) => {
+    setSearchQuery(q);
+    setRecentSearches(rememberSearch(currentUser.id, 'news', q));
+    searchInputRef.current?.focus();
+  };
+  // The approver's review tab is one list: the queue, ordered by priority and waiting time.
+  const reviewMode = activeTab === 'UNDER_REVIEW' && canApprove;
+
   // Selection never includes rows hidden by a filter or tab change.
   const initialFilters = useRef(true);
   useEffect(() => {
@@ -187,6 +227,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
   const leavingRef = useRef(false);
   contextRef.current = { activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, page };
   const rememberPosition = () => {
+    if (searchQuery.trim()) setRecentSearches(rememberSearch(currentUser.id, 'news', searchQuery));
     try { sessionStorage.setItem(contextKey, JSON.stringify({ ...contextRef.current, scrollTop: document.getElementById('app-main')?.parentElement?.scrollTop || 0 })); } catch { /* Keep navigation available. */ }
     leavingRef.current = true;
   };
@@ -273,7 +314,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
     DRAFT: { label: 'مسودة', variant: 'default' },
     IN_PROGRESS: { label: 'قيد التحرير', variant: 'info' },
     UNDER_REVIEW: { label: 'قيد المراجعة', variant: 'warning' },
-    NEEDS_REVISION: { label: 'يحتاج تعديلات', variant: 'danger' },
+    NEEDS_REVISION: { label: NEWS_STATUS_LABELS.NEEDS_REVISION, variant: 'danger' },
     APPROVED: { label: 'معتمد للنشر', variant: 'purple' },
     SCHEDULED: { label: 'مجدول للبث', variant: 'info' },
     PUBLISHED: { label: 'منشور', variant: 'success' },
@@ -362,21 +403,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
         ]}
       />
 
-      {activeTab === 'UNDER_REVIEW' && canApprove && (
-        <section aria-label="طابور مراجعة الأخبار" className="border-y border-amber-200 py-3 space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">طابور المراجعة ({reviewQueue.length})</h2>
-          {reviewQueue.length === 0 ? <p className="text-sm text-slate-600">لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.</p> : reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => {
-            const submitted = submittedForReview(item);
-            const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(submitted)) / 60000)) || 0;
-            return <div key={item.id} className="flex flex-wrap items-center gap-2 border-b border-slate-100 py-2">
-              <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map(n => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-0 break-words">{item.title}</button>
-              <span className="text-xs text-slate-600">{item.authorName}</span>
-              <Badge variant={item.priority === 'HIGH' || item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'danger' : 'default'} size="sm">{item.priority === 'HIGH' ? 'عالية' : item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'عاجلة' : 'عادية'}</Badge>
-              <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>بانتظار المراجعة: {minutes < 60 ? `${minutes} دقيقة` : `${Math.floor(minutes / 60)} ساعة`}</span>
-            </div>;
-          })}
-        </section>
-      )}
+
 
       {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
@@ -387,27 +414,50 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       {/* Filter Toolbar */}
       <div className="py-3 border-y border-slate-200 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative flex-1 min-w-[min(100%,18rem)]">
-          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            id="news-list-search-input"
-            type="search"
-            aria-label="البحث في الأخبار"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
-            className="min-h-11 w-full pr-9 pl-12 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+        <div
+          ref={searchBoxRef}
+          className="flex-1 min-w-[min(100%,18rem)] space-y-2"
+          onFocus={() => setSearchFocused(true)}
+          onBlur={(e) => { if (!searchBoxRef.current?.contains(e.relatedTarget as Node | null)) setSearchFocused(false); }}
+        >
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              id="news-list-search-input"
+              type="search"
+              aria-label="البحث في الأخبار"
+              aria-describedby="news-search-help"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) setRecentSearches(rememberSearch(currentUser.id, 'news', searchQuery));
+                else if (e.key === 'ArrowDown' && searchHints.length) {
+                  e.preventDefault();
+                  searchBoxRef.current?.querySelector<HTMLButtonElement>('button[data-hint]')?.focus();
+                }
+              }}
+              placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
+              className="min-h-11 w-full pr-9 pl-12 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-cancel-button]:hidden"
+            />
+            <span id="news-search-help" className="sr-only">اكتب كلمات البحث؛ ضع العبارة بين علامتي تنصيص للبحث عنها كما هي، وضع «-» قبل كلمة لاستبعادها. السهم للأسفل يفتح الاقتراحات.</span>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-600"
+                aria-label="مسح البحث"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <SearchHints
+            hints={searchHints}
+            onPick={applySearch}
+            inputRef={searchInputRef}
+            onClearRecent={!searchQuery.trim() ? () => { clearRecentSearches(currentUser.id, 'news'); setRecentSearches([]); searchInputRef.current?.focus(); } : undefined}
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => { setSearchQuery(''); document.getElementById('news-list-search-input')?.focus(); }}
-              className="absolute left-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-600"
-              aria-label="مسح البحث"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
 
         {/* Dropdowns & Reset */}
@@ -497,14 +547,15 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
           )}
 
           <div role="status" aria-live="polite" className="text-xs tabular-nums text-slate-600 px-2 py-1">
-            {filteredNews.length} نتيجة
+            {countLabel(filteredNews.length, RESULT_FORMS)}
           </div>
+          {correction && filteredNews.length > 0 && <DidYouMean suggestion={correction} onPick={applySearch} className="px-2" />}
           <ExportMenu
             items={[
               {
                 id: 'list',
                 label: 'قائمة الأخبار المعروضة',
-                hint: `${filteredNews.length} خبر حسب البحث والفلاتر الحالية`,
+                hint: `${countLabel(filteredNews.length, AR.news)} حسب البحث والفلاتر الحالية`,
                 build: () => newsListDoc(filteredNews, activeTab === 'ALL' ? 'كل الأخبار' : activeTab === 'BREAKING' ? 'العاجل' : activeTab === 'TRASH' ? 'سلة المحذوفات' : NEWS_STATUS_LABELS[activeTab as NewsStatus] || '', docContext()),
               },
             ]}
@@ -526,7 +577,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
-            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${selectedIds.length} خبر`}</span>
+            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${countLabel(selectedIds.length, AR.news)}`}</span>
             <button type="button" disabled={bulkSubmitting} onClick={() => setSelectedIds([])} aria-label="إلغاء تحديد الأخبار"
               title="إلغاء التحديد" className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-50"><X className="w-4 h-4" /></button>
           </div>
@@ -584,6 +635,43 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
       {/* News Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+        {reviewMode ? (
+          <section aria-label="طابور مراجعة الأخبار" className="p-3 sm:p-4 space-y-1">
+            <h2 className="text-sm font-bold text-slate-800">طابور المراجعة: {countLabel(reviewQueue.length, AR.news)}</h2>
+            <p className="text-xs text-slate-600">الأعلى أولوية أولاً، ثم الأقدم انتظاراً. افتح الخبر للمراجعة، وينتقل الاعتماد إلى الخبر التالي.</p>
+            {reviewQueue.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-600">
+                {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» في طابور المراجعة.` : 'لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.'}
+                <DidYouMean suggestion={correction} onPick={applySearch} className="mt-2" />
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map((item) => {
+                  const submitted = submittedForReview(item);
+                  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(submitted)) / 60000)) || 0;
+                  const pInfo = priorityBadgeInfo[item.priority] || { label: item.priority, variant: 'default' as const };
+                  const lock = lockByNewsId.get(item.id);
+                  return (
+                    <li key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                      <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map((n) => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-[12rem] break-words">
+                        <Highlight text={item.title} query={searchQuery} />
+                      </button>
+                      <Badge variant={pInfo.variant} size="sm">{pInfo.label}</Badge>
+                      {item.authorName && <span className="text-xs text-slate-600">{item.authorName}</span>}
+                      {lock && <span className="text-2xs font-bold text-amber-700">يحرره الآن: {lock.userName}</span>}
+                      <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>
+                        بانتظار المراجعة منذ {minutes < 60 ? countLabel(minutes, { ...AR.minute, zero: 'أقل من دقيقة' }) : countLabel(Math.floor(minutes / 60), AR.hour)}
+                      </span>
+                      <button type="button" onClick={() => setPreviewNews(item)} className="min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg" title="معاينة وسجل التدقيق" aria-label={`معاينة: ${item.title}`}>
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead>
@@ -605,19 +693,20 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   </button>
                 </th>
                 <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
-                {showColumn('category') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
-                {showColumn('priority') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                {showColumn('author') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
+                {showColumn('category') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
+                {showColumn('priority') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                {showColumn('author') && <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
                 <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
                 {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36">إجراءات تحريرية</th>
+                <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36 sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات تحريرية</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredNews.length === 0 ? (
                 <tr>
                   <td colSpan={4 + listPreferences.columns.length} className="py-12 text-center text-slate-500">
-                    لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
+                    {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» ضمن الفلاتر الحالية.` : 'لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.'}
+                    <DidYouMean suggestion={correction} onPick={applySearch} className="mt-2" />
                     {anyFilter && (
                       <button type="button" onClick={() => { resetFilters(); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
                         مسح البحث والفلاتر
@@ -675,13 +764,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               onClick={() => setPreviewNews(item)}
                               className="font-bold text-slate-800 hover:text-blue-600 block leading-snug text-right break-words"
                             >
-                              {item.title}
+                              <Highlight text={item.title} query={searchQuery} />
                             </button>
                             <span className="text-2xs text-slate-500 block line-clamp-1 mt-0.5">
-                              {item.summary}
+                              <Highlight text={item.summary} query={searchQuery} />
                             </span>
-                            {/* Below 1024px the category, priority, author and time columns fold in here. */}
-                            <span className="lg:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-2xs text-slate-500">
+                            {/* Below 1280px (tablets, laptops with the sidebar) the category, priority, author and time columns fold in here. */}
+                            <span className="xl:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-2xs text-slate-500">
                               <span className="sm:hidden">
                                 <Badge variant={sInfo.variant} size="sm">
                                   {sInfo.label}
@@ -715,7 +804,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Category */}
-                      {showColumn('category') && <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('category') && <td className="py-3.5 px-3 hidden xl:table-cell">
                         {(() => {
                           const catObj = (categories || []).find(
                             (c) => c.nameAr === item.categoryName || c.id === item.categoryId
@@ -741,14 +830,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>}
 
                       {/* Priority */}
-                      {showColumn('priority') && <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('priority') && <td className="py-3.5 px-3 hidden xl:table-cell">
                         <Badge variant={pInfo.variant} size="sm">
                           {pInfo.label}
                         </Badge>
                       </td>}
 
                       {/* Source / Author */}
-                      {showColumn('author') && <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('author') && <td className="py-3.5 px-3 hidden xl:table-cell">
                         <div className="text-2xs">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
                           <span className="text-slate-500 block">{item.authorName}</span>
@@ -767,8 +856,8 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                         {item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>}
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-2 sm:px-4 text-center">
+                      {/* Actions stay in view (sticky) while a narrow table scrolls. */}
+                      <td className="py-3.5 px-2 sm:px-4 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
                         <div className="flex flex-wrap items-center justify-center gap-1">
                           {/* Quick Preview */}
                           <button
@@ -884,6 +973,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
             </tbody>
           </table>
         </div>
+        )}
         {pageCount > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs">
             <span className="text-slate-500">
@@ -982,9 +1072,9 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2 font-bold text-slate-800">
                         <span>{log.changedBy.name}</span>
-                        <span className="text-2xs text-blue-600">({log.changedBy.role})</span>
+                        <span className="text-2xs text-blue-600">({RbacService.getRoleBadge(log.changedBy.role).labelAr || log.changedBy.role})</span>
                         <span className="text-slate-500 text-2xs">
-                          نقل من [{log.fromStatus}] إلى [{log.toStatus}]
+                          {log.fromStatus ? `من «${NEWS_STATUS_LABELS[log.fromStatus as NewsStatus] || log.fromStatus}» إلى «${NEWS_STATUS_LABELS[log.toStatus as NewsStatus] || log.toStatus}»` : `إلى «${NEWS_STATUS_LABELS[log.toStatus as NewsStatus] || log.toStatus}»`}
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">{log.comment}</p>
