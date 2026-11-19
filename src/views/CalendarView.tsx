@@ -3,23 +3,7 @@ import { matchesQuery } from '../shared/search';
 import { findStudioConflicts } from '../shared/schedule';
 import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
-import {
-  Calendar as CalendarIcon,
-  ChevronRight,
-  ChevronLeft,
-  Clock,
-  Tv,
-  Filter,
-  Video,
-  AlertTriangle,
-  Radio,
-  CheckCircle2,
-  CalendarDays,
-  Grid3X3,
-  Layers,
-  Search,
-  X,
-} from 'lucide-react';
+import { ChevronRight, ChevronLeft, Tv, AlertTriangle, CalendarDays, Grid3X3, Search, X } from 'lucide-react';
 import { Episode, Program } from '../types';
 import { Badge } from '../components/common/Badge';
 
@@ -274,7 +258,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   }`}
                 >
                   <div className="text-xs font-black">{day.name}</div>
-                  <div className="text-[11px] tabular-nums mt-0.5 opacity-90">{day.displayDate}</div>
+                  <div className="text-2xs tabular-nums mt-0.5 opacity-90">{day.displayDate}</div>
                 </div>
 
                 {/* Day Episodes list */}
@@ -302,7 +286,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                               : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-md'
                           }`}
                         >
-                          <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                          <div className="flex flex-wrap items-center justify-between gap-1 text-2xs">
                             <span
                               className={`font-mono font-black px-1.5 py-0.5 rounded tabular-nums ${
                                 isLive
@@ -312,16 +296,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             >
                               {ep.startTime || '20:00'}
                             </span>
-                            <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">
+                            <span className="text-2xs text-slate-500 font-bold whitespace-nowrap">
                               {ep.durationMinutes || 45} د
                             </span>
                           </div>
 
-                          <h4 className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-3 group-hover:text-blue-600 transition-colors">
+                          <h4 className="text-2xs font-bold text-slate-800 leading-snug line-clamp-3 group-hover:text-blue-600 transition-colors">
                             {ep.title}
                           </h4>
 
-                          <div className="text-[11px] text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
+                          <div className="text-2xs text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
                             <div className="font-semibold text-blue-700 truncate">{ep.programName}</div>
                             <div className="truncate">{ep.studioName || 'استوديو الأخبار'}</div>
                             {isConflict && <div className="font-bold text-rose-700">تعارض في الاستوديو</div>}
@@ -400,7 +384,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                               </Badge>
                             </div>
                             <div className="text-xs font-bold text-slate-800">{ep.title}</div>
-                            <div className="text-[11px] text-slate-500">{ep.presenterName}</div>
+                            <div className="text-2xs text-slate-500">{ep.presenterName}</div>
                           </div>
                         ))
                       )}

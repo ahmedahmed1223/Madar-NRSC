@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, AlertCircle, Info, X } from 'lucide-react';
 
 export interface ToastMessage {
@@ -29,12 +29,17 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   toast,
   onDismiss,
 }) => {
+  // Reaching for a toast keeps it: keyboard focus always, the pointer when the toast offers an action.
+  // A plain message never lingers under the pointer, since it may sit over the button being clicked.
+  const [held, setHeld] = useState(false);
+  const duration = toast.duration ?? (toast.action ? 8000 : 4500);
   useEffect(() => {
+    if (held) return;
     const timer = setTimeout(() => {
       onDismiss(toast.id);
-    }, toast.duration ?? (toast.action ? 8000 : 4500));
+    }, duration);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.duration, toast.action, onDismiss]);
+  }, [toast.id, duration, onDismiss, held]);
 
   const styles = {
     success: {
@@ -62,6 +67,10 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   return (
     <div
       role={toast.type === 'error' ? 'alert' : 'status'}
+      onMouseEnter={() => toast.action && setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
       className={`pointer-events-auto relative overflow-hidden backdrop-blur-md border rounded-xl p-3.5 shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${styles.bg}`}
     >
       <div className="flex items-start gap-3">
@@ -77,7 +86,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
               toast.action!.run();
               onDismiss(toast.id);
             }}
-            className="shrink-0 px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+            className="shrink-0 min-h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
           >
             {toast.action.label}
           </button>
@@ -85,14 +94,14 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className="text-slate-500 hover:text-white p-1 rounded-md transition-colors"
+          className="shrink-0 min-w-8 min-h-8 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white rounded-md transition-colors"
           aria-label="إغلاق"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10 overflow-hidden">
-        <div className={`h-full ${styles.bar} animate-toast-progress`} />
+        <div className={`h-full ${styles.bar} ${held ? '' : 'animate-toast-progress'}`} style={{ animationDuration: `${duration}ms` }} />
       </div>
     </div>
   );

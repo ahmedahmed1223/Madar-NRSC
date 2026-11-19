@@ -3,23 +3,10 @@ import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../../shared/departments';
-import { RbacService, RoleDefinition } from '../../services/rbacService';
+import { RoleDefinition } from '../../services/rbacService';
 import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
-import {
-  User as UserIcon,
-  Mail,
-  Phone,
-  Shield,
-  Briefcase,
-  Building,
-  MapPin,
-  Clock,
-  KeyRound,
-  Sparkles,
-  Check,
-  AlertCircle,
-} from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check } from 'lucide-react';
 
 interface UserFormModalProps {
   isOpen: boolean;
@@ -182,7 +169,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.fullName && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.fullName}</p>}
           </div>
 
           <div>
@@ -219,7 +206,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 dir="ltr"
               />
             </div>
-            {errors.email && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.email}</p>}
+            {errors.email && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.email}</p>}
           </div>
 
           {!userToEdit && (
@@ -243,8 +230,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   dir="ltr"
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
-              {errors.initialPassword && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
+              <p className="text-2xs text-slate-500 mt-1">سيُطلب من المستخدم تغييرها عند أول تسجيل دخول.</p>
+              {errors.initialPassword && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
             </div>
           )}
 
@@ -307,7 +294,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 }`}
               />
             </div>
-            {errors.jobTitle && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
+            {errors.jobTitle && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.jobTitle}</p>}
           </div>
 
           <div>
@@ -350,7 +337,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 ))}
               </select>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">تُنسب إليها أعماله في بطاقات الإنتاج. تُدار المحطات من الإعدادات.</p>
+            <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في بطاقات الإنتاج. تُدار المحطات من الإعدادات.</p>
           </div>
         </div>
 

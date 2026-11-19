@@ -137,11 +137,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
           <span className="min-w-0 flex-1">
             <span className="flex items-center justify-between gap-2">
               <span className={`text-sm truncate ${count ? 'font-extrabold text-slate-900' : 'font-bold text-slate-800'}`}>{t.name}</span>
-              {t.last?.timestamp && <span className="text-[11px] text-slate-500 shrink-0 tabular-nums">{stationDay(t.last.timestamp) === stationDay(Date.now()) ? timeOnly(t.last.timestamp) : formatDay(stationDay(t.last.timestamp))}</span>}
+              {t.last?.timestamp && <span className="text-2xs text-slate-500 shrink-0 tabular-nums">{stationDay(t.last.timestamp) === stationDay(Date.now()) ? timeOnly(t.last.timestamp) : formatDay(stationDay(t.last.timestamp))}</span>}
             </span>
             <span className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-600 truncate">{t.last ? `${t.last.userId === me ? 'أنت: ' : t.kind === 'dm' ? '' : `${t.last.userName || ''}: `}${preview(t.last)}` : t.hint}</span>
-              {count > 0 && <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center tabular-nums">{count > 99 ? '99+' : count}</span>}
+              {count > 0 && <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-blue-600 text-white text-2xs font-bold flex items-center justify-center tabular-nums">{count > 99 ? '99+' : count}</span>}
             </span>
           </span>
         </button>
@@ -154,15 +154,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
     if (!shown.length && !empty) return null;
     return (
       <div>
-        <h2 className="px-3 pt-3 pb-1 text-[11px] font-bold text-slate-500">{title}</h2>
+        <h2 className="px-3 pt-3 pb-1 text-2xs font-bold text-slate-500">{title}</h2>
         {shown.length ? <ul className="space-y-0.5">{shown.map(threadButton)}</ul> : <p className="px-3 py-2 text-xs text-slate-500">{empty}</p>}
       </div>
     );
   };
 
   return (
-    <div className="space-y-3">
-      <div className={`${channel ? 'hidden md:flex' : 'flex'} flex-col md:flex-row md:items-end justify-between gap-3`}>
+    <div className="@container space-y-3">
+      <div className={`${channel ? 'hidden @4xl:flex' : 'flex'} flex-col justify-between gap-3`}>
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <MessagesSquare className="w-5 h-5 text-blue-600" />
@@ -172,8 +172,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
         </div>
       </div>
 
-      <div className="grid md:grid-cols-[20rem_minmax(0,1fr)] bg-white border border-slate-200 rounded-2xl overflow-hidden md:h-[calc(100dvh-13rem)] md:min-h-[30rem]">
-        <nav aria-label="المحادثات" className={`${channel ? 'hidden md:flex' : 'flex'} flex-col min-h-0 md:border-l border-slate-200`}>
+      <div className="grid grid-cols-[minmax(0,1fr)] @4xl:grid-cols-[20rem_minmax(0,1fr)] bg-white border border-slate-200 rounded-2xl overflow-hidden @4xl:h-[calc(100dvh-13rem)] @4xl:min-h-[30rem]">
+        <nav aria-label="المحادثات" className={`${channel ? 'hidden @4xl:flex' : 'flex'} flex-col min-w-0 min-h-0 @4xl:border-l border-slate-200`}>
           <div className="p-3 space-y-2 border-b border-slate-200">
             <div className="flex gap-2">
               <button type="button" onClick={() => setPicking(true)} className="flex-1 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
@@ -216,7 +216,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
             onGroupSettings={activeGroup ? () => setGroupForm(activeGroup) : undefined}
           />
         ) : (
-          <div className="hidden md:flex flex-col items-center justify-center gap-2 text-center p-8">
+          <div className="hidden @4xl:flex flex-col items-center justify-center gap-2 text-center p-8">
             <MessagesSquare className="w-10 h-10 text-slate-300" />
             <p className="text-sm font-bold text-slate-700">{channel ? 'هذه المحادثة غير متاحة لك.' : 'اختر محادثة أو ابدأ رسالة جديدة.'}</p>
             <p className="text-xs text-slate-500 max-w-sm">الرسائل المباشرة يقرؤها طرفاها فقط، ورسائل المجموعة أعضاؤها. القنوات مفتوحة لكل الزملاء.</p>
@@ -359,9 +359,9 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
 
   let lastDay = '';
   return (
-    <section aria-label={`محادثة ${thread.name}`} className="flex flex-col min-h-0 h-[calc(100dvh-9rem)] md:h-auto">
+    <section aria-label={`محادثة ${thread.name}`} className="flex flex-col min-w-0 min-h-0 h-[calc(100dvh-9rem)] @4xl:h-auto">
       <header className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-200">
-        <button type="button" onClick={onBack} aria-label="العودة إلى المحادثات" className={`${ICON_BTN} md:hidden`}>
+        <button type="button" onClick={onBack} aria-label="العودة إلى المحادثات" className={`${ICON_BTN} @4xl:hidden`}>
           <ArrowRight className="w-4 h-4" />
         </button>
         <div className="min-w-0 flex-1">
@@ -394,18 +394,18 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
           return (
             <React.Fragment key={m.id}>
               {newDay && day && (
-                <p className="text-center text-[11px] font-bold text-slate-500 py-1">{formatDay(day)}</p>
+                <p className="text-center text-2xs font-bold text-slate-500 py-1">{formatDay(day)}</p>
               )}
               <div className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
                 <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 space-y-1.5 border ${mine ? 'bg-blue-600 border-blue-600 text-white' : m.isUrgent ? 'bg-red-50 border-red-300 text-slate-900' : 'bg-white border-slate-200 text-slate-900'}`}>
-                  {!mine && thread.kind !== 'dm' && <p className="text-[11px] font-bold text-slate-600">{m.userName}</p>}
-                  {m.isUrgent && <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${mine ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>عاجل</span>}
+                  {!mine && thread.kind !== 'dm' && <p className="text-2xs font-bold text-slate-600">{m.userName}</p>}
+                  {m.isUrgent && <span className={`inline-block px-1.5 py-0.5 rounded text-3xs font-bold ${mine ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>عاجل</span>}
                   {m.text && <p className="text-sm whitespace-pre-wrap break-words leading-6">{m.text}</p>}
                   {m.ref && (
                     <button type="button" onClick={() => onOpenLink(chatRefLink(m.ref!))} className={`w-full text-right flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-bold ${mine ? 'bg-blue-700 border-blue-500 text-white' : 'bg-slate-50 border-slate-200 text-blue-700'}`}>
                       <Link2 className="w-3.5 h-3.5 shrink-0" />
                       <span className="min-w-0">
-                        <span className={`block text-[11px] font-normal ${mine ? 'text-blue-100' : 'text-slate-600'}`}>{CHAT_REF_KINDS.find((k) => k.id === m.ref!.kind)?.name}</span>
+                        <span className={`block text-2xs font-normal ${mine ? 'text-white' : 'text-slate-600'}`}>{CHAT_REF_KINDS.find((k) => k.id === m.ref!.kind)?.name}</span>
                         <span className="block truncate">{m.ref.title}</span>
                       </span>
                     </button>
@@ -420,13 +420,13 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
                         <FileText className="w-4 h-4 shrink-0" />
                         <span className="min-w-0 flex-1">
                           <span className="block font-bold truncate">{a.name}</span>
-                          <span className={mine ? 'text-blue-100' : 'text-slate-600'}>{sizeLabel(a.size)}</span>
+                          <span className={mine ? 'text-white' : 'text-slate-600'}>{sizeLabel(a.size)}</span>
                         </span>
                         <Download className="w-4 h-4 shrink-0" />
                       </a>
                     )
                   )}
-                  <p className={`text-[11px] tabular-nums ${mine ? 'text-blue-100' : 'text-slate-500'}`}>{timeOnly(m.timestamp)}</p>
+                  <p className={`text-2xs tabular-nums ${mine ? 'text-white' : 'text-slate-500'}`}>{timeOnly(m.timestamp)}</p>
                 </div>
               </div>
             </React.Fragment>
@@ -500,11 +500,11 @@ const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, use
           </button>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4">
-          <label className="inline-flex items-center gap-2 min-h-9 text-xs text-slate-700">
-            <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
+          <label className="inline-flex items-center gap-2 min-h-11 text-xs text-slate-700">
+            <input type="checkbox" className="w-4 h-4" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
             رسالة عاجلة (تصل حتى في ساعات الهدوء)
           </label>
-          <span className="hidden sm:inline text-[11px] text-slate-500">Enter للإرسال، Shift+Enter لسطر جديد</span>
+          <span className="hidden sm:inline text-2xs text-slate-500">Enter للإرسال، Shift+Enter لسطر جديد</span>
         </div>
       </form>
 
@@ -566,7 +566,7 @@ const RefPicker: React.FC<{ isOpen: boolean; onClose: () => void; onPick: (ref: 
           {results.map((r) => (
             <li key={`${r.kind}:${r.id}`}>
               <button type="button" onClick={() => onPick(r)} className="w-full text-right flex items-center gap-3 px-3 py-2 rounded-xl border border-transparent hover:bg-slate-50 hover:border-slate-200">
-                <span className="shrink-0 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold">{CHAT_REF_KINDS.find((k) => k.id === r.kind)?.name}</span>
+                <span className="shrink-0 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-2xs font-bold">{CHAT_REF_KINDS.find((k) => k.id === r.kind)?.name}</span>
                 <span className="text-sm font-bold text-slate-900 truncate">{r.title}</span>
               </button>
             </li>

@@ -12,7 +12,7 @@ import { SINGLETON_ID } from '../shared/collections';
 import { settingsError } from '../shared/settings';
 import { sanitizeDateSettings } from '../shared/dateFormat';
 import { DEFAULT_BREAKING_HOURS } from '../shared/newsWorkflow';
-import { themePreference, setThemePreference, reducedMotion, setReducedMotion } from '../services/theme';
+import { themePreference, setThemePreference, reducedMotion, setReducedMotion, setTextScale, TEXT_SCALES, textScale, type TextScale } from '../services/theme';
 import { apiFetch } from '../services/http';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { DraftStatus } from '../components/common/DraftStatus';
@@ -40,17 +40,13 @@ import {
   AlertTriangle,
   X,
   Search,
-  Sparkles,
   Palette,
-  Hash,
   FileText,
   Tag,
   Network,
   Activity,
 } from 'lucide-react';
 import { Category, NewsSource, User, NewsItem } from '../types';
-import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SourceFeedEditor } from '../components/settings/SourceFeedEditor';
 import { apiService } from '../services/api';
@@ -75,7 +71,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[
   { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
   { id: 'production', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات', icon: Users },
   { id: 'airDisplay', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
-  { id: 'preferences', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وتقليل الحركة', icon: Palette },
+  { id: 'preferences', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وحجم الخط وتقليل الحركة', icon: Palette },
   { id: 'monitor', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
   { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
   { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
@@ -189,6 +185,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [breakingHours, setBreakingHours] = useState(initialSettings.breakingDurationHours ?? DEFAULT_BREAKING_HOURS);
   const [appearance, setAppearance] = useState(themePreference());
   const [lessMotion, setLessMotion] = useState(reducedMotion());
+  const [textSize, setTextSize] = useState<TextScale>(textScale());
   const [runtime, setRuntime] = useState<Record<string, any> | null>(null);
   const [runtimeError, setRuntimeError] = useState('');
   useEffect(() => {
@@ -480,6 +477,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'preferences' && <section className="space-y-4 border-b border-slate-200 py-4">
         <h2 className="text-lg font-bold">تفضيلات هذا الجهاز</h2>
         <div><label htmlFor="settings-appearance" className="block">المظهر</label><select id="settings-appearance" value={appearance} onChange={e => { const value = e.target.value as typeof appearance; setAppearance(value); setThemePreference(value); }} className="block min-h-11 border border-slate-300 rounded-lg px-3 mt-1"><option value="system">حسب الجهاز</option><option value="light">نهاري</option><option value="dark">ليلي</option></select></div>
+        <div><label htmlFor="settings-text-scale" className="block">حجم الخط</label><select id="settings-text-scale" value={textSize} onChange={e => { const value = e.target.value as TextScale; setTextSize(value); setTextScale(value); }} className="block min-h-11 border border-slate-300 rounded-lg px-3 mt-1">{TEXT_SCALES.map(option => <option key={option.id} value={option.id}>{option.name}: {option.hint}</option>)}</select><p className="text-sm text-slate-600 mt-1">يكبّر النص والأزرار والمسافات معاً، ويُحفظ على هذا الجهاز فقط.</p></div>
         <label className="flex items-center gap-2 min-h-11"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
       </section>}
       {section === 'system' && <section className="space-y-4 border-b border-slate-200 py-4">
@@ -582,15 +580,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
-              <p className="text-[11px] text-slate-500">حساب نشط</p>
+              <p className="text-2xs text-slate-500">حساب نشط</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-lg font-black text-slate-800">{users.filter((u) => u.isActive === false).length}</p>
-              <p className="text-[11px] text-slate-500">موقوف</p>
+              <p className="text-2xs text-slate-500">موقوف</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-lg font-black text-slate-800">{users.filter((u) => u.twoFactorEnabled).length}</p>
-              <p className="text-[11px] text-slate-500">بالتحقق بخطوتين</p>
+              <p className="text-2xs text-slate-500">بالتحقق بخطوتين</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -642,7 +640,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Plus className="w-4 h-4 text-blue-600" />
                 <span>إضافة قسم صحفي جديد</span>
               </h3>
-              <span className="text-[11px] text-slate-500">تخصيص لوني فوري</span>
+              <span className="text-2xs text-slate-500">تخصيص لوني فوري</span>
             </div>
 
             <form onSubmit={handleAddCategory} className="space-y-3.5 text-xs">
@@ -717,7 +715,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <Palette className="w-3.5 h-3.5 text-blue-600" />
                     <span>لون التصنيف المخصص</span>
                   </span>
-                  <span className="font-mono text-[11px] text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  <span className="font-mono text-2xs text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
                     {newCatColor}
                   </span>
                 </label>
@@ -746,7 +744,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-24 px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white focus:ring-2 focus:ring-blue-500 uppercase"
                     title="رمز اللون بنظام Hex مثل #2563eb"
                   />
-                  <div className="text-[11px] text-slate-500 leading-tight">
+                  <div className="text-2xs text-slate-500 leading-tight">
                     انقر على المربع اللوني، أو اكتب كود Hex، أو اختر نموذجاً من الأسفل.
                   </div>
                 </div>
@@ -785,7 +783,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {/* Live Preview Card */}
               <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="text-2xs font-bold text-slate-500 uppercase tracking-wider">
                   معاينة حية للشارة والبطاقة
                 </div>
                 <div className="flex items-center gap-3">
@@ -804,7 +802,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <span>{newCatNameAr || 'اسم القسم الصحفي'}</span>
                   </span>
 
-                  <span className="text-[11px] text-slate-500 font-mono">
+                  <span className="text-2xs text-slate-500 font-mono">
                     {newCatNameEn ? `(${newCatNameEn})` : ''}
                   </span>
                 </div>
@@ -821,7 +819,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Presets Quick Insert */}
             <div className="pt-2 border-t border-slate-200">
-              <span className="text-[11px] font-bold text-slate-500 block mb-1.5">
+              <span className="text-2xs font-bold text-slate-500 block mb-1.5">
                 أقسام جاهزة ومقترحة لغرفة الأخبار:
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -836,7 +834,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       setNewCatColor(preset.color);
                       setNewCatDesc(preset.desc);
                     }}
-                    className="text-[11px] bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-1 rounded-lg transition-colors border border-slate-200 flex items-center gap-1.5"
+                    className="text-2xs bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-1 rounded-lg transition-colors border border-slate-200 flex items-center gap-1.5"
                   >
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: preset.color }} />
                     <span>+{preset.nameAr}</span>
@@ -910,12 +908,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {cat.nameAr}
                             </strong>
                             {cat.nameEn && (
-                              <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
+                              <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                                 {cat.nameEn}
                               </span>
                             )}
                             <span
-                              className="text-[11px] font-mono px-1.5 py-0.5 rounded font-bold border"
+                              className="text-2xs font-mono px-1.5 py-0.5 rounded font-bold border"
                               style={{
                                 backgroundColor: `${color}15`,
                                 color: color,
@@ -927,9 +925,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
 
                           {cat.description ? (
-                            <p className="text-[11px] text-slate-500 line-clamp-1">{cat.description}</p>
+                            <p className="text-2xs text-slate-500 line-clamp-1">{cat.description}</p>
                           ) : (
-                            <p className="text-[11px] text-slate-500 font-mono">slug: {cat.slug || cat.id}</p>
+                            <p className="text-2xs text-slate-500 font-mono">slug: {cat.slug || cat.id}</p>
                           )}
                         </div>
                       </div>
@@ -937,7 +935,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                         {/* News count badge */}
                         <span
-                          className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200"
+                          className="text-2xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200"
                           title="عدد الأخبار المرتبطة بهذا التصنيف"
                         >
                           {totalNews} {totalNews === 1 ? 'خبر' : 'أخبار'}
@@ -1050,7 +1048,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     setNewSourceName(srcPreset);
                     setNewSourceType(srcPreset.includes('وكالة') ? 'وكالة أنباء عالمية' : 'مراسل خاص');
                   }}
-                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
+                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
                 >
                   +{srcPreset}
                 </button>
@@ -1064,9 +1062,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <strong className="text-slate-800 block">{src.name}</strong>
-                  <span className="text-[11px] text-slate-500">{src.type}</span>
+                  <span className="text-2xs text-slate-500">{src.type}</span>
                   {src.feedUrl && (
-                    <span className={`block text-[11px] font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
+                    <span className={`block text-2xs font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
                       {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
                     </span>
                   )}
@@ -1081,7 +1079,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   >
                     <Rss className="w-4 h-4" />
                   </button>
-                  <span className="text-[11px] font-mono text-emerald-700 font-bold">
+                  <span className="text-2xs font-mono text-emerald-700 font-bold">
                     موثوقية {src.reliabilityScore}/5
                   </span>
                   <button
@@ -1152,7 +1150,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <strong className="text-slate-800 block font-bold text-xs">
                 تصدير نسخة كاملة (ملف JSON)
               </strong>
-              <p className="text-slate-500 text-[11px]">
+              <p className="text-slate-500 text-2xs">
                 تنزيل ملف كامل لبيانات غرفة الأخبار، التصنيفات، والتغطيات.
               </p>
               <button
@@ -1169,7 +1167,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <strong className="text-slate-800 block font-bold text-xs">
                 استعادة من ملف نسخة احتياطية
               </strong>
-              <p className="text-slate-500 text-[11px]">
+              <p className="text-slate-500 text-2xs">
                 استيراد ملف نسخة احتياطية واستئناف العمل فوراً.
               </p>
               <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer">
@@ -1246,7 +1244,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div>
               <label htmlFor="edit-cat-color-picker" className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                 <span>تخصيص اللون</span>
-                <span className="font-mono text-[11px] text-slate-500">{editColor}</span>
+                <span className="font-mono text-2xs text-slate-500">{editColor}</span>
               </label>
               <div className="flex items-center gap-2 mb-2">
                 <input
@@ -1271,7 +1269,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   className="w-24 px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold bg-white focus:ring-2 focus:ring-blue-500 uppercase"
                   title="رمز اللون بنظام Hex"
                 />
-                <span className="text-[11px] text-slate-500">
+                <span className="text-2xs text-slate-500">
                   انقر لاختيار لون دقيق أو اكتب كود Hex أو اختر من النماذج أدناه:
                 </span>
               </div>
@@ -1307,7 +1305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Live Preview */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-500 block uppercase">
+              <span className="text-2xs font-bold text-slate-500 block uppercase">
                 معاينة الشارة بعد التعديل:
               </span>
               <span

@@ -81,7 +81,7 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await editor.page.getByLabel('مادة عاجلة').check();
   await editor.page.getByRole('button', { name: 'تقرير ميداني' }).click();
   const steps = editor.page.locator('ol > li');
-  await expect(steps).toHaveCount(6);
+  await expect(steps).toHaveCount(7);
   const users = (await (await editor.page.request.get('/api/v1/data')).json()).collections;
   const istanbul = users.settings[0].d.stations.find((s: any) => s.name === 'إسطنبول').id;
   await steps.nth(0).getByLabel('المكلف').selectOption('u:usr-6');
@@ -96,7 +96,7 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await editor.page.getByRole('button', { name: new RegExp(TITLE) }).first().click();
   await expect(editor.page.getByRole('heading', { name: TITLE })).toBeVisible();
   await expect(editor.page).toHaveURL(/\/cards\/crd-/);
-  await expect(editor.page.getByText('أُنجز 0 من 6')).toBeVisible();
+  await expect(editor.page.getByText('أُنجز 0 من 7')).toBeVisible();
   await editor.page.goBack();
   await expect(editor.page).toHaveURL(/\/cards$/);
   await expect(editor.page.getByRole('heading', { name: 'بطاقات الإنتاج' })).toBeVisible();
@@ -116,7 +116,7 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await reporter.page.getByLabel('ملاحظة التسليم: ما اكتمل وما ينقص؟').fill('رُفعت الشهادة مع صور الموقع. ينقص تأكيد اسم الشاهد.');
   await reporter.page.getByLabel('الوقت الفعلي (دقيقة)').fill('95');
   await reporter.page.getByRole('button', { name: 'تأكيد الإنجاز والتسليم' }).click();
-  await expect(reporter.page.getByText('أُنجز 1 من 6')).toBeVisible();
+  await expect(reporter.page.getByText('أُنجز 1 من 7')).toBeVisible();
   // Someone else's step offers the reporter no action.
   const second = reporter.page.locator('ol > li').nth(1);
   await expect(second.getByRole('button')).toHaveCount(0);

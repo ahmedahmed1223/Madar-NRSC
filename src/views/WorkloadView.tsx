@@ -203,13 +203,13 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2 no-print">
             {periodFilter}
-            <span className="text-[11px] text-slate-500">الفترة تخص عمود «أُنجز»؛ الأعباء المفتوحة هي الحالية.</span>
+            <span className="text-2xs text-slate-500">الفترة تخص عمود «أُنجز»؛ الأعباء المفتوحة هي الحالية.</span>
           </div>
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-slate-900">مقارنة المحطات</h2>
-            <p className="text-[11px] text-slate-500">نقاط الحمل = وزن نوع المهمة × درجة تعقيدها (تُضبط الأوزان من الإعدادات). «الحمل للفرد» يقسم النقاط المفتوحة على عدد أفراد المحطة، وبه يُقارن بين المحطات قبل طلب موظفين إضافيين.</p>
+            <p className="text-2xs text-slate-500">نقاط الحمل = وزن نوع المهمة × درجة تعقيدها (تُضبط الأوزان من الإعدادات). «الحمل للفرد» يقسم النقاط المفتوحة على عدد أفراد المحطة، وبه يُقارن بين المحطات قبل طلب موظفين إضافيين.</p>
             <div role="region" tabIndex={0} aria-label={`جدول مقارنة المحطات (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[44rem] text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['المحطة', 'الأفراد', 'مهام مفتوحة', 'نقاط الحمل', 'الحمل للفرد', 'متأخرة', 'متعطلة', 'لم تُستلم', 'أُنجز في الفترة', 'التقييم'].map((h) => (
@@ -220,7 +220,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                 <tbody>
                   {stationRows.map((row) => (
                     <tr key={row.id || 'none'} className="border-b border-slate-100 last:border-0">
-                      <th scope="row" className="p-3 text-right font-bold text-slate-900">{row.name}</th>
+                      <th scope="row" className="p-3 text-right font-bold text-slate-900 whitespace-nowrap">{row.name}</th>
                       <td className={TD}>{row.people}</td>
                       <td className={TD}>{row.open}</td>
                       <td className={TD}>{row.openPoints}</td>
@@ -243,7 +243,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
               <span className="no-print">{stationFilter('كل المحطات')}</span>
             </div>
             <div role="region" tabIndex={0} aria-label={`جدول أعباء الأفراد (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[44rem] text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['الاسم', 'المحطة', 'مفتوحة', 'نقاط الحمل', 'وقت مقدر', 'متأخرة', 'متعطلة', 'أُنجز', 'نقاط منجزة', 'وقت فعلي'].map((h) => (
@@ -258,8 +258,8 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                   {peopleRows.map((row) => (
                     <tr key={row.id} className="border-b border-slate-100 last:border-0">
                       <th scope="row" className="p-3 text-right">
-                        <button type="button" onClick={() => openFile(row.id)} className="font-bold text-blue-700 hover:underline text-right">{row.name}</button>
-                        <span className="block text-[11px] font-normal text-slate-500">{row.jobTitle}</span>
+                        <button type="button" onClick={() => openFile(row.id)} className="font-bold text-blue-700 hover:underline text-right whitespace-nowrap">{row.name}</button>
+                        <span className="block text-2xs font-normal text-slate-500 max-w-48 truncate">{row.jobTitle}</span>
                       </th>
                       <td className="p-3 whitespace-nowrap">{stationName(stations, row.stationId)}</td>
                       <td className={TD}>{row.open}</td>
@@ -284,25 +284,25 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <div className="flex flex-wrap items-center gap-2 no-print">{periodFilter}</div>
           <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <div className="bg-white border border-slate-200 rounded-2xl p-3">
-              <dt className="text-[11px] text-slate-600">مواد أُنجزت ({periodLabel})</dt>
+              <dt className="text-2xs text-slate-600">مواد أُنجزت ({periodLabel})</dt>
               <dd className="text-2xl font-bold tabular-nums text-slate-900">{output.total}</dd>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-3">
-              <dt className="text-[11px] text-slate-600">منها مشتركة بين محطات</dt>
+              <dt className="text-2xs text-slate-600">منها مشتركة بين محطات</dt>
               <dd className="text-2xl font-bold tabular-nums text-slate-900">{output.shared}</dd>
             </div>
             {output.byKind.slice(0, 2).map((k) => (
               <div key={k.kind} className="bg-white border border-slate-200 rounded-2xl p-3">
-                <dt className="text-[11px] text-slate-600">{cardKindName(k.kind)}</dt>
+                <dt className="text-2xs text-slate-600">{cardKindName(k.kind)}</dt>
                 <dd className="text-2xl font-bold tabular-nums text-slate-900">{k.count}</dd>
               </div>
             ))}
           </dl>
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-slate-900">إسهام كل محطة</h2>
-            <p className="text-[11px] text-slate-500">المادة المشتركة تُحتسب مرة واحدة في الإجمالي أعلاه، وتظهر هنا عند كل محطة أنجزت فيها مهمة، بنقاط ما أنجزته.</p>
+            <p className="text-2xs text-slate-500">المادة المشتركة تُحتسب مرة واحدة في الإجمالي أعلاه، وتظهر هنا عند كل محطة أنجزت فيها مهمة، بنقاط ما أنجزته.</p>
             <div role="region" tabIndex={0} aria-label={`جدول إسهام كل محطة (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[44rem] text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['المحطة', 'مواد شاركت فيها', 'منها مشتركة', 'مهام أنجزتها', 'النقاط', 'حصتها من العمل'].map((h) => (
@@ -316,7 +316,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                   )}
                   {output.byStation.map((row) => (
                     <tr key={row.stationId || 'none'} className="border-b border-slate-100 last:border-0">
-                      <th scope="row" className="p-3 text-right font-bold text-slate-900">{stationName(stations, row.stationId)}</th>
+                      <th scope="row" className="p-3 text-right font-bold text-slate-900 whitespace-nowrap">{stationName(stations, row.stationId)}</th>
                       <td className={TD}>{row.cards}</td>
                       <td className={TD}>{row.shared}</td>
                       <td className={TD}>{row.steps}</td>
@@ -379,7 +379,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
               { label: 'على مكتبه الآن', value: file.totals.open },
             ].map((stat) => (
               <div key={stat.label} className="bg-white border border-slate-200 rounded-2xl p-3">
-                <dt className="text-[11px] text-slate-600">{stat.label}</dt>
+                <dt className="text-2xs text-slate-600">{stat.label}</dt>
                 <dd className="text-xl font-bold tabular-nums text-slate-900">{stat.value}</dd>
               </div>
             ))}
@@ -410,7 +410,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <section className="space-y-2">
             <h3 className="text-sm font-bold text-slate-900">ما أنجزه ({file.done.length})</h3>
             <div role="region" tabIndex={0} aria-label={`جدول ما أنجزه (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[44rem] text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['أُنجز', 'النوع', 'المادة', 'النقاط', 'الوقت الفعلي'].map((h) => (
@@ -431,7 +431,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
           <section className="space-y-2">
             <h3 className="text-sm font-bold text-slate-900">على مكتبه الآن ({file.open.length})</h3>
             <div role="region" tabIndex={0} aria-label={`جدول ما على مكتبه الآن (يمكن تمريره أفقياً)`} className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[44rem] text-xs">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['التسليم', 'النوع', 'المادة', 'النقاط', 'الوقت المقدر'].map((h) => (
@@ -496,7 +496,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                   <ul className="space-y-1.5 text-xs">
                     {rows.map((row, index) => (
                       <li key={`${row.cardId}:${index}`} className="leading-6">
-                        {row.urgent && <span className="ml-1 px-1.5 py-0.5 rounded bg-red-600 text-white font-bold text-[10px]">عاجل</span>}
+                        {row.urgent && <span className="ml-1 px-1.5 py-0.5 rounded bg-red-600 text-white font-bold text-3xs">عاجل</span>}
                         <button type="button" onClick={() => onOpen({ nav: 'cards', id: row.cardId })} className="font-bold text-blue-700 hover:underline">{row.title}</button>
                         <span className="hidden print-only font-bold">{row.title}</span>
                         <span className="text-slate-700"> — {row.detail}</span>

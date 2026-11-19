@@ -51,9 +51,9 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testI
     <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
       <Icon className="w-4 h-4 text-slate-500" />
       {title}
-      <span className="text-[11px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">0</span>
+      <span className="text-2xs font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">0</span>
     </h3>
-    {empty && <p className="text-[11px] text-slate-500">{empty}</p>}
+    {empty && <p className="text-2xs text-slate-500">{empty}</p>}
   </section>
 ) : (
   <section data-testid={testId} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col min-w-0">
@@ -61,16 +61,16 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testI
       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
         <Icon className="w-4 h-4 text-blue-600" />
         {title}
-        <span className="text-[11px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
+        <span className="text-2xs font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
       </h3>
       {more && (
-        <button type="button" onClick={more} className="inline-flex items-center min-h-6 px-1.5 rounded-md text-[11px] font-bold text-blue-600 hover:bg-blue-50 hover:underline">
+        <button type="button" onClick={more} className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs font-bold text-blue-600 hover:bg-blue-50 hover:underline">
           عرض الكل
         </button>
       )}
     </div>
     {rows.length === 0 ? (
-      <p className="text-[11px] text-slate-500 py-3 text-center">{empty}</p>
+      <p className="text-2xs text-slate-500 py-3 text-center">{empty}</p>
     ) : (
       <ul className="space-y-1.5">
         {rows.slice(0, 5).map((r) => (
@@ -81,7 +81,7 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testI
               className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
             >
               <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
-              {r.meta && <span className={`text-[11px] font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
+              {r.meta && <span className={`text-2xs font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
             </button>
           </li>
         ))}
@@ -267,10 +267,10 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-blue-600" />
           عملي
-          <span className="text-[11px] font-semibold text-slate-500">— قسم {departmentName(myDept)}</span>
+          <span className="text-2xs font-semibold text-slate-500">— قسم {departmentName(myDept)}</span>
         </h2>
         <span
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+          className={`text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
         >
           <UserCheck className="w-3.5 h-3.5" />
           {myDuty ? `مناوب الآن — ${shiftName(myDuty.shift)}${myDuty.isLead ? ' (رئيس المناوبة)' : ''}` : 'لست ضمن المناوبة الحالية'}

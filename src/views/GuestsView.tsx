@@ -7,25 +7,9 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
-import {
-  Plus,
-  Users,
-  Search,
-  Phone,
-  Mail,
-  Building,
-  Edit2,
-  Calendar,
-  MessageSquare,
-  Award,
-  Trash2,
-  X,
-  Check,
-  Sparkles,
-} from 'lucide-react';
+import { Plus, Search, Phone, Mail, Edit2, Trash2 } from 'lucide-react';
 import { Guest, User } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 
 interface GuestsViewProps {
   guests: Guest[];
@@ -252,7 +236,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                     {guest.specialty}
                   </Badge>
                 )}
-                <p className="text-[11px] text-slate-500">
+                <p className="text-2xs text-slate-500">
                   {guest.lastAppearanceDate ? `آخر ظهور: ${arabicDate(guest.lastAppearanceDate)}` : 'لم يظهر بعد'}
                 </p>
               </div>
@@ -272,7 +256,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   </div>
                 )}
                 {guest.notes && (
-                  <p className="text-[11px] text-slate-500 italic mt-1 line-clamp-2">
+                  <p className="text-2xs text-slate-500 italic mt-1 line-clamp-2">
                     {guest.notes}
                   </p>
                 )}
@@ -282,7 +266,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             <div className="pt-4 border-t border-slate-100 mt-4 space-y-1.5 text-xs text-slate-500">
               <span>عدد مرات الظهور: <strong className="text-slate-800 font-mono">{guest.totalAppearances}</strong></span>
               {(guest.appearanceHistory || []).slice(0, 3).map((a) => (
-                <div key={a.episodeId} className="flex items-center justify-between gap-2 text-[11px]">
+                <div key={a.episodeId} className="flex items-center justify-between gap-2 text-2xs">
                   <span className="truncate text-slate-700">{a.programName} — {a.episodeTitle}</span>
                   <span className="tabular-nums shrink-0">{arabicDate(a.date)}</span>
                 </div>
@@ -309,7 +293,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFullName('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -353,13 +337,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           {/* Quick Organization Presets */}
           <div className="flex flex-wrap gap-1">
-            <span className="text-[11px] text-slate-500 font-bold">مقترحات جهات:</span>
+            <span className="text-2xs text-slate-500 font-bold">مقترحات جهات:</span>
             {ORG_PRESETS.map((org) => (
               <button
                 key={org}
                 type="button"
                 onClick={() => setOrganization(org)}
-                className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
               >
                 {org}
               </button>
@@ -383,7 +367,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   key={sp}
                   type="button"
                   onClick={() => setSpecialty(sp)}
-                  className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
+                  className={`text-2xs px-2 py-0.5 rounded-full transition-all ${
                     specialty === sp
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
@@ -433,7 +417,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setAvatarUrl('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

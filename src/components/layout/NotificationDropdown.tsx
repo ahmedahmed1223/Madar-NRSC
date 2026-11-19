@@ -28,22 +28,23 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute left-4 top-16 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden text-right">
+      <div className="fixed inset-x-2 top-[4.5rem] sm:absolute sm:inset-x-auto sm:left-4 sm:top-16 sm:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden text-right">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-bold text-slate-800">مركز الإشعارات التحريرية</span>
             {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full">
+              <span className="bg-red-500 text-white text-2xs font-bold px-1.5 py-0.5 rounded-full">
                 {unreadCount}
               </span>
             )}
           </div>
           {unreadCount > 0 && (
             <button
+              type="button"
               onClick={onMarkAllRead}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+              className="min-h-9 px-2 -my-1.5 rounded-lg text-xs text-blue-700 hover:bg-blue-50 font-bold flex items-center gap-1"
             >
               <Check className="w-3 h-3" />
               تحديد الكل كمقروء
@@ -52,34 +53,35 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         </div>
 
         {/* List */}
-        <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
+        <div className="max-h-[min(24rem,60dvh)] overflow-y-auto divide-y divide-slate-100">
           {notifications.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-500">
               لا توجد إشعارات جديدة حالياً
             </div>
           ) : (
             notifications.map((notif) => (
-              <div
+              <button
+                type="button"
                 key={notif.id}
                 onClick={() => {
                   if (!notif.isRead) onMarkRead?.(notif.id);
                   if (notif.linkUrl) onNavigate?.(notif.linkUrl);
                   onClose();
                 }}
-                className={`p-3.5 hover:bg-slate-50 transition-colors cursor-pointer ${
+                className={`block w-full text-right p-3.5 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors ${
                   !notif.isRead ? 'bg-blue-50/40' : ''
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className={`text-xs font-bold ${notif.urgent ? 'text-red-700' : 'text-slate-800'}`}>
-                    {notif.urgent && <Zap className="w-3 h-3 inline ms-0.5" />} {notif.title}
-                  </h4>
+                <span className="flex items-start justify-between gap-2">
+                  <span className={`text-xs font-bold ${notif.urgent ? 'text-red-700' : 'text-slate-800'}`}>
+                    {notif.urgent && <Zap className="w-3 h-3 inline ms-0.5" aria-hidden="true" />} {notif.urgent && <span className="sr-only">عاجل: </span>}{notif.title}
+                  </span>
                   {!notif.isRead && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1" />
+                    <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1"><span className="sr-only">غير مقروء</span></span>
                   )}
-                </div>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{notif.message}</p>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
+                </span>
+                <span className="block text-xs text-slate-600 mt-1 leading-relaxed break-words">{notif.message}</span>
+                <span className="flex items-center justify-between text-2xs text-slate-500 mt-2">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(notif.createdAt).toLocaleTimeString(appLocale(), { ...zoneOptions(),
@@ -93,8 +95,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                       الانتقال <ExternalLink className="w-2.5 h-2.5" />
                     </span>
                   )}
-                </div>
-              </div>
+                </span>
+              </button>
             ))
           )}
         </div>

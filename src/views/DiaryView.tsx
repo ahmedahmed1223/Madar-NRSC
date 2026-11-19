@@ -129,8 +129,8 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
                   {dayName(day)}
-                  {day === today && <span className="ms-1 text-[11px] text-blue-700">(اليوم)</span>}
-                  <span className="block font-normal text-[11px] text-slate-500">{arabicDate(day)}</span>
+                  {day === today && <span className="ms-1 text-2xs text-blue-700">(اليوم)</span>}
+                  <span className="block font-normal text-2xs text-slate-500">{arabicDate(day)}</span>
                 </p>
                 {canManage && (
                   <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
@@ -138,7 +138,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                   </button>
                 )}
               </header>
-              {list.length === 0 && <p className="text-[11px] text-slate-500">لا أحداث</p>}
+              {list.length === 0 && <p className="text-2xs text-slate-500">لا أحداث</p>}
               {list.map((e) => {
                 const cov = coverageOf(e.coverage);
                 const produced = newsList.filter((n) => n.diaryId === e.id && !n.deletedAt).length;
@@ -147,22 +147,22 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                     <p className="text-xs font-bold text-slate-900 leading-snug">
                       {e.priority === 'HIGH' && <Flag className="w-3 h-3 text-red-600 inline ms-0.5" aria-label="أولوية عالية" />} {e.title}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-2xs text-slate-500">
                       {e.startTime ? `${e.startTime}${e.endTime ? `–${e.endTime}` : ''}` : 'طوال اليوم'} · {diaryKindName(e.kind)}
                     </p>
                     {e.location && (
-                      <p className="text-[11px] text-slate-500 flex items-center gap-0.5">
+                      <p className="text-2xs text-slate-500 flex items-center gap-0.5">
                         <MapPin className="w-3 h-3" /> {e.location}
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
+                      <span className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
                       {e.assigneeIds.length > 0 && (
-                        <span className="text-[11px] text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
+                        <span className="text-2xs text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
                           <UsersIcon className="w-3 h-3" /> {e.assigneeIds.length === 1 ? userName(e.assigneeIds[0]) : `${e.assigneeIds.length} مكلفين`}
                         </span>
                       )}
-                      {produced > 0 && <span className="text-[11px] text-emerald-700 font-bold">{produced} خبر</span>}
+                      {produced > 0 && <span className="text-2xs text-emerald-700 font-bold">{produced} خبر</span>}
                     </div>
                   </button>
                 );
@@ -359,7 +359,7 @@ const DiaryEntryPage: React.FC<{
                 )}
               </span>
             ))}
-            {!(draft.assigneeIds || []).length && <span className="text-[11px] text-slate-500">لا أحد بعد</span>}
+            {!(draft.assigneeIds || []).length && <span className="text-2xs text-slate-500">لا أحد بعد</span>}
           </div>
           {!readOnly && (
             <select
@@ -389,7 +389,7 @@ const DiaryEntryPage: React.FC<{
           <section className="grid sm:grid-cols-2 gap-3">
             <div className="p-3 rounded-xl border border-slate-200 space-y-2">
               <p className="text-xs font-bold text-slate-700">الأخبار المكتوبة من الحدث</p>
-              {produced.length === 0 && <p className="text-[11px] text-slate-500">لا شيء بعد</p>}
+              {produced.length === 0 && <p className="text-2xs text-slate-500">لا شيء بعد</p>}
               {produced.map((n) => (
                 <button key={n.id} type="button" onClick={() => onOpenNews(n.id)} className="block text-right text-xs text-blue-700 hover:underline">
                   {n.title}
@@ -403,7 +403,7 @@ const DiaryEntryPage: React.FC<{
             </div>
             <div className="p-3 rounded-xl border border-slate-200 space-y-2">
               <p className="text-xs font-bold text-slate-700">المعدات والطواقم المحجوزة</p>
-              {bookings.length === 0 && <p className="text-[11px] text-slate-500">لا حجوزات</p>}
+              {bookings.length === 0 && <p className="text-2xs text-slate-500">لا حجوزات</p>}
               {bookings.map((b) => (
                 <p key={b.id} className="text-xs text-slate-700">
                   {resName(b.resourceId)} — {fmtTime(b.start)}–{fmtTime(b.end)}

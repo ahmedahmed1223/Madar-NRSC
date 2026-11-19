@@ -4,7 +4,7 @@ import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
 import { CueAlertOverlay } from './components/common/CueAlertOverlay';
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import {
   NewsItem, Story,
   Program,
@@ -72,7 +72,7 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
-import { routeChanged } from './services/uiEvents';
+import { navigateTo, routeChanged } from './services/uiEvents';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 
 interface AppProps {
@@ -684,6 +684,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
+  useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);

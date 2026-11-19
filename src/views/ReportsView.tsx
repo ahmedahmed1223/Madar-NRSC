@@ -1,22 +1,6 @@
 import { countLabel } from '../shared/labels';
 import React, { useState, useMemo } from 'react';
-import {
-  BarChart3,
-  TrendingUp,
-  Clock,
-  CheckCircle2,
-  Tv,
-  FileText,
-  Users,
-  AlertTriangle,
-  Award,
-  Calendar,
-  Printer,
-  Download,
-  Filter,
-  Layers,
-  ChevronDown,
-} from 'lucide-react';
+import { TrendingUp, Clock, Tv, FileText, Users, Calendar, Printer, Download, Filter } from 'lucide-react';
 import { NewsItem, Episode, Guest, Category } from '../types';
 
 interface ReportsViewProps {
@@ -244,7 +228,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="text-2xl font-black text-slate-800 font-mono">
             {filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%
           </div>
-          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+          <p className="text-2xs text-emerald-700 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>{publishedCount} من أصل {filteredNews.length} مادة معتمدة ومنشورة</span>
           </p>
@@ -258,7 +242,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="text-2xl font-black text-slate-800 font-mono">
             {readyEpisodes + completedEpisodes} من {totalEpisodes}
           </div>
-          <p className="text-[11px] text-purple-600 font-semibold">
+          <p className="text-2xs text-purple-600 font-semibold">
             {readyEpisodes} حلقة جاهزة للبث المباشر اليوم
           </p>
         </div>
@@ -271,7 +255,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="text-2xl font-black text-slate-800 font-mono">
             {rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-2xs text-slate-500">
             {rundownAccuracy.total > 0
               ? `${rundownAccuracy.onTime} من ${rundownAccuracy.total} حلقة مجموع فقراتها ضمن ±60 ثانية من المدة المخططة`
               : 'لا توجد حلقات بفقرات رانداون بعد'}
@@ -284,7 +268,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <Users className="w-5 h-5 text-amber-700" />
           </div>
           <div className="text-2xl font-black text-slate-800 font-mono">{guests.length}</div>
-          <p className="text-[11px] text-amber-700 font-semibold">
+          <p className="text-2xs text-amber-700 font-semibold">
             موزعين على مختلف التخصصات السياسية والاقتصادية
           </p>
         </div>
@@ -295,7 +279,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Category Breakdown */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800">
-            حجم الإنتاج الإخباري حسب الأقسام الصحفية <span className="text-[11px] font-normal text-slate-500">(ضمن الفترة المختارة)</span>
+            حجم الإنتاج الإخباري حسب الأقسام الصحفية <span className="text-2xs font-normal text-slate-500">(ضمن الفترة المختارة)</span>
           </h3>
           <div className="space-y-3">
             {categories.map((cat) => {

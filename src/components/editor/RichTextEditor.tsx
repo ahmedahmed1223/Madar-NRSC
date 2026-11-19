@@ -1,21 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Bold,
-  Italic,
-  Heading2,
-  Heading3,
-  List,
-  ListOrdered,
-  Quote,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  Video,
-  Edit3,
-  Undo2,
-  Redo2,
-  Code,
-  Clock,
-} from 'lucide-react';
+import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Quote, Link as LinkIcon, Image as ImageIcon, Video, Edit3, Code, Clock } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { TextSizeControls, useFullscreenField, useTextSize } from '../common/TextSizeControls';
 import { ProofreadButton } from './WritingAids';
@@ -410,7 +394,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             زمن الإلقاء التقديري: {wordCount > 0 ? readingTimeStr : '0 ثانية'} (~130 ك/د)
           </span>
         </div>
-        <span className="text-[11px] text-slate-500">محرر متوافق مع نظام النشر والأوتوكيو</span>
+        <span className="text-2xs text-slate-500">محرر متوافق مع نظام النشر والأوتوكيو</span>
       </div>
 
       {/* Link Modal */}

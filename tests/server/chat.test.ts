@@ -56,6 +56,10 @@ describe('direct messages', () => {
     expect(mine()[0].title).toContain('رسالة من');
     await send(editor, 'msg-dm-3', { channel, text: 'رسالة ثانية' });
     expect(mine()).toHaveLength(1);
+    // An urgent message always gets through.
+    await send(editor, 'msg-dm-urgent', { channel, text: 'الضيف اعتذر', isUrgent: true });
+    expect(mine()).toHaveLength(2);
+    expect(mine().some((n) => n.urgent)).toBe(true);
   });
 
   it('stay immutable', async () => {
@@ -91,6 +95,18 @@ describe('groups', () => {
     expect(hers).toEqual(['msg-g-2']);
     const note = server.db.listCollection('notifications').map((r) => r.d).find((n) => n.userId === 'usr-6' && String(n.linkUrl).startsWith('/messages/'));
     expect(note.title).toContain('تغطية غزة');
+  });
+
+  it('tell a removed member\'s browser that the group is gone', async () => {
+    const since = (await reporter.get('/api/v1/data')).body.rev;
+    const row = server.db.getRow('conversations', 'cnv-1')!;
+    expect((await sync(editor, [{ c: 'conversations', op: 'upsert', id: 'cnv-1', d: { ...row.d, memberIds: row.d.memberIds.filter((id: string) => id !== 'usr-6') }, baseV: row.v }])).body.results[0].ok).toBe(true);
+    const change = (await reporter.get(`/api/v1/data/changes?since=${since}`)).body.changes.find((r: any) => r.id === 'cnv-1');
+    expect(change).toMatchObject({ c: 'conversations', deleted: true });
+    expect(change.d).toBeUndefined();
+    // Rows of other private collections never travel to people who may not read them.
+    const others = (await reporter.get(`/api/v1/data/changes?since=0`)).body;
+    expect(others.reset || !others.changes.some((r: any) => r.c === 'messages' && String(r.d?.channel).startsWith('dm:usr-2:usr-3'))).toBe(true);
   });
 
   it('let a member leave, and the owner delete', async () => {
@@ -129,7 +145,7 @@ describe('open channels, references and read markers', () => {
     const channel = dmChannel('usr-2', 'usr-3');
     const before = encodeURIComponent(new Date(Date.now() + 60_000).toISOString());
     const mine = await editor.get(`/api/v1/chat/history?channel=${encodeURIComponent(channel)}&before=${before}`);
-    expect(mine.body.data.map((m: any) => m.id)).toEqual(['msg-dm-1', 'msg-dm-2', 'msg-dm-3']);
+    expect(mine.body.data.map((m: any) => m.id)).toEqual(['msg-dm-1', 'msg-dm-2', 'msg-dm-3', 'msg-dm-urgent']);
     const theirs = await reporter.get(`/api/v1/chat/history?channel=${encodeURIComponent(channel)}&before=${before}`);
     expect(theirs.body.data).toEqual([]);
     expect((await editor.get('/api/v1/chat/history?channel=SECRET&before=x')).status).toBe(400);

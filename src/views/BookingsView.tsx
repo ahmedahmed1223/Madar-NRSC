@@ -5,7 +5,7 @@ import { CalendarRange, ChevronLeft, ChevronRight, Pencil, Plus, Power, Settings
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
-import { notify, tryAction } from '../services/notify';
+import { tryAction } from '../services/notify';
 import { useLiveData } from '../hooks/useLiveData';
 import { BookingForm } from '../components/planning/BookingForm';
 import { FormPage } from '../components/common/FormPage';
@@ -114,7 +114,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
               <li key={b.id}>
                 <button type="button" onClick={() => setViewing(b)} className="w-full text-right p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs">
                   <span className="font-bold text-slate-800">{resName(b.resourceId)}</span> — {b.title}
-                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                  <span className="block text-2xs text-slate-500 mt-0.5">
                     {arabicDate(localDateString(new Date(b.start)))} · من {fmtTime(b.start)} إلى {fmtTime(b.end)}
                   </span>
                 </button>
@@ -145,7 +145,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[900px]">
-              <div className="flex border-b border-slate-100 text-[11px] text-slate-500">
+              <div className="flex border-b border-slate-100 text-2xs text-slate-500">
                 <div className="w-40 shrink-0" />
                 <div className="flex-1 grid grid-cols-24" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                   {HOURS.map((h) => (
@@ -161,7 +161,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                   <div key={r.id} className="flex border-b border-slate-100 last:border-0">
                     <div className="w-40 shrink-0 p-2 text-xs">
                       <p className="font-bold text-slate-800 truncate">{r.name}</p>
-                      <p className="text-[11px] text-slate-500">{resourceKindName(r.kind)}</p>
+                      <p className="text-2xs text-slate-500">{resourceKindName(r.kind)}</p>
                     </div>
                     <div className="flex-1 relative h-14">
                       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
@@ -187,7 +187,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                             type="button"
                             onClick={() => setViewing(b)}
                             title={`${b.title} — ${fmtTime(b.start)}–${fmtTime(b.end)} — ${b.bookedByName || ''}`}
-                            className={`absolute top-1.5 bottom-1.5 rounded-lg border px-1.5 text-[11px] font-bold text-right overflow-hidden whitespace-nowrap z-20 ${bookingStatusOf(b.status).tone} ${
+                            className={`absolute top-1.5 bottom-1.5 rounded-lg border px-1.5 text-2xs font-bold text-right overflow-hidden whitespace-nowrap z-20 ${bookingStatusOf(b.status).tone} ${
                               focusId === b.id ? 'ring-2 ring-blue-500' : ''
                             }`}
                             style={{ insetInlineStart: `${s}%`, width: `${Math.max(e - s, 1.5)}%` }}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
 import { managerQueue } from '../../shared/editorialQueue';

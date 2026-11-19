@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/fonts.css";
 @import "./styles/theme-dark.css";
 
 /* A calm «live» pulse: slow and never fading below 60%, used only on small live dots/icons. */
@@ -9,7 +10,20 @@
    * Timecodes and IDs stay monospaced, but Arabic letters inside them take the UI's Arabic face
    * instead of a system monospace fallback (DejaVu, Courier New) that draws Arabic poorly.
    */
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'IBM Plex Sans Arabic', 'Cairo', 'Courier New', monospace;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'IBM Plex Sans Arabic', 'Courier New', monospace;
+  /*
+   * Type scale. Arabic letterforms need more size and leading than Latin at the same nominal
+   * size, so the small steps the interface lives on sit one pixel above Tailwind's defaults,
+   * with room for dots and marks above and below the line.
+   */
+  --text-3xs: 0.6875rem; /* 11px: counters inside badges */
+  --text-3xs--line-height: 1rem;
+  --text-2xs: 0.75rem; /* 12px: metadata, table captions, chips */
+  --text-2xs--line-height: 1.125rem;
+  --text-xs: 0.8125rem; /* 13px: labels, dense lists, buttons */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem; /* 15px: body text and form fields */
+  --text-sm--line-height: 1.5rem;
   --animate-pulse: live-pulse 2.6s ease-in-out infinite;
   @keyframes live-pulse {
     0%,
@@ -23,6 +37,40 @@
 }
 
 @layer base {
+  /*
+   * Interface size. Every measure in the app is in rem, so the root size scales text, spacing and
+   * controls together, like the browser's zoom. On screens with room the base is one step larger
+   * than the browser default; each colleague may change it for their device («حجم الخط»).
+   */
+  html {
+    font-size: 100%;
+  }
+  @media (min-width: 40rem) {
+    html {
+      font-size: 106.25%;
+    }
+  }
+  html[data-text-scale='compact'] {
+    font-size: 100%;
+  }
+  html[data-text-scale='large'] {
+    font-size: 118.75%;
+  }
+  html[data-text-scale='larger'] {
+    font-size: 131.25%;
+  }
+  @media (max-width: 39.99rem) {
+    html[data-text-scale='compact'] {
+      font-size: 93.75%;
+    }
+    html[data-text-scale='large'] {
+      font-size: 112.5%;
+    }
+    html[data-text-scale='larger'] {
+      font-size: 125%;
+    }
+  }
+
   /* Long text everywhere: resizable by height, scrolls inside itself, never taller than the screen. */
   textarea {
     resize: vertical;
@@ -31,7 +79,7 @@
   }
 
   :root {
-    --font-sans: 'IBM Plex Sans Arabic', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-sans: 'IBM Plex Sans Arabic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* One clear keyboard-focus ring everywhere (mouse clicks do not show it). */
@@ -215,6 +263,16 @@ body.dnd-dragging * {
  * outright. Only shortening them would replay an endless pulse thousands of times a second,
  * which flickers instead of calming.
  */
+/* The thin bar under a toast empties over the time the toast stays (it stops while the toast is held). */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.animate-toast-progress {
+  animation: toast-progress linear forwards;
+  transform-origin: right center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

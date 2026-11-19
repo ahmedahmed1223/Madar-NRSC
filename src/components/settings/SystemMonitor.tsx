@@ -141,7 +141,7 @@ export function SystemMonitor() {
               <p className="text-sm text-slate-600">لم تُسجَّل مهام دورية في هذا التشغيل.</p>
             ) : (
               <div role="region" tabIndex={0} aria-label="جدول المهام الدورية (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[40rem] text-sm">
                   <thead>
                     <tr className="text-slate-600 border-b border-slate-200">
                       {['المهمة', 'كل', 'آخر تشغيل', 'النتيجة'].map((h) => (
@@ -168,7 +168,7 @@ export function SystemMonitor() {
             <h3 className="text-sm font-bold text-slate-900">الجلسات النشطة</h3>
             <p className="text-sm text-slate-600">{data.sessions.users} مسجّلون على {data.sessions.devices} جهازاً؛ {data.sessions.activeNow} نشطون في آخر خمس دقائق.</p>
             <div role="region" tabIndex={0} aria-label="جدول الجلسات النشطة (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[40rem] text-sm">
                 <thead>
                   <tr className="text-slate-600 border-b border-slate-200">
                     {['المستخدم', 'الأجهزة', 'آخر نشاط', 'آخر جهاز', 'العنوان', ''].map((h, i) => (

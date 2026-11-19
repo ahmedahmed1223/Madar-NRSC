@@ -117,14 +117,14 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <div className="p-3 rounded-xl border border-slate-200 space-y-2">
             <p className="text-xs font-bold text-slate-700">تنبيهات هذا الجهاز (هاتف / حاسوب)</p>
             {!support.ok ? (
-              <p className="text-[11px] text-amber-700 leading-relaxed">{support.reason}</p>
+              <p className="text-2xs text-amber-700 leading-relaxed">{support.reason}</p>
             ) : thisRegistered ? (
               <div className="flex flex-wrap gap-2">
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">مفعّلة على هذا الجهاز</span>
-                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'أُرسل تنبيه تجريبي')} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+                <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">مفعّلة على هذا الجهاز</span>
+                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'أُرسل تنبيه تجريبي')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
                   <Send className="w-3 h-3" /> تجربة
                 </button>
-                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
+                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
                   إيقاف
                 </button>
               </div>
@@ -142,7 +142,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             {delivery && delivery.devices.length > 0 && (
               <ul className="space-y-1 pt-1">
                 {delivery.devices.map((d) => (
-                  <li key={d.endpoint} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                  <li key={d.endpoint} className="flex items-center justify-between gap-2 text-2xs text-slate-600">
                     <span>
                       {deviceName(d.userAgent)}
                       {d.endpoint === thisDevice ? ' (هذا الجهاز)' : ''}
@@ -164,13 +164,13 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-slate-500" /> البريد الإلكتروني
             </p>
-            <p className="text-[11px] text-slate-600" dir="ltr">
+            <p className="text-2xs text-slate-600" dir="ltr">
               {delivery?.emailAddress || currentUser.email}
             </p>
             {delivery && !delivery.email ? (
-              <p className="text-[11px] text-amber-700">البريد غير مهيأ على الخادم بعد؛ اطلب من مدير النظام ضبط SMTP.</p>
+              <p className="text-2xs text-amber-700">البريد غير مهيأ على الخادم بعد؛ اطلب من مدير النظام ضبط SMTP.</p>
             ) : (
-              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'أُرسلت رسالة تجريبية إلى بريدك')} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'أُرسلت رسالة تجريبية إلى بريدك')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
                 <Send className="w-3 h-3" /> إرسال رسالة تجريبية
               </button>
             )}
@@ -196,7 +196,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
               <tr key={c.id}>
                 <td className="p-3">
                   <p className="font-bold text-slate-800">{c.name}</p>
-                  <p className="text-[11px] text-slate-500">{c.hint}</p>
+                  <p className="text-2xs text-slate-500">{c.hint}</p>
                 </td>
                 {(['push', 'email'] as const).map((ch) => (
                   <td key={ch} className="p-3 text-center">
@@ -237,7 +237,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 </button>
               </span>
             ))}
-            {!prefs.watchWords.length && <span className="text-[11px] text-slate-500">لا كلمات بعد</span>}
+            {!prefs.watchWords.length && <span className="text-2xs text-slate-500">لا كلمات بعد</span>}
           </div>
           <div className="flex gap-2">
             <input
@@ -267,14 +267,14 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <Moon className="w-4 h-4 text-indigo-600" />
           ساعات الهدوء
         </h2>
-        <p className="text-[11px] text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت الخادم) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
+        <p className="text-2xs text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت الخادم) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>من</span>
           <input type="time" aria-label="بداية ساعات الهدوء" value={prefs.quietFrom || ''} onChange={(e) => update({ quietFrom: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
           <span>إلى</span>
           <input type="time" aria-label="نهاية ساعات الهدوء" value={prefs.quietTo || ''} onChange={(e) => update({ quietTo: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
           {(prefs.quietFrom || prefs.quietTo) && (
-            <button type="button" onClick={() => update({ quietFrom: '', quietTo: '' })} className="text-[11px] text-slate-500 underline">
+            <button type="button" onClick={() => update({ quietFrom: '', quietTo: '' })} className="text-2xs text-slate-500 underline">
               بلا ساعات هدوء
             </button>
           )}

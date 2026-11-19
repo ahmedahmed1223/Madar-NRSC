@@ -5,19 +5,7 @@ import {
   PermissionCategory,
   RoleDefinition,
 } from '../../services/rbacService';
-import {
-  Shield,
-  Check,
-  X,
-  Plus,
-  Edit2,
-  Trash2,
-  Search,
-  Filter,
-  RefreshCw,
-  AlertTriangle,
-  Info,
-} from 'lucide-react';
+import { Check, X, Plus, Edit2, Trash2, Search, Filter, RefreshCw, Info } from 'lucide-react';
 
 interface PermissionsMatrixTableProps {
   roles: RoleDefinition[];
@@ -111,7 +99,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
             <thead>
-              <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold border-b border-slate-200">
+              <tr className="bg-slate-100 text-slate-700 text-2xs font-bold border-b border-slate-200">
                 <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-100 z-10">
                   الصلاحية ونطاق العملية
                 </th>
@@ -155,10 +143,10 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
               ) : (
                 filteredPermissions.map((perm, idx) => {
                   const riskBadge = {
-                    LOW: <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
-                    MEDIUM: <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
-                    HIGH: <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
-                    CRITICAL: <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold border border-red-200">حرج / سيادي</span>,
+                    LOW: <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
+                    MEDIUM: <span className="text-2xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
+                    HIGH: <span className="text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
+                    CRITICAL: <span className="text-2xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold border border-red-200">حرج / سيادي</span>,
                   }[perm.riskLevel];
 
                   return (
@@ -173,11 +161,11 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{perm.nameAr}</span>
-                            <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
+                            <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                               ({perm.code})
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                          <span className="text-2xs text-slate-500 mt-0.5 line-clamp-1">
                             {perm.description}
                           </span>
                         </div>
@@ -233,7 +221,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
         <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
         <div className="space-y-0.5">
           <p className="font-bold">ملاحظة أمنية حول مصفوفة الصلاحيات:</p>
-          <p className="text-[11px] text-amber-800 leading-relaxed">
+          <p className="text-2xs text-amber-800 leading-relaxed">
             النقر المباشر على أي خلية يقوم بتفعيل أو إلغاء الصلاحية للدور المحدد فورياً. دور (مدير النظام العام) يمتلك كامل الصلاحيات بصورة سيادية غير قابلة للإلغاء لضمان عدم قفل النظام.
           </p>
         </div>

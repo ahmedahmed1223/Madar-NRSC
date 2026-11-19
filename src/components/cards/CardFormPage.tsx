@@ -195,7 +195,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
 
         <fieldset className="space-y-2">
           <legend className="font-bold text-slate-800 text-sm">مهام البطاقة بالترتيب</legend>
-          <p className="text-[11px] text-slate-500">كل مهمة تُسند لزميل بعينه، أو لمحطة ليستلمها أحد أفرادها. عند إنجاز مهمة يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>
+          <p className="text-2xs text-slate-500">كل مهمة تُسند لزميل بعينه، أو لمحطة ليستلمها أحد أفرادها. عند إنجاز مهمة يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>
           {!card && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-slate-500">ابدأ من مسار جاهز:</span>

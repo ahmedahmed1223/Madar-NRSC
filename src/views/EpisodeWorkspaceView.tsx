@@ -1,18 +1,15 @@
 import { arabicDate } from '../shared/dates';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
-import { notify } from '../services/notify';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { episodeReadiness } from '../shared/production';
 import { departmentName } from '../shared/departments';
-import { FormPage } from '../components/common/FormPage';
 import { BookingForm } from '../components/planning/BookingForm';
 import { LongTextField } from '../components/common/TextSizeControls';
 import type { Booking } from '../shared/planning';
-import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useRef, useEffect} from 'react';
 import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers } from 'lucide-react';
@@ -25,8 +22,6 @@ import { useEditLock } from '../hooks/useNewsEditLock';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { DraftStatus } from '../components/common/DraftStatus';
 import { RundownTable } from '../components/rundown/RundownTable';
-import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { saveFeedback, type SaveState } from '../shared/saveFeedback';
 
@@ -216,7 +211,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <Lock className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
               <strong className="text-xs font-bold block">هذه الحلقة قيد التحرير الآن لدى {lock.holder.userName}</strong>
-              <span className="text-[11px] text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
+              <span className="text-2xs text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
             </div>
           </div>
           {can('rundown.lock_override') && (
@@ -240,7 +235,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <h2 className="text-sm font-bold text-slate-800">
               جاهزية البث: {readiness.readySegments} من {readiness.total} فقرة جاهزة
             </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <p className="text-2xs text-slate-500 mt-0.5">
               {readiness.ready
                 ? 'كل الأقسام سلّمت المواد المطلوبة.'
                 : readiness.total === 0
@@ -262,7 +257,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         {slotSeconds > 0 && readiness.total > 0 && (
           <p
             role={timingOk ? undefined : 'status'}
-            className={`mt-2 text-[11px] font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
+            className={`mt-2 text-2xs font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
           >
             خطة الوقت: {mmssOf(plannedSeconds)} مخطط من {mmssOf(slotSeconds)}
             {timingOk ? ' — مكتملة' : timingGap < 0 ? ` — ينقص ${mmssOf(timingGap)} دقيقة` : ` — يزيد ${mmssOf(timingGap)} دقيقة`}
@@ -582,7 +577,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Quick Script Presets */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 ml-1">قوالب جاهزة:</span>
+            <span className="text-2xs font-bold text-slate-500 ml-1">قوالب جاهزة:</span>
             {[
               {
                 label: 'نشرة الأخبار الرئيسية',
@@ -603,7 +598,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 disabled={!canEditEpisode || savingScript}
                 onClick={() => changeScript(introScript ? `${introScript}\n\n${preset.text}` : preset.text)}
                 title={`إضافة ${preset.label} إلى النص`}
-                className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
               >
                 +{preset.label}
               </button>

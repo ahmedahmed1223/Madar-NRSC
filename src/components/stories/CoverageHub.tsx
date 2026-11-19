@@ -76,13 +76,13 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
             ) : undefined
           }
         >
-          {items.length === 0 && <p className="text-[11px] text-slate-500">لا توجد أخبار في هذه التغطية بعد.</p>}
+          {items.length === 0 && <p className="text-2xs text-slate-500">لا توجد أخبار في هذه التغطية بعد.</p>}
           <ul className="space-y-1.5">
             {items.map((n) => (
               <li key={n.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300">
                 <div className="min-w-0">
                   <span className="block text-xs font-bold text-slate-800 truncate">{n.title}</span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-2xs text-slate-500">
                     {NEWS_STATUS_LABELS[n.status] || n.status} · {n.authorName || ''} · {new Date(n.updatedAt || n.createdAt).toLocaleDateString(appLocale(), zoneOptions())}
                   </span>
                 </div>
@@ -97,7 +97,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
         </Section>
 
         <Section icon={Film} title="الوسائط" count={media.length}>
-          {media.length === 0 && <p className="text-[11px] text-slate-500">لا توجد وسائط مرفقة بأخبار التغطية.</p>}
+          {media.length === 0 && <p className="text-2xs text-slate-500">لا توجد وسائط مرفقة بأخبار التغطية.</p>}
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {media.map((m) => {
               const Icon = mediaIcon(m.mediaType);
@@ -107,7 +107,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
                   <a href={m.url || m.fileUrl} target="_blank" rel="noopener noreferrer" className="truncate font-bold text-slate-800 hover:underline">
                     {m.title || m.fileName}
                   </a>
-                  {m.mediaType === 'VIDEO' && <span className="text-[11px] text-slate-500 shrink-0 mr-auto">{videoStatusName(m.videoStatus)}</span>}
+                  {m.mediaType === 'VIDEO' && <span className="text-2xs text-slate-500 shrink-0 mr-auto">{videoStatusName(m.videoStatus)}</span>}
                 </li>
               );
             })}
@@ -115,13 +115,13 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
         </Section>
 
         <Section icon={ArrowLeftRight} title="طلبات الأقسام" count={requests.length}>
-          {requests.length === 0 && <p className="text-[11px] text-slate-500">لا توجد طلبات مرتبطة بأخبار التغطية.</p>}
+          {requests.length === 0 && <p className="text-2xs text-slate-500">لا توجد طلبات مرتبطة بأخبار التغطية.</p>}
           <ul className="space-y-1.5">
             {requests.map((r) => (
               <li key={r.id} className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 text-xs">
                 <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold shrink-0">{requestTypeOf(r.type)?.name}</span>
                 <span className="truncate text-slate-800">{r.title}</span>
-                <span className="text-[11px] text-slate-500 shrink-0 mr-auto">
+                <span className="text-2xs text-slate-500 shrink-0 mr-auto">
                   {departmentName(r.departmentId)} · {requestStatusName(r.status)}
                 </span>
               </li>
@@ -130,13 +130,13 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
         </Section>
 
         <Section icon={ListVideo} title="في الحلقات" count={segments.length}>
-          {segments.length === 0 && <p className="text-[11px] text-slate-500">لم تُستخدم أخبار التغطية في أي فقرة بعد.</p>}
+          {segments.length === 0 && <p className="text-2xs text-slate-500">لم تُستخدم أخبار التغطية في أي فقرة بعد.</p>}
           <ul className="space-y-1.5">
             {segments.map(({ episode, segment }) => (
               <li key={`${episode.id}:${segment.id}`} className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 text-xs">
                 <span className="min-w-0">
                   <span className="block font-bold text-slate-800 truncate">{segment.title}</span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-2xs text-slate-500">
                     {episode.programName} — {episode.title} · {arabicDate(episode.broadcastDate)}
                   </span>
                 </span>

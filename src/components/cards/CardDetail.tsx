@@ -177,7 +177,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     {mine && <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-bold">مهمتي</span>}
                   </div>
                   {step.title && <p className="text-slate-700">{step.title}</p>}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
                     <span>المكلف: {step.assigneeName || (step.stationId ? `أي زميل في ${stationName(stations, step.stationId)}` : 'لم تُسند بعد')}</span>
                     {step.stationId && <span>المحطة: {stationName(stations, step.stationId)}</span>}
                     {step.dueAt && <span>التسليم: {when(step.dueAt)}</span>}
@@ -324,7 +324,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
         {contributions.length > 0 && (
           <section>
             <h2 className="font-bold text-slate-800 text-sm mb-1">إسهام المحطات</h2>
-            <p className="text-[11px] text-slate-500 mb-2">تُحتسب المادة مرة واحدة في إجمالي الإنتاج، ويُسجَّل لكل محطة ما أنجزته فيها.</p>
+            <p className="text-2xs text-slate-500 mb-2">تُحتسب المادة مرة واحدة في إجمالي الإنتاج، ويُسجَّل لكل محطة ما أنجزته فيها.</p>
             <div className="flex flex-wrap gap-2">
               {contributions.map((part) => (
                 <span key={part.stationId || 'none'} className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700">
@@ -360,7 +360,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             {[...(card.log || [])].reverse().map((entry) => (
               <li key={entry.id} className={`p-2 rounded-lg border ${entry.kind === 'NOTE' ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100'}`}>
                 <p className="text-slate-800 whitespace-pre-line">{entry.text}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-2xs text-slate-500 mt-0.5">
                   {entry.byName}
                   {entry.stationId ? ` — ${stationName(stations, entry.stationId)}` : ''} • {when(entry.at)}
                 </p>

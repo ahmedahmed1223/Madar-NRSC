@@ -79,6 +79,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   }, []);
 
   const refresh = () => setCards(apiService.getCards());
+  // Opening a card is reading the notifications that point at it.
+  useEffect(() => {
+    if (focusId) apiService.markNotificationsReadFor(`/cards/${focusId}`);
+  }, [focusId, cards]);
   const opened = focusId ? cards.find((c) => c.id === focusId) || null : null;
   const openCards = useMemo(() => cards.filter((c) => c.status === 'OPEN'), [cards]);
 
@@ -129,7 +133,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
     return (
       <li key={card.id}>
         <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${card.priority === 'URGENT' && card.status === 'OPEN' ? 'border-red-300' : 'border-slate-200'}`}>
-          <span className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="flex flex-wrap items-center gap-2 text-2xs">
             <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">{cardKindName(card.kind)}</span>
             <span className={`px-2 py-0.5 rounded-md border font-bold ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span>
             {card.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
@@ -137,7 +141,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             {card.airAt && <span className="text-slate-600 mr-auto">البث {when(card.airAt)}</span>}
           </span>
           <span className="block text-sm font-bold text-slate-900">{card.title}</span>
-          <span className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600">
+          <span className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
             {waiting && card.status === 'OPEN' && (
               <span>
                 بانتظار: {stepTypeName(stepTypes, waiting.type)} — {waiting.assigneeName || (waiting.stationId ? `محطة ${stationName(stations, waiting.stationId)}` : 'غير مسندة')}
@@ -242,7 +246,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             {mySteps.map(({ card, step, claimable }) => (
               <li key={`${card.id}:${step.id}`}>
                 <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${step.status === 'BLOCKED' ? 'border-rose-300' : card.priority === 'URGENT' ? 'border-red-300' : 'border-slate-200'}`}>
-                  <span className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="flex flex-wrap items-center gap-2 text-2xs">
                     <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold">{stepTypeName(stepTypes, step.type)}</span>
                     {claimable ? (
                       <span className="px-2 py-0.5 rounded-md border border-sky-200 bg-sky-50 text-sky-800 font-bold">متاحة لمحطتك — استلمها</span>
@@ -255,7 +259,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                   </span>
                   <span className="block text-sm font-bold text-slate-900">{card.title}</span>
                   {step.title && <span className="block text-xs text-slate-600">{step.title}</span>}
-                  {currentStep(card)?.id !== step.id && <span className="block text-[11px] text-slate-500">قبلها: {stepTypeName(stepTypes, currentStep(card)!.type)} ({currentStep(card)!.assigneeName || 'غير مسندة'})</span>}
+                  {currentStep(card)?.id !== step.id && <span className="block text-2xs text-slate-500">قبلها: {stepTypeName(stepTypes, currentStep(card)!.type)} ({currentStep(card)!.assigneeName || 'غير مسندة'})</span>}
                 </button>
               </li>
             ))}
@@ -273,7 +277,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               { label: 'قيد العمل', value: board.working, tone: 'text-slate-900' },
             ].map((stat) => (
               <div key={stat.label} className="bg-white border border-slate-200 rounded-2xl p-3">
-                <dt className="text-[11px] text-slate-600">{stat.label}</dt>
+                <dt className="text-2xs text-slate-600">{stat.label}</dt>
                 <dd className={`text-2xl font-bold tabular-nums ${stat.tone}`}>{stat.value}</dd>
               </div>
             ))}
@@ -305,7 +309,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             </h2>
             {board.airing.length === 0 ? empty('لا بطاقات بموعد بث اليوم.') : (
               <div role="region" tabIndex={0} aria-label="جدول ما يُبث اليوم (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full min-w-[34rem] text-xs">
                   <thead>
                     <tr className="text-right text-slate-600 border-b border-slate-200">
                       <th scope="col" className="p-3 font-bold">البث</th>

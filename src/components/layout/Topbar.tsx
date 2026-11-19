@@ -3,24 +3,21 @@ import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../share
 import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
-import React, { useState, useEffect } from 'react';
-import { BellRing,
+import React, { useState, useEffect, useRef } from 'react';
+import { notify } from '../../services/notify';
+import {
+  BellRing,
   Search,
   Bell,
   Plus,
   Radio,
   Clock,
-  UserCheck,
   ChevronDown,
   FileText,
   Tv,
   Video,
   CheckSquare,
-  Shield,
-  Activity,
-  Database,
   Menu,
-  Globe,
   ShieldCheck,
   Lock,
   Keyboard,
@@ -79,6 +76,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [syncStatus, setSyncStatus] = useState({ pending: dataStore.pendingCount(), online: true });
   const [isTwoFactorOpen, setIsTwoFactorOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  /** Notifications already on screen when the app opened, or already announced. */
+  const announced = useRef(new Set(ApiService.getMyNotifications().map((n) => n.id)));
+  const navigateRef = useRef(onNavigate);
+  navigateRef.current = onNavigate;
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
   const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
@@ -109,7 +110,25 @@ export const Topbar: React.FC<TopbarProps> = ({
     () =>
       dataStore.subscribe((evt) => {
         if (evt.type === 'sync-status') setSyncStatus({ pending: evt.pending, online: evt.online });
-        if (evt.type === 'data-changed' && evt.collections.includes('notifications')) setNotifications(ApiService.getMyNotifications());
+        if (evt.type !== 'data-changed' || !evt.collections.includes('notifications')) return;
+        const mine = ApiService.getMyNotifications();
+        setNotifications(mine);
+        // Arrivals from the server while the app is open are announced once, with a way to open them.
+        const fresh = evt.remote ? mine.filter((n) => !n.isRead && !announced.current.has(n.id)) : [];
+        mine.forEach((n) => announced.current.add(n.id));
+        const here = decodeURIComponent(window.location.pathname);
+        const worth = fresh.filter((n) => !n.linkUrl || decodeURIComponent(n.linkUrl) !== here);
+        if (worth.length > 3) notify({ type: 'info', title: `${worth.length} إشعارات جديدة`, message: 'افتح الجرس لقراءتها.' });
+        else
+          worth.forEach((n) =>
+            notify({
+              type: n.urgent ? 'warning' : 'info',
+              title: n.title,
+              message: n.message,
+              duration: n.urgent ? 12000 : 7000,
+              action: n.linkUrl ? { label: 'فتح', run: () => (ApiService.markNotificationRead(n.id), navigateRef.current?.(n.linkUrl!)) } : undefined,
+            })
+          );
       }),
     []
   );
@@ -197,19 +216,19 @@ export const Topbar: React.FC<TopbarProps> = ({
             className={`flex items-center gap-1.5 min-h-6 px-1 rounded-md disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-[11px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
+            <span className="font-bold text-2xs tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
           </button>
           <span className="text-slate-300 hidden lg:inline">|</span>
           <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
             <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span className="tabular-nums">{timeStr || '00:00'}</span>
-            <span className="hidden lg:inline font-sans text-[11px] font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
-            {clockLabel && <span className="font-sans text-[11px] text-slate-500">{clockLabel}</span>}
+            <span className="hidden lg:inline font-sans text-2xs font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
+            {clockLabel && <span className="font-sans text-2xs text-slate-500">{clockLabel}</span>}
           </div>
           {zoneMismatch && (
             <span
               role="status"
-              className="hidden sm:inline font-sans text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
+              className="hidden xl:inline font-sans text-2xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
               title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
             >
               المحطة {stationTime}
@@ -219,7 +238,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Real synchronisation status with the server */}
         <div
-          className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap ${
+          className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap ${
             !syncStatus.online
               ? 'bg-red-50 text-red-700 border-red-200'
               : syncStatus.pending > 0
@@ -262,7 +281,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />
           <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
-          <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[11px] font-mono text-slate-500" dir="ltr">
+          <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-2xs font-mono text-slate-500" dir="ltr">
             Ctrl + K
           </kbd>
         </button>
@@ -355,7 +374,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[11px] leading-4 text-center font-bold">
+            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-2xs leading-4 text-center font-bold">
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
@@ -423,7 +442,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
                 {currentUser.fullName}
               </span>
-              <span className="text-[11px] text-blue-600 font-semibold block leading-tight truncate">
+              <span className="text-2xs text-blue-600 font-semibold block leading-tight truncate">
                 {roleLabels[currentUser.role] || currentUser.jobTitle}
               </span>
             </div>
@@ -436,10 +455,10 @@ export const Topbar: React.FC<TopbarProps> = ({
               <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-right">
                 <div className="px-3 py-2 border-b border-slate-100">
                   <span className="text-xs font-bold text-slate-800 block">{currentUser.fullName}</span>
-                  <span className="text-[11px] text-slate-500 block" dir="ltr">
+                  <span className="text-2xs text-slate-500 block" dir="ltr">
                     {currentUser.email}
                   </span>
-                  <span className="text-[11px] text-blue-600 font-semibold block mt-0.5">
+                  <span className="text-2xs text-blue-600 font-semibold block mt-0.5">
                     {roleLabels[currentUser.role] || currentUser.jobTitle} - {currentUser.department}
                   </span>
                 </div>

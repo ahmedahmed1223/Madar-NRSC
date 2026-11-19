@@ -10,7 +10,8 @@ import { apiService } from '../../services/api';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
-  Newspaper, FolderGit2,
+  Newspaper,
+  FolderGit2,
   Flame,
   MonitorPlay,
   BookOpen,
@@ -22,7 +23,6 @@ import {
   Rss,
   Tv,
   Video,
-  ListOrdered,
   Users,
   CheckSquare,
   Calendar,
@@ -35,7 +35,11 @@ import {
   Radio,
   Sparkles,
   UserCog,
-  X, ListVideo, CalendarDays, CalendarRange } from 'lucide-react';
+  X,
+  ListVideo,
+  CalendarDays,
+  CalendarRange,
+} from 'lucide-react';
 import { User } from '../../types';
 
 export type AppView =
@@ -279,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-extrabold text-white text-sm block leading-tight tracking-tight">
                   {APP_NAME}
                 </span>
-                <span className="text-[11px] text-slate-400 block leading-tight">
+                <span className="text-2xs text-slate-400 block leading-tight">
                   {APP_TAGLINE}
                 </span>
               </div>
@@ -326,7 +330,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <div key={group.label || 'home'} className="space-y-1" role="group" aria-label={group.label || 'الرئيسية'}>
               {group.label && !isCollapsed && (
-                <div className="px-3 pt-3 pb-1 text-[11px] font-bold text-slate-400 tracking-wide">{group.label}</div>
+                <div className="px-3 pt-3 pb-1 text-2xs font-bold text-slate-400 tracking-wide">{group.label}</div>
               )}
               {group.label && isCollapsed && <div className="mx-3 my-2 border-t border-slate-800" />}
         {items.map((item) => {
@@ -361,7 +365,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="flex-1 text-right truncate">{item.label}</span>
                   {item.badge && (
                     <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                      className={`text-2xs px-2 py-0.5 rounded-full font-bold shrink-0 ${
                         item.badgeColor || 'bg-slate-800 text-slate-300'
                       }`}
                     >
@@ -385,7 +389,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer: organisation, build version and live connection state */}
       {!isCollapsed && (
-        <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400">
+        <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-2xs text-slate-400">
           <div className="flex items-center justify-between text-slate-400 mb-1">
             <span>الإصدار: v{__APP_VERSION__}</span>
             <span className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>

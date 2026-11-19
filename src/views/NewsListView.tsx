@@ -15,30 +15,7 @@ import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Plus,
-  Search,
-  Filter,
-  Flame,
-  CheckCircle,
-  Clock,
-  Eye,
-  Edit2,
-  Trash2,
-  ChevronDown,
-  Archive,
-  Send,
-  CheckSquare,
-  Square,
-  Radio,
-  FileText,
-  AlertCircle,
-  ExternalLink,
-  X,
-  Lock,
-  RotateCcw,
-  Undo2,
-} from 'lucide-react';
+import { Plus, Search, Filter, Flame, CheckCircle, Clock, Eye, Edit2, Trash2, Archive, Send, CheckSquare, Square, Radio, X, Lock, RotateCcw, Undo2 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
 import { FilterTabs } from '../components/common/FilterTabs';
@@ -666,7 +643,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       <td className="py-3.5 px-3 sm:px-4">
                         <div className="flex items-start gap-2">
                           {isUnderEmbargo(item) && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
+                            <span className="inline-flex items-center gap-1 text-2xs font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
                               محظور حتى {embargoLabel(item.embargoUntil)}
                             </span>
                           )}
@@ -682,11 +659,11 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                             >
                               {item.title}
                             </button>
-                            <span className="text-[11px] text-slate-500 block line-clamp-1 mt-0.5">
+                            <span className="text-2xs text-slate-500 block line-clamp-1 mt-0.5">
                               {item.summary}
                             </span>
                             {/* Below 1024px the category, priority, author and time columns fold in here. */}
-                            <span className="lg:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-slate-500">
+                            <span className="lg:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-2xs text-slate-500">
                               <span className="sm:hidden">
                                 <Badge variant={sInfo.variant} size="sm">
                                   {sInfo.label}
@@ -704,13 +681,13 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                               )}
                             </span>
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
-                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-2xs font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
                                 ينشر في {new Date(item.scheduledDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
-                              <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 text-2xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                                 <Lock className="w-3 h-3" />
                                 يحرره الآن: {lock.userName}
                               </span>
@@ -728,7 +705,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                           const color = catObj?.colorCode || catObj?.color || '#2563eb';
                           return (
                             <span
-                              className="px-2 py-0.5 rounded-md text-[11px] font-bold border inline-flex items-center gap-1.5"
+                              className="px-2 py-0.5 rounded-md text-2xs font-bold border inline-flex items-center gap-1.5"
                               style={{
                                 backgroundColor: 'var(--color-slate-50)',
                                 color: 'var(--color-slate-800)',
@@ -754,7 +731,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
 
                       {/* Source / Author */}
                       {showColumn('author') && <td className="py-3.5 px-3 hidden lg:table-cell">
-                        <div className="text-[11px]">
+                        <div className="text-2xs">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
                           <span className="text-slate-500 block">{item.authorName}</span>
                         </div>
@@ -768,7 +745,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Last update */}
-                      {showColumn('updatedAt') && <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
+                      {showColumn('updatedAt') && <td className="py-3.5 px-3 text-center text-2xs text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
                         {item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>}
 
@@ -987,14 +964,14 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2 font-bold text-slate-800">
                         <span>{log.changedBy.name}</span>
-                        <span className="text-[11px] text-blue-600">({log.changedBy.role})</span>
-                        <span className="text-slate-500 text-[11px]">
+                        <span className="text-2xs text-blue-600">({log.changedBy.role})</span>
+                        <span className="text-slate-500 text-2xs">
                           نقل من [{log.fromStatus}] إلى [{log.toStatus}]
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
-                    <span className="text-[11px] text-slate-500 font-mono">
+                    <span className="text-2xs text-slate-500 font-mono">
                       {new Date(log.timestamp).toLocaleString(appLocale(), zoneOptions())}
                     </span>
                   </div>
@@ -1032,7 +1009,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusComment('')}
-                  className="text-[11px] text-slate-500 hover:text-slate-600"
+                  className="text-2xs text-slate-500 hover:text-slate-600"
                 >
                   مسح الملاحظة
                 </button>
@@ -1059,7 +1036,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                   key={template}
                   type="button"
                   onClick={() => setStatusComment(template)}
-                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
                 >
                   +{template}
                 </button>

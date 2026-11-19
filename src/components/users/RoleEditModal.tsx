@@ -8,7 +8,7 @@ import {
 } from '../../services/rbacService';
 import { ASSIGNABLE_SCREENS, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
 import { screenPermission } from '../../shared/commandPalette';
-import { Shield, Sparkles, Check, CheckSquare, Square, Palette, AlertTriangle } from 'lucide-react';
+import { Shield, Check, CheckSquare, Square } from 'lucide-react';
 
 interface RoleEditModalProps {
   isOpen: boolean;
@@ -81,17 +81,6 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
     );
   };
 
-  const handleSelectAllCategory = (categoryKey: PermissionCategory) => {
-    const categoryPermCodes = ALL_PERMISSIONS.filter((p) => p.category === categoryKey).map((p) => p.code);
-    const allSelected = categoryPermCodes.every((c) => selectedPermissions.includes(c));
-
-    if (allSelected) {
-      setSelectedPermissions((prev) => prev.filter((c) => !categoryPermCodes.includes(c)));
-    } else {
-      setSelectedPermissions((prev) => Array.from(new Set([...prev, ...categoryPermCodes])));
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
@@ -152,7 +141,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 errors.nameAr ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
               }`}
             />
-            {errors.nameAr && <p className="text-[11px] text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
+            {errors.nameAr && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
           </div>
 
           <div>
@@ -225,14 +214,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 <Shield className="w-4 h-4 text-blue-600" />
                 <span>تعيين الصلاحيات الممنوحة لهذا الدور ({selectedPermissions.length} من {ALL_PERMISSIONS.length})</span>
               </h3>
-              <p className="text-[11px] text-slate-500">حدد الإجراءات المسموح لأصحاب هذا الدور تنفيذها في النظام</p>
+              <p className="text-2xs text-slate-500">حدد الإجراءات المسموح لأصحاب هذا الدور تنفيذها في النظام</p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedPermissions(ALL_PERMISSIONS.map((p) => p.code))}
-                className="text-[11px] text-blue-600 hover:text-blue-800 font-bold underline"
+                className="text-2xs text-blue-600 hover:text-blue-800 font-bold underline"
               >
                 تحديد الكل
               </button>
@@ -240,7 +229,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedPermissions([])}
-                className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+                className="text-2xs text-slate-500 hover:text-slate-700 underline"
               >
                 إلغاء التحديد
               </button>
@@ -279,7 +268,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 >
                   <span>{cat.labelAr}</span>
                   <span
-                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-2xs px-1.5 py-0.2 rounded-full font-mono ${
                       activeCategory === cat.key ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-600'
                     }`}
                   >
@@ -329,15 +318,15 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-800">{perm.nameAr}</span>
-                        <span className="text-[11px] text-slate-500 font-mono" dir="ltr">
+                        <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                           ({perm.code})
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{perm.description}</p>
+                      <p className="text-2xs text-slate-500 mt-0.5">{perm.description}</p>
                     </div>
                   </div>
 
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
+                  <span className={`text-2xs font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
                     {riskLabel}
                   </span>
                 </div>
@@ -372,7 +361,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                       <label key={nav} className={`flex items-center gap-2 min-h-9 text-xs ${lacks ? 'text-slate-400' : 'text-slate-800'}`}>
                         <input type="checkbox" checked={screens.includes(nav)} onChange={() => setScreens(screens.includes(nav) ? screens.filter((x) => x !== nav) : [...screens, nav])} />
                         {screenLabel(nav)}
-                        {lacks && <span className="text-[11px]">(تحتاج صلاحيتها)</span>}
+                        {lacks && <span className="text-2xs">(تحتاج صلاحيتها)</span>}
                       </label>
                     );
                   })}

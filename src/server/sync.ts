@@ -379,7 +379,7 @@ export class SyncService {
     };
   }
 
-  /** People of a private conversation hear about a new message, once per conversation until they read it. */
+  /** People of a private conversation hear about a new message: once per conversation until they read it, and always when it is urgent. */
   private notifyMessage(message: ChatMessage) {
     if (!message.to) return;
     const channel = parseChannel(message.channel)!;
@@ -388,7 +388,7 @@ export class SyncService {
     const group = channel.kind === 'group' ? (this.db.getRow('conversations', channel.id)?.d as Conversation | undefined)?.name : undefined;
     const body = message.text || (message.attachments?.length ? `أرسل ${message.attachments.length === 1 ? 'ملفاً' : 'ملفات'}: ${message.attachments.map((a) => a.name).join('، ')}` : '');
     for (const userId of message.to) {
-      if (userId === message.userId || waiting.has(userId)) continue;
+      if (userId === message.userId || (waiting.has(userId) && !message.isUrgent)) continue;
       this.notify(userId, group ? `${group}: ${message.userName}` : `رسالة من ${message.userName}`, body.slice(0, 200), linkUrl, 'message', message.isUrgent === true);
     }
   }
@@ -402,7 +402,6 @@ export class SyncService {
       if (authorId && !recipients.has(authorId)) recipients.set(authorId, `تعليق جديد من ${c.authorName} على خبرك`);
     }
     recipients.delete(auth.user.id);
-    const now = new Date().toISOString();
     for (const [userId, title] of recipients) {
       writeNotification(this.db, { userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, linkUrl: commentLink(c.target), category: 'mention', type: 'SYSTEM' });
     }
@@ -431,7 +430,6 @@ export class SyncService {
       return;
     }
     recipients.delete(auth.user.id);
-    const now = new Date().toISOString();
     for (const userId of recipients) {
       writeNotification(this.db, {
         userId,
@@ -535,7 +533,12 @@ export class SyncService {
     return {
       rev,
       reset: false as const,
-      changes: rows.filter((r) => this.visible(auth, r)),
+      changes: rows.flatMap((r): EntityRow[] => {
+        if (this.visible(auth, r)) return [r];
+        // Someone removed from a group stops seeing it: their browser is told the row is gone
+        // (only its random id travels), instead of keeping a group they can no longer write to.
+        return r.c === 'conversations' ? [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }] : [];
+      }),
     };
   }
 

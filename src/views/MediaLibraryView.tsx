@@ -7,25 +7,7 @@ import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, uploadMediaFile } from '../services/mediaUpload';
-import {
-  UploadCloud,
-  Image as ImageIcon,
-  Video,
-  Music,
-  FileText,
-  Search,
-  Tag,
-  Trash2,
-  Eye,
-  X,
-  Sparkles,
-  Copy,
-  Check,
-  ExternalLink,
-  Clock,
-  Layers,
-  HardDrive,
-} from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -279,7 +261,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               >
                 <span>{label}</span>
                 <span
-                  className={`text-[11px] px-1.5 py-0.2 rounded-md ${
+                  className={`text-2xs px-1.5 py-0.2 rounded-md ${
                     selectedType === key ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'
                   }`}
                 >
@@ -333,7 +315,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               </div>
 
               {asset.durationSeconds && (
-                <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-[11px] font-mono px-2 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-xs">
+                <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-2xs font-mono px-2 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-xs">
                   <Clock className="w-3 h-3 text-slate-500" />
                   {Math.floor(asset.durationSeconds / 60)}:
                   {(asset.durationSeconds % 60).toString().padStart(2, '0')}
@@ -355,7 +337,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   )}
                 </h4>
                 {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
-                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[11px] font-bold">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-2xs font-bold">
                     {asset.mediaType === 'VIDEO' && (
                       <span className={`px-1.5 py-0.5 rounded-md ${isVideoReady(asset.videoStatus) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
                         {videoStatusName(asset.videoStatus)}
@@ -369,7 +351,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                     {asset.tags.map((tg) => (
                       <span
                         key={tg}
-                        className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md"
+                        className="text-2xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md"
                       >
                         #{tg}
                       </span>
@@ -379,7 +361,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span className="text-[11px] truncate max-w-[120px]" title={asset.uploadedByName}>
+                <span className="text-2xs truncate max-w-[120px]" title={asset.uploadedByName}>
                   {asset.uploadedByName || 'النظام'}
                 </span>
                 <div className="flex items-center gap-1">
@@ -430,7 +412,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         <form onSubmit={handleSaveUpload} className="space-y-4">
           {/* File upload */}
           <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
-            <label htmlFor="media-file-input" className="text-[11px] font-bold text-blue-800 flex items-center gap-1">
+            <label htmlFor="media-file-input" className="text-2xs font-bold text-blue-800 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
               رفع ملف من الجهاز (صور، فيديو، صوت، PDF)
             </label>
@@ -448,11 +430,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               </div>
             )}
             {uploaded && (
-              <p className="text-[11px] text-emerald-700 font-semibold">
+              <p className="text-2xs text-emerald-700 font-semibold">
                 تم رفع الملف: {uploaded.originalName} ({(uploaded.sizeBytes / (1024 * 1024)).toFixed(2)} MB)
               </p>
             )}
-            {uploadError && <p className="text-[11px] text-red-600 font-bold">{uploadError}</p>}
+            {uploadError && <p className="text-2xs text-red-600 font-bold">{uploadError}</p>}
           </div>
 
           <div>
@@ -462,7 +444,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTitle('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -514,7 +496,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                       key={dp.value}
                       type="button"
                       onClick={() => setDurationSeconds(dp.value)}
-                      className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
+                      className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
                     >
                       {dp.label}
                     </button>
@@ -531,7 +513,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFileUrl('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -560,7 +542,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
-                <span className="text-[11px] text-slate-600">معاينة حية للرابط</span>
+                <span className="text-2xs text-slate-600">معاينة حية للرابط</span>
               </div>
             )}
           </div>
@@ -572,7 +554,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setTagsInput('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -587,7 +569,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
             <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
+              <span className="text-2xs text-slate-500 flex items-center gap-0.5">
                 <Tag className="w-3 h-3 text-slate-500" />
                 اقتراحات:
               </span>
@@ -596,7 +578,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   key={tag}
                   type="button"
                   onClick={() => handleAddTag(tag)}
-                  className="text-[11px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
                 >
                   +{tag}
                 </button>
@@ -611,7 +593,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[11px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -756,7 +738,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   <span className="text-slate-500">الوسوم:</span>
                   <div className="flex flex-wrap gap-1">
                     {previewAsset.tags.map((t) => (
-                      <span key={t} className="text-[11px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-700">
+                      <span key={t} className="text-2xs bg-slate-200 px-2 py-0.5 rounded-md text-slate-700">
                         #{t}
                       </span>
                     ))}

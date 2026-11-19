@@ -6,14 +6,12 @@ import {
   NewsItem,
   Story,
   NewsStatus,
-  NewsPriority,
   Program,
   Episode,
   RundownSegment,
   Guest,
   EditorialTask,
   MediaFile,
-  BreakingNews,
   User,
   UserRole,
   Category,
@@ -1980,7 +1978,8 @@ export class ApiService {
 
   // --- GROUP CONVERSATIONS ---
   static getConversations(): Conversation[] {
-    return getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []).filter((c) => !c.deletedAt);
+    const me = this.getCurrentUser().id;
+    return getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []).filter((c) => !c.deletedAt && c.memberIds.includes(me));
   }
 
   /** Creates a group or changes its name and members, checked with the rules the server enforces. */
@@ -2028,6 +2027,8 @@ export class ApiService {
     const next: ChatReads = { ...mine, seen: { ...mine.seen, [channel]: timestamp } };
     if (chatReadsError(next, me)) return;
     setStored(COLLECTIONS.chatReads.storageKey, [next, ...all.filter((r) => r.id !== me)]);
+    // Reading the conversation is reading its notification; the next message notifies again.
+    this.markNotificationsReadFor(`/messages/${encodeURIComponent(channel)}`);
   }
 
   // --- NOTIFICATIONS ---
@@ -2065,6 +2066,16 @@ export class ApiService {
     const target = all.find((n) => n.id === id && n.userId === me);
     if (!target || target.isRead) return;
     target.isRead = true;
+    setStored(STORAGE_KEYS.NOTIFICATIONS, all);
+  }
+
+  /** Marks my unread notifications that lead to one place as read (the place was just opened). */
+  static markNotificationsReadFor(linkUrl: string): void {
+    const all = this.getNotifications();
+    const me = this.getCurrentUser().id;
+    const mine = all.filter((n) => n.userId === me && !n.isRead && n.linkUrl === linkUrl);
+    if (!mine.length) return;
+    mine.forEach((n) => (n.isRead = true));
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }
 

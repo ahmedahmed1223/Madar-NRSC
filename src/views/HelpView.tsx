@@ -83,8 +83,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 className={`w-full text-right p-3 rounded-xl transition-colors ${active?.id === a.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
               >
                 <span className="block text-xs font-bold text-slate-800">{a.title}</span>
-                <span className="block text-[11px] text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
-                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-[11px] font-bold text-blue-700">لقسمك</span>}
+                <span className="block text-2xs text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
+                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-2xs font-bold text-blue-700">لقسمك</span>}
               </button>
             ))}
           </nav>
@@ -94,7 +94,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 <h2 className="text-lg font-bold text-slate-900">{active.title}</h2>
                 <p className="text-xs text-slate-500 mt-1">{active.summary}</p>
                 {active.departments.length > 0 && (
-                  <p className="text-[11px] text-slate-500 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
+                  <p className="text-2xs text-slate-500 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
                 )}
               </header>
               {active.sections.map((s) => (

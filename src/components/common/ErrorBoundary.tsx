@@ -1,5 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home, ShieldAlert, Copy, Check, Sparkles } from 'lucide-react';
+import { Component, ErrorInfo, ReactNode } from 'react';
+import { RefreshCw, Home, ShieldAlert, Copy, Check } from 'lucide-react';
 import { selfHealingService } from '../../services/selfHealingService';
 
 interface Props {
@@ -97,7 +97,7 @@ Component Stack: ${this.state.errorInfo?.componentStack}`;
                 <div className="text-red-400 font-bold mb-1">
                   {this.state.error.name}: {this.state.error.message}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate">
+                <div className="text-2xs text-slate-500 truncate">
                   {this.state.error.stack?.split('\n')[1] || ''}
                 </div>
               </div>

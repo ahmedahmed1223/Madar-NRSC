@@ -45,7 +45,6 @@ import { DropEvent, SortableItem, SortableList, SortableScope } from '../compone
 import { notify } from '../services/notify';
 import { anchorScriptsDoc, bulletinGraphicsDoc, bulletinRundownDoc } from '../services/documents/builders';
 import { canControlOnAir } from '../shared/onair';
-import { departmentIdOf } from '../shared/departments';
 import {
   Bulletin,
   BULLETIN_KINDS,
@@ -364,13 +363,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               <ArrowRight className="w-5 h-5" />
             </button>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="flex flex-wrap items-center gap-2 text-2xs">
                 <span className="font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(bulletin.kind)}</span>
                 {onAir?.status === 'LIVE' && <span className="font-bold px-2 py-0.5 rounded bg-red-600 text-white">على الهواء</span>}
                 {bulletin.status === 'DONE' && <span className="font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">أُذيعت</span>}
               </div>
               <h1 className="text-lg sm:text-xl font-black text-slate-800 mt-1">{bulletin.title}</h1>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-2xs text-slate-500">
                 المحرر: <strong className="text-slate-700">{bulletin.editorName || '—'}</strong> · التقديم: <strong className="text-slate-700">{bulletin.anchors.join('، ') || '—'}</strong>
                 {bulletin.studioName ? ` · ${bulletin.studioName}` : ''}
               </p>
@@ -423,7 +422,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             { label: 'حتى الهواء', value: toAir === null ? '—' : toAir > 0 ? clockOf(toAir) : onAir?.status === 'LIVE' ? 'على الهواء' : '—', tone: toAir !== null && toAir > 0 && toAir < 900 ? 'text-amber-700' : '' },
           ].map((c) => (
             <div key={c.label}>
-              <div className="text-[11px] text-slate-500 font-sans">{c.label}</div>
+              <div className="text-2xs text-slate-500 font-sans">{c.label}</div>
               <div className={`text-sm sm:text-lg font-black ${c.tone || ''}`} dir="ltr">
                 {c.value}
               </div>
@@ -431,7 +430,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-[11px]">
+        <div className="flex flex-wrap items-center gap-3 text-2xs">
           <span className="font-bold text-slate-700">{air.length} قصة على الهواء</span>
           <span className="text-emerald-700 font-bold">{approvedCount} معتمدة</span>
           {readyCount > 0 && <span className="text-amber-700 font-bold">{readyCount} بانتظار الاعتماد{myApprovals > 0 ? ` (${myApprovals} بانتظارك)` : ''}</span>}
@@ -443,7 +442,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             value={rowQuery}
             onChange={(e) => setRowQuery(e.target.value)}
             placeholder="بحث في القصص…"
-            className="px-2.5 py-1 border border-slate-200 rounded-lg text-[11px] bg-white w-40"
+            className="px-2.5 py-1 border border-slate-200 rounded-lg text-2xs bg-white w-40"
           />
           <div role="group" aria-label="تصفية حسب الحالة" className="flex gap-1">
             {([
@@ -457,7 +456,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                 type="button"
                 aria-pressed={statusFilter === id}
                 onClick={() => setStatusFilter(id)}
-                className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${statusFilter === id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}
+                className={`px-2 py-1 rounded-lg text-2xs font-bold border ${statusFilter === id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}
               >
                 {name}
               </button>
@@ -485,7 +484,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       (await confirmDialog({ title: 'اعتماد القصص الجاهزة', message: `اعتماد ${approvable.length} قصة جاهزة: ${approvable.map((s) => s.slug).slice(0, 6).join('، ')}${approvable.length > 6 ? '…' : ''}`, confirmLabel: 'اعتماد' })) &&
                       bulk(approvable, 'APPROVED', `سُجّل اعتمادك لـ${approvable.length} قصة`)
                     }
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-2xs font-bold"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" /> اعتماد الجاهزة ({approvable.length})
                   </button>
@@ -494,7 +493,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   <button
                     type="button"
                     onClick={() => bulk(mine, 'READY', `أُرسلت ${mine.length} قصة للاعتماد`)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-bold"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-2xs font-bold"
                   >
                     إرسال مسوداتي للاعتماد ({mine.length})
                   </button>
@@ -557,7 +556,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       <SortableScope onDrop={dropStory} disabled={!canEdit}>
       <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
         <table className="w-full text-xs md:min-w-[900px] max-sm:[&_td]:px-1 max-sm:[&_th]:px-1" aria-label="رانداون النشرة">
-          <thead className="bg-slate-50 text-slate-500 text-[11px]">
+          <thead className="bg-slate-50 text-slate-500 text-2xs">
             <tr>
               <th className="p-2 text-right w-8">#</th>
               <th className="p-2 text-right">القصة</th>
@@ -614,16 +613,16 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                       {s.slug}
                     </button>
                     <div className="flex flex-wrap gap-1 mt-0.5">
-                      <span className="sm:hidden text-[11px] font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
-                      {s.floated && <span className="text-[11px] font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
-                      {s.killed && <span className="text-[11px] font-bold text-rose-500">مستبعدة</span>}
-                      {changed && <span className="text-[11px] font-bold text-blue-700">تحدّث الخبر</span>}
-                      {isUnderEmbargo(news) && <span className="text-[11px] font-bold text-rose-700">⚠ الخبر محظور حتى {embargoLabel(news!.embargoUntil)}</span>}
-                      {lock && <span className="text-[11px] font-bold text-amber-700">يحررها {lock.userName}</span>}
+                      <span className="sm:hidden text-2xs font-mono font-black text-blue-700" title={t.name}>{t.code}</span>
+                      {s.floated && <span className="text-2xs font-bold text-slate-500">عائمة (خارج التوقيت)</span>}
+                      {s.killed && <span className="text-2xs font-bold text-rose-500">مستبعدة</span>}
+                      {changed && <span className="text-2xs font-bold text-blue-700">تحدّث الخبر</span>}
+                      {isUnderEmbargo(news) && <span className="text-2xs font-bold text-rose-700">⚠ الخبر محظور حتى {embargoLabel(news!.embargoUntil)}</span>}
+                      {lock && <span className="text-2xs font-bold text-amber-700">يحررها {lock.userName}</span>}
                       {s.clipMediaId && <Film className="w-3 h-3 text-blue-500" aria-label="لقطة" />}
-                      {(s.graphics || []).length > 0 && <span className="text-[11px] text-purple-700">CG×{s.graphics!.length}</span>}
+                      {(s.graphics || []).length > 0 && <span className="text-2xs text-purple-700">CG×{s.graphics!.length}</span>}
                       {s.newsId && onOpenNews && (
-                        <button type="button" onClick={() => onOpenNews(s.newsId!)} className="text-[11px] text-indigo-700 hover:underline">
+                        <button type="button" onClick={() => onOpenNews(s.newsId!)} className="text-2xs text-indigo-700 hover:underline">
                           الخبر
                         </button>
                       )}
@@ -640,7 +639,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                         (o) => o.id === s.status || (!lock && !s.killed && !storyStatusError(s, { ...s, status: o.id }, bulletin, actor))
                       );
                       if (options.length < 2) {
-                        return <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>;
+                        return <span className={`text-2xs font-bold px-1.5 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{storyStatusName(s.status)}</span>;
                       }
                       return (
                         <select
@@ -663,7 +662,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                                   : `أُعيدت «${s.slug}» مسودة`
                             );
                           }}
-                          className={`text-[11px] font-bold ps-1 pe-4 sm:ps-1.5 sm:pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
+                          className={`text-2xs font-bold ps-1 pe-4 sm:ps-1.5 sm:pe-5 py-0.5 rounded border-0 cursor-pointer ${STATUS_TONE[s.status]}`}
                         >
                           {options.map((o) => (
                             <option key={o.id} value={o.id}>
@@ -676,7 +675,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     {(() => {
                       const pr = approvalProgress(bulletin, s);
                       return pr.total > 1 && s.status !== 'DRAFT' ? (
-                        <span className="block text-[11px] text-slate-500 mt-0.5" title={pr.next ? `بانتظار: ${pr.nextName}` : 'اكتمل الاعتماد'}>
+                        <span className="block text-2xs text-slate-500 mt-0.5" title={pr.next ? `بانتظار: ${pr.nextName}` : 'اكتمل الاعتماد'}>
                           {pr.done}/{pr.total}
                           {pr.next && s.status === 'READY' ? ` · ${pr.nextName}` : ''}
                         </span>
@@ -860,13 +859,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                     <input type="checkbox" checked={on} onChange={() => setPicked(on ? picked.filter((x) => x !== item.id) : [...picked, item.id])} className="mt-0.5" />
                     <span className="flex-1 min-w-0">
                       <span className="font-bold text-slate-800 block">{source === 'COPY' ? item.slug : item.title}</span>
-                      <span className="text-[11px] text-slate-500">
+                      <span className="text-2xs text-slate-500">
                         {source === 'NEWS' && `${NEWS_STATUS[item.status] || item.status} · ${item.authorName || ''}`}
                         {source === 'WIRES' && `${item.sourceName} · ${new Date(item.publishedAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}`}
                         {source === 'COPY' && `${storyTypeOf(item.type).code} · ${mmss(storyTiming(item).total)}`}
                       </span>
-                      {already && <span className="text-[11px] font-bold text-amber-700 mr-2">موجود في النشرة</span>}
-                      {source === 'NEWS' && isUnderEmbargo(item) && <span className="text-[11px] font-bold text-rose-700 mr-2">محظور حتى {embargoLabel(item.embargoUntil)}</span>}
+                      {already && <span className="text-2xs font-bold text-amber-700 mr-2">موجود في النشرة</span>}
+                      {source === 'NEWS' && isUnderEmbargo(item) && <span className="text-2xs font-bold text-rose-700 mr-2">محظور حتى {embargoLabel(item.embargoUntil)}</span>}
                     </span>
                   </label>
                 </li>
@@ -955,7 +954,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               disabled={!can('bulletins.manage')}
               editorName={users.find((u) => u.id === meta.editorId)?.fullName}
             />
-            {!can('bulletins.manage') && <p className="text-[11px] text-slate-500">تغيير مسار الاعتماد لمسؤولي النشرات.</p>}
+            {!can('bulletins.manage') && <p className="text-2xs text-slate-500">تغيير مسار الاعتماد لمسؤولي النشرات.</p>}
             <div className="flex flex-wrap justify-between gap-2 pt-3 border-t border-slate-100">
               {can('bulletins.manage') ? (
                 <button

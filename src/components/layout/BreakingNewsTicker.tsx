@@ -58,9 +58,9 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
         {/* Pulsing Tag */}
         <div className="flex items-center gap-1.5 bg-black/25 px-2.5 py-1 rounded-lg shrink-0 border border-white/10">
           <Flame className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-          <span className="font-extrabold tracking-wider text-[11px] uppercase">عاجل</span>
+          <span className="font-extrabold tracking-wider text-2xs uppercase">عاجل</span>
           {rawList.length > 1 && (
-            <span className="bg-white/20 text-[11px] px-1.5 py-0.2 rounded font-mono font-bold">
+            <span className="bg-white/20 text-2xs px-1.5 py-0.2 rounded font-mono font-bold">
               {safeIndex + 1}/{rawList.length}
             </span>
           )}
@@ -81,7 +81,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
           const itemTime = 'time' in activeItem ? activeItem.time : 'startedAt' in activeItem ? activeItem.startedAt : null;
           if (!itemTime) return null;
           return (
-            <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-mono text-white bg-red-950 px-2 py-0.5 rounded shrink-0">
+            <span className="hidden md:inline-flex items-center gap-1 text-2xs font-mono text-white bg-red-950 px-2 py-0.5 rounded shrink-0">
               <Radio className="w-3 h-3 text-red-300 animate-pulse" />
               {itemTime}
             </span>

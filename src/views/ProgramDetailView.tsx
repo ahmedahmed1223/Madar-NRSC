@@ -2,33 +2,8 @@ import { arabicDate } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
 import { formatSecondsToTime } from '../shared/rundown';
-import React, { useState, useEffect } from 'react';
-import {
-  ArrowRight,
-  Tv,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  Video,
-  Plus,
-  Edit2,
-  CheckCircle2,
-  Sparkles,
-  Award,
-  Layers,
-  FileText,
-  Users,
-  MessageSquare,
-  TrendingUp,
-  AlertCircle,
-  ExternalLink,
-  Sliders,
-  Check,
-  Building,
-  Radio,
-  Share2,
-  ChevronLeft,
-} from 'lucide-react';
+import React, { useState } from 'react';
+import { Tv, Calendar, Clock, User as UserIcon, Video, Plus, Edit2, Layers, FileText, Users, Sliders, Building, Radio } from 'lucide-react';
 import { Program, Episode, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
@@ -115,7 +90,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {allPrograms.length > 0 && onSwitchProgram && (
               <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
                 <Tv className="w-3.5 h-3.5 text-blue-600" />
-                <label htmlFor="program-switcher-select" className="text-[11px] font-medium text-slate-500">
+                <label htmlFor="program-switcher-select" className="text-2xs font-medium text-slate-500">
                   تبديل:
                 </label>
                 <select
@@ -218,7 +193,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
           {/* Next episode at a glance */}
           <div className="bg-slate-900/90 backdrop-blur-md p-5 rounded-2xl border border-slate-700/80 flex flex-col gap-2 text-right shrink-0 w-full md:w-64 shadow-md">
-            <span className="text-[11px] font-bold text-slate-500">الحلقة القادمة</span>
+            <span className="text-2xs font-bold text-slate-500">الحلقة القادمة</span>
             {nextEpisode ? (
               <>
                 <strong className="text-sm text-white leading-snug line-clamp-2">{nextEpisode.title}</strong>
@@ -324,25 +299,25 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   <span className="block text-xl font-black text-slate-900 font-mono">
                     {program.durationMinutes}
                   </span>
-                  <span className="text-[11px] text-slate-500">دقيقة / حلقة</span>
+                  <span className="text-2xs text-slate-500">دقيقة / حلقة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-blue-600 font-mono">
                     {programEpisodes.length || program.episodesCount || 0}
                   </span>
-                  <span className="text-[11px] text-slate-500">حلقات مسجلة</span>
+                  <span className="text-2xs text-slate-500">حلقات مسجلة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-amber-500 font-mono">
                     {programEpisodes.filter((e) => (e.broadcastDate || '') >= today).length}
                   </span>
-                  <span className="text-[11px] text-slate-500">حلقات قادمة</span>
+                  <span className="text-2xs text-slate-500">حلقات قادمة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-black text-emerald-700 font-mono">
                     {program.broadcastDays.length}
                   </span>
-                  <span className="text-[11px] text-slate-500">أيام أسبوعياً</span>
+                  <span className="text-2xs text-slate-500">أيام أسبوعياً</span>
                 </div>
               </div>
             </div>
@@ -393,7 +368,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <UserIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="block text-[11px] text-slate-500 font-medium">مقدم البرنامج الرئيسي</span>
+                    <span className="block text-2xs text-slate-500 font-medium">مقدم البرنامج الرئيسي</span>
                     <strong className="text-xs text-slate-900">{program.presenterName}</strong>
                   </div>
                 </div>
@@ -403,7 +378,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <UserIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="block text-[11px] text-slate-500 font-medium">المنتج المنفذ</span>
+                    <span className="block text-2xs text-slate-500 font-medium">المنتج المنفذ</span>
                     <strong className="text-xs text-slate-900">{program.producerName}</strong>
                   </div>
                 </div>
@@ -417,7 +392,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
                   الحلقة القادمة
                 </span>
-                <span className="text-[11px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
+                <span className="text-2xs bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
                   {nextEpisode ? `${arabicDate(nextEpisode.broadcastDate)} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
                 </span>
               </div>
@@ -504,7 +479,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-mono text-slate-500 font-semibold">
+                      <span className="text-2xs font-mono text-slate-500 font-semibold">
                         الموسم {ep.seasonNumber || 1} • الحلقة {ep.episodeNumber || 1}
                       </span>
                       {getStatusBadge(ep.status)}
@@ -600,7 +575,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <strong className="text-xs sm:text-sm text-slate-800 block">
                       {seg.title}
                     </strong>
-                    <span className="text-[11px] text-slate-500">{seg.notes}</span>
+                    <span className="text-2xs text-slate-500">{seg.notes}</span>
                   </div>
                 </div>
 
@@ -634,7 +609,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 <UserIcon className="w-6 h-6" />
               </div>
               <div className="min-w-0">
-                <span className="text-[11px] font-bold text-blue-600 block uppercase">
+                <span className="text-2xs font-bold text-blue-600 block uppercase">
                   {member.role}
                 </span>
                 <h4 className="text-sm font-black text-slate-800 truncate">{member.name}</h4>
