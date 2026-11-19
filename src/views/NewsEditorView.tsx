@@ -1,5 +1,10 @@
 import { notify } from '../services/notify';
-import { ReviewThreads } from '../components/editor/ReviewThreads';
+import { ReviewThreads, type ReviewSeed } from '../components/editor/ReviewThreads';
+import { FieldBreakingForm } from '../components/news/FieldBreakingForm';
+import { spokenReadTime } from '../shared/readTime';
+import { dataStore, QUEUED_MESSAGE } from '../services/dataStore';
+import { claimReview, passQuality, releaseReview, closeBreakingRequest } from '../services/newsReview';
+import { activeReviewClaim, canRequestBreaking, canReviewNews, claimDenial, isQualityPassed, qualityPassDenial, REVIEW_DECISIONS } from '../shared/newsWorkflow';
 import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
@@ -42,6 +47,11 @@ import {
   Check,
   Lock,
   ArrowLeftRight,
+  ShieldCheck,
+  Hand,
+  SkipForward,
+  MessageSquarePlus,
+  CornerUpLeft,
 } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { RichTextEditor } from '../components/editor/RichTextEditor';
@@ -73,6 +83,8 @@ interface NewsEditorViewProps {
   nextReviewId?: string;
   onNextReview?: (id: string) => void;
   reviewing?: boolean;
+  /** The filtered review queue this story was opened from (for «3 من 18»). */
+  reviewQueue?: string[];
 }
 
 export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
@@ -89,6 +101,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   nextReviewId,
   onNextReview,
   reviewing = false,
+  reviewQueue = [],
 }) => {
   const [storyId, setStoryId] = useState<string>(defaultStoryId || '');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -99,8 +112,27 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const headlineRef = useRef<HTMLTextAreaElement>(null);
 
   const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
-  const lock = useNewsEditLock(newsItem?.id);
-  const lockedByOther = lock.status === 'locked';
+  // Whether this person may change the story at all (before looking at locks).
+  const editableStory = canEditNewsContent(can, currentUser.id, newsItem);
+  const lock = useNewsEditLock(newsItem?.id, editableStory);
+  const lockHolder = lock.holder || lock.readerSees;
+  const lockedByOther = lock.status === 'locked' || !!lock.readerSees;
+  // «خبر عاجل» from the «+ إنشاء جديد» menu opens the short field form (Topbar sets the flag).
+  const [fieldBreaking, setFieldBreaking] = useState(() => {
+    if (newsItem || !canRequestBreaking(can)) return false;
+    try {
+      return sessionStorage.getItem('madar-new-news-breaking') === '1' || new URLSearchParams(window.location.search).get('breaking') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('madar-new-news-breaking');
+    } catch {
+      // storage blocked
+    }
+  }, []);
   const [title, setTitle] = useState('');
   // The headline wraps instead of scrolling sideways, so the editor always sees all of it.
   useLayoutEffect(() => {
@@ -228,22 +260,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     if (data.content) setContent(data.content);
   };
 
-  // Broadcast Speech Calculations
+  // One read-time figure (the same function as the body editor's footer): the lead and the body.
   const textStats = useMemo(() => {
-    const cleanContent = content.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-    // Count what was typed: no joining spaces, editor line breaks or repeated blanks.
-    const fullText = [title, summary, cleanContent].map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ');
-    const words = (fullText.match(/\S+/g) || []).length;
-    const chars = fullText.length;
-    
-    // Arabic TV Broadcast standard: 130 words per minute (~2.16 words per second)
-    const readingSeconds = Math.ceil(words / 2.16);
-    const mins = Math.floor(readingSeconds / 60);
-    const secs = readingSeconds % 60;
-    const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
-    return { words, chars, readingSeconds, timeFormatted };
-  }, [title, summary, content]);
+    const spoken = spokenReadTime(summary, content);
+    const chars = [summary, content.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')].map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ').length;
+    return { words: spoken.words, chars, readingSeconds: spoken.seconds, timeFormatted: spoken.clock, label: spoken.label };
+  }, [summary, content]);
 
   const formFields = () => ({
     title,
@@ -271,7 +293,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
   const persistDraftRef = useRef<() => void>(() => {});
   persistDraftRef.current = () => {
-    if (!loadedSnapshotRef.current || !isDirty || lockedByOther || hasEmergencyDraft) return;
+    if (!loadedSnapshotRef.current || !isDirty || !editableStory || lockedByOther || hasEmergencyDraft) return;
     try {
       localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
       setDraftStorageFailed(false);
@@ -311,9 +333,13 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return;
       const sameBase = !newsItem?.id || draft.baseUpdatedAt === serverUpdatedAt;
       const { savedAt: _s, baseUpdatedAt: _b, ...fields } = draft;
-      if (sameBase && JSON.stringify({ ...JSON.parse(loadedSnapshotRef.current || '{}'), ...fields }) !== loadedSnapshotRef.current) {
+      const differs = JSON.stringify({ ...JSON.parse(loadedSnapshotRef.current || '{}'), ...fields }) !== loadedSnapshotRef.current;
+      if (!differs) {
+        // The server already holds this text (e.g. sent after the connection came back): nothing to recover.
+        if (newsItem?.id) localStorage.removeItem(draftKey);
+      } else if (sameBase) {
         setHasEmergencyDraft(true);
-      } else if (!sameBase) {
+      } else {
         setDraftVersionChanged(true);
         setHasEmergencyDraft(true);
       }
@@ -486,8 +512,23 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     if (newsItem && newerVersionAvailable && !isDirty) loadFromItem(newsItem);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newsItem?.updatedAt, lock.status]);
-  const canEditContent = canEditNewsContent(can, currentUser.id, newsItem) && !lockedByOther;
+  const canEditContent = editableStory && !lockedByOther;
+  /** Read-only: every field shows the text without accepting input. */
+  const ro = !canEditContent;
   const transitions = newsItem?.id ? availableTransitions(can, currentUser.id, newsItem) : [];
+  // Review mode: the story waits for review and this person reviews or approves.
+  const underReview = newsItem?.status === 'UNDER_REVIEW';
+  const reviewClaim = activeReviewClaim(newsItem);
+  const mayClaim = underReview && claimDenial(can, currentUser.id, newsItem) === null;
+  const mayPassQuality = underReview && qualityPassDenial(can, currentUser.id, newsItem) === null;
+  const qualityPassed = !!newsItem && isQualityPassed(newsItem);
+  const reviewMode = underReview && !!newsItem && newsItem.authorId !== currentUser.id && canReviewNews(can);
+  const canPostReview = !!newsItem?.id && (canEditContent || can('news.review') || can('news.edit_any'));
+  const queueIndex = newsItem?.id ? reviewQueue.indexOf(newsItem.id) : -1;
+  const queuePosition = queueIndex >= 0 && reviewQueue.length > 1 ? `${queueIndex + 1} من ${reviewQueue.length}` : null;
+  const [reviewSeed, setReviewSeed] = useState<ReviewSeed | null>(null);
+  const [selectedQuote, setSelectedQuote] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
   const primaryTransition = ['UNDER_REVIEW', 'APPROVED', 'PUBLISHED'].find(status => transitions.includes(status as NewsStatus)) || transitions[0];
   const canCreateForReview = !newsItem?.id && transitionDenial(can, currentUser.id, null, 'UNDER_REVIEW') === null;
 
@@ -540,8 +581,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
   /** Saves the text (never the status). Returns the stored story or null. */
   const [saving, setSaving] = useState(false);
-  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed'>('idle');
-  const [continueReview, setContinueReview] = useState(true);
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed' | 'queued'>('idle');
+  // A decision in the review queue opens the next story («اعتماد والتالي»).
+  const continueReview = true;
   const actionBarRef = useRef<HTMLDivElement>(null);
   const [actionBarHeight, setActionBarHeight] = useState(100);
   useEffect(() => {
@@ -579,7 +621,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           if (!stay) onCancel();
         }
       }
-      else setSaveState('failed');
+      else setSaveState(waitingForConnection() ? 'queued' : 'failed');
       return saved;
     } catch {
       setSaveState('failed');
@@ -588,6 +630,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       savingRef.current = false;
       setSaving(false);
     }
+  };
+
+  /** No connection: writes stay on this device and are sent when it is back. */
+  const waitingForConnection = () => {
+    const state = dataStore.syncState();
+    return !state.browserOnline || !state.online;
   };
 
   const handleSaveDraft = () => {
@@ -617,14 +665,23 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setShowCommentModal(true);
   };
 
-  // Keyboard: Ctrl+S saves and stays in the editor; Ctrl+Enter sends a new story for review.
+  // Keyboard: Ctrl+S saves and stays in the editor; Ctrl+Enter sends a draft for review, or approves a story under review.
   const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
   shortcutRef.current = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.repeat || e.isComposing || !(e.ctrlKey || e.metaKey) || e.altKey || showCommentModal || document.body.classList.contains('form-page-open') || document.querySelector('[role=dialog], [role=alertdialog]')) return;
     if (e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
       e.preventDefault();
       if (canEditContent && lock.status !== 'acquiring') saveContent(true);
-    } else if (e.key === 'Enter' && canCreateForReview) {
+    } else if (e.key === 'Enter' && e.shiftKey && reviewMode && transitions.includes('NEEDS_REVISION')) {
+      // Ctrl+Shift+Enter: return to the writer with a reason.
+      e.preventDefault();
+      handleTriggerStatusChange('NEEDS_REVISION');
+    } else if (e.key === 'Enter' && reviewMode && transitions.includes('APPROVED')) {
+      // Under review: Ctrl+Enter approves, through the same confirmation as the button.
+      e.preventDefault();
+      handleTriggerStatusChange('APPROVED');
+    } else if (e.key === 'Enter' && (canCreateForReview || (newsItem?.id && ['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION'].includes(newsItem.status) && transitions.includes('UNDER_REVIEW')))) {
+      // Drafts: Ctrl+Enter sends for review.
       e.preventDefault();
       handleTriggerStatusChange('UNDER_REVIEW');
     }
@@ -646,13 +703,30 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setStatusSubmitting(true);
     try {
       // Confirm the text save before changing its editorial status.
+      let queued = false;
       if (isDirty && canEditContent) {
         const saved = await saveContent(true);
-        if (!saved) return;
+        if (!saved) {
+          // Offline the text is kept on this device and sent later; the status change can wait with it.
+          if (!waitingForConnection()) return;
+          queued = true;
+        }
       }
       // datetime-local is local time; send an absolute instant.
       const accepted = await onUpdateStatus(newsItem.id, pendingStatus, statusComment, pendingStatus === 'SCHEDULED' ? fromLocalInputValue(scheduleAt) : undefined);
-      if (!accepted) return;
+      if (!accepted) {
+        const stored = apiService.getNewsById(newsItem.id)?.status === pendingStatus;
+        if (!(stored && waitingForConnection())) return;
+        queued = true;
+      }
+      if (queued) {
+        // Say it once, plainly, and close: nothing is lost and nothing more to press.
+        notify({ type: 'warning', title: 'غير متصل: سيُرسل عند عودة الاتصال', message: QUEUED_MESSAGE });
+        setShowCommentModal(false);
+        setStatusComment('');
+        if (['NEEDS_REVISION', 'UNDER_REVIEW', 'REJECTED'].includes(pendingStatus)) onCancel();
+        return;
+      }
       const fresh = apiService.getNewsById(newsItem.id);
       if (fresh) setBaseUpdatedAt(fresh.updatedAt);
       setShowCommentModal(false);

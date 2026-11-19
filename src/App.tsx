@@ -1084,6 +1084,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 episodes={episodes}
                 programs={programs}
                 onSelectEpisode={handleSelectEpisode}
+                onOpenBulletin={(id) => openBulletin(id)}
+                onOpenBulletins={() => openBulletin(null)}
               />
             )}
 
