@@ -185,7 +185,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                       </select>
                     </div>
                     <div>
-                      <label htmlFor={`tpl-est-${step.id}`} className={LABEL}>المقدر (د)</label>
+                      <label htmlFor={`tpl-est-${step.id}`} className={LABEL}>الوقت المقدر (دقيقة)</label>
                       <input id={`tpl-est-${step.id}`} type="number" min={0} max={100000} inputMode="numeric" value={step.estimateMinutes ?? ''} onChange={(e) => patch(step.id, { estimateMinutes: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })} className={INPUT} />
                     </div>
                   </div>

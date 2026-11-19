@@ -10,6 +10,8 @@ interface KeyboardShortcutsModalProps {
 
 interface ShortcutItem {
   keys: string[];
+  /** The keys are alternatives (any one of them), not a combination pressed together. */
+  either?: boolean;
   description: string;
   category: 'NAVIGATION' | 'EDITORIAL' | 'BROADCAST' | 'GENERAL';
 }
@@ -19,8 +21,8 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['Ctrl', 'K'], description: 'فتح لوحة الأوامر والبحث الذكي الفوري', category: 'NAVIGATION' },
   { keys: ['?'], description: 'عرض قائمة اختصارات لوحة المفاتيح', category: 'GENERAL' },
   { keys: ['Esc'], description: 'إغلاق أي نافذة منبثقة أو محادثة فرعية مفتوحة', category: 'GENERAL' },
-  { keys: ['Tab', 'Shift+Tab'], description: 'التنقل بين الحقول والإجراءات للأمام والخلف', category: 'GENERAL' },
-  { keys: ['←', '→', 'Home', 'End'], description: 'التنقل بين علامات التبويب حين تكون مركزة', category: 'NAVIGATION' },
+  { keys: ['Tab', 'Shift+Tab'], either: true, description: 'التنقل بين الحقول والإجراءات للأمام والخلف', category: 'GENERAL' },
+  { keys: ['←', '→', 'Home', 'End'], either: true, description: 'التنقل بين علامات التبويب حين تكون مركزة', category: 'NAVIGATION' },
 
   // Editorial & News
   { keys: ['Ctrl', 'Alt', 'N'], description: 'إنشاء خبر أو تقرير صحفي جديد فوراً', category: 'EDITORIAL' },
@@ -144,7 +146,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
                       <kbd className="min-w-[28px] text-center px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-2xs font-bold text-slate-800 shadow-2xs">
                         {k}
                       </kbd>
-                      {kIdx < item.keys.length - 1 && <span className="text-slate-500 text-xs">+</span>}
+                      {kIdx < item.keys.length - 1 && (item.either ? <span className="text-slate-500 text-xs font-sans">أو</span> : <span className="text-slate-500 text-xs">+</span>)}
                     </React.Fragment>
                   ))}
                 </div>

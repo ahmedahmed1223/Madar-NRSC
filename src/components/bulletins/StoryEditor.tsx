@@ -310,7 +310,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               sizeKey="anchor-script"
               label={`نص المذيع ${meta.clip ? '(المقدمة / الربط)' : ''}`}
               aside={
-                <span className="text-2xs font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                <span className="text-2xs font-mono text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
                   {words} كلمة · قراءة {mmss(readSeconds(script))}
                 </span>
               }
@@ -408,7 +408,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 </button>
               )}
               {!isNew && graphics.some((g) => g.lines.some((l) => l.trim())) && RbacService.hasPermission(currentUser, 'requests.create') && (
-                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-purple-700 hover:underline">
+                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline">
                   <Send className="w-3.5 h-3.5" /> إرسال لقسم الجرافيك
                 </button>
               )}

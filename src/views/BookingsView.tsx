@@ -83,23 +83,23 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
           <p className="text-xs text-slate-500 mt-1">الاستوديوهات والكاميرات ووحدات البث وغرف المونتاج والطواقم على جدول اليوم؛ لا يقبل النظام حجزين متعارضين للمورد نفسه.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setDay(shiftDay(day, -1))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم السابق">
+          <button type="button" onClick={() => setDay(shiftDay(day, -1))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="اليوم" className="px-2 py-1.5 rounded-xl border border-slate-200 text-xs" />
-          <button type="button" onClick={() => setDay(shiftDay(day, 1))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم التالي">
+          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="اليوم" className="min-h-11 sm:min-h-9 px-2 py-1.5 rounded-xl border border-slate-200 bg-white text-xs" />
+          <button type="button" onClick={() => setDay(shiftDay(day, 1))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => setDay(localDateString())} className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+          <button type="button" onClick={() => setDay(localDateString())} className="min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
             اليوم
           </button>
           {canManage && (
-            <button type="button" onClick={() => setManaging(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+            <button type="button" onClick={() => setManaging(true)} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
               <Settings2 className="w-3.5 h-3.5" /> الموارد
             </button>
           )}
           {canBook && (
-            <button type="button" onClick={() => setEditing({})} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+            <button type="button" onClick={() => setEditing({})} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
               <Plus className="w-3.5 h-3.5" /> حجز جديد
             </button>
           )}
@@ -131,7 +131,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
             type="button"
             aria-pressed={kind === k.id}
             onClick={() => setKind(k.id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${kind === k.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+            className={`min-h-11 sm:min-h-9 px-3 py-1.5 rounded-xl text-xs font-bold border ${kind === k.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
           >
             {k.name}
           </button>
@@ -186,14 +186,15 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                             key={b.id}
                             type="button"
                             onClick={() => setViewing(b)}
-                            title={`${b.title} — ${fmtTime(b.start)}–${fmtTime(b.end)} — ${b.bookedByName || ''}`}
+                            title={`${b.title} — من ${fmtTime(b.start)} إلى ${fmtTime(b.end)}${b.bookedByName ? ` — ${b.bookedByName}` : ''}`}
                             className={`absolute top-1.5 bottom-1.5 rounded-lg border px-1.5 text-2xs font-bold text-right overflow-hidden whitespace-nowrap z-20 ${bookingStatusOf(b.status).tone} ${
                               focusId === b.id ? 'ring-2 ring-blue-500' : ''
                             }`}
                             style={{ insetInlineStart: `${s}%`, width: `${Math.max(e - s, 1.5)}%` }}
                           >
-                            {b.title}
-                            <span className="block font-normal">
+                            <span className="block truncate">{b.title}</span>
+                            {/* Left-to-right so a narrow block keeps the start time and clips the end. */}
+                            <span dir="ltr" className="block truncate font-normal tabular-nums text-right">
                               {fmtTime(b.start)}–{fmtTime(b.end)}
                             </span>
                           </button>

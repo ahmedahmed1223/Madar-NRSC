@@ -21,7 +21,8 @@ const PERIODS = [
 
 const SELECT = 'min-h-11 px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white';
 const rate = (r: number | null) => (r === null ? '—' : `${Math.round(r * 100)}%`);
-const cycle = (m: number | null) => (m === null ? '—' : minutesLabel(m));
+/** A measured duration; a measured zero reads «أقل من دقيقة», only «—» means nothing was measured. */
+const cycle = (m: number | null) => (m === null ? '—' : m < 1 ? 'أقل من دقيقة' : minutesLabel(m));
 
 /** «التقارير»: open, late, blocked and finished work by template, department, station or person, with cycle time and waits. */
 export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now }) => {
@@ -43,7 +44,10 @@ export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now
   }, [cards, period, now]);
   const rows = useMemo(() => assignmentReport(input, dimension), [input, dimension]);
   const totals = useMemo(() => assignmentTotals(input), [input]);
-  const waits = useMemo(() => waitingByStepType(input).slice(0, 8), [input]);
+  // Only step types with a measured wait or something waiting now: rows of «—» say nothing.
+  const waits = useMemo(() => waitingByStepType(input).filter((w) => w.avgWaitMinutes !== null || w.waitingNow > 0).slice(0, 8), [input]);
+  const periodName = PERIODS.find((p) => p.id === period)!.name;
+  const dimensionName = REPORT_DIMENSIONS.find((d) => d.id === dimension)?.name || '';
   const unit = dimension === 'template' ? 'التكليفات' : 'المهام';
 
   const tiles: { label: string; value: string | number; tone: string }[] = [
@@ -88,7 +92,11 @@ export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now
 
   return (
     <section className="space-y-4" aria-label="تقارير التكليفات">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* On paper: what the sheet is and which filters made it (the controls stay off the sheet). */}
+      <p className="hidden print-only text-xs">
+        <b>{settings.organizationName}</b> · تقرير التكليفات · {periodName} · {dimensionName}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 no-print">
         <select aria-label="الفترة" value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} className={SELECT}>
           {PERIODS.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
@@ -109,7 +117,7 @@ export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now
         {tiles.map((t) => (
           <div key={t.label} className="bg-white border border-slate-200 rounded-2xl p-3">
             <dt className="text-2xs text-slate-600">{t.label}</dt>
-            <dd className={`text-xl font-bold tabular-nums ${t.tone}`}>{t.value}</dd>
+            <dd className={`text-xl font-bold tabular-nums ${t.value && t.value !== '—' ? t.tone : 'text-slate-900'}`}>{t.value}</dd>
           </div>
         ))}
       </dl>
@@ -120,7 +128,7 @@ export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now
       {rows.length === 0 ? <p className="text-center text-xs text-slate-500 py-10 bg-white border border-dashed border-slate-300 rounded-2xl">لا تكليفات في هذه الفترة.</p> : table(rows)}
 
       <section className="space-y-2">
-        <h3 className="text-sm font-bold text-slate-900">أين تنتظر المهام أطول؟</h3>
+        <h2 className="text-sm font-bold text-slate-900">أين تنتظر المهام أطول؟</h2>
         <p className="text-2xs text-slate-500">من اكتمال المهمة السابقة حتى بدء العمل، حسب نوع المهمة.</p>
         {waits.length === 0 ? (
           <p className="text-xs text-slate-500">لا انتظار يُذكر في هذه الفترة.</p>

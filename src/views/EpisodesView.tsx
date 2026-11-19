@@ -16,7 +16,7 @@ import { bulletinSlotsAround } from '../components/episodes/airSlots';
 import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, ChevronRight, ListOrdered, Users, Trash2, X, Edit2 } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ListOrdered, Users, Trash2, X, Edit2 } from 'lucide-react';
 import { Episode, Program, User } from '../types';
 import { newId } from '../shared/ids';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
@@ -315,14 +315,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[11rem]" label="عنوان الحلقة والبرنامج" sortKey="title" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="رقم الحلقة / الموسم" sortKey="number" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="تاريخ وموعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[11rem] lg:min-w-[16rem]" label="الحلقة" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الرقم" sortKey="number" sort={sort} onSort={toggleSort} />
+                <SortTh className="py-3.5 px-3" label="موعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="المقدم / المنتج" sortKey="presenter" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="فقرات الرانداون" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="الفقرات" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <th className="py-3.5 px-3 text-center hidden md:table-cell">الضيوف</th>
-                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="حالة الحلقة" sortKey="status" sort={sort} onSort={toggleSort} />
-                <th className="py-3.5 px-2 sm:px-4 text-center">إدارة الحلقة</th>
+                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
+                <th className="py-3.5 px-2 sm:px-4 text-center"><span className="sr-only sm:not-sr-only">إجراءات</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -366,16 +366,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       </td>
 
                       {/* Numbers */}
-                      <td className="py-3.5 px-3 font-mono text-slate-600 font-semibold hidden lg:table-cell">
-                        ح #{ep.episodeNumber} (م {ep.seasonNumber})
+                      <td className="py-3.5 px-3 text-slate-600 font-semibold tabular-nums whitespace-nowrap hidden lg:table-cell">
+                        ح {ep.episodeNumber} · م {ep.seasonNumber}
                       </td>
 
                       {/* Air date & time */}
                       <td className="py-3.5 px-3">
                         <div className="text-slate-700 tabular-nums">
                           <div className="whitespace-nowrap">{arabicDate(ep.broadcastDate)}</div>
-                          <div className="text-2xs text-slate-500">
-                            {ep.startTime} - {ep.endTime}
+                          <div className="text-2xs text-slate-500 whitespace-nowrap">
+                            {ep.startTime}–{ep.endTime}
                           </div>
                         </div>
                       </td>
@@ -388,16 +388,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
                       {/* Rundown count */}
                       <td className="py-3.5 px-3 text-center hidden md:table-cell">
-                        <span className="inline-flex items-center gap-1 font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                          <ListOrdered className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-slate-700">
+                          <ListOrdered className="w-3.5 h-3.5 text-slate-500" />
                           {countLabel(rundownCount, EP_NOUNS.segment)}
                         </span>
                       </td>
 
                       {/* Guests count */}
                       <td className="py-3.5 px-3 text-center hidden md:table-cell">
-                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
-                          <Users className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-slate-700">
+                          <Users className="w-3.5 h-3.5 text-slate-500" />
                           {countLabel(guestsCount, EP_NOUNS.guest)}
                         </span>
                       </td>
@@ -415,11 +415,11 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onSelectEpisode(ep.id)}
-                            className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-1"
+                            className="min-h-11 sm:min-h-9 whitespace-nowrap px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-1"
                           >
                             <span className="hidden sm:inline">فتح مساحة العمل</span>
                             <span className="sm:hidden">فتح</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
+                            <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
                           </button>
 
                           {canEditDetails && (
@@ -443,7 +443,8 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                                   onDeleteEpisode(ep.id);
                                 }
                               }}
-                              className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              aria-label={`حذف الحلقة: ${ep.title}`}
+                              className="min-h-11 min-w-11 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                               title="حذف الحلقة"
                             >
                               <Trash2 className="w-4 h-4" />

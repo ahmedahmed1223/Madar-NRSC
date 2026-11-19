@@ -65,38 +65,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-    try {
-      await onLogin(email.trim(), password, needsCode ? code.trim() : undefined);
-    } catch (err: any) {
-      if (err?.code === 'TOTP_REQUIRED') {
-        setNeedsCode(true);
-        setError(null);
-      } else {
-        setError(
-          err?.name === 'TimeoutError' || err?.name === 'AbortError'
-            ? 'لم يستجب الخادم في الوقت المناسب؛ تحقق من الاتصال ثم أعد المحاولة'
-            : err?.name === 'TypeError'
-              ? 'تعذر الاتصال بالخادم؛ تحقق من الشبكة ثم أعد المحاولة'
-              : err?.message || 'تعذر تسجيل الدخول'
-        );
-        if (needsCode) setCode('');
-        else setPassword('');
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
+    void submit(email, password);
   };
 
   return (
     <div className="relative min-h-screen bg-[#0f172a] flex items-center justify-center p-4 font-sans" dir="rtl">
-      <ThemeToggle className="absolute top-4 left-4 text-slate-500 hover:text-white hover:bg-white/10" />
+      {/* Appearance before sign-in, in the top corner (the end side), clear of the card. */}
+      <div className="absolute top-3 left-3">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-sm flex flex-col gap-5">
       <StationClock variant="hero" onDark />
-      <div className="w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+      <div className="w-full bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center">
             <Radio className="w-6 h-6 text-white" />

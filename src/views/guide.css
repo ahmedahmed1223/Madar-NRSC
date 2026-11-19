@@ -1,0 +1,85 @@
+/*
+ * «دليل الاستخدام» (GuideView): long Arabic reading and clean printing. Scoped to .guide-screen so
+ * no other screen changes. Colours come from the palette tokens, so day and night both follow.
+ */
+
+.guide-screen .guide-prose {
+  font-size: var(--text-base, 1rem);
+  line-height: 1.9;
+  color: var(--color-slate-800);
+  text-wrap: pretty;
+}
+.guide-screen .guide-prose strong {
+  font-weight: 600;
+}
+.guide-screen h2,
+.guide-screen h3,
+.guide-screen h4 {
+  text-wrap: balance;
+}
+.guide-screen .guide-entry h3:focus-visible,
+.guide-screen .guide-entry dt:focus-visible {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.guide-screen mark {
+  color: inherit;
+}
+
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  .guide-screen .guide-toc,
+  .guide-screen .guide-toolbar,
+  .guide-screen .guide-search,
+  .guide-screen .guide-pager {
+    display: none !important;
+  }
+  /* Controls of the reading view («افتح الشاشة», «جرّب الجولة», links to copy) are not for paper. */
+  #app-main .guide-screen .guide-action.guide-action {
+    display: none !important;
+  }
+  /* Links to other entries read as text. */
+  #app-main .guide-screen .guide-reading a {
+    color: inherit !important;
+    text-decoration: none !important;
+    font-weight: 600;
+  }
+
+  .guide-screen .guide-reading {
+    border: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+  .guide-screen .guide-reading > div {
+    max-width: none !important;
+  }
+  .guide-screen .guide-prose {
+    font-size: 11.5pt;
+    line-height: 1.75;
+    color: #000;
+  }
+  .guide-screen .guide-chapter + .guide-chapter {
+    break-before: page;
+  }
+  .guide-screen .guide-entry h3,
+  .guide-screen .guide-prose h4 {
+    break-after: avoid;
+  }
+  .guide-screen .guide-callout,
+  .guide-screen .guide-steps > li {
+    break-inside: avoid;
+  }
+  .guide-screen .guide-callout {
+    background: none !important;
+    border: 1px solid #777 !important;
+  }
+  .guide-screen .guide-step-number {
+    background: none !important;
+    color: #000 !important;
+    border: 1px solid #000;
+  }
+}

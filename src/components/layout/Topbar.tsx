@@ -192,6 +192,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, [isNotifOpen, isUserMenuOpen]);
 
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
+  // The bell's dot is red only while something urgent is unread; otherwise it is the signal colour.
+  const unreadUrgent = (notifications || []).some((n) => !n.isRead && n.urgent);
 
   const handleMarkAllRead = () => {
     ApiService.markAllNotificationsRead();
@@ -421,7 +423,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-2xs leading-4 text-center font-bold">
+            <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-blue-600 text-white rounded-full text-3xs leading-4 text-center font-bold tabular-nums">
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
@@ -442,7 +444,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-600 rounded-full ring-2 ring-white" />
+              <span aria-hidden="true" className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white ${unreadUrgent ? 'bg-red-600' : 'bg-blue-600'}`} />
             )}
           </button>
 
@@ -467,7 +469,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             type="button"
             onClick={onOpenShortcuts}
             className="hidden 2xl:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
-            title="اختصارات لوحة المفاتيح والإنتاج السريع (?)"
+            title="اختصارات لوحة المفاتيح (?)"
+            aria-label="اختصارات لوحة المفاتيح"
           >
             <Keyboard className="w-5 h-5" />
           </button>
@@ -506,7 +509,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                     {currentUser.email}
                   </span>
                   <span className="text-2xs text-blue-600 font-semibold block mt-0.5">
-                    {roleName} - {currentUser.department}
+                    {[roleName, currentUser.department].filter(Boolean).join(' · ')}
                   </span>
                 </div>
                 <div className="py-1 space-y-0.5">

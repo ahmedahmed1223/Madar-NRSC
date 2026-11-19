@@ -9,7 +9,7 @@ import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Radio, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Square } from 'lucide-react';
 import type { Episode, User } from '../types';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
@@ -34,9 +34,16 @@ interface OnAirViewProps {
 /** On-air control and the As-Run log (what actually aired). */
 export const OnAirView: React.FC<OnAirViewProps> = (props) => {
   const [tab, setTab] = useState<'CONTROL' | 'ASRUN'>('CONTROL');
+  const canControl = canControlOnAir(props.currentUser, (p) => RbacService.hasPermission(props.currentUser, p));
   return (
     <div className="space-y-4">
-      <div role="tablist" className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">وضع الهواء</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          {canControl ? 'أنت تتحكم في البث: الانتقال بين الفقرات يظهر فوراً لدى الاستديو والملقن وكل الأقسام.' : 'متابعة مباشرة لما على الهواء (التحكم للمخرج والكنترول).'}
+        </p>
+      </div>
+      <div role="tablist" aria-label="وضع الهواء" className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
         {([
           ['CONTROL', 'التحكم بالبث'],
           ['ASRUN', 'سجل البث الفعلي'],
@@ -165,18 +172,10 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Radio className={`w-5 h-5 ${live ? 'text-red-600 animate-pulse' : 'text-slate-500'}`} />
-            وضع الهواء
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {canControl ? 'أنت تتحكم في البث: الانتقال بين الفقرات يظهر فوراً لدى الاستديو والملقن وكل الأقسام.' : 'متابعة مباشرة لما على الهواء (التحكم للمخرج والكنترول).'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <label htmlFor="onair-show" className="text-xs font-semibold text-slate-600">الحلقة أو النشرة:</label>
+          <select id="onair-show" value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="min-h-10 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full sm:w-auto sm:max-w-md">
             <option value="">{candidates.length ? 'اختر الحلقة أو النشرة' : 'لا توجد حلقات قادمة'}</option>
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>
@@ -186,8 +185,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             ))}
           </select>
           {episode && (
-            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
-              <MonitorPlay className="w-4 h-4" />
+            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="min-h-10 inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700">
+              <MonitorPlay className="w-4 h-4" aria-hidden />
               شاشة الاستديو
             </button>
           )}
@@ -256,7 +255,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا يمكن بدء البث قبل إضافة فقرة واحدة على الأقل إلى الرانداون.'}</p>
+              <p className="text-sm text-slate-300">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا يمكن بدء البث قبل إضافة فقرة واحدة على الأقل إلى الرانداون.'}</p>
             )}
 
             <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />

@@ -48,17 +48,7 @@ const TONES: Record<NonNullable<Row['tone']>, string> = {
 
 interface CardProps { icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }
 
-const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testId }) => rows.length === 0 ? (
-  // Nothing waiting: one slim line, so cards with work in them lead and take the space.
-  <section data-testid={testId} className="self-start bg-white/70 border border-slate-200 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 min-w-0">
-    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-      <Icon className="w-4 h-4 text-slate-500" />
-      {title}
-      <span className="text-2xs font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">0</span>
-    </h3>
-    {empty && <p className="text-2xs text-slate-500">{empty}</p>}
-  </section>
-) : (
+const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, more, testId }) => (
   <section data-testid={testId} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col min-w-0">
     <div className="flex items-center justify-between gap-2 mb-2">
       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -72,25 +62,46 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, empty, more, testI
         </button>
       )}
     </div>
-    {rows.length === 0 ? (
-      <p className="text-2xs text-slate-500 py-3 text-center">{empty}</p>
-    ) : (
-      <ul className="space-y-1.5">
-        {rows.slice(0, 5).map((r) => (
-          <li key={r.id}>
-            <button
-              type="button"
-              onClick={r.onClick}
-              className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
-            >
-              <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
-              {r.meta && <span className={`text-2xs font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
+    <ul className="space-y-1.5">
+      {rows.slice(0, 5).map((r) => (
+        <li key={r.id}>
+          <button
+            type="button"
+            onClick={r.onClick}
+            className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
+          >
+            <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
+            {r.meta && <span className={`text-2xs font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
   </section>
+);
+
+/** Queues with nothing waiting: one quiet line of names (each opens its screen), so work leads. */
+const NothingWaiting: React.FC<{ cards: CardProps[]; after: boolean }> = ({ cards, after }) => (
+  <div className="flex flex-wrap items-center gap-1.5 text-2xs text-slate-500">
+    <span className="font-semibold">{after ? 'ولا شيء ينتظرك في:' : 'لا شيء ينتظرك الآن في:'}</span>
+    {cards.map(({ icon: Icon, title, empty, more, testId }) => {
+      const look = 'inline-flex items-center gap-1.5 min-h-8 px-2.5 rounded-lg border border-slate-200 bg-white/70 text-xs font-semibold text-slate-600';
+      const body = (
+        <>
+          <Icon className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
+          {title}
+        </>
+      );
+      return more ? (
+        <button key={testId} type="button" data-testid={testId} onClick={more} title={empty} className={`${look} hover:bg-white hover:text-slate-900`}>
+          {body}
+        </button>
+      ) : (
+        <span key={testId} data-testid={testId} title={empty} className={look}>
+          {body}
+        </span>
+      );
+    })}
+  </div>
 );
 
 /** Personal work queue: what needs me now, by role and department. */
@@ -267,7 +278,8 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     { testId: 'my-mentions', icon: AtSign, title: 'إشارات إليّ (7 أيام)', rows: mentions, empty: 'لم يُشر إليك أحد مؤخراً' },
   ];
   const shown = candidates.filter((c): c is CardProps => !!c);
-  const cards = [...shown.filter((c) => c.rows.length > 0), ...shown.filter((c) => c.rows.length === 0)];
+  const busy = shown.filter((c) => c.rows.length > 0);
+  const idle = shown.filter((c) => c.rows.length === 0);
 
   return (
     <div data-testid="my-work" className="space-y-3">
@@ -286,9 +298,12 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
           {myDuty ? `مناوب الآن — ${shiftName(myDuty.shift)}${myDuty.isLead ? ' (رئيس المناوبة)' : ''}` : 'لست ضمن المناوبة الحالية'}
         </span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {cards.map((card) => <Card key={card.testId} {...card} />)}
-      </div>
+      {busy.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {busy.map((card) => <Card key={card.testId} {...card} />)}
+        </div>
+      )}
+      {idle.length > 0 && <NothingWaiting cards={idle} after={busy.length > 0} />}
     </div>
   );
 };

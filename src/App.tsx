@@ -52,6 +52,7 @@ const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) =
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
 const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
+const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
@@ -1209,6 +1210,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'help' && (
               <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
             )}
+
+            {activeNav === 'guide' && <GuideView currentUser={currentUser} focusId={focusId} onFocus={setFocusId} />}
 
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
 

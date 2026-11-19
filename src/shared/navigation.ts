@@ -22,7 +22,7 @@ export const NAV_SECTIONS: Record<NavSectionId, NavSection> = {
   air: { id: 'air', label: 'الهواء والاستديو', items: ['on-air', 'studio-screen'] },
   resources: { id: 'resources', label: 'الوسائط والموارد', items: ['media', 'bookings', 'roster'] },
   admin: { id: 'admin', label: 'المتابعة والإدارة', items: ['workload', 'reports', 'audit', 'users', 'settings'] },
-  help: { id: 'help', label: 'المساعدة', items: ['help', 'whats-new'] },
+  help: { id: 'help', label: 'المساعدة', items: ['help', 'guide', 'whats-new'] },
 };
 
 type Domain = 'newsroom' | 'programs' | 'air' | 'resources';

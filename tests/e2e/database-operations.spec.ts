@@ -89,7 +89,7 @@ test('database manager creates, verifies and downloads a selected snapshot and s
     await expect(page.getByRole('heading', { name: 'آخر أخطاء الخادم' })).toBeVisible();
     await tabs.getByRole('tab', { name: 'آخر أخطاء الخادم' }).focus();
     await page.keyboard.press('Home');
-    await expect(tabs.getByRole('tab', { name: 'استعلامات SQL' })).toHaveAttribute('aria-selected', 'true');
+    await expect(tabs.getByRole('tab', { name: /النسخ الاحتياطي/ })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('End');
     await expect(tabs.getByRole('tab', { name: 'آخر أخطاء الخادم' })).toHaveAttribute('aria-selected', 'true');
     await page.getByLabel('بحث سجل الأخطاء').fill('unmatched-test');

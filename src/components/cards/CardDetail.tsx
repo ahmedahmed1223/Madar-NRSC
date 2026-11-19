@@ -672,7 +672,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             <div className="flex flex-wrap gap-2">
               {contributions.map((part) => (
                 <span key={part.stationId || 'none'} className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700">
-                  <b>{stationName(stations, part.stationId)}</b>: {part.done} من {countLabel(part.steps, AR.task)}{part.points ? ` — ${countLabel(part.points, AR.point)}` : ''}
+                  <b>{stationName(stations, part.stationId)}</b>: أُنجز {part.done} من {part.steps}{part.points ? ` — ${countLabel(part.points, AR.point)}` : ''}
                 </span>
               ))}
             </div>

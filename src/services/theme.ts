@@ -124,3 +124,16 @@ export function setTextScale(scale: TextScale) {
   if (scale === 'normal') delete document.documentElement.dataset.textScale;
   else document.documentElement.dataset.textScale = scale;
 }
+
+// Paper is always printed in the day palette: the night theme would print light text on white.
+if (typeof window !== 'undefined') {
+  let wasDark = false;
+  window.addEventListener('beforeprint', () => {
+    wasDark = document.documentElement.classList.contains('dark');
+    if (wasDark) document.documentElement.classList.remove('dark');
+  });
+  window.addEventListener('afterprint', () => {
+    if (wasDark) document.documentElement.classList.add('dark');
+    wasDark = false;
+  });
+}

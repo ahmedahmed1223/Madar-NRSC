@@ -157,7 +157,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             {timing && live ? (
               <DriftIndicator drift={timing.drift} size="wall" className="w-full" />
             ) : (
-              <div className="rounded-2xl border-2 border-dashed border-slate-700 px-6 py-5 text-center text-2xl xl:text-3xl font-bold text-slate-300">التقدم والتأخر يظهران مع بدء البث</div>
+              <div className="rounded-2xl border-2 border-dashed border-slate-700 px-6 py-5 text-center text-lg xl:text-2xl font-semibold text-slate-400">التقدم والتأخر يظهران مع بدء البث</div>
             )}
           </section>
         </div>

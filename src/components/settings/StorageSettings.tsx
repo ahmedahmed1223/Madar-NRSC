@@ -167,7 +167,7 @@ export function StorageSettings() {
           </label>
           <label className="block text-sm">
             <span className="font-semibold text-slate-800">المجلد في Dropbox</span>
-            <input className={`${INPUT} mt-1`} dir="auto" value={settings.dropbox.rootPath} onChange={(e) => setSettings({ ...settings, dropbox: { ...settings.dropbox, rootPath: e.target.value } })} placeholder="/مدار" />
+            <input className={`${INPUT} mt-1`} dir="ltr" value={settings.dropbox.rootPath} onChange={(e) => setSettings({ ...settings, dropbox: { ...settings.dropbox, rootPath: e.target.value } })} placeholder="/مدار" />
           </label>
         </div>
         {status?.dropbox.managedByEnvironment ? (
@@ -228,7 +228,7 @@ export function StorageSettings() {
           </label>
           <label className="block text-sm">
             <span className="font-semibold text-slate-800">أو معرّف مجلد موجود (اختياري)</span>
-            <input className={`${INPUT} mt-1`} dir="ltr" value={settings.gdrive.rootFolderId} onChange={(e) => setSettings({ ...settings, gdrive: { ...settings.gdrive, rootFolderId: e.target.value.trim() } })} placeholder="مثلاً مجلد في Drive مشترك" />
+            <input className={`${INPUT} mt-1`} dir="ltr" value={settings.gdrive.rootFolderId} onChange={(e) => setSettings({ ...settings, gdrive: { ...settings.gdrive, rootFolderId: e.target.value.trim() } })} placeholder="Folder ID" aria-describedby="gdrive-folder-hint" /><span id="gdrive-folder-hint" className="block text-xs text-slate-500 mt-1">معرّف مجلد قائم، مثلاً مجلد في Drive مشترك.</span>
           </label>
         </div>
         {status?.gdrive.managedByEnvironment ? (
@@ -290,7 +290,7 @@ export function StorageSettings() {
           <label className="block text-sm">
             <span className="font-semibold text-slate-800">عناوين شبكة المحطة</span>
             <textarea className={`${INPUT} mt-1 h-24 font-mono`} dir="ltr" value={networksText} onChange={(e) => setNetworksText(e.target.value)} aria-describedby="share-networks-hint" />
-            <span id="share-networks-hint" className="block text-xs text-slate-500 mt-1">نطاق في كل سطر (مثلاً 10.0.0.0/8). من يتصل من هذه العناوين يُعدّ داخل المحطة.</span>
+            <span id="share-networks-hint" className="block text-xs text-slate-500 mt-1">نطاق في كل سطر (مثلاً <span dir="ltr">10.0.0.0/8</span>). من يتصل من هذه العناوين يُعدّ داخل المحطة.</span>
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-2">

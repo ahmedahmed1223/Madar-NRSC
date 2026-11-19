@@ -148,7 +148,7 @@ export interface HandoverSection {
 export function handoverSections(aheadHours = 8): HandoverSection[] {
   return [
     { key: 'stuck', title: 'متعطل أو متأخر — يحتاج قراراً', empty: 'لا شيء متعطل.' },
-    { key: 'dueNext', title: `مستحق خلال ${countLabel(aheadHours, AR.hour)} القادمة`, empty: 'لا مواعيد قريبة.' },
+    { key: 'dueNext', title: `مستحق خلال ${countLabel(aheadHours, AR.hour)}`, empty: 'لا مواعيد قريبة.' },
     { key: 'inProgress', title: 'قيد التنفيذ', empty: 'لا مهام قيد التنفيذ.' },
     { key: 'finished', title: 'أُنجز خلال المناوبة', empty: 'لم يُسجَّل إنجاز في هذه المناوبة.' },
   ];

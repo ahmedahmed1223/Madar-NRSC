@@ -298,9 +298,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const formFieldsRef = useRef(formFields);
   formFieldsRef.current = formFields;
   const isDirty = JSON.stringify(formFields()) !== loadedSnapshotRef.current;
+  // The baseline this render compared against: a callback from an older render (before the story loaded)
+  // must not store its empty fields as a "draft" of the loaded story.
+  const renderSnapshot = loadedSnapshotRef.current;
   const persistDraftRef = useRef<() => void>(() => {});
   persistDraftRef.current = () => {
-    if (!loadedSnapshotRef.current || !isDirty || !editableStory || lockedByOther || hasEmergencyDraft) return;
+    if (!loadedSnapshotRef.current || loadedSnapshotRef.current !== renderSnapshot || !isDirty || !editableStory || lockedByOther || hasEmergencyDraft) return;
     try {
       localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
       setDraftStorageFailed(false);
@@ -478,7 +481,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         categoryId: categories[0]?.id || '',
         sourceId: sources[0]?.id || '',
         priority: apiService.getSettings().defaultNewsPriority || 'NORMAL' as NewsPriority,
-        locationName: '',
+        locationName: 'المقر الرئيسي',
         eventDate: toLocalInputValue(),
         mainImageUrl: '',
         videos: [],
@@ -494,9 +497,14 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       setEmbargoUntil('');
       setEmbargoNote('');
       setCategoryId(fields.categoryId);
-      setSourceId(seed?.sourceId || fields.sourceId);
+      setSourceId(fields.sourceId);
       setStoryId(fields.storyId);
+      setPriority(fields.priority);
+      setLocationName(fields.locationName);
+      setEventDate(fields.eventDate);
+      // An untouched new form is clean: the baseline is exactly what it shows, so nothing is kept as a "draft".
       loadedSnapshotRef.current = JSON.stringify(fields);
+      if (seed?.sourceId) setSourceId(seed.sourceId);
       if (seed) {
         setTitle(seed.title);
         setShortTitle(seed.title.slice(0, 80));
@@ -853,16 +861,21 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setSelectedQuote(sel.toString().replace(/\s+/g, ' ').trim().slice(0, 2000));
   };
 
-  const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string; className: string }>> = {
-    UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق', className: 'bg-amber-700 hover:bg-amber-800' },
-    APPROVED: { label: 'اعتماد الخبر للنشر', className: 'bg-purple-600 hover:bg-purple-700' },
-    NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات', className: 'bg-orange-600 hover:bg-orange-700' },
-    REJECTED: { label: 'رفض الخبر', className: 'bg-red-700 hover:bg-red-800' },
-    PUBLISHED: { label: 'نشر الخبر داخل النظام', className: 'bg-emerald-700 hover:bg-emerald-800' },
-    SCHEDULED: { label: 'جدولة النشر', className: 'bg-sky-600 hover:bg-sky-700' },
-    UNPUBLISHED: { label: 'سحب النشر', className: 'bg-slate-700 hover:bg-slate-800' },
-    ARCHIVED: { label: 'أرشفة الخبر', className: 'bg-slate-800 hover:bg-slate-900' },
+  // One signal colour for the next step; the other decisions are quiet outlines, refusal in red text.
+  const TRANSITION_BUTTONS: Partial<Record<NewsStatus, { label: string }>> = {
+    UNDER_REVIEW: { label: 'إرسال للمراجعة والتدقيق' },
+    APPROVED: { label: 'اعتماد الخبر للنشر' },
+    NEEDS_REVISION: { label: 'إعادة للكاتب مع ملاحظات' },
+    REJECTED: { label: 'رفض الخبر' },
+    PUBLISHED: { label: 'نشر الخبر داخل النظام' },
+    SCHEDULED: { label: 'جدولة النشر' },
+    UNPUBLISHED: { label: 'سحب النشر' },
+    ARCHIVED: { label: 'أرشفة الخبر' },
   };
+  const PRIMARY_BUTTON = 'bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 shadow-xs';
+  const QUIET_BUTTON = 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300';
+  const transitionClass = (t: NewsStatus) =>
+    t === primaryTransition ? PRIMARY_BUTTON : t === 'REJECTED' ? 'bg-white hover:bg-red-50 text-red-700 border border-red-200' : QUIET_BUTTON;
 
   if (fieldBreaking && !newsItem) {
     return (
@@ -901,7 +914,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={handleRestoreEmergencyDraft}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+              className="flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               استعادة المسودة الآن
@@ -909,7 +922,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={clearDraft}
-              className="px-2.5 py-1.5 text-xs text-amber-700 hover:bg-amber-100 rounded-lg"
+              className="min-h-11 sm:min-h-9 px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 rounded-lg"
             >
               حذف النسخة المحلية
             </button>
@@ -933,7 +946,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={async () => {
                 if ((await confirmDialog(`سيفقد ${lock.holder?.userName} أي تعديلات غير محفوظة. تولي تحرير الخبر؟`))) void lock.takeOver();
               }}
-              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold"
+              className="min-h-11 sm:min-h-9 px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold"
             >
               تولي التحرير
             </button>
@@ -1070,7 +1083,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   onClick={() => handleTriggerStatusChange('APPROVED')}
                   title="Ctrl+Enter"
                   aria-keyshortcuts="Control+Enter Meta+Enter"
-                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                  className={`min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold ${PRIMARY_BUTTON}`}
                 >
                   <CheckCircle className="w-4 h-4" />
                   {nextReviewId && onNextReview ? 'اعتماد والتالي' : 'اعتماد الخبر للنشر'}
@@ -1082,7 +1095,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   onClick={() => void handlePassQuality()}
                   disabled={reviewBusy || isDirty}
                   title={isDirty ? 'احفظ تعديلاتك أولاً' : 'يسجّل أنك دققت النص، دون اعتماده أو نشره'}
-                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50"
+                  className={`min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50 ${transitions.includes('APPROVED') ? QUIET_BUTTON : PRIMARY_BUTTON}`}
                 >
                   <ShieldCheck className="w-4 h-4" />
                   اجتازت التدقيق
@@ -1094,7 +1107,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   onClick={() => handleTriggerStatusChange('NEEDS_REVISION')}
                   title="Ctrl+Shift+Enter"
                   aria-keyshortcuts="Control+Shift+Enter"
-                  className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                  className={`min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold ${QUIET_BUTTON}`}
                 >
                   <CornerUpLeft className="w-4 h-4" />
                   إعادة مع سبب
@@ -1185,7 +1198,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               onClick={() => handleTriggerStatusChange('UNDER_REVIEW')}
               title="Ctrl+Enter"
               aria-keyshortcuts="Control+Enter Meta+Enter"
-              className="min-h-11 flex items-center gap-1.5 px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+              className={`min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${PRIMARY_BUTTON}`}
             >
               <Send className="w-4 h-4" />
               حفظ وإرسال للمراجعة
@@ -1200,7 +1213,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   key={t}
                   type="button"
                   onClick={() => handleTriggerStatusChange(t)}
-                  className={`${t === primaryTransition ? 'flex' : 'hidden sm:flex'} min-h-11 items-center gap-1.5 px-4 py-2 text-white rounded-lg text-xs font-bold transition-all shadow-xs ${TRANSITION_BUTTONS[t]!.className}`}
+                  className={`${t === primaryTransition ? 'flex' : 'hidden sm:flex'} min-h-11 items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${transitionClass(t)}`}
                 >
                   {t === 'UNDER_REVIEW' && <Send className="w-4 h-4" />}
                   {t === 'APPROVED' && <CheckCircle className="w-4 h-4" />}
@@ -1263,17 +1276,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-bold transition-colors border border-blue-200"
+            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
             title="المساعد التحريري الذكي: إعادة الصياغة التلفزيونية وتوليد العناوين والشارات"
           >
-            <Bot className="w-3.5 h-3.5 text-amber-300" />
+            <Bot className="w-3.5 h-3.5 text-blue-600" />
             المساعد الذكي
           </button>
 
           <button
             type="button"
             onClick={() => setIsCgModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
+            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
             title="توليد وسوم شارات الجرافيكس التلفزيوني وعناوين الشاشة"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-600" />
@@ -1284,7 +1297,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <button
               type="button"
               onClick={() => setRequestDraft({ link: { kind: 'news', newsId: newsItem.id, title: newsItem.title }, title: '' })}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-violet-50 text-violet-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
+              className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
               title="طلب مونتاج أو جرافيك أو غيرها لهذا الخبر"
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -1309,10 +1322,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={handleCopyPrompterText}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-colors border border-purple-200"
+            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
             title="نسخ نص الملقن المباشر للمذيع"
           >
-            {copiedPrompter ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copiedPrompter ? <CheckCircle className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
             {copiedPrompter ? 'تم نسخ نص الملقن' : 'نسخ للأوتوكيو'}
           </button>
         </div>
@@ -1998,8 +2011,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                     alt="معاينة الصورة"
                     className="w-full h-32 object-cover"
                   />
-                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-2xs font-mono text-white rounded">
-                    16:9 Broadcast Frame
+                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-2xs text-white rounded">
+                    إطار 16:9
                   </div>
                 </div>
               )}
@@ -2174,7 +2187,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 type="button"
                 onClick={handleConfirmStatus}
                 disabled={statusSubmitting || (needsComment && !statusComment.trim()) || scheduleInvalid}
-                className={`min-h-11 px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-xs disabled:opacity-50 ${pendingStatus === 'REJECTED' ? 'bg-red-700 hover:bg-red-800' : pendingStatus === 'NEEDS_REVISION' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                className={`min-h-11 px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-xs disabled:opacity-50 ${pendingStatus === 'REJECTED' ? 'bg-red-700 hover:bg-red-800' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {statusSubmitting ? 'جارٍ تأكيد التحديث...' : dialogCopy.confirm}
               </button>

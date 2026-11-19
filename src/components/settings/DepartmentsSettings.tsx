@@ -6,8 +6,10 @@ import { SINGLETON_ID } from '../../shared/collections';
 import { newId } from '../../shared/ids';
 import { departmentIdOf, departmentsError, departmentsOf, MAX_DEPARTMENTS, type Department } from '../../shared/departments';
 import { stationsOf } from '../../shared/stations';
+import { countLabel } from '../../shared/arabicPlural';
 
-const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm text-slate-900';
+const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
+const USES = { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' };
 
 /** How many colleagues, duty shifts and open requests point at each department. */
 function departmentUsage(): Map<string, number> {
@@ -42,10 +44,12 @@ export function DepartmentsSettings() {
   }, [list]);
 
   const patch = (id: string, changes: Partial<Department>) => setList((all) => all.map((d) => (d.id === id ? { ...d, ...changes } : d)));
+  /** No list means every station (present and future); ticking them all goes back to that. A department keeps at least one station. */
   const toggleStation = (d: Department, stationId: string) => {
-    const current = d.stationIds || [];
+    const current = d.stationIds?.length ? d.stationIds : stations.map((s) => s.id);
     const next = current.includes(stationId) ? current.filter((x) => x !== stationId) : [...current, stationId];
-    patch(d.id, { stationIds: next.length ? next : undefined });
+    if (!next.length) return;
+    patch(d.id, { stationIds: stations.every((s) => next.includes(s.id)) ? undefined : next });
   };
   /** Parents a department may take: any other department that is not below it (no loops). */
   const parentOptions = (d: Department) => {
@@ -97,7 +101,7 @@ export function DepartmentsSettings() {
             const uses = usage.get(d.id) || 0;
             const isNew = !(JSON.parse(baseline) as Department[]).some((x) => x.id === d.id);
             return (
-              <li key={d.id} className={`border rounded-2xl p-4 space-y-3 ${d.archived ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+              <li key={d.id} className={`border rounded-xl p-4 space-y-2 ${d.archived ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-end">
                   <div>
                     <label htmlFor={`dept-name-${d.id}`} className="block text-xs font-bold text-slate-700 mb-1">
@@ -125,49 +129,51 @@ export function DepartmentsSettings() {
                       onClick={() => patch(d.id, { archived: d.archived ? undefined : true })}
                       aria-label={d.archived ? `إعادة تفعيل قسم ${d.name}` : `أرشفة قسم ${d.name}`}
                       title={d.archived ? 'إعادة تفعيل' : 'أرشفة'}
-                      className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl border border-slate-300 text-slate-700"
+                      className="min-h-11 px-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50"
                     >
-                      {d.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                      {d.archived ? <ArchiveRestore className="w-4 h-4" aria-hidden="true" /> : <Archive className="w-4 h-4" aria-hidden="true" />}
+                      <span>{d.archived ? 'إعادة' : 'أرشفة'}</span>
                     </button>
                     {(isNew || uses === 0) && (
-                      <button type="button" onClick={() => setList((all) => all.filter((x) => x.id !== d.id).map((x) => (x.parentId === d.id ? { ...x, parentId: undefined } : x)))} aria-label={`حذف قسم ${d.name}`} title="حذف (غير مستخدم)" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl border border-rose-200 text-rose-700">
+                      <button type="button" onClick={() => setList((all) => all.filter((x) => x.id !== d.id).map((x) => (x.parentId === d.id ? { ...x, parentId: undefined } : x)))} aria-label={`حذف قسم ${d.name}`} title="حذف (غير مستخدم)" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-                  <span className="text-xs font-bold text-slate-600">المحطات:</span>
-                  <label className="flex items-center gap-2 min-h-9">
-                    <input type="checkbox" checked={!d.stationIds?.length} onChange={() => patch(d.id, { stationIds: undefined })} />
-                    كل المحطات
-                  </label>
-                  {stations.map((s) => (
-                    <label key={s.id} className="flex items-center gap-2 min-h-9">
-                      <input type="checkbox" checked={!!d.stationIds?.includes(s.id)} onChange={() => toggleStation(d, s.id)} />
-                      {s.name}
-                    </label>
-                  ))}
-                  <span className="ms-auto text-xs text-slate-500">{uses ? `مستخدم: ${uses} (زملاء ومناوبات وطلبات مفتوحة)` : 'غير مستخدم'}</span>
+                  <div role="group" aria-label={`محطات قسم ${d.name}`} className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <span className="text-xs font-bold text-slate-600" aria-hidden="true">المحطات:</span>
+                    {stations.map((s) => (
+                      <label key={s.id} className="flex items-center gap-2 min-h-11 sm:min-h-9">
+                        <input type="checkbox" checked={!d.stationIds?.length || d.stationIds.includes(s.id)} onChange={() => toggleStation(d, s.id)} />
+                        {s.name}
+                      </label>
+                    ))}
+                    {!d.stationIds?.length && <span className="text-xs text-slate-500">(كل المحطات، والجديدة منها)</span>}
+                  </div>
+                  <span className="ms-auto text-xs text-slate-500">{uses ? `يتبعه ${countLabel(uses, USES)}: زملاء ومناوبات وطلبات مفتوحة` : 'غير مستخدم بعد'}</span>
                 </div>
               </li>
             );
           })}
         </ul>
         {list.length < MAX_DEPARTMENTS && (
-          <button type="button" onClick={() => setList((all) => [...all, { id: newId('dep'), name: '' }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-xl border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => setList((all) => [...all, { id: newId('dep'), name: '' }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <Plus className="w-4 h-4" />
             إضافة قسم
           </button>
         )}
       </fieldset>
-      {error && <p role="alert" className="text-sm font-bold text-rose-700">{error}</p>}
-      {saved && <p role="status" className="text-sm font-bold text-emerald-700">حُفظت الأقسام الإدارية</p>}
-      {dirty && !saving && <p className="text-sm text-amber-800">لديك تعديلات غير محفوظة.</p>}
-      <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
-        <Save className="w-4 h-4" />
-        {saving ? 'جارٍ الحفظ…' : 'حفظ الأقسام'}
-      </button>
+      <div className="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-slate-50/95 border-t border-slate-200 flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={!dirty || saving} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
+          <Save className="w-4 h-4" aria-hidden="true" />
+          {saving ? 'جارٍ الحفظ…' : 'حفظ الأقسام'}
+        </button>
+        {error && <p role="alert" className="text-sm font-bold text-rose-700">{error}</p>}
+        {saved && <p role="status" className="text-sm font-bold text-emerald-700">حُفظت الأقسام الإدارية</p>}
+        {dirty && !saving && !error && <p className="text-sm text-amber-800">لديك تعديلات غير محفوظة.</p>}
+      </div>
     </form>
   );
 }

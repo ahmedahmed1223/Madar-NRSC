@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Cloud, FileText, Folder, FolderTree, Loader2, Search } from 'lucide-react';
 import { storageClient, type ExternalFile, type ExternalSource, type ImportedFile } from '../../services/storageClient';
 import type { StorageStatus } from '../../shared/storage';
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
 
 const SOURCE_NAMES: Record<ExternalSource, string> = { dropbox: 'Dropbox', gdrive: 'Google Drive', share: 'المجلد المشترك' };
 
@@ -109,7 +110,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
               role="tab"
               aria-selected={s === source}
               onClick={() => setSource(s)}
-              className={`min-h-10 px-3 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s === source ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+              className={`min-h-10 px-3 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s === source ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
             >
               {s === 'share' ? <FolderTree className="w-4 h-4" aria-hidden="true" /> : <Cloud className="w-4 h-4" aria-hidden="true" />}
               {SOURCE_NAMES[s]}
@@ -162,7 +163,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-800 truncate" dir="auto">{f.name}</p>
                   <p className="text-2xs text-slate-500 truncate" dir="auto">
-                    {[f.path !== f.name ? f.path : '', size(f.size), f.modifiedAt ? new Date(f.modifiedAt).toLocaleDateString('ar') : ''].filter(Boolean).join(' · ')}
+                    {[f.path !== f.name ? f.path : '', size(f.size), f.modifiedAt ? new Date(f.modifiedAt).toLocaleDateString(appLocale(), zoneOptions()) : ''].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 {f.supported ? (

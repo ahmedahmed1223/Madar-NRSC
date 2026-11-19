@@ -61,6 +61,7 @@ import { Category, NewsSource, User, NewsItem } from '../types';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SourceFeedEditor } from '../components/settings/SourceFeedEditor';
 import { apiService } from '../services/api';
+import { AR, countLabel } from '../shared/arabicPlural';
 
 interface SettingsViewProps {
   categories: Category[];
@@ -81,24 +82,33 @@ interface SettingsViewProps {
 }
 
 export type SettingsSection = 'station' | 'stations' | 'structure' | 'departments' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
-const SECTIONS: { id: SettingsSection; label: string; hint: string; icon: any }[] = [
-  { id: 'station', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
-  { id: 'stations', label: 'المحطات والتكليفات', hint: 'المحطة الرئيسية والفروع ومجموعات المحطات وارتباطها وأنواع المهام وأوزانها', icon: Network },
-  { id: 'departments', label: 'الأقسام الإدارية', hint: 'أقسام المؤسسة ورؤساؤها ومحطاتها (غرفة التحرير، الإنتاج، المونتاج…)', icon: Building2 },
-  { id: 'structure', label: 'الهيكل التنظيمي', hint: 'المحطات والمجموعات والأقسام ورؤساؤها وعدد الزملاء', icon: Workflow },
-  { id: 'editorial', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
-  { id: 'production', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات', icon: Users },
-  { id: 'airDisplay', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
-  { id: 'preferences', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وحجم الخط وتقليل الحركة', icon: Palette },
-  { id: 'monitor', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
-  { id: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
-  { id: 'storage', label: 'التخزين', hint: 'Dropbox وGoogle Drive والمجلد المشترك وجسر مدار', icon: Cloud },
-  { id: 'datetime', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
-  { id: 'categories', label: 'تصنيفات الأخبار', hint: 'تصنيفات المواد الإخبارية وألوانها (غير الأقسام الإدارية)', icon: Layers },
-  { id: 'sources', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
-  { id: 'data', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
+type SectionGroup = 'org' | 'news' | 'system' | 'device';
+const GROUPS: { id: SectionGroup; label: string }[] = [
+  { id: 'org', label: 'المؤسسة' },
+  { id: 'news', label: 'التحرير والهواء' },
+  { id: 'system', label: 'النظام والبيانات' },
+  { id: 'device', label: 'هذا الجهاز' },
+];
+const SECTIONS: { id: SettingsSection; group: SectionGroup; label: string; hint: string; icon: any }[] = [
+  { id: 'station', group: 'org', label: 'المؤسسة والفريق', hint: 'اسم القناة والمنطقة الزمنية والفريق', icon: Tv },
+  { id: 'stations', group: 'org', label: 'المحطات والتكليفات', hint: 'المحطة الرئيسية والفروع ومجموعات المحطات وارتباطها وأنواع المهام وأوزانها', icon: Network },
+  { id: 'departments', group: 'org', label: 'الأقسام الإدارية', hint: 'أقسام المؤسسة ورؤساؤها ومحطاتها (غرفة التحرير، الإنتاج، المونتاج…)', icon: Building2 },
+  { id: 'structure', group: 'org', label: 'الهيكل التنظيمي', hint: 'المحطات والمجموعات والأقسام ورؤساؤها وعدد الزملاء', icon: Workflow },
+  { id: 'editorial', group: 'news', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
+  { id: 'categories', group: 'news', label: 'تصنيفات الأخبار', hint: 'تصنيفات المواد الإخبارية وألوانها (غير الأقسام الإدارية)', icon: Layers },
+  { id: 'sources', group: 'news', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
+  { id: 'production', group: 'news', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات وأنواع البرامج', icon: Users },
+  { id: 'airDisplay', group: 'news', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
+  { id: 'datetime', group: 'news', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
+  { id: 'monitor', group: 'system', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
+  { id: 'system', group: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
+  { id: 'storage', group: 'system', label: 'التخزين', hint: 'Dropbox وGoogle Drive والمجلد المشترك وجسر مدار', icon: Cloud },
+  { id: 'data', group: 'system', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
+  { id: 'preferences', group: 'device', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وحجم الخط وتقليل الحركة', icon: Palette },
 ];
 const SECTION_KEY = 'nrcs-settings-section';
+const GENERAL_LABEL = 'block font-bold text-slate-700 mb-1';
+const GENERAL_INPUT = 'block w-full min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900';
 const isSection = (value: unknown): value is SettingsSection => SECTIONS.some((x) => x.id === value);
 
 const SOURCE_TYPE_LABELS: Record<string, string> = {
@@ -121,36 +131,59 @@ const RELIABILITY_OPTIONS = [
 ];
 const sameName = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
 
-const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number> }> = ({ section, onChange, counts }) => (
-  <nav aria-label="أقسام الإعدادات" className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-    {SECTIONS.map((sec) => {
-      const Icon = sec.icon;
-      const active = sec.id === section;
-      return (
-        <button
-          key={sec.id}
-          type="button"
-          aria-current={active ? 'page' : undefined}
-          onClick={() => onChange(sec.id)}
-          className={`text-right min-h-11 p-2 sm:p-3 rounded-lg border transition-colors flex items-center gap-2 ${
-            active ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50/40'
-          }`}
-        >
-          <span className={`hidden sm:block p-2 rounded-lg shrink-0 ${active ? 'text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-            <Icon className="w-4 h-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-xs font-bold">
-              {sec.label}
-              {counts[sec.id] !== undefined && <span className="ms-1 text-xs text-slate-600">({counts[sec.id]})</span>}
-            </span>
-            <span className="hidden sm:block text-xs mt-0.5 leading-snug text-slate-600">{sec.hint}</span>
-          </span>
-        </button>
-      );
-    })}
-  </nav>
-);
+/**
+ * Sections grouped by what they set up. A vertical list beside the content on wide screens (the
+ * content starts in the first viewport), a compact grid above it on phones. The search narrows the
+ * list itself, matching labels and hints.
+ */
+const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number>; query: string; onQuery: (q: string) => void }> = ({ section, onChange, counts, query, onQuery }) => {
+  const shown = SECTIONS.filter((s) => !query.trim() || matchesQuery(query, s.label, s.hint));
+  return (
+    <div className="space-y-3 lg:sticky lg:top-4">
+      <div role="search">
+        <label htmlFor="settings-search" className="sr-only">البحث في الإعدادات</label>
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+          <input id="settings-search" type="search" value={query} onChange={(e) => onQuery(e.target.value)} className="w-full min-h-11 border border-slate-300 rounded-lg pr-9 pl-3 bg-white text-sm text-slate-800" placeholder="البحث في الإعدادات" />
+        </div>
+      </div>
+      <nav aria-label="أقسام الإعدادات" className="space-y-3">
+        {!shown.length && <p role="status" className="text-sm text-slate-600 px-1">لا توجد إعدادات مطابقة</p>}
+        {GROUPS.map((group) => {
+          const items = shown.filter((s) => s.group === group.id);
+          if (!items.length) return null;
+          return (
+            <div key={group.id}>
+              <h2 className="text-2xs font-bold text-slate-500 px-1 mb-1">{group.label}</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1">
+                {items.map((sec) => {
+                  const Icon = sec.icon;
+                  const active = sec.id === section;
+                  return (
+                    <button
+                      key={sec.id}
+                      type="button"
+                      aria-current={active ? 'page' : undefined}
+                      title={sec.hint}
+                      onClick={() => onChange(sec.id)}
+                      className={`text-right min-h-11 lg:min-h-9 px-2.5 py-1.5 rounded-lg border transition-colors flex items-center gap-2 text-sm ${
+                        active ? 'bg-blue-50 border-blue-600 text-blue-900 font-bold' : 'bg-white border-slate-200 lg:border-transparent lg:bg-transparent text-slate-700 hover:bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-700' : 'text-slate-500'}`} aria-hidden="true" />
+                      <span className="min-w-0 flex-1 leading-snug">{sec.label}</span>
+                      {counts[sec.id] !== undefined && <span className="text-xs tabular-nums text-slate-600">{counts[sec.id]}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </nav>
+    </div>
+  );
+};
 
 const PRESET_COLORS = [
   { name: 'أحمر عاجل / سياسي', hex: '#dc2626' },
@@ -449,7 +482,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const result = await onSaveCategory(cat);
       return result === undefined ? true : result === true;
     } catch (err) {
-      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر حفظ القسم' });
+      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر حفظ التصنيف' });
       return false;
     }
   };
@@ -459,7 +492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     e.preventDefault();
     if (!newCatNameAr.trim() || savingCategory) return;
     if (categories.some((c) => sameName(c.nameAr, newCatNameAr))) {
-      notify({ type: 'warning', message: `يوجد قسم باسم (${newCatNameAr.trim()}) بالفعل.` });
+      notify({ type: 'warning', message: `يوجد تصنيف باسم (${newCatNameAr.trim()}) بالفعل.` });
       return;
     }
 
@@ -539,11 +572,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const saved = changes.map((change) => apiService.saveCategory(change));
       const outcomes = await Promise.all(saved.map((c) => dataStore.awaitWrite('categories', c.id)));
       const failed = outcomes.find((o) => !o.ok);
-      if (!failed) notify({ type: 'success', message: `نُقل قسم (${cat.nameAr}) ${direction < 0 ? 'إلى الأعلى' : 'إلى الأسفل'}` });
+      if (!failed) notify({ type: 'success', message: `نُقل تصنيف (${cat.nameAr}) ${direction < 0 ? 'إلى الأعلى' : 'إلى الأسفل'}` });
       // A refusal is already announced with the server's reason (App's sync-error toast).
-      else if (failed.pending) notify({ type: 'warning', title: 'لم يؤكد الخادم ترتيب الأقسام بعد', message: failed.message || '' });
+      else if (failed.pending) notify({ type: 'warning', title: 'لم يؤكد الخادم ترتيب التصنيفات بعد', message: failed.message || '' });
     } catch (err) {
-      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر تغيير ترتيب الأقسام' });
+      notify({ type: 'error', message: err instanceof Error ? err.message : 'تعذر تغيير ترتيب التصنيفات' });
     } finally {
       setReordering(false);
     }
@@ -615,139 +648,123 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header */}
+    <div className="space-y-5 pb-12">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2.5">
-          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-            <Settings className="w-6 h-6" />
-          </div>
-          <span>الإعدادات</span>
+        <h1 className="text-xl font-bold text-slate-900">
+          <Settings className="w-5 h-5" aria-hidden="true" />
+          الإعدادات
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
           إعدادات المحطة مشتركة بين الزملاء. تفضيلات الجهاز خاصة بهذا المتصفح.
         </p>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)] gap-5 lg:gap-6 items-start">
+      <SettingsNav
+        section={section}
+        onChange={(next) => { setSettingsSearch(''); void chooseSection(next); }}
+        counts={{ categories: categories.length, sources: sources.length }}
+        query={settingsSearch}
+        onQuery={setSettingsSearch}
+      />
+      <div className="min-w-0 space-y-5">
       {isSaved && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-2xs">
+        <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.</span>
         </div>
       )}
-
-      <SettingsNav section={section} onChange={chooseSection} counts={{ categories: categories.length, sources: sources.length }} />
-      <div role="search" className="space-y-2">
-        <label htmlFor="settings-search" className="sr-only">البحث في الإعدادات</label>
-        <input id="settings-search" type="search" value={settingsSearch} onChange={e => setSettingsSearch(e.target.value)} className="w-full min-h-11 border border-slate-300 rounded-lg px-3 bg-white text-slate-800" placeholder="البحث في الإعدادات" />
-        {settingsSearch.trim() && <div aria-live="polite" className="flex flex-wrap gap-2">
-          {SECTIONS.filter(s => matchesQuery(settingsSearch, s.label, s.hint)).map(s => <button key={s.id} type="button" onClick={() => { void chooseSection(s.id); setSettingsSearch(''); }} className="min-h-11 px-3 text-blue-700 underline">{s.label}</button>)}
-          {!SECTIONS.some(s => matchesQuery(settingsSearch, s.label, s.hint)) && <p>لا توجد إعدادات مطابقة</p>}
-        </div>}
-      </div>
-      {section === 'preferences' && <section className="space-y-4 border-b border-slate-200 py-4">
-        <h2 className="text-lg font-bold">تفضيلات هذا الجهاز</h2>
-        <div><label htmlFor="settings-appearance" className="block">المظهر</label><select id="settings-appearance" value={appearance} onChange={e => { const value = e.target.value as typeof appearance; setAppearance(value); setThemePreference(value); }} className="block min-h-11 border border-slate-300 rounded-lg px-3 mt-1"><option value="system">حسب الجهاز</option><option value="light">نهاري</option><option value="dark">ليلي</option></select></div>
-        <div><label htmlFor="settings-text-scale" className="block">حجم الخط</label><select id="settings-text-scale" value={textSize} onChange={e => { const value = e.target.value as TextScale; setTextSize(value); setTextScale(value); }} className="block min-h-11 border border-slate-300 rounded-lg px-3 mt-1">{TEXT_SCALES.map(option => <option key={option.id} value={option.id}>{option.name}: {option.hint}</option>)}</select><p className="text-sm text-slate-600 mt-1">يكبّر النص والأزرار والمسافات معاً، ويُحفظ على هذا الجهاز فقط.</p></div>
-        <label className="flex items-center gap-2 min-h-11"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
+      {section === 'preferences' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-preferences-title">
+        <div>
+          <h2 id="settings-preferences-title" className="text-base font-bold text-slate-900">تفضيلات هذا الجهاز</h2>
+          <p className="text-xs text-slate-600 mt-0.5">تُحفظ في هذا المتصفح فقط، ولا تغيّر شيئاً لدى الزملاء.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+          <div><label htmlFor="settings-appearance" className="block text-sm font-bold text-slate-700 mb-1">المظهر</label><select id="settings-appearance" value={appearance} onChange={e => { const value = e.target.value as typeof appearance; setAppearance(value); setThemePreference(value); }} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 bg-white text-sm text-slate-900"><option value="system">حسب الجهاز</option><option value="light">نهاري</option><option value="dark">ليلي</option></select></div>
+          <div><label htmlFor="settings-text-scale" className="block text-sm font-bold text-slate-700 mb-1">حجم الخط</label><select id="settings-text-scale" aria-describedby="settings-text-scale-hint" value={textSize} onChange={e => { const value = e.target.value as TextScale; setTextSize(value); setTextScale(value); }} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 bg-white text-sm text-slate-900">{TEXT_SCALES.map(option => <option key={option.id} value={option.id}>{option.name}: {option.hint}</option>)}</select><p id="settings-text-scale-hint" className="text-xs text-slate-600 mt-1">يكبّر النص والأزرار والمسافات معاً.</p></div>
+        </div>
+        <label className="flex items-center gap-2 min-h-11 text-sm font-bold text-slate-700"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
       </section>}
-      {section === 'system' && <section className="space-y-4 border-b border-slate-200 py-4">
-        <h2 className="text-lg font-bold">حالة النظام وإعدادات التشغيل المعتمدة</h2>
-        {runtimeError ? <p role="alert">{runtimeError}</p> : !runtime ? <p role="status">جارٍ قراءة الحالة...</p> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          {Object.entries({ 'الإصدار': runtime.version, 'قاعدة البيانات': runtime.databaseHealthy ? 'سليمة' : 'تحتاج مراجعة', 'مهلة الجلسة (ساعة)': runtime.sessionTtlHours, 'حد الطلبات في الدقيقة': runtime.rateLimitPerMinute, 'النسخ الدوري (ساعة)': runtime.backupIntervalHours || 'معطل', 'عدد النسخ المحلية المحتفظ بها': runtime.backupRetention, 'وجهة النسخ الخارجية': runtime.externalBackup ? 'معدة' : 'غير معدة', 'الوجهة السحابية': runtime.cloudBackup ? 'معدة' : 'غير معدة', 'كوكي الاتصال الآمن': runtime.secureCookie ? 'مفعلة' : 'غير مفعلة' }).map(([key, value]) => <div key={key} className="border-b border-slate-200 py-2"><dt className="text-slate-600">{key}</dt><dd className="font-semibold break-words">{String(value)}</dd></div>)}
+      {section === 'system' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-system-title">
+        <div>
+          <h2 id="settings-system-title" className="text-base font-bold text-slate-900">حالة النظام وإعدادات التشغيل المعتمدة</h2>
+          <p className="text-xs text-slate-600 mt-0.5">قيم يضبطها الخادم عند التشغيل؛ للعرض فقط.</p>
+        </div>
+        {runtimeError ? <p role="alert" className="text-sm font-bold text-rose-700">{runtimeError}</p> : !runtime ? <p role="status" className="text-sm text-slate-600">جارٍ قراءة الحالة...</p> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 text-sm">
+          {([
+            ['الإصدار', runtime.version, false],
+            ['قاعدة البيانات', runtime.databaseHealthy ? 'سليمة' : 'تحتاج مراجعة', !runtime.databaseHealthy],
+            ['مهلة الجلسة (ساعة)', runtime.sessionTtlHours, false],
+            ['حد الطلبات في الدقيقة', runtime.rateLimitPerMinute, false],
+            ['النسخ الدوري (ساعة)', runtime.backupIntervalHours || 'معطل', !runtime.backupIntervalHours],
+            ['عدد النسخ المحلية المحتفظ بها', runtime.backupRetention, false],
+            ['وجهة النسخ الخارجية', runtime.externalBackup ? 'معدة' : 'غير معدة', false],
+            ['الوجهة السحابية', runtime.cloudBackup ? 'معدة' : 'غير معدة', false],
+            ['كوكي الاتصال الآمن', runtime.secureCookie ? 'مفعلة' : 'غير مفعلة', !runtime.secureCookie],
+          ] as [string, unknown, boolean][]).map(([key, value, attention]) => <div key={key} className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-2.5"><dt className="text-slate-600">{key}</dt><dd className="font-semibold break-words tabular-nums text-left">{String(value)}{attention && <span className="ms-2 text-2xs font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">يحتاج ضبطاً</span>}</dd></div>)}
         </dl>}
       </section>}
 
       {(section === 'station' || section === 'editorial') && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${section === 'station' ? 'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
         {/* General Station Config */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Tv className="w-4 h-4 text-blue-600" />
-            <span>{section === 'station' ? 'بيانات المحطة الإخبارية والبث' : 'الافتراضات التحريرية'}</span>
-          </h3>
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4">
+          <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+            {section === 'station' ? <Tv className="w-4 h-4 text-blue-600" aria-hidden="true" /> : <FileText className="w-4 h-4 text-blue-600" aria-hidden="true" />}
+            <span>{section === 'station' ? 'بيانات المؤسسة والبث' : 'الافتراضات التحريرية'}</span>
+          </h2>
 
-          <form onSubmit={handleSaveGeneral} className="space-y-3 text-xs" aria-busy={saving}>
+          <form onSubmit={handleSaveGeneral} className="space-y-4 text-sm" aria-busy={saving}>
             <DraftStatus draft={draft} />
-            <fieldset disabled={saving} aria-label="إعدادات المحطة والتحرير" className="space-y-3">
+            <fieldset disabled={saving} aria-label="إعدادات المحطة والتحرير" className="space-y-4">
             {section === 'station' && <>
             <div>
-              <label htmlFor="station-name-input" className="block font-bold text-slate-700 mb-1">اسم القناة / المؤسسة الإعلامية</label>
-              <input
-                id="station-name-input"
-                aria-describedby={generalError ? 'settings-error' : undefined}
-                required
-                maxLength={120}
-                type="text"
-                value={stationName}
-                onChange={(e) => setStationName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
+              <label htmlFor="station-name-input" className={GENERAL_LABEL}>اسم القناة / المؤسسة الإعلامية</label>
+              <input id="station-name-input" aria-describedby={generalError ? 'settings-error' : undefined} required maxLength={120} type="text" value={stationName} onChange={(e) => setStationName(e.target.value)} className={GENERAL_INPUT} />
             </div>
-            <label className="block font-bold">اسم المؤسسة بالإنجليزية<input value={organizationNameEn} maxLength={120} onChange={e => setOrganizationNameEn(e.target.value)} dir="ltr" className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
-            <label className="block font-bold">اسم قناة البث<input value={channelName} maxLength={120} onChange={e => setChannelName(e.target.value)} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
-            <label className="flex items-center gap-2 min-h-11"><input type="checkbox" checked={useStationTime} onChange={e => setUseStationTime(e.target.checked)} />اعتماد توقيت المحطة لجميع الزملاء</label>
-            <p role="status" className="text-slate-600">{useStationTime ? `التوقيت المعتمد: ${timezone}` : 'التوقيت المعتمد: جهاز كل مستخدم؛ المنطقة المختارة لا تُطبق على حقول المواعيد حتى تفعيل توقيت المحطة.'}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={GENERAL_LABEL}>اسم المؤسسة بالإنجليزية<input value={organizationNameEn} maxLength={120} onChange={e => setOrganizationNameEn(e.target.value)} dir="ltr" className={`${GENERAL_INPUT} mt-1 font-normal`} /></label>
+              <label className={GENERAL_LABEL}>اسم قناة البث<input value={channelName} maxLength={120} onChange={e => setChannelName(e.target.value)} className={`${GENERAL_INPUT} mt-1 font-normal`} /></label>
+            </div>
+            <div>
+              <label htmlFor="station-timezone-input" className={GENERAL_LABEL}>المنطقة الزمنية</label>
+              <select id="station-timezone-input" aria-describedby={generalError ? 'settings-error' : 'station-time-basis'} value={timezone} onChange={(e) => setTimezone(e.target.value)} className={`${GENERAL_INPUT} font-mono`} dir="ltr">
+                {[...new Set([...timezoneOptions, timezone])].map(zone => <option key={zone} value={zone}>{zone}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center gap-2 min-h-11 font-bold text-slate-700"><input type="checkbox" checked={useStationTime} onChange={e => setUseStationTime(e.target.checked)} />اعتماد توقيت المحطة لجميع الزملاء</label>
+              <p id="station-time-basis" role="status" className="text-xs text-slate-600">{useStationTime ? `تُعرض الأوقات وتُدخل بتوقيت ${timezone} على كل الأجهزة.` : 'يعمل كل زميل بتوقيت جهازه؛ لا تُطبق المنطقة المختارة على حقول المواعيد حتى تفعيل هذا الخيار.'}</p>
+            </div>
             </>}
 
-            <div className="grid grid-cols-1 gap-3">
-              {section === 'station' && <div>
-                <label htmlFor="station-timezone-input" className="block font-bold text-slate-700 mb-1">المنطقة الزمنية </label>
-                <select
-                  id="station-timezone-input"
-                  aria-describedby={generalError ? 'settings-error' : undefined}
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  dir="ltr"
-                >
-                  {[...new Set([...timezoneOptions, timezone])].map(zone => <option key={zone} value={zone}>{zone}</option>)}
-                </select>
-              </div>}
-
-              {section === 'editorial' && <div>
-                <label htmlFor="station-duration-input" className="block font-bold text-slate-700 mb-1">الزمن الافتراضي للفقرة (ثانية)</label>
-                <input
-                  id="station-duration-input"
-                  type="number"
-                  min={10}
-                  max={3600}
-                  step={5}
-                  inputMode="numeric"
-                  value={defaultDuration}
-                  onChange={(e) => setDefaultDuration(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-              </div>}
-            </div>
             {section === 'editorial' && <>
-            <label className="block font-bold">أولوية الخبر الافتراضية<select value={newsPriority} onChange={e => setNewsPriority(e.target.value as typeof newsPriority)} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1"><option value="LOW">منخفضة</option><option value="NORMAL">عادية</option><option value="HIGH">عالية</option><option value="URGENT">عاجلة</option></select></label>
-            <label className="block font-bold">مدة العاجل الافتراضية (ساعة)<input type="number" min={0.25} max={24} step={0.25} value={breakingHours} onChange={e => setBreakingHours(Number(e.target.value))} className="block w-full min-h-11 border border-slate-300 rounded-lg px-3 mt-1" /></label>
+            <div>
+              <label htmlFor="station-duration-input" className={GENERAL_LABEL}>الزمن الافتراضي للفقرة (ثانية)</label>
+              <input id="station-duration-input" type="number" min={10} max={3600} step={5} inputMode="numeric" value={defaultDuration} onChange={(e) => setDefaultDuration(Number(e.target.value))} className={`${GENERAL_INPUT} font-mono tabular-nums`} />
+            </div>
+            <label className={GENERAL_LABEL}>أولوية الخبر الافتراضية<select value={newsPriority} onChange={e => setNewsPriority(e.target.value as typeof newsPriority)} className={`${GENERAL_INPUT} mt-1 font-normal`}><option value="LOW">منخفضة</option><option value="NORMAL">عادية</option><option value="HIGH">عالية</option><option value="URGENT">عاجلة</option></select></label>
+            <label className={GENERAL_LABEL}>مدة العاجل الافتراضية (ساعة)<input type="number" min={0.25} max={24} step={0.25} value={breakingHours} onChange={e => setBreakingHours(Number(e.target.value))} className={`${GENERAL_INPUT} mt-1 font-normal tabular-nums`} /></label>
             </>}
             </fieldset>
+            {generalError && <p id="settings-error" role="alert" className="text-rose-700 font-bold">{generalError}</p>}
             <div className="sticky bottom-0 bg-white border-t border-slate-200 py-3 flex flex-wrap gap-3 items-center">
-
-            <button
-              type="submit"
-              disabled={saving || !dirty}
-              className="flex min-h-11 items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-all shadow-xs disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات العامة'}</span>
-            </button>
-            <button type="button" disabled={saving || !dirty} onClick={resetGeneral} className="min-h-11 px-3 text-slate-700">إلغاء التغييرات</button>
-            <span role="status">{dirty ? 'تغييرات غير محفوظة' : 'لا توجد تغييرات معلقة'}</span>
+              <button type="submit" disabled={saving || !dirty} className="flex min-h-11 items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50">
+                <Save className="w-4 h-4" aria-hidden="true" />
+                <span>{saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات العامة'}</span>
+              </button>
+              {dirty && <button type="button" disabled={saving} onClick={resetGeneral} className="min-h-11 px-3 rounded-lg text-slate-700 hover:bg-slate-100 font-bold">إلغاء التغييرات</button>}
+              <span role="status" className={`text-xs ${dirty ? 'text-amber-800 font-bold' : 'text-slate-500'}`}>{dirty ? 'تغييرات غير محفوظة' : 'كل التغييرات محفوظة'}</span>
             </div>
-            {generalError && <p id="settings-error" role="alert" className="text-rose-600 font-bold">{generalError}</p>}
           </form>
         </div>
 
         {/* Team summary: the full directory lives in «المستخدمون والصلاحيات». */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-600" />
+        {section === 'station' && <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4 self-start">
+          <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-600" aria-hidden="true" />
             <span>الفريق والصلاحيات</span>
-          </h3>
+          </h2>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-lg font-bold text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
@@ -772,7 +789,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Users className="w-3.5 h-3.5" /> إدارة المستخدمين والأدوار
             </button>
           )}
-        </div>
+        </div>}
         </div>
       )}
 
@@ -795,34 +812,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
                 <span>تصنيفات الأخبار وألوانها</span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-mono font-bold">
-                  {categories.length} أقسام
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold tabular-nums">
+                  {countLabel(categories.length, { one: 'تصنيف واحد', two: 'تصنيفان', few: 'تصنيفات', many: 'تصنيفاً', zero: 'لا تصنيفات' })}
                 </span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                يمكنك إنشاء، تعديل، وحذف تصنيفات الأخبار وتخصيص الألوان لكل منها لتسهيل الفلترة الفورية في لوحة التحكم ومحرر الأخبار
+                تصنّف المواد الإخبارية وتلوّنها في القوائم ومحرر الأخبار. ترتيبها هنا هو ترتيبها في القوائم. تختلف عن «الأقسام الإدارية».
               </p>
             </div>
           </div>
         </div>
 
         {/* Categories Overview & Creation Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
           {/* Create New Category Form (5 cols on lg) */}
-          <div className="lg:col-span-5 bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+          <div className="order-last 2xl:order-none 2xl:col-span-5 bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2">
                 <Plus className="w-4 h-4 text-blue-600" />
                 <span>إضافة تصنيف جديد</span>
               </h3>
-              <span className="text-2xs text-slate-500">تخصيص لوني فوري</span>
             </div>
 
             <form onSubmit={handleAddCategory} className="space-y-3.5 text-xs">
               {/* Arabic Name */}
               <div>
                 <label htmlFor="new-cat-name-ar-input" className="block font-bold text-slate-700 mb-1">
-                  اسم القسم بالعربية <span className="text-red-500">*</span>
+                  اسم التصنيف بالعربية <span className="text-rose-700" aria-hidden="true">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -843,7 +859,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setNewCatNameAr('')}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
+                      aria-label="مسح اسم التصنيف"
+                      className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-slate-700"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -951,16 +968,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   rows={2}
                   value={newCatDesc}
                   onChange={(e) => setNewCatDesc(e.target.value)}
-                  placeholder="وصف طبيعة الأخبار والمواد التابعة لهذا القسم..."
+                  placeholder="وصف طبيعة الأخبار والمواد التابعة لهذا التصنيف..."
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
 
               {/* Live Preview Card */}
               <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                <div className="text-2xs font-bold text-slate-500 uppercase tracking-wider">
-                  معاينة حية للشارة والبطاقة
-                </div>
+                <div className="text-2xs font-bold text-slate-500">معاينة الشارة</div>
                 <div className="flex items-center gap-3">
                   <span
                     className="px-3 py-1 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all shadow-2xs"
@@ -989,14 +1004,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="w-full min-h-11 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
-                <span>{savingCategory && !editingCategory ? 'جارٍ الحفظ...' : 'إضافة وتفعيل التصنيف'}</span>
+                <span>{savingCategory && !editingCategory ? 'جارٍ الحفظ...' : 'إضافة التصنيف'}</span>
               </button>
             </form>
 
             {/* Presets Quick Insert */}
             <div className="pt-2 border-t border-slate-200">
               <span className="text-2xs font-bold text-slate-500 block mb-1.5">
-                أقسام جاهزة ومقترحة لغرفة الأخبار:
+                تصنيفات مقترحة:
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {PRESET_CATEGORIES.map((preset) => (
@@ -1013,7 +1028,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="text-2xs bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-1 rounded-lg transition-colors border border-slate-200 flex items-center gap-1.5"
                   >
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: preset.color }} />
-                    <span>+{preset.nameAr}</span>
+                    <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                    <span>{preset.nameAr}</span>
                   </button>
                 ))}
               </div>
@@ -1021,7 +1037,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           {/* Categories List & Management Table (7 cols on lg) */}
-          <div className="lg:col-span-7 space-y-3">
+          <div className="2xl:col-span-7 space-y-3">
             {/* Search & Stats Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="relative flex-1">
@@ -1030,21 +1046,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text"
                   value={categorySearch}
                   onChange={(e) => setCategorySearch(e.target.value)}
-                  placeholder="ابحث في التصنيفات الحالية بالاسم أو المعرف..."
+                  aria-label="البحث في التصنيفات"
+                  placeholder="ابحث بالاسم أو المعرف..."
                   className="w-full pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500"
                 />
                 {categorySearch && (
                   <button
                     type="button"
                     onClick={() => setCategorySearch('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
+                    aria-label="مسح البحث"
+                    className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-slate-700"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
               <div className="text-xs text-slate-500 shrink-0 font-medium">
-                عرض {filteredCategories.length} من أصل {categories.length}
+                {filteredCategories.length} من {categories.length}
               </div>
             </div>
 
@@ -1052,7 +1070,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="space-y-2.5">
               {filteredCategories.length === 0 ? (
                 <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
-                  لا توجد أقسام مطابقة للبحث "{categorySearch}".
+                  لا توجد تصنيفات مطابقة لـ«{categorySearch}».
                 </div>
               ) : (
                 filteredCategories.map((cat) => {
@@ -1090,6 +1108,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </span>
                             )}
                             <span
+                              dir="ltr"
                               className="text-2xs font-mono px-1.5 py-0.5 rounded font-bold border"
                               style={{
                                 backgroundColor: `${color}15`,
@@ -1115,7 +1134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           className="text-2xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200"
                           title="عدد الأخبار المرتبطة بهذا التصنيف"
                         >
-                          {totalNews} {totalNews === 1 ? 'خبر' : 'أخبار'}
+                          {countLabel(totalNews, { ...AR.news, zero: 'لا أخبار' })}
                         </span>
 
                         {/* Action Buttons */}
@@ -1124,9 +1143,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="button"
                             disabled={reordering || position <= 0}
                             onClick={() => void moveCategory(cat, -1)}
-                            className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 inline-flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            aria-label={`نقل قسم ${cat.nameAr} إلى الأعلى`}
-                            title="نقل إلى الأعلى في ترتيب الأقسام"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            aria-label={`نقل تصنيف ${cat.nameAr} إلى الأعلى`}
+                            title="نقل إلى الأعلى"
                           >
                             <ChevronUp className="w-4 h-4" />
                           </button>
@@ -1134,17 +1153,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="button"
                             disabled={reordering || position < 0 || position >= orderedCategories.length - 1}
                             onClick={() => void moveCategory(cat, 1)}
-                            className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 inline-flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            aria-label={`نقل قسم ${cat.nameAr} إلى الأسفل`}
-                            title="نقل إلى الأسفل في ترتيب الأقسام"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            aria-label={`نقل تصنيف ${cat.nameAr} إلى الأسفل`}
+                            title="نقل إلى الأسفل"
                           >
                             <ChevronDown className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            aria-label={`تعديل قسم ${cat.nameAr}`}
+                            aria-label={`تعديل تصنيف ${cat.nameAr}`}
                             onClick={() => handleStartEdit(cat)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
                             title="تعديل بيانات ولون التصنيف"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -1152,16 +1171,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                           <button
                             type="button"
-                            aria-label={`حذف قسم ${cat.nameAr}`}
+                            aria-label={`حذف تصنيف ${cat.nameAr}`}
                             onClick={() => {
                               const inUse = (newsList || []).filter((n) => n.categoryId === cat.id).length;
                               if (inUse > 0) {
-                                notify({ type: 'warning', message: `لا يمكن حذف قسم (${cat.nameAr}) لأنه مرتبط بـ ${inUse} مادة إخبارية. انقل المواد إلى قسم آخر أولاً.` });
+                                notify({ type: 'warning', message: `لا يمكن حذف تصنيف (${cat.nameAr}) لأنه مرتبط بـ${countLabel(inUse, AR.item)}. انقل المواد إلى تصنيف آخر أولاً.` });
                                 return;
                               }
                               setCategoryToDelete(cat);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
                             title="حذف هذا التصنيف"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1182,11 +1201,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'sources' && (
         <div className="max-w-4xl">
         {/* News Sources Manager */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-blue-600" />
-            <span>وكالات ومصادر الأخبار المعتمدة</span>
-          </h3>
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4">
+          <div className="border-b border-slate-100 pb-2">
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-600" aria-hidden="true" />
+              <span>المصادر المعتمدة</span>
+            </h2>
+            <p className="text-xs text-slate-600 mt-0.5">الوكالات والمراسلون والجهات التي تُنسب إليها المواد. يُربط بكل مصدر خلاصة RSS تغذّي شاشة «المصادر».</p>
+          </div>
 
           <form onSubmit={handleAddSource} className="space-y-2" aria-busy={addingSource}>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
@@ -1266,9 +1288,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     setNewSourceName(srcPreset);
                     setNewSourceType(srcPreset.includes('وكالة') ? 'وكالة أنباء عالمية' : 'مراسل خاص');
                   }}
-                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded transition-colors"
+                  className="inline-flex items-center gap-1 min-h-8 text-2xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 rounded-lg transition-colors"
                 >
-                  +{srcPreset}
+                  <Plus className="w-3 h-3" aria-hidden="true" />
+                  {srcPreset}
                 </button>
               ))}
             </div>
@@ -1282,7 +1305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <strong className="text-slate-800 block break-words">{src.name}</strong>
                   <span className="text-2xs text-slate-500">{sourceTypeLabel(src.type)}</span>
                   {src.feedUrl && (
-                    <span className={`block text-2xs font-bold ${src.feedEnabled ? 'text-orange-700' : 'text-slate-500'}`}>
+                    <span className={`block text-2xs font-bold ${src.feedEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
                       {src.feedEnabled ? 'خلاصة RSS مفعّلة' : 'خلاصة RSS متوقفة'}
                     </span>
                   )}
@@ -1291,7 +1314,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleStartEditSource(src)}
-                    className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg p-1"
+                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
                     title="تعديل اسم المصدر ونوعه وموثوقيته"
                     aria-label={`تعديل المصدر ${src.name}`}
                   >
@@ -1301,14 +1324,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="button"
                     aria-expanded={feedEditingId === src.id}
                     onClick={() => setFeedEditingId(feedEditingId === src.id ? null : src.id)}
-                    className="text-orange-500 hover:text-orange-700 p-1"
+                    className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg hover:bg-blue-50 ${feedEditingId === src.id ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:text-blue-700'}`}
                     title="ربط خلاصة RSS للمصادر"
                     aria-label={`خلاصة RSS للمصدر ${src.name}`}
                   >
                     <Rss className="w-4 h-4" />
                   </button>
-                  <span className="text-2xs font-mono text-emerald-700 font-bold">
-                    موثوقية {src.reliabilityScore}/5
+                  <span className="text-2xs text-slate-600 font-bold tabular-nums whitespace-nowrap">
+                    موثوقية <span dir="ltr">{src.reliabilityScore}/5</span>
                   </span>
                   <button
                     type="button"
@@ -1320,7 +1343,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }
                       if ((await confirmDialog(`حذف المصدر (${src.name}) نهائياً؟`))) onDeleteSource(src.id);
                     }}
-                    className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg p-1"
+                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
                     aria-label={`حذف المصدر ${src.name}`}
                     title="حذف المصدر"
                   >
@@ -1354,7 +1377,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* Production Backup & Disaster Recovery Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <HardDrive className="w-4 h-4 text-emerald-700" />
+            <HardDrive className="w-4 h-4 text-blue-600" aria-hidden="true" />
             <span>التصدير والاستعادة</span>
           </h3>
 
@@ -1386,7 +1409,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={handleExportBackup}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-all shadow-xs"
+                className="flex items-center gap-1.5 min-h-11 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 تنزيل بيانات العمل (JSON)
@@ -1400,14 +1423,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <p className="text-slate-500 text-2xs">
                 يضيف من ملف التصدير السجلات غير الموجودة فقط، ولا يستبدل ما هو موجود.
               </p>
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 min-h-11 px-3.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg font-bold transition-colors cursor-pointer focus-within:ring-2 focus-within:ring-blue-500">
                 <Upload className="w-3.5 h-3.5" />
                 <span>اختيار ملف واستعادة</span>
                 <input
                   type="file"
                   accept=".json,application/json"
                   onChange={handleImportBackup}
-                  className="hidden"
+                  className="sr-only"
                 />
               </label>
             </div>
@@ -1416,6 +1439,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <DemoDataCard />
         </div>
       )}
+
+      </div>
+      </div>
 
       {/* MODAL: EDIT CATEGORY */}
       {editingCategory && (
@@ -1429,7 +1455,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
             <div>
               <label htmlFor="edit-cat-name-ar-input" className="block font-bold text-slate-700 mb-1">
-                اسم القسم بالعربية <span className="text-red-500">*</span>
+                اسم التصنيف بالعربية <span className="text-rose-700" aria-hidden="true">*</span>
               </label>
               <input
                 id="edit-cat-name-ar-input"
@@ -1547,7 +1573,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }}
               >
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: editColor }} />
-                <span>{editNameAr || 'اسم القسم'}</span>
+                <span>{editNameAr || 'اسم التصنيف'}</span>
               </span>
             </div>
 
@@ -1657,7 +1683,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onConfirm={handleConfirmDelete}
           title={`تأكيد حذف التصنيف (${categoryToDelete.nameAr})`}
           message={
-            `هل أنت متأكد من رغبتك في حذف قسم (${categoryToDelete.nameAr})؟ لن تتمكن من استرجاعه إلا بإعادة إنشائه.`
+            `حذف تصنيف (${categoryToDelete.nameAr})؟ لا يمكن استرجاعه إلا بإعادة إنشائه.`
           }
           confirmLabel="نعم، حذف التصنيف"
           cancelLabel="تراجع"

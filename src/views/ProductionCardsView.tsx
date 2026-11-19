@@ -163,7 +163,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             ))}
             {card.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
             {card.ownerStationId && <span className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-700">محطة {stationName(stations, card.ownerStationId)}</span>}
-            <span className="text-slate-600 tabular-nums" aria-label={`أُنجز ${progress.done} من ${progress.total}`}>{progress.done}/{progress.total}</span>
+            <span className="text-slate-600 tabular-nums" title={`أُنجز ${progress.done} من ${progress.total}`}>المهام {progress.done}/{progress.total}</span>
             {card.airAt && <span className="text-slate-600 mr-auto">البث {when(card.airAt)}</span>}
           </span>
           <span className="block text-sm font-bold text-slate-900">{card.title}</span>
@@ -353,7 +353,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             ].map((stat) => (
               <div key={stat.label} className="bg-white border border-slate-200 rounded-2xl p-3">
                 <dt className="text-2xs text-slate-600">{stat.label}</dt>
-                <dd className={`text-2xl font-bold tabular-nums ${stat.tone}`}>{stat.value}</dd>
+                <dd className={`text-2xl font-bold tabular-nums ${stat.value ? stat.tone : 'text-slate-900'}`}>{stat.value}</dd>
               </div>
             ))}
           </dl>

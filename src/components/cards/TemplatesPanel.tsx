@@ -41,8 +41,8 @@ export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs text-slate-600 flex-1 min-w-48">القالب سلسلة مهام جاهزة: تختاره، تحدد العنوان والموعد ومن ينفّذ، فيُنشأ التكليف بكل مهامه.</p>
         <label className="inline-flex items-center gap-2 min-h-11 text-xs text-slate-700">
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-          المؤرشفة
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+          عرض المؤرشفة
         </label>
         {canManage && (
           <button type="button" onClick={onNew} className={`${BTN} bg-blue-600 text-white`}>
@@ -69,7 +69,7 @@ export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards
                 </li>
               ))}
             </ol>
-            <p className="text-2xs text-slate-500">{countLabel(t.steps.length, AR.task)} • {used(t.id) ? `استُخدم في ${countLabel(used(t.id), { one: 'تكليف واحد', two: 'تكليفين', few: 'تكليفات', many: 'تكليفاً' })}` : 'لم يُستخدم بعد'}</p>
+            <p className="text-2xs text-slate-500">{countLabel(t.steps.length, AR.task)} · {used(t.id) ? `استُخدم في ${countLabel(used(t.id), { one: 'تكليف واحد', two: 'تكليفين', few: 'تكليفات', many: 'تكليفاً' })}` : 'لم يُستخدم بعد'}</p>
             {canManage && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {!t.archived && (
