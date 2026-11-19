@@ -1,4 +1,4 @@
-import { countLabel } from '../shared/arabicPlural';
+import { AR, countLabel } from '../shared/arabicPlural';
 import { isHandledBy, MONITOR_MEDIA } from '../shared/wires';
 import { addManualObservation, addWireToCard, deleteManualObservation, sendWireToColleague, toggleWireHandled } from '../services/newsReview';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
@@ -38,9 +38,9 @@ function timeAgo(iso: string, now: number): string {
   const diff = Math.max(0, now - new Date(iso).getTime());
   const min = Math.floor(diff / 60000);
   if (min < 1) return 'الآن';
-  if (min < 60) return `منذ ${min} دقيقة`;
+  if (min < 60) return `منذ ${countLabel(min, AR.minute)}`;
   const h = Math.floor(min / 60);
-  if (h < 24) return `منذ ${h} ساعة`;
+  if (h < 24) return `منذ ${countLabel(h, AR.hour)}`;
   return new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'medium', timeStyle: 'short' });
 }
 

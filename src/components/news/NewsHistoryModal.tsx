@@ -101,13 +101,13 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
   const selected = entries.find((e) => e.key === selectedKey) || fallback;
   const isCurrent = selected?.version === null;
   const diff = useMemo(() => {
-    if (!selected || isCurrent || !current) return null;
+    if (!isOpen || !selected || isCurrent || !current) return null;
     return {
       title: wordDiff(selected.data.title || '', current.title || ''),
       summary: wordDiff(selected.data.summary || '', current.summary || ''),
       body: wordDiff(plainText(selected.data.content), plainText(current.content)),
     };
-  }, [selected, isCurrent, current]);
+  }, [isOpen, selected, isCurrent, current]);
   const stats = diff ? [diff.title, diff.summary, diff.body].map(diffStats).reduce((a, b) => ({ added: a.added + b.added, removed: a.removed + b.removed })) : null;
   const earlier = entries.filter((e) => e.version !== null).length;
 

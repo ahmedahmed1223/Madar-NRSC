@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseErrorsPanel } from '../components/database/DatabaseErrorsPanel';
-import { DatabaseOperationConfirmation } from '../components/database/DatabaseOperationConfirmation';
+import { DatabaseOperationConfirmation, type DatabaseOperation } from '../components/database/DatabaseOperationConfirmation';
 import type { BackupStatus, BackupRehearsal } from '../shared/databaseDiagnostics';
 import {
   Database,
@@ -56,7 +56,7 @@ const QUERY_PRESETS = [
 
 export const DatabaseManagerView: React.FC = () => {
   const [stats, setStats] = useState<(DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean; confirmationTotpRequired?: boolean }) | null>(null);
-  const [operation, setOperation] = useState<{ action: 'restore' | 'reset'; fileName?: string } | null>(null);
+  const [operation, setOperation] = useState<{ action: DatabaseOperation; fileName?: string } | null>(null);
   const [rehearsal, setRehearsal] = useState<BackupRehearsal | null>(null);
   const [rehearsing, setRehearsing] = useState<string | null>(null);
   const rehearsalGuard = useRef(false);
@@ -156,7 +156,7 @@ export const DatabaseManagerView: React.FC = () => {
       const created = await apiService.createBackup();
       if (!created) throw new Error('لم يؤكد الخادم إنشاء النسخة');
       if (created) {
-        setFeedbackMessage(`تم إنشاء النسخة الاحتياطية بنجاح: ${created.fileName}`);
+        setFeedbackMessage(`تم إنشاء النسخة الاحتياطية الكاملة (القاعدة والملفات المرفوعة): ${created.fileName}`);
         setTimeout(() => setFeedbackMessage(null), 5000);
         await loadBackups();
       }
@@ -207,7 +207,12 @@ export const DatabaseManagerView: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 font-sans" dir="rtl">
       {operation && <DatabaseOperationConfirmation action={operation.action} fileName={operation.fileName} totpRequired={stats?.confirmationTotpRequired === true} onClose={endOperation} onComplete={updated => {
-        setStats(current => ({ ...current, ...updated }));
+        if (operation.action === 'download' || operation.action === 'export') {
+          setFeedbackMessage(operation.action === 'download' ? `بدأ تنزيل ${operation.fileName}؛ سُجّل في سجل التدقيق.` : 'بدأ تنزيل ملف قاعدة البيانات؛ سُجّل في سجل التدقيق.');
+          endOperation();
+          return;
+        }
+        setStats(current => (current && updated ? { ...current, ...updated } : current));
         setFeedbackMessage(operation.action === 'restore' ? 'تمت استعادة قاعدة البيانات بنجاح' : 'تمت إعادة تهيئة قاعدة البيانات بنجاح');
         endOperation(); void loadBackups();
         if (consoleEnabled) void handleRunQuery(QUERY_PRESETS[0].sql);
@@ -215,7 +220,7 @@ export const DatabaseManagerView: React.FC = () => {
       }
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-slate-600">آخر نسخة: {backupHealth?.lastSnapshotAt ? new Date(backupHealth.lastSnapshotAt).toLocaleString(appLocale(), zoneOptions()) : 'لا توجد نسخة مسجلة'}{backupHealth?.intervalHours === 0 && ' · النسخ التلقائي معطل'}</div>
-        <button type="button" disabled={isCreatingBackup || isRestoringBackup} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-emerald-700 text-white rounded-md text-sm disabled:opacity-50"><ShieldCheck size={18}/>{isCreatingBackup ? 'جار إنشاء النسخة...' : 'إنشاء نسخة احتياطية الآن'}</button>
+        <button type="button" disabled={isCreatingBackup || isRestoringBackup} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-emerald-700 text-white rounded-md text-sm disabled:opacity-50"><ShieldCheck size={18}/>{isCreatingBackup ? 'جارٍ إنشاء النسخة الكاملة…' : 'نسخة احتياطية كاملة الآن'}</button>
       </div>
       {backupHealth && (backupHealth.overdue || !backupHealth.count || backupHealth.lastAttempt?.status === 'failed' || backupHealth.lastDelivery?.status === 'failed') && <div role="alert" className="border border-amber-300 bg-amber-50 text-amber-900 p-3 rounded-md text-sm space-y-1">
         {!backupHealth.count && <p>لا توجد نسخة احتياطية محفوظة؛ أنشئ نسخة قبل العمليات الحساسة.</p>}
@@ -265,14 +270,15 @@ export const DatabaseManagerView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <a
-              href="/api/v1/db/export"
-              download
+            <button
+              type="button"
+              onClick={() => !operation && setOperation({ action: 'export' })}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+              title="ملف القاعدة وحده (بلا الملفات المرفوعة)؛ يطلب تأكيد هويتك"
             >
               <Download className="w-4 h-4" />
-              تحميل ملف SQLite (.sqlite)
-            </a>
+              تنزيل ملف القاعدة (.sqlite)
+            </button>
 
             {stats?.resetEnabled && (
             <button
@@ -645,7 +651,7 @@ export const DatabaseManagerView: React.FC = () => {
                   نقاط الاستعادة والنسخ الاحتياطي لقاعدة البيانات
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  إنشاء لقطات فورية لملف SQLite وحفظها في مجلد <code className="px-1.5 py-0.5 bg-slate-100 rounded text-indigo-700 font-mono">data/backups/</code> للاسترجاع السريع في حالات الطوارئ.
+                  «نسخة احتياطية كاملة الآن» تنشئ ما ينشئه النسخ الدوري تماماً: لقطة للقاعدة، وحزمة معها كل الملفات المرفوعة وملخص SHA-256، ونسخة إلى المجلد الخارجي أو التخزين السحابي إن كانا مضبوطين. تظهر هنا لقطات القاعدة للفحص والتجربة والاستعادة.
                 </p>
               </div>
 
@@ -666,7 +672,7 @@ export const DatabaseManagerView: React.FC = () => {
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 active:scale-95"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>{isCreatingBackup ? 'جارِ إنشاء النسخة...' : 'إنشاء نقطة استعادة فورية'}</span>
+                  <span>{isCreatingBackup ? 'جارٍ إنشاء النسخة الكاملة…' : 'نسخة احتياطية كاملة الآن'}</span>
                 </button>
               </div>
             </div>
@@ -686,7 +692,7 @@ export const DatabaseManagerView: React.FC = () => {
                   {backups.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-10 text-center text-slate-500">
-                        لا توجد نقاط استعادة محفوظة بعد. انقر على "إنشاء نقطة استعادة فورية" لتسجيل نسخة جديدة.
+                        لا توجد نسخ محفوظة بعد. انقر على «نسخة احتياطية كاملة الآن» لإنشاء أول نسخة.
                       </td>
                     </tr>
                   ) : (
@@ -713,15 +719,15 @@ export const DatabaseManagerView: React.FC = () => {
                             >
                               استعادة هذه النسخة
                             </button>
-                            <a
-                              href={`/api/v1/db/backups/download?fileName=${encodeURIComponent(b.fileName)}`}
-                              aria-label="تحميل النسخة"
-                              download
+                            <button
+                              type="button"
+                              onClick={() => !operation && setOperation({ action: 'download', fileName: b.fileName })}
+                              aria-label="تنزيل النسخة"
                               className="p-3 min-h-11 min-w-11 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="تحميل"
+                              title="تنزيل (يطلب تأكيد هويتك)"
                             >
                               <Download className="w-4 h-4" />
-                            </a>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -734,7 +740,7 @@ export const DatabaseManagerView: React.FC = () => {
             <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs text-slate-600 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono">data/newsroom.sqlite</strong> مع كل عملية تحرير.</span>
+                <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono" dir="ltr">{stats?.filePath || 'newsroom.sqlite'}</strong> مع كل عملية تحرير.</span>
               </div>
               <span className="font-mono text-slate-500">ACID Compliant SQLite Engine</span>
             </div>

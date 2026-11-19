@@ -865,7 +865,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   if (fieldBreaking && !newsItem) {
-    return <FieldBreakingForm currentUser={currentUser} onCancel={onCancel} onOpenFullEditor={() => setFieldBreaking(false)} />;
+    return (
+      <FieldBreakingForm
+        currentUser={currentUser}
+        onCancel={onCancel}
+        onOpenFullEditor={() => {
+          setFieldBreaking(false);
+          // Whoever may put it on air starts the full form already flagged as breaking.
+          if (can('news.breaking_push')) setIsBreaking(true);
+        }}
+      />
+    );
   }
 
   return (
@@ -1398,7 +1408,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-2xs tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                    {shortTitle.length} حرف
+                    {countLabel(shortTitle.length, { one: 'حرف واحد', two: 'حرفان', few: 'أحرف', many: 'حرفاً', zero: '0 حرف' })}
                   </span>
                   {(shortTitle || title) && (
                     <button
@@ -1469,7 +1479,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-2xs tabular-nums text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                    {(summary.match(/\S+/g) || []).length} كلمة
+                    {countLabel((summary.match(/\S+/g) || []).length, { one: 'كلمة واحدة', two: 'كلمتان', few: 'كلمات', many: 'كلمة', zero: '0 كلمة' })}
                   </span>
                   {summary && !ro && (
                     <button
