@@ -706,7 +706,7 @@ export const NewsListView: React.FC<NewsListViewProps> = ({
                 {showColumn('author') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
                 <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
                 {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 whitespace-nowrap text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
+                <th className="py-3.5 px-2 sm:px-3 text-center w-24 xl:w-auto sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
