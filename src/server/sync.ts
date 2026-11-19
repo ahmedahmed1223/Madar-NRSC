@@ -37,7 +37,9 @@ import { localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
 import { mergeCardChanges, stepTypesOf } from '../shared/productionCards';
-import { stationsOf } from '../shared/stations';
+import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsOf, stationsArchiveOf, stationsOf } from '../shared/stations';
+import { applyDepartmentSettings, departmentHead } from '../shared/departments';
+import { roleAuditEntries, settingsAuditEntries, userAuditEntries, type AuditEntryDraft } from '../shared/auditTrail';
 import { cardNotices, stampCard, type CardNoticeContext } from './cards';
 import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
 
@@ -286,6 +288,8 @@ export class SyncService {
       .map((u: any) => ({
         id: u.id,
         stationId: u.stationId,
+        managedStationIds: u.managedStationIds,
+        managedGroupIds: u.managedGroupIds,
         role: u.role,
         departmentId: departmentIdOf(u),
         canManage: evaluatePermission(u, 'cards.manage', roles),
@@ -306,7 +310,7 @@ export class SyncService {
   private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
     const NAMES: Partial<Record<CollectionName, string>> = {
       news: 'NEWS', stories: 'STORY', programs: 'PROGRAM', episodes: 'EPISODE', bulletins: 'BULLETIN', guests: 'GUEST',
-        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', productionCards: 'PRODUCTION_CARD', bulletinFormats: 'BULLETIN_FORMAT', settings: 'SETTINGS',
+        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', productionCards: 'PRODUCTION_CARD', bulletinFormats: 'BULLETIN_FORMAT',
     };
     const entity = NAMES[collection];
     if (!entity || !after) return;
@@ -314,12 +318,7 @@ export class SyncService {
     let action = '';
     let severity = 'INFO';
     let details = '';
-    if (collection === 'settings') {
-      const keys = ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'dateTime', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'newsTemplates', 'stations', 'cardStepTypes'];
-      const changes = keys.filter(key => JSON.stringify(before?.[key]) !== JSON.stringify(after[key])).map(key => ({ field: key, before: before?.[key] ?? null, after: after[key] ?? null }));
-      if (!changes.length) return;
-      [action, details] = ['SETTINGS_UPDATE', JSON.stringify(changes)];
-    } else if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
+    if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
     else if (after.deletedAt && !before.deletedAt) [action, severity, details] = ['DELETE', 'WARNING', `نقل إلى المحذوفات: ${title}`];
     else if (!after.deletedAt && before.deletedAt) [action, details] = ['RESTORE', `استعادة: ${title}`];
     else if (before.status !== after.status && after.status) {
@@ -335,6 +334,35 @@ export class SyncService {
       this.db.positionBounds('auditLogs').min - 1,
       null
     );
+  }
+
+  private writeAudit(entries: AuditEntryDraft[], auth: AuthContext, ip?: string) {
+    for (const entry of entries) {
+      const id = newId('aud');
+      this.db.writeRow(
+        'auditLogs',
+        id,
+        { id, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, ...entry, ipAddress: ip ?? 'unknown', timestamp: new Date().toISOString() },
+        this.db.positionBounds('auditLogs').min - 1,
+        null
+      );
+    }
+  }
+
+  /**
+   * Server-side audit of administration: accounts (role, exceptions, suspension, station,
+   * department), roles (permissions and screens), settings, stations, departments and the live lock,
+   * each with a readable «before ← after». Written after the change was accepted, in the same transaction.
+   */
+  private auditAdministration(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
+    const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+    const ctx = () => ({ roles: this.listData('roles') as RoleDefinition[], stations: stationsOf(settings), groups: stationGroupsOf(settings) });
+    if (collection === 'users') this.writeAudit(userAuditEntries(before, after, ctx()), auth, ip);
+    else if (collection === 'roles') this.writeAudit(roleAuditEntries(before, after), auth, ip);
+    else if (collection === 'settings' && after) this.writeAudit(settingsAuditEntries(before, after), auth, ip);
+    else if (collection === 'broadcastState' && !!before?.liveLock !== !!after?.liveLock) {
+      this.writeAudit([{ actionType: after?.liveLock ? 'BROADCAST_LOCK' : 'BROADCAST_UNLOCK', targetEntity: 'BROADCAST', targetId: 'live-lock', severity: 'WARNING', details: after?.liveLock ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر' }], auth, ip);
+    }
   }
 
   /** Who can give this sign-off (for notifications). */
@@ -445,6 +473,9 @@ export class SyncService {
         .filter((u: any) => u.isActive !== false && departmentIdOf(u) === after.departmentId)
         .map((u: any) => u.id);
       (onDuty.length ? onDuty : members).forEach((id) => recipients.add(id));
+      // The head of the department (or of the department above it) always hears about new requests.
+      const head = departmentHead(after.departmentId);
+      if (head && this.db.getRow('users', head)?.d?.isActive !== false) recipients.add(head);
       title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}طلب ${type?.name || ''} جديد`;
     } else if (before.status !== after.status) {
       recipients.add(after.requesterId);
@@ -526,7 +557,15 @@ export class SyncService {
     });
   }
 
+  /** Departments, station groups and the station archive follow the stored settings (shared helpers read them). */
+  private applySettings() {
+    const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+    applyDepartmentSettings(settings);
+    rememberStationSettings(settings);
+  }
+
   bootstrap(auth: AuthContext) {
+    this.applySettings();
     const rev = this.db.currentRev();
     const collections: Partial<Record<CollectionName, EntityRow[]>> = {};
     for (const name of COLLECTION_NAMES) {
@@ -571,7 +610,9 @@ export class SyncService {
    * runs in its own transaction; one rejected op never blocks the others.
    */
   apply(auth: AuthContext, ops: SyncOp[], ip?: string): SyncOpResult[] {
+    this.applySettings();
     const results = ops.map((op) => this.applyOne(auth, op, ip));
+    if (ops.some((op) => op?.c === 'settings')) this.applySettings();
     if (results.some((r) => r.ok)) changeBus.emit('rev', this.db.currentRev());
     return results;
   }
@@ -623,6 +664,7 @@ export class SyncService {
           const uploadId = collection === 'media' ? uploadIdFromMedia(before) : null;
           if (uploadId) removeUpload(this.db, this.dataDir, uploadId);
           const row = this.db.deleteRow(collection, id, auth.user.id)!;
+          this.auditAdministration(collection, before, null, auth, ip);
           return { ok: true, row } as SyncOpResult;
         }
 
@@ -730,6 +772,16 @@ export class SyncService {
             after = { ...after, name: typeof after.name === 'string' ? after.name.trim() : after.name, createdAt: before?.createdAt ?? now, updatedAt: now };
           }
           if (collection === 'notificationPrefs') after = { ...after, updatedAt: new Date().toISOString() };
+        if (collection === 'users') {
+          // Sign-in time is the server's record (set at login), never the browser's: empty until the first sign-in.
+          if (before?.lastLogin) after.lastLogin = before.lastLogin;
+          else delete after.lastLogin;
+        }
+        if (collection === 'settings') {
+          // Removed stations keep their name in the archive (history of finished work); browsers cannot rewrite it.
+          after.stationsArchive = archiveRemovedStations(stationsOf(before), stationsOf(after), stationsArchiveOf(before));
+          if (!after.stationsArchive.length) delete after.stationsArchive;
+        }
 
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
@@ -760,8 +812,11 @@ export class SyncService {
           // 2FA status is owned by the server (enrolment endpoints), never by the client.
           after.twoFactorEnabled = !!this.db.getCredentials(id)?.totpEnabled;
           // A station removed later does not block other edits to its former members.
-          const stationUnknown = after.stationId && after.stationId !== before?.stationId && !stationsOf(this.db.getRow('settings', SINGLETON_ID)?.d).some((s) => s.id === after.stationId);
-          const invalid = stationUnknown ? 'المحطة المختارة غير موجودة' : this.validateUser(id, after);
+          const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+          const stationUnknown = after.stationId && after.stationId !== before?.stationId && !stationsOf(settings).some((s) => s.id === after.stationId);
+          const scopeChanged = JSON.stringify([after.managedStationIds ?? null, after.managedGroupIds ?? null]) !== JSON.stringify([before?.managedStationIds ?? null, before?.managedGroupIds ?? null]);
+          const scopeInvalid = scopeChanged ? managedScopeError(after, stationsOf(settings), stationGroupsOf(settings)) : null;
+          const invalid = stationUnknown ? 'المحطة المختارة غير موجودة' : scopeInvalid || this.validateUser(id, after);
           if (invalid) return { ok: false, code: 'INVALID', message: invalid, current } as SyncOpResult;
         }
 
@@ -818,6 +873,7 @@ export class SyncService {
         if (collection === 'messages' && !before) this.notifyMessage(after);
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
         this.auditLifecycle(collection, before, after, auth, ip);
+        this.auditAdministration(collection, before, after, auth, ip);
         if (collection === 'news' && !after.deletedAt) this.notifyNewsWorkflow(before, after, auth);
         if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
         if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);

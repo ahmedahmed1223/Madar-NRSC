@@ -20,6 +20,8 @@ import { episodeReadiness } from '../shared/production';
 import { stationTimeZone } from '../shared/dates';
 import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
 import { DriftIndicator } from '../components/onair/DriftIndicator';
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 
 interface OnAirViewProps {
   currentUser: User;
@@ -151,7 +153,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       confirmLabel: 'بث المحتوى السابق', cancelLabel: 'إلغاء', danger: true,
     }))) return;
     if (isBulletin && readiness && !readiness.ready) { setError(`النشرة غير جاهزة: ${readiness.blockers[0]?.detail || 'لا قصص للبث'}`); return; }
-    if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
+    if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}). بدء البث رغم ذلك؟`))) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
 
@@ -211,7 +213,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   {episode.programName} — {episode.title}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-bold text-slate-200 tabular-nums">
+              <div aria-live="off" className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-bold text-slate-200 tabular-nums">
                 <span title={stationZone ? `بتوقيت المحطة (${stationZone})` : 'بتوقيت هذا الجهاز'}>
                   الساعة <span className="text-white text-base">{wall.clock}</span>
                 </span>

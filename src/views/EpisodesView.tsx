@@ -12,6 +12,7 @@ import { EPISODE_STATUS_INFO, episodeEndTime, episodeStatusInfo, type EpisodeDet
 import { apiService } from '../services/api';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { studioConflictsFor } from '../shared/schedule';
+import { bulletinSlotsAround } from '../components/episodes/airSlots';
 import { arabicDate, localDateString } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import React, { useEffect, useState } from 'react';
@@ -148,7 +149,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
     const { title, episodeNumber, seasonNumber, broadcastDate, startTime, durationMinutes, presenterName, producerName, studioName, directorName, description } = details;
     const clashes = studioConflictsFor(
       { id: '__new__', studioName: studioName || selProg?.studioName, broadcastDate, startTime, endTime, durationMinutes: Number(durationMinutes) || 50 },
-      episodes
+      [...episodes, ...bulletinSlotsAround(broadcastDate)]
     );
     if (
       clashes.length > 0 &&

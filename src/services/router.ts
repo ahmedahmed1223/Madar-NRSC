@@ -75,7 +75,7 @@ const TITLES: Record<string, string> = {
   media: 'مكتبة الوسائط',
   messages: 'المراسلات',
   cards: 'بطاقات الإنتاج',
-  workload: 'الأعباء والأداء',
+  workload: 'متابعة الفرق والتكاليف',
   requests: 'طلبات الأقسام',
   tasks: 'المهام',
   bookings: 'حجز الموارد',

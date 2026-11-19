@@ -595,7 +595,9 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     if (STEP_LOCKED.some((key) => !same(prev[key], next[key]))) return 'تعديل تفاصيل المهمة لمسؤولي التكليف';
     // The assignee ticks the checklist; its items are the supervisor's.
     if (!same((prev.checklist || []).map((c) => c.text), (next.checklist || []).map((c) => c.text))) return 'بنود قائمة التحقق لمسؤولي التكليف';
-    if ((next.spentMinutes ?? 0) < (prev.spentMinutes ?? 0)) return 'الوقت المسجّل يُضاف إلى ما سبق ولا يُنقص';
+    // Time is added as work sessions (the server sums them); a total typed by hand may only grow.
+    const sessionAdded = (next.timeLog || []).length > (prev.timeLog || []).length;
+    if (!sessionAdded && (next.spentMinutes ?? 0) < (prev.spentMinutes ?? 0)) return 'الوقت المسجّل يُضاف إلى ما سبق ولا يُنقص';
     if (!same(prev.assigneeId, next.assigneeId)) {
       const claiming = next.assigneeId === actor.id && canClaimStep(prev, actor);
       const releasing = mine(prev) && !next.assigneeId && prev.status !== 'DONE';

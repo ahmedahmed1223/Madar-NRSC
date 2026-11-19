@@ -385,7 +385,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 </div>
                 <div className="p-2 space-y-2.5 flex-1 overflow-y-auto">
                   {daySlots.length === 0 ? (
-                    <div className="py-16 text-center text-slate-400 text-xs">لا حلقات ولا نشرات</div>
+                    <div className="py-16 text-center text-slate-500 text-xs">لا حلقات ولا نشرات</div>
                   ) : (
                     daySlots.map((slot) => slotCard(slot, true))
                   )}

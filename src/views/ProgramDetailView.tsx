@@ -1,9 +1,9 @@
+import { minutesLabel, segmentClock } from '../shared/durations';
 import { countLabel } from '../shared/arabicPlural';
 import { EP_NOUNS } from '../shared/episodeNouns';
 import { arabicDate } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
-import { formatSecondsToTime } from '../shared/rundown';
 import { programTemplateView } from '../components/programs/programTemplateView';
 import { episodeStatusInfo } from '../components/episodes/episodeDetails';
 import React, { useState } from 'react';
@@ -170,7 +170,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 pt-2 border-t border-slate-800/80">
               <div className="flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-blue-400" />
-                <span>موعد العرض: <strong>{program.broadcastTime}</strong> ({program.durationMinutes} دقيقة)</span>
+                <span>موعد العرض: <strong>{program.broadcastTime}</strong> ({minutesLabel((program.durationMinutes || 0) * 60)})</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-amber-400" />
@@ -562,8 +562,8 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 {templateView.source === 'TEMPLATE' ? 'قالب محفوظ' : templateView.source === 'EPISODE' ? 'من آخر حلقة' : 'بلا قالب'}
               </Badge>
               <Badge variant="primary" size="sm">
-                {templateView.segments.length > 0 ? `${formatSecondsToTime(templateView.totalSeconds).slice(3)} من ` : ''}
-                {program.durationMinutes} دقيقة
+                {templateView.segments.length > 0 ? `${minutesLabel(templateView.totalSeconds)} من ` : ''}
+                {minutesLabel((program.durationMinutes || 0) * 60)}
               </Badge>
             </div>
           </div>
@@ -603,7 +603,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
                     <Badge variant="info" size="sm">{seg.typeName}</Badge>
                     <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200">
-                      {formatSecondsToTime(seg.durationSeconds).slice(3)}
+                      {segmentClock(seg.durationSeconds)}
                     </span>
                   </div>
                 </li>

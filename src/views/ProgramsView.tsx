@@ -1,3 +1,4 @@
+import { minutesLabel } from '../shared/durations';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
@@ -262,7 +263,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     {prog.name}
                   </h3>
                   <span className="text-xs text-slate-300 font-mono">
-                    {prog.broadcastTime} | {prog.durationMinutes} دقيقة
+                    {prog.broadcastTime} | {minutesLabel((prog.durationMinutes || 0) * 60)}
                   </span>
                 </div>
               </div>

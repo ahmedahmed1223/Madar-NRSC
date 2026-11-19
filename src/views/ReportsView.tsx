@@ -1,5 +1,12 @@
 import { countLabel } from '../shared/labels';
+import { AR, countLabel as countOf } from '../shared/arabicPlural';
 import { downloadCsv } from '../services/csvExport';
+import { apiService } from '../services/api';
+import { RbacService } from '../services/rbacService';
+import { stationName, stationsOf } from '../shared/stations';
+import { managerScope, stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
+import { productionSummary } from '../shared/workload';
+import { stepTypesOf } from '../shared/productionCards';
 import { localDateString } from '../shared/dates';
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, Clock, Tv, FileText, Users, Calendar, Printer, Download, Filter } from 'lucide-react';
@@ -20,6 +27,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedStation, setSelectedStation] = useState<string>('ALL');
+
+  // Stations this reader follows (all for central management), and the station groups among them.
+  const currentUser = apiService.getCurrentUser();
+  const settings = apiService.getSettings();
+  const allStations = stationsOf(settings);
+  const scope = managerScope(currentUser, allStations, RbacService.hasPermission(currentUser, 'workload.view_all'));
+  const stations = allStations.filter((s) => scope.has(s.id));
+  const groups = stationGroupsOf(settings).filter((g) => g.stationIds.some((id) => scope.has(id)));
+  const seesAll = stations.length === allStations.length;
+  const stationOfUser = useMemo(() => new Map(apiService.getUsers().map((u) => [u.id, u.stationId])), [newsList]);
+  const inStation = stationFilterMatcher(selectedStation, groups);
+  /** A story belongs to its writer's station. */
+  const newsStation = (n: NewsItem) => stationOfUser.get(n.authorId);
+  const inScope = (n: NewsItem) => seesAll || scope.has(newsStation(n) || '');
+  const stationLabel = selectedStation === 'ALL' ? (seesAll ? 'كل المحطات' : 'محطاتي') : selectedStation.startsWith('group:') ? groups.find((g) => `group:${g.id}` === selectedStation)?.name || '' : stationName(allStations, selectedStation);
 
   // Filter news based on selected category
 
@@ -46,9 +69,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
         return false;
       }
+      if (!inScope(item) || !inStation(newsStation(item))) return false;
       return inPeriod(item.updatedAt || item.createdAt);
     });
-  }, [newsList, selectedCategory, periodStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsList, selectedCategory, periodStart, selectedStation, stationOfUser]);
+
+  // Per station: the stories its writers worked on in the period, and the production cards it finished.
+  const periodRange = useMemo(() => ({ from: periodStart ? periodStart.getTime() : 0, to: Date.now() + 1 }), [periodStart]);
+  const production = useMemo(() => productionSummary(apiService.getCards(), stepTypesOf(settings), periodRange), [periodRange, settings]);
+  const stationBreakdown = stations
+    .filter((st) => inStation(st.id))
+    .map((st) => {
+      const own = newsList.filter((n) => newsStation(n) === st.id && (selectedCategory === 'ALL' || n.categoryId === selectedCategory) && inPeriod(n.updatedAt || n.createdAt));
+      const cards = production.byStation.find((r) => r.stationId === st.id);
+      return {
+        id: st.id,
+        name: st.name,
+        total: own.length,
+        published: own.filter((n) => n.status === 'PUBLISHED').length,
+        approved: own.filter((n) => n.status === 'APPROVED').length,
+        review: own.filter((n) => n.status === 'UNDER_REVIEW').length,
+        drafts: own.filter((n) => n.status === 'DRAFT').length,
+        cards: cards?.cards || 0,
+        cardSteps: cards?.steps || 0,
+      };
+    });
 
   const periodEpisodes = useMemo(
     () => episodes.filter((e) => inPeriod(e.broadcastDate)),
@@ -83,6 +129,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const totalEpisodes = periodEpisodes.length;
   const readyEpisodes = periodEpisodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length;
   const completedEpisodes = periodEpisodes.filter((e) => e.status === 'BROADCASTED').length;
+  const notAired = periodEpisodes.filter((e) => !['BROADCASTED', 'CANCELLED', 'ARCHIVED'].includes(e.status)).length;
+  /** The period in words for a sentence: «اليوم», «في آخر 7 أيام»… */
+  const inPeriodWords = selectedPeriod === 'today' ? 'اليوم' : selectedPeriod === 'all' ? 'في كل الفترات' : `في ${periodLabel}`;
+  const preparedAt = new Date().toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
 
   const handlePrint = () => {
     window.print();
@@ -91,11 +141,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const handleExportCsv = () => {
     // Same filters as the screen: the period and the selected category.
     const categoryLabel = selectedCategory === 'ALL' ? 'كل الأقسام' : categories.find((c) => c.id === selectedCategory)?.nameAr || selectedCategory;
-    const approvalLabel = avgApprovalMinutes === null ? 'لا توجد أخبار معتمدة' : `${avgApprovalMinutes} دقيقة`;
+    const approvalLabel = avgApprovalMinutes === null ? 'لا توجد أخبار معتمدة' : countOf(avgApprovalMinutes, { ...AR.minute, zero: 'أقل من دقيقة' });
     const csvRows: unknown[][] = [
       ['المؤشر الإحصائي', 'القيمة'],
+      ['المؤسسة', settings?.organizationName || ''],
+      ['أُعدّ في', preparedAt],
       ['الفترة', periodLabel],
       ['القسم', categoryLabel],
+      ['المحطة', stationLabel],
       ['إجمالي الأخبار المرشحة', filteredNews.length],
       ['الأخبار المنشورة', publishedCount],
       ['الأخبار المعتمدة', approvedCount],
@@ -103,13 +156,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ['المسودات الأولية', draftCount],
       ['متوسط زمن الاعتماد (من الإنشاء حتى الاعتماد)', approvalLabel],
       ['إجمالي الحلقات التلفزيونية', totalEpisodes],
-      ['حلقات جاهزة للبث المباشر', readyEpisodes],
+      ['حلقات جاهزة للبث (لم تُبث بعد)', readyEpisodes],
+      ['حلقات لم تُبث بعد', notAired],
       ['حلقات تم بثها', completedEpisodes],
       ['إجمالي الضيوف المعتمدين (كل الفترات)', guests.length],
       ['دقة توقيت الرانداون', `${rundownAccuracy.onTime}/${rundownAccuracy.total}`],
+      [],
+      ['المحطة', 'أخبار في الفترة', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'بطاقات إنتاج شاركت فيها', 'مهام بطاقات أنجزتها'],
+      ...stationBreakdown.map((r) => [r.name, r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps]),
     ];
     const categorySlug = selectedCategory === 'ALL' ? 'all' : selectedCategory;
-    downloadCsv(`nrcs_performance_report_${selectedPeriod}_${categorySlug}_${localDateString()}.csv`, csvRows);
+    downloadCsv(`nrcs_performance_report_${selectedPeriod}_${categorySlug}_${selectedStation === 'ALL' ? 'all' : selectedStation.replace(':', '-')}_${localDateString()}.csv`, csvRows);
   };
 
   return (
@@ -145,8 +202,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       </div>
 
+      {/* On paper: who, what period and which filters, and when it was prepared. */}
+      <div className="hidden print-only print-keep text-xs">
+        <p className="font-bold">{settings?.organizationName}</p>
+        <p>الفترة: {periodLabel} · القسم: {selectedCategory === 'ALL' ? 'كل الأقسام' : categories.find((c) => c.id === selectedCategory)?.nameAr} · المحطة: {stationLabel} · أُعدّ في {preparedAt}</p>
+      </div>
+
       {/* Filter & Period Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-slate-500" />
           <span className="font-bold text-slate-700">النطاق الزمني:</span>
@@ -182,7 +245,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              هذا الشهر
+              آخر 30 يوماً
             </button>
             <button
               type="button"
@@ -197,6 +260,26 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </button>
           </div>
         </div>
+
+        {(stations.length > 1 || groups.length > 0) && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="reports-station-filter" className="text-slate-600 font-medium">المحطة:</label>
+            <select
+              id="reports-station-filter"
+              value={selectedStation}
+              onChange={(e) => setSelectedStation(e.target.value)}
+              className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium"
+            >
+              <option value="ALL">{seesAll ? 'كل المحطات' : 'كل محطاتي'}</option>
+              {groups.length > 0 && (
+                <optgroup label="مجموعات المحطات">
+                  {groups.map((g) => <option key={g.id} value={`group:${g.id}`}>{g.name}</option>)}
+                </optgroup>
+              )}
+              {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-slate-500" />
@@ -221,7 +304,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">معدل نشر الأخبار</span>
+            <span className="text-xs font-bold text-slate-600">معدل نشر الأخبار <span className="font-normal text-slate-500">({periodLabel})</span></span>
             <FileText className="w-5 h-5 text-blue-600" />
           </div>
           <div className="text-2xl font-bold text-slate-800 font-mono">
@@ -235,20 +318,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">جاهزية الحلقات للبث</span>
+            <span className="text-xs font-bold text-slate-600">جاهزية الحلقات للبث <span className="font-normal text-slate-500">({periodLabel}، كل المحطات)</span></span>
             <Tv className="w-5 h-5 text-purple-600" />
           </div>
           <div className="text-2xl font-bold text-slate-800 font-mono">
-            {readyEpisodes + completedEpisodes} من {totalEpisodes}
+            {readyEpisodes} من {notAired}
           </div>
           <p className="text-2xs text-purple-600 font-semibold">
-            {readyEpisodes} حلقة جاهزة للبث المباشر اليوم
+            جاهزة من الحلقات التي لم تُبث بعد {inPeriodWords} · {countOf(completedEpisodes, { ...AR.episode, zero: 'لا حلقات' })} بُثّت
           </p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون</span>
+            <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون <span className="font-normal text-slate-500">({periodLabel})</span></span>
             <Clock className="w-5 h-5 text-emerald-700" />
           </div>
           <div className="text-2xl font-bold text-slate-800 font-mono">
@@ -347,10 +430,39 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <strong>مؤشر الكفاءة:</strong>{' '}
             {avgApprovalMinutes === null
               ? 'لا توجد أخبار معتمدة في الفترة المحددة لحساب متوسط زمن الاعتماد.'
-              : <>متوسط الوقت من إنشاء الخبر حتى اعتماده في الفترة المحددة هو <strong>{avgApprovalMinutes >= 120 ? `${Math.round(avgApprovalMinutes / 60)} ساعة` : `${avgApprovalMinutes} دقيقة`}</strong>.</>}
+              : <>متوسط الوقت من إنشاء الخبر حتى اعتماده ({periodLabel}) هو <strong>{avgApprovalMinutes >= 120 ? countOf(Math.round(avgApprovalMinutes / 60), AR.hour) : countOf(avgApprovalMinutes, { ...AR.minute, zero: 'أقل من دقيقة' })}</strong>.</>}
           </div>
         </div>
       </div>
+
+      {/* Per station: a story counts for its writer's station; cards for each station that finished a step on them. */}
+      {stationBreakdown.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-sm font-bold text-slate-800">حسب المحطة <span className="text-2xs font-normal text-slate-500">({periodLabel})</span></h3>
+          <div role="region" tabIndex={0} aria-label="جدول المحطات (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-xs">
+              <thead>
+                <tr className="text-slate-600 border-b border-slate-200">
+                  {['المحطة', 'أخبار', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'بطاقات إنتاج شاركت فيها', 'مهام بطاقات أنجزتها'].map((h, i) => (
+                    <th key={h} scope="col" className={`p-3 font-bold text-right whitespace-nowrap ${i === 0 ? 'sticky right-0 bg-white' : ''}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stationBreakdown.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                    <th scope="row" className="p-3 text-right font-bold text-slate-900 whitespace-nowrap sticky right-0 bg-white">{r.name}</th>
+                    {[r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps].map((v, i) => (
+                      <td key={i} className="p-3 tabular-nums">{v}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-2xs text-slate-500">يُنسب الخبر إلى محطة كاتبه. الحلقات لا تُنسب إلى محطة، فأرقامها تخص كل المحطات.</p>
+        </section>
+      )}
     </div>
   );
 };

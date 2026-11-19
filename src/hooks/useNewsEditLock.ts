@@ -16,8 +16,10 @@ const HEARTBEAT_MS = Math.floor(EDIT_LOCK_TTL_MS / 3);
  * the work in progress. Renews it periodically, releases it on close, and reports when
  * someone else holds (or takes over) the story.
  */
-export function useNewsEditLock(newsId: string | undefined) {
-  return useEditLock('news', newsId);
+export function useNewsEditLock(newsId: string | undefined, canEdit = true) {
+  // Reading a story one may not edit never asks for its lock (the server would refuse it, and a
+  // reader must not block the writer); colleagues' locks are still shown.
+  return useEditLock('news', newsId, canEdit);
 }
 
 /** Generic edit lock for lockable collections (stories and programme episodes). */
@@ -26,6 +28,27 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
   const [status, setStatus] = useState<EditLockStatus>('none');
   const [holder, setHolder] = useState<EditLock | null>(null);
   const me = authClient.getSession()?.user.id;
+  // Read-only: report a colleague's live lock (so the screen can say who is writing) without taking one.
+  const [watched, setWatched] = useState<EditLock | null>(null);
+  useEffect(() => {
+    if (enabled || !entityId) {
+      setWatched(null);
+      return;
+    }
+    const look = () => {
+      const lock = apiService.getEditLocks().find((l) => l.id === lockIdFor(collection, entityId));
+      setWatched(lock && isLockActive(lock) && lock.userId !== me ? lock : null);
+    };
+    look();
+    const off = dataStore.subscribe((evt) => {
+      if (evt.type === 'data-changed' && evt.collections.includes('editLocks')) look();
+    });
+    const timer = setInterval(look, 30_000);
+    return () => {
+      off();
+      clearInterval(timer);
+    };
+  }, [collection, entityId, enabled, me]);
   const acquireRef = useRef<() => Promise<void>>(async () => undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -146,6 +169,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
   return {
     status,
     holder,
+    /** A colleague holding the lock while this screen only reads (no lock requested). */
+    readerSees: watched,
     /** Editors (news.edit_any) may take a story over from a colleague. */
     takeOver: () => acquireRef.current(),
   };

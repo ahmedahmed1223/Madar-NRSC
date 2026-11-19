@@ -7,6 +7,7 @@ import { apiService } from '../../services/api';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { useEditLock, type EditLockStatus } from '../../hooks/useNewsEditLock';
 import { studioConflictsFor } from '../../shared/schedule';
+import { bulletinSlotsAround } from './airSlots';
 import { EpisodeDetailsFields } from './EpisodeDetailsFields';
 import {
   episodeDetailsBlock,
@@ -69,7 +70,9 @@ export const EpisodeDetailsEditor: React.FC<EpisodeDetailsEditorProps> = ({ epis
       return;
     }
     if (patchMovesSlot(patch)) {
-      const clashes = studioConflictsFor({ ...episode, ...patch, id: episode.id }, episodes);
+      const moved = { ...episode, ...patch, id: episode.id };
+      // Bulletins in the same studio count too, not only other episodes.
+      const clashes = studioConflictsFor(moved, [...episodes, ...bulletinSlotsAround(moved.broadcastDate)]);
       if (
         clashes.length > 0 &&
         !(await confirmDialog(

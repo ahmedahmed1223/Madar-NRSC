@@ -66,3 +66,20 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   }
   return { bundle, uploads: uploads.length };
 }
+
+/**
+ * The one full backup, used by the schedule and by «نسخة احتياطية كاملة الآن»: a database snapshot,
+ * then the bundle with every referenced upload and a SHA-256 manifest, copied to BACKUP_DIRECTORY
+ * and BACKUP_REMOTE when configured. The delivery outcome is recorded for the backup status.
+ */
+export async function createFullBackup(db: NewsroomDatabase, config: { backupRetention: number; backupDirectory?: string; backupRemote?: string }, kind?: 'auto') {
+  const file = await db.createBackup(kind, config.backupRetention);
+  try {
+    const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory, remote: config.backupRemote, retention: config.backupRetention });
+    db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+    return { file, ...result };
+  } catch (error) {
+    db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
+    throw error;
+  }
+}

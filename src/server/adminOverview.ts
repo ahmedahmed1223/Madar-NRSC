@@ -6,6 +6,7 @@ import { cardState, isCardLate } from '../shared/productionCards';
 import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
 import { stationsOf } from '../shared/stations';
 import type { AdminOverview } from '../shared/adminOverview';
+import { deploymentWarnings } from './deploymentChecks';
 
 /** Permissions whose holders should protect their account with two-step verification. */
 const PRIVILEGED = ['system.settings', 'system.database_manage', 'users.manage_roles_permissions', 'users.suspend_delete'];
@@ -53,7 +54,7 @@ export function adminOverview(db: NewsroomDatabase, config: AppConfig, now = Dat
   const notificationsWaiting = db.listCollection('notifications').filter((r) => r.d && !r.d.isRead).length;
 
   const jobs = jobRuns();
-  const alerts: AdminOverview['alerts'] = [];
+  const alerts: AdminOverview['alerts'] = deploymentWarnings(db, config).map(({ level, text }) => ({ level, text }));
   if (!db.isHealthy()) alerts.push({ level: 'error', text: 'فحص قاعدة البيانات لم ينجح؛ راجع «قاعدة البيانات» وأنشئ نسخة احتياطية.' });
   jobs.filter((j) => j.ok === false).forEach((j) => alerts.push({ level: 'error', text: `المهمة الدورية «${j.name}» فشلت في آخر تشغيل.` }));
   if (disk && disk.freeBytes < LOW_DISK_BYTES) alerts.push({ level: 'error', text: 'المساحة الحرة على قرص البيانات أقل من 2 غ.ب.' });

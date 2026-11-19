@@ -245,7 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     media: { id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null },
     bookings: { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
     roster: { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
-    workload: { id: 'workload', label: 'الأعباء والأداء', icon: Scale, badge: null },
+    workload: { id: 'workload', label: 'متابعة الفرق والتكاليف', icon: Scale, badge: null },
     reports: { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
     audit: { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
     users: { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },

@@ -21,10 +21,11 @@ export interface ProofSuggestion {
 }
 
 /** Whole words around [start, end) of `source` (tags already blanked out). */
-export function excerptAround(source: string, start: number, end: number, pad = 24): string {
+export function excerptAround(raw: string, start: number, end: number, pad = 24): string {
+  const source = raw.replace(/\u0001/g, ' ');
   const from = Math.max(0, start - pad);
   const to = Math.min(source.length, end + pad);
-  let text = source.slice(from, to).replace(/\u0001/g, ' ');
+  let text = source.slice(from, to);
   // Drop the cut words at both edges so the quote is made of whole words.
   if (from > 0 && !/\s/.test(source[from - 1] || ' ')) text = text.replace(/^\S*\s+/, '');
   if (to < source.length && !/\s/.test(source[to] || ' ')) text = text.replace(/\s+\S*$/, '');
