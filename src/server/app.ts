@@ -48,6 +48,7 @@ import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from '
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS } from '../shared/collections';
 import { adminOverview } from './adminOverview';
+import { searchArchive } from './archiveSearch';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
@@ -641,7 +642,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
     const page = Math.max(1, Math.min(1000, Number(req.query.page) || 1));
     const pageSize = 25;
-    const result = db.searchNewsArchive(archiveCutoff(), q, pageSize, (page - 1) * pageSize);
+    const result = searchArchive(db, archiveCutoff(), q, pageSize, (page - 1) * pageSize);
     res.json({ success: true, data: { ...result, page, pageSize, activeDays: config.newsActiveDays } });
   });
 
