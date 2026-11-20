@@ -1289,7 +1289,6 @@ export class ApiService {
     const siblings = this.getBulletinStories(data.bulletinId);
     const next: BulletinStory = {
       ...(before || {
-        id: data.id || newId('bst'),
         rank: rankBetween(siblings[siblings.length - 1]?.rank),
         status: 'DRAFT',
         script: '',
@@ -1299,6 +1298,7 @@ export class ApiService {
         createdAt: now,
       }),
       ...data,
+      id: before?.id ?? data.id ?? newId('bst'),
       updatedAt: now,
     } as BulletinStory;
     // Same approval chain as the server: one sign-off per step, in order.

@@ -106,6 +106,37 @@ test('a team prepares a program and a bulletin in parallel, supervises a handoff
     await control.page.getByTestId('story-editor').getByRole('button', { name: /اعتمادي|حفظ واعتماد للهواء/ }).click();
     await expect(control.page.getByTestId('story-editor')).not.toBeVisible();
     await expect.poll(async () => (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === headline)?.d.status).toBe('APPROVED');
+
+    const lateLead = 'خبر عاجل وصل بعد اعتماد الافتتاحية';
+    await manager.page.goto(`/bulletins/${bulletinId}`);
+    await manager.page.getByRole('button', { name: 'قصة جديدة', exact: true }).click();
+    await manager.page.getByRole('menuitem', { name: /قراءة/ }).click();
+    await manager.page.locator('#story-slug').fill(lateLead);
+    await manager.page.locator('#story-script').fill('ورد تحديث عاجل وتحقق فريق التحرير من النص الجديد المخصص للافتتاحية.');
+    await manager.page.getByTestId('story-editor').getByRole('button', { name: 'حفظ وإرسال للاعتماد', exact: true }).click();
+    await expect(manager.page.getByText('أُرسلت القصة لمحرر النشرة للاعتماد', { exact: true })).toBeVisible();
+    await expect(manager.page.getByTestId('story-editor')).not.toBeVisible();
+    await expect(manager.page.getByRole('button', { name: `فتح ${lateLead}`, exact: true })).toBeVisible();
+    await manager.page.getByRole('button', { name: `تقديم ${lateLead}`, exact: true }).click();
+    await expect.poll(async () => {
+      const stories = (await data(manager.page)).collections.bulletinStories.filter((r: any) => r.d.bulletinId === bulletinId);
+      return stories.sort((a: any, b: any) => a.d.rank - b.d.rank)[0]?.d.slug;
+    }).toBe(lateLead);
+    await leave(manager.page);
+
+    await openNav(control.page, 'وضع الهواء');
+    await control.page.getByLabel('الحلقة أو النشرة', { exact: true }).selectOption(bulletinId);
+    await control.page.getByRole('button', { name: 'بدء البث', exact: true }).click();
+    await expect(control.page.getByText(/^النشرة غير جاهزة:/)).toBeVisible();
+
+    for (const { page } of [editor, control]) {
+      await page.goto(`/bulletins/${bulletinId}`);
+      await page.getByRole('button', { name: `فتح ${lateLead}`, exact: true }).click();
+      await page.getByTestId('story-editor').getByRole('button', { name: /اعتمادي|حفظ واعتماد للهواء/ }).click();
+      await expect(page.getByTestId('story-editor')).not.toBeVisible();
+      await leave(page);
+    }
+    await expect.poll(async () => (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === lateLead)?.d.status).toBe('APPROVED');
     await openNav(control.page, 'وضع الهواء');
     await control.page.getByLabel('الحلقة أو النشرة', { exact: true }).selectOption(bulletinId);
     await control.page.getByRole('button', { name: 'بدء البث', exact: true }).click();
@@ -116,7 +147,7 @@ test('a team prepares a program and a bulletin in parallel, supervises a handoff
     await expect.poll(async () => (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId)?.d.status).toBe('ENDED');
     await expect.poll(async () => (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId)?.d.log.length).toBeGreaterThan(0);
     const aired = (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId).d;
-    const approvedStory = (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === headline);
+    const approvedStory = (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === lateLead);
     expect(aired.status).toBe('ENDED');
     expect(aired.log[0].segmentId).toBe(approvedStory.id);
     expect(aired.log[0].endedAt).toBeTruthy();

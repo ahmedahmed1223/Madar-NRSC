@@ -516,14 +516,17 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const episode = findShow(String(after?.episodeId), (c) => list?.(c) || []);
     if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
     if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
-      if (after.status === 'LIVE' && before?.status !== 'LIVE') {
-        const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
-        if (bulletin) {
-          const stories = (list?.('bulletinStories') || []).filter((s: any) => s.bulletinId === bulletin.id);
-          const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date()).find(i => i.severity === 'blocker');
-          if (blocker) return `النشرة غير جاهزة للبث: ${blocker.message}`;
+    if (after.status === 'LIVE' && before?.status !== 'LIVE') {
+      const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
+      if (bulletin) {
+        const stories = (list?.('bulletinStories') || []).filter((s: any) => s.bulletinId === bulletin.id);
+        const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date()).find(i => i.severity === 'blocker');
+        if (blocker) return `النشرة غير جاهزة للبث: ${blocker.message}`;
+        if (episode.rundown[0]?.id !== after.currentSegmentId) {
+          return 'تغيّر ترتيب النشرة. أعد المحاولة بعد مزامنة ترتيب الفقرات.';
         }
       }
+    }
     return null;
   },
   cues: ({ auth, kind, before, after }) => {

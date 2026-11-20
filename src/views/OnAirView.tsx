@@ -171,7 +171,9 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     }))) return;
     if (isBulletin && readiness && !readiness.ready) { setError(`النشرة غير جاهزة: ${readiness.blockers[0]?.detail || 'لا قصص للبث'}`); return; }
     if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}). بدء البث رغم ذلك؟`))) return;
-    run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
+    if (!await run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id))) {
+      void dataStore.pull();
+    }
   };
 
   const sendCue = async (message: string, level: Cue['level']) => {

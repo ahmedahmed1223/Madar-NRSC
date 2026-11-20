@@ -101,10 +101,17 @@ describe('bulletins', () => {
     for (const r of server.db.listCollection('bulletinStories').filter(r => r.d.bulletinId === 'bul-demo-main')) {
       server.db.writeRow('bulletinStories', r.id, { ...r.d, status: 'APPROVED', script: r.d.script || 'نص مكتمل للبث', clipMediaId: 'ready-video', clipSeconds: 30, manualSeconds: 30 }, r.p, null);
     }
-    const live = await sync(director, [{ c: 'onAir', op: 'upsert', id: 'bul-demo-main', d: { id: 'bul-demo-main', episodeId: 'bul-demo-main', status: 'LIVE', currentSegmentId: first.id } }]);
+    server.db.writeRow('bulletinStories', 'bst-late-lead', story('bst-late-lead', {
+      bulletinId: 'bul-demo-main', slug: 'عاجل وصل بعد الاعتماد', rank: first.rank - 1, status: 'APPROVED', script: 'افتتاحية جديدة معتمدة',
+    }), 0, null);
+    const stale = await sync(director, [{ c: 'onAir', op: 'upsert', id: 'bul-demo-main', d: { id: 'bul-demo-main', episodeId: 'bul-demo-main', status: 'LIVE', currentSegmentId: first.id } }]);
+    expect(stale.body.results[0]).toMatchObject({ ok: false, message: expect.stringContaining('تغيّر ترتيب النشرة') });
+    expect(server.db.getRow('onAir', 'bul-demo-main')).toBeNull();
+    const live = await sync(director, [{ c: 'onAir', op: 'upsert', id: 'bul-demo-main', d: { id: 'bul-demo-main', episodeId: 'bul-demo-main', status: 'LIVE', currentSegmentId: 'bst-late-lead' } }]);
     expect(live.body.results[0].ok).toBe(true);
     expect(row('bulletins', 'bul-demo-main').d.status).toBe('ON_AIR');
     expect(row('onAir', 'bul-demo-main').d.episodeTitle).toContain('نشرة');
+    expect(row('onAir', 'bul-demo-main').d.log[0].segmentId).toBe('bst-late-lead');
 
     const mos = await director.get('/api/v1/bulletins/bul-demo-main/mos');
     expect(mos.status).toBe(200);
