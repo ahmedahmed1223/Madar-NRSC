@@ -17,6 +17,7 @@ import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
+import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
@@ -65,7 +66,7 @@ import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.1.5';
+export const APP_VERSION = '4.1.6';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -731,6 +732,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!bulletin || bulletin.deletedAt) throw new HttpError(404, 'النشرة غير موجودة');
     const stories = db.listCollection('bulletinStories').map((r) => r.d).filter((s: any) => s?.bulletinId === bulletin.id && !s.deletedAt);
     const media = db.listCollection('media').map((r) => r.d);
+    if (req.query.mode === 'air') {
+      if (!stories.some((story: BulletinStory) => !story.killed && !story.floated)) throw new HttpError(409, 'لا توجد فقرات للبث');
+      const news = db.listCollection('news').map(row => row.d);
+      const blocker = evaluateBulletinReadiness(bulletin, stories, news, media, new Date()).find(issue => issue.severity === 'blocker');
+      if (blocker) throw new HttpError(409, `النشرة غير جاهزة للتصدير للبث: ${blocker.message}`);
+    }
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="bulletin_${encodeURIComponent(bulletin.id)}_mos.xml"`);
     res.send(generateBulletinMosXml(bulletin, stories as BulletinStory[], media));

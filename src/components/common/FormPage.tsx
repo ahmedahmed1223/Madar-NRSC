@@ -96,6 +96,8 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     // Put the cursor in the first field.
     const t = window.setTimeout(() => {
       const body = bodyRef.current;
+      const active = document.activeElement;
+      if (active && active !== trigger && active !== document.body) return;
       const first =
         body?.querySelector<HTMLElement>('[data-autofocus]') ||
         body?.querySelector<HTMLElement>('input[required]:not([disabled]), select[required], textarea[required]') ||

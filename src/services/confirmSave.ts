@@ -9,10 +9,10 @@ import { notify } from './notify';
  * Without a connection it answers at once: the change is kept on this device and sent later
  * (still `false`, since the server has not stored it yet; callers keep the form's input).
  */
-export async function confirmSaved(collection: CollectionName, id: string, success: string): Promise<boolean> {
+export async function confirmSaved(collection: CollectionName, id: string, success?: string): Promise<boolean> {
   const outcome = await dataStore.awaitWrite(collection, id);
   if (outcome.ok) {
-    notify({ type: 'success', message: success });
+    if (success) notify({ type: 'success', message: success });
     return true;
   }
   if (outcome.queued) notify({ type: 'info', title: 'محفوظ على جهازك', message: 'سيُرسل تلقائياً عند عودة الاتصال.' });

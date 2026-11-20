@@ -1,5 +1,5 @@
 import { confirmDialog } from '../../services/dialogs';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckSquare, CornerDownLeft, Edit2, Plus, Sparkles, Square, Trash2 } from 'lucide-react';
 import type { Episode, EpisodeQuestion } from '../../types';
 import { newId } from '../../shared/ids';
@@ -14,7 +14,7 @@ import { episodeGuestList, guestKey, QUESTION_KINDS, QuestionKind, questionKindN
 interface Props {
   episode: Episode;
   canEdit: boolean;
-  onSaveEpisode: (data: Partial<Episode>) => void;
+  onSaveEpisode: (data: Partial<Episode>) => boolean | Promise<boolean>;
   focusSegment?: { id: string; sequence: number };
 }
 
@@ -39,6 +39,9 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
   const segments = (episode.rundown || []).filter((s) => s.segmentType !== 'BREAK');
   const guests = episodeGuestList(episode);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [savingQuestion, setSavingQuestion] = useState(false);
+  const [questionError, setQuestionError] = useState('');
+  const pendingQuestionId = useRef<string | null>(null);
   const [onlyTalk, setOnlyTalk] = useState(true);
   const [copilot, setCopilot] = useState(false);
   const canSuggest = canEdit && ['episodes.edit', 'episodes.create', 'news.create', 'news.edit_any', 'news.edit_own']
@@ -46,26 +49,38 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
 
   const save = (next: EpisodeQuestion[]) => onSaveEpisode({ id: episode.id, questions: next.map((q, i) => ({ ...q, orderIndex: i + 1 })) });
 
-  const open = (segmentId: string, q?: EpisodeQuestion) =>
+  const open = (segmentId: string, q?: EpisodeQuestion) => {
+    pendingQuestionId.current = null;
+    setQuestionError('');
     setDraft(
       q
         ? { id: q.id, segmentId: q.segmentId || segmentId, guestId: q.guestId || '', kind: q.kind || 'MAIN', parentId: q.parentId || '', questionText: q.questionText, notes: q.notes || '' }
         : { segmentId, guestId: segmentGuests(segments.find((s) => s.id === segmentId))[0]?.guestId || '', kind: 'MAIN', parentId: '', questionText: '', notes: '' }
     );
+  };
 
   useEffect(() => {
     if (!focusSegment) return;
     setOnlyTalk(false);
-    if (canEdit) open(focusSegment.id);
+    const segment = segments.find(item => item.id === focusSegment.id);
+    const assignedGuests = segmentGuests(segment);
+    const stale = segment && segmentQuestions(episode, segment).find(question =>
+      (question.kind || 'MAIN') === 'MAIN' && question.guestId && !assignedGuests.some(guest => guest.guestId === question.guestId));
+    if (canEdit) open(focusSegment.id, stale);
     else requestAnimationFrame(() => document.getElementById(`episode-questions-${focusSegment.id}`)?.scrollIntoView({ block: 'center' }));
   }, [focusSegment]);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!draft || !draft.questionText.trim()) return;
+    if (!canEdit || !draft || !draft.questionText.trim() || savingQuestion) return;
     const seg = segments.find((s) => s.id === draft.segmentId);
     const topic = (episode.topics || []).find((t) => t.id === seg?.topicId);
     const guest = guests.find((g) => guestKey(g) === draft.guestId);
+    const assignedGuests = segmentGuests(seg);
+    if (draft.guestId && assignedGuests.length && !assignedGuests.some(g => g.guestId === draft.guestId)) {
+      setQuestionError('اختر ضيفًا من الفقرة الحالية أو وجّه السؤال إلى كل الضيوف.');
+      return;
+    }
     const fields = {
       segmentId: draft.segmentId || undefined,
       guestId: draft.guestId || undefined,
@@ -77,15 +92,26 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
       topicName: topic?.title || seg?.title || 'محور عام',
       assignedToName: guest?.guestName || '',
     };
-    if (draft.id) {
-      save(questions.map((q) => (q.id === draft.id ? { ...q, ...fields } : q)));
-    } else {
-      const q: EpisodeQuestion = { id: newId('q'), episodeId: episode.id, orderIndex: 0, isAsked: false, ...fields };
-      // A follow-up sits right after the question it follows.
-      const at = q.parentId ? questions.findIndex((x) => x.id === q.parentId) : -1;
-      save(at >= 0 ? [...questions.slice(0, at + 1), q, ...questions.slice(at + 1)] : [...questions, q]);
+    setSavingQuestion(true);
+    setQuestionError('');
+    try {
+      let next: EpisodeQuestion[];
+      const id = draft.id || pendingQuestionId.current || newId('q');
+      pendingQuestionId.current = id;
+      if (questions.some(question => question.id === id)) {
+        next = questions.map(q => q.id === id ? { ...q, ...fields } : q);
+      } else {
+        const q: EpisodeQuestion = { id, episodeId: episode.id, orderIndex: 0, isAsked: false, ...fields };
+        const at = q.parentId ? questions.findIndex(item => item.id === q.parentId) : -1;
+        next = at >= 0 ? [...questions.slice(0, at + 1), q, ...questions.slice(at + 1)] : [...questions, q];
+      }
+      if (await save(next)) setDraft(null);
+      else setQuestionError('لم يؤكد الخادم حفظ السؤال. أعد المحاولة.');
+    } catch {
+      setQuestionError('تعذر حفظ السؤال. أعد المحاولة.');
+    } finally {
+      setSavingQuestion(false);
     }
-    setDraft(null);
   };
 
   const move = (list: EpisodeQuestion[], q: EpisodeQuestion, dir: -1 | 1) => {
@@ -144,6 +170,9 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
       {list.length === 0 && <li className="text-2xs text-rose-600 p-2 border border-dashed border-rose-200 rounded-xl">لا أسئلة محضّرة لهذه الفقرة — أضف سؤالاً أو اسحب سؤالاً إلى هنا.</li>}
       {list.map((q, i) => {
         const guest = guests.find((g) => guestKey(g) === q.guestId);
+        const segment = segments.find(item => item.id === segmentId);
+        const assignedGuests = segmentGuests(segment);
+        const staleGuest = q.guestId && assignedGuests.length > 0 && !assignedGuests.some(item => item.guestId === q.guestId);
         return (
           <SortableItem
             as="li"
@@ -165,6 +194,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
                 {q.parentId && <CornerDownLeft className="w-3 h-3 text-slate-400" aria-hidden />}
                 <span className={`px-1.5 py-0.5 rounded ${KIND_TONE[q.kind || 'MAIN']}`}>{questionKindName(q.kind)}</span>
                 {(guest || q.assignedToName) && <span className="text-slate-600 font-semibold">إلى: {guest?.guestName || q.assignedToName}</span>}
+                {staleGuest && <span className="font-bold text-amber-800">راجع الضيف الموجّه إليه</span>}
               </div>
               <p className={`text-sm font-bold leading-relaxed ${q.isAsked ? 'line-through text-slate-500' : 'text-slate-800'}`}>{q.questionText}</p>
               {q.notes && <p className="text-2xs text-slate-500">للمذيع: {q.notes}</p>}
@@ -245,13 +275,19 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
       )}
 
       <AiNewsCoPilotModal isOpen={copilot && canSuggest} onClose={() => setCopilot(false)} planningOnly initialMode="QUESTIONS" currentTitle={episode.title}
-        onUseQuestion={questionText => setDraft({ segmentId: '', guestId: '', kind: 'MAIN', parentId: '', questionText, notes: '' })} />
-      <FormPage isOpen={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'تعديل السؤال' : 'سؤال جديد'} maxWidth="md">
+        onUseQuestion={questionText => {
+          pendingQuestionId.current = null;
+          setQuestionError('');
+          setDraft({ segmentId: '', guestId: '', kind: 'MAIN', parentId: '', questionText, notes: '' });
+        }} />
+      <FormPage isOpen={!!draft} onClose={() => { if (savingQuestion) return false; setDraft(null); }} title={draft?.id ? 'تعديل السؤال' : 'سؤال جديد'} maxWidth="md">
         {draft && (
           <form onSubmit={submit} className="space-y-3">
+            {questionError && <p role="alert" className="text-sm text-rose-700">{questionError}</p>}
+            <fieldset disabled={savingQuestion} className="space-y-3">
             <label className="block text-xs font-bold text-slate-700">
               الفقرة
-              <select value={draft.segmentId} onChange={(e) => setDraft({ ...draft, segmentId: e.target.value, parentId: '' })} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+              <select value={draft.segmentId} onChange={(e) => setDraft({ ...draft, segmentId: e.target.value, guestId: '', parentId: '' })} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
                 <option value="">— بدون فقرة —</option>
                 {segments.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -264,6 +300,7 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
               <label className="block text-xs font-bold text-slate-700">
                 موجه إلى
                 <select value={draft.guestId} onChange={(e) => setDraft({ ...draft, guestId: e.target.value })} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+                  {draft.guestId && !draftGuests.some(g => g.id === draft.guestId) && <option value={draft.guestId} disabled>اختر الضيف الحالي</option>}
                   <option value="">— كل الضيوف —</option>
                   {draftGuests.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -308,10 +345,11 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
               <button type="button" onClick={() => setDraft(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
                 إلغاء
               </button>
-              <button type="submit" className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl">
-                حفظ السؤال
+              <button type="submit" className="min-h-11 px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl disabled:opacity-50">
+                {savingQuestion ? 'بانتظار تأكيد الخادم…' : 'حفظ السؤال'}
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </FormPage>

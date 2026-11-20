@@ -29,6 +29,8 @@ jobs:
         run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai app-updates
       - name: Multi-station production and CSV exports
         run: npx playwright test production-cards
+      - name: Bulletin assembly and programme templates
+        run: npx playwright test bulletin-copy program-preparation
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

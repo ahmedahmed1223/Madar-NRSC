@@ -22,6 +22,11 @@ test('substituting a guest updates the booking and rundown in one confirmed save
     const id = 'journey-guest-substitution';
     const setup = await page.request.post('/api/v1/data/sync', { headers, data: { ops: [{
       c: 'episodes', op: 'upsert', id, d: { ...seed.d, id, status: 'PLANNING',
+        questions: [{
+          id: 'question-original-guest', episodeId: id, segmentId: segment.id, guestId: original.guestId,
+          assignedToName: original.guestName, questionText: 'سؤال يحتاج مراجعة بعد استبدال الضيف', topicName: segment.title,
+          kind: 'MAIN', orderIndex: 1, isAsked: false,
+        }],
         guests: seed.d.guests.map((guest: any) => guest.guestId === original.guestId
           ? { ...guest, bookingStatus: 'DECLINED', arrivalStatus: 'PENDING', backupGuestId: backup.id }
           : guest),
@@ -54,6 +59,30 @@ test('substituting a guest updates the booking and rundown in one confirmed save
     expect(saved.guests.find((entry: any) => entry.guestId === original.guestId).bookingStatus).toBe('DECLINED');
     expect(saved.rundown.find((entry: any) => entry.id === segment.id).guests.map((entry: any) => entry.guestId)).not.toContain(original.guestId);
     expect(writes).toHaveLength(1);
+    await page.unroute(syncPath);
+    await page.getByRole('button', { name: /^أسئلة الحوارات/ }).click();
+    const question = page.getByRole('listitem').filter({ hasText: 'سؤال يحتاج مراجعة بعد استبدال الضيف' });
+    await expect(question).toContainText('راجع الضيف الموجّه إليه');
+    await question.getByRole('button', { name: 'تعديل السؤال' }).click();
+    const form = page.locator('#form-page-root');
+    await form.getByLabel('موجه إلى').selectOption(backup.id);
+    const snapshot = await (await page.request.get('/api/v1/data')).json();
+    const current = snapshot.collections.episodes.find((row: any) => row.id === id);
+    await page.route(syncPath, async route => {
+      const ops = route.request().postDataJSON().ops;
+      if (!ops.some((op: any) => op.c === 'episodes' && op.id === id)) return route.continue();
+      await route.fulfill({ json: {
+        rev: snapshot.rev, dbId: snapshot.dbId,
+        results: ops.map((op: any) => ({ c: op.c, id: op.id, ok: false, code: 'CONFLICT', message: 'رفض حفظ السؤال للاختبار', current })),
+      } });
+    });
+    await form.getByRole('button', { name: 'حفظ السؤال', exact: true }).click();
+    await expect(form.getByRole('alert')).toContainText('لم يؤكد الخادم حفظ السؤال');
+    await expect(form.getByLabel('موجه إلى')).toHaveValue(backup.id);
+    await page.unroute(syncPath);
+    await form.getByRole('button', { name: 'حفظ السؤال', exact: true }).click();
+    await expect(form.getByRole('button', { name: 'حفظ السؤال', exact: true })).not.toBeVisible();
+    await expect.poll(async () => (await rows(page)).episodes.find((row: any) => row.id === id).d.questions[0].guestId).toBe(backup.id);
   } finally {
     release();
     await page.unroute(syncPath);

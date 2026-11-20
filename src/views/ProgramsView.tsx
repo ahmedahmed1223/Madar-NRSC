@@ -357,7 +357,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       <FormPage
         isOpen={isModalOpen}
         draft={draft}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { if (saving) return false; setIsModalOpen(false); }}
         title={editingProgram ? 'تعديل بيانات البرنامج' : 'إضافة برنامج تلفزيوني جديد'}
         subtitle="تحديد معلومات البرنامج والمسؤولين ومواعيد البث"
         maxWidth="2xl"
@@ -583,17 +583,18 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
+              disabled={saving}
               onClick={() => void draft.close(() => setIsModalOpen(false))}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              className="min-h-11 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
+              className="min-h-11 px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs disabled:opacity-50"
             >
-              {editingProgram ? 'حفظ التعديلات' : 'إنشاء البرنامج'}
+              {saving ? 'بانتظار تأكيد الخادم…' : editingProgram ? 'حفظ التعديلات' : 'إنشاء البرنامج'}
             </button>
           </div>
         </form>

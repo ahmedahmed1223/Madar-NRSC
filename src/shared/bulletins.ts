@@ -111,6 +111,8 @@ export interface BulletinStory {
   /** updatedAt of the newsroom story when its text was taken, to flag later changes. */
   newsUpdatedAt?: string;
   newsSourceSnapshot?: string;
+  /** Immediate source when copied from another bulletin. */
+  sourceStoryId?: string;
   wireId?: string;
   status: StoryStatus;
   floated?: boolean;

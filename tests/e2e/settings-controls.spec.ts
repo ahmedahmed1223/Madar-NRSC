@@ -103,5 +103,12 @@ test('rejected settings save keeps entered values and does not announce success'
   await expect(page.locator('#station-name-input')).toHaveValue('اسم لم يؤكد حفظه');
   await expect(page.getByText('تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.', { exact: true })).not.toBeVisible();
   await page.unroute('**/api/v1/data/sync');
+  await page.locator('#station-name-input').fill('  اسم مؤكد بعد إعادة المحاولة  ');
+  await page.getByRole('button', { name: 'حفظ الإعدادات العامة', exact: true }).click();
+  const success = page.getByText('تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.', { exact: true });
+  await expect(success).toBeVisible();
+  await expect(page.locator('#station-name-input')).toHaveValue('اسم مؤكد بعد إعادة المحاولة');
+  await page.locator('#station-name-input').fill('تعديل تالٍ');
+  await expect(success).not.toBeVisible();
   await close();
 });

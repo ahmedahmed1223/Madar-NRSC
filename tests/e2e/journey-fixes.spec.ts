@@ -30,6 +30,58 @@ test('task list actions have task-specific accessible names and fit a scroll reg
   await close();
 });
 
+test('task creation preserves the draft on refusal and a later status move waits for confirmation', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'editor@akhbar.tv');
+  const path = '**/api/v1/data/sync';
+  const title = `مهمة لتجربة الحفظ ${Date.now()}`;
+  const bootstrap = async () => (await (await page.request.get('/api/v1/data')).json());
+  let release = () => {};
+  let proposedId = '';
+  try {
+    await openNav(page, 'المهام');
+    await page.getByRole('button', { name: 'قائمة', exact: true }).click();
+    await page.getByRole('button', { name: 'تكليف بمهمة', exact: true }).click();
+    await page.locator('#task-title-input').fill(title);
+    const data = await bootstrap();
+    await page.route(path, async route => {
+      const ops = route.request().postDataJSON().ops;
+      const task = ops.find((op: any) => op.c === 'tasks' && op.d?.title === title);
+      if (!task) return route.continue();
+      proposedId = task.id;
+      await route.fulfill({ json: { rev: data.rev, dbId: data.dbId, results: ops.map((op: any) => ({
+        c: op.c, id: op.id, ok: false, code: 'CONFLICT', message: 'رفض مؤقت للاختبار',
+      })) } });
+    });
+    await page.getByRole('button', { name: 'حفظ المهمة', exact: true }).click();
+    await expect(page.locator('#form-page-root').getByRole('alert')).toContainText('لم يؤكد الخادم');
+    await expect(page.locator('#task-title-input')).toHaveValue(title);
+    await page.unroute(path);
+    await page.getByRole('button', { name: 'حفظ المهمة', exact: true }).click();
+    await expect(page.locator('#task-title-input')).not.toBeVisible();
+    expect((await bootstrap()).collections.tasks.filter((row: any) => row.d.title === title)).toEqual([
+      expect.objectContaining({ id: proposedId }),
+    ]);
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route(path, async route => {
+      if (route.request().postDataJSON().ops.some((op: any) => op.c === 'tasks' && op.id === proposedId)) await gate;
+      await route.continue();
+    });
+    const status = page.getByLabel(`حالة المهمة: ${title}`, { exact: true });
+    await status.selectOption('IN_PROGRESS');
+    await expect(status).toBeDisabled();
+    await expect(page.getByText('بانتظار تأكيد نقل المهمة', { exact: true })).toBeVisible();
+    expect((await bootstrap()).collections.tasks.find((row: any) => row.id === proposedId).d.status).toBe('TODO');
+    release();
+    await expect(status).toBeEnabled();
+    await expect(status).toHaveValue('IN_PROGRESS');
+    expect((await bootstrap()).collections.tasks.find((row: any) => row.id === proposedId).d.status).toBe('IN_PROGRESS');
+  } finally {
+    release();
+    await page.unroute(path);
+    await close();
+  }
+});
+
 test('on-air defaults to a current show rather than yesterday and warns on past selection', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'producer@akhbar.tv');
   await openNav(page, 'وضع الهواء');

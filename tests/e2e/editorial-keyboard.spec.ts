@@ -29,6 +29,16 @@ test('story keyboard saves are confirmed and Escape returns to the opener', asyn
   const data = await (await page.request.get('/api/v1/data')).json();
   const story = data.collections.bulletinStories.find((r: any) => r.d.bulletinId === 'bul-demo-main' && !r.d.killed);
   await page.goto('/bulletins/bul-demo-main');
+  const add = page.getByRole('button', { name: 'قصة جديدة', exact: true });
+  await add.press('Enter');
+  const types = page.getByRole('menu', { name: 'نوع القصة' }).getByRole('menuitem');
+  await expect(types.first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(types.nth(1)).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(types.last()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(add).toBeFocused();
   const opener = page.getByRole('button', { name: `فتح ${story.d.slug}`, exact: true });
   await opener.focus();
   await opener.press('Enter');

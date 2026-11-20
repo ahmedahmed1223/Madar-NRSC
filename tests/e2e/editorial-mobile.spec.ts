@@ -59,3 +59,38 @@ test('review and assignment surfaces pass axe in light and dark', async ({ brows
   }
   await context.close();
 });
+
+test('a mobile approver can take over an existing review from additional actions', async ({ browser }) => {
+  const writer = await signIn(browser, 'journalist@akhbar.tv');
+  const reviewer = await signIn(browser, 'editor@akhbar.tv');
+  const admin = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 390, height: 844 } });
+  try {
+    const { collections } = await (await writer.page.request.get('/api/v1/data')).json();
+    const { user } = await (await writer.page.request.get('/api/v1/auth/me')).json();
+    const id = `news-mobile-review-${Date.now()}`;
+    const created = await writer.page.request.post('/api/v1/data/sync', {
+      headers: { 'X-NRCS-Client': 'web' },
+      data: { ops: [{ c: 'news', op: 'upsert', id, d: {
+        ...collections.news[0].d, id, authorId: user.id, title: 'خبر لتجربة تسليم المراجعة',
+        content: 'هذا نص تحريري كامل لتجربة تولي مراجعة الخبر من قائمة الإجراءات على الهاتف.',
+        status: 'UNDER_REVIEW', deletedAt: undefined, embargoUntil: undefined, reviewClaim: undefined, workflowLogs: [],
+      } }] },
+    });
+    expect((await created.json()).results[0]).toMatchObject({ ok: true });
+    await reviewer.page.goto(`/news/${id}`);
+    await reviewer.page.getByRole('button', { name: 'أراجعها الآن', exact: true }).click();
+    await expect(reviewer.page.getByRole('button', { name: 'إنهاء استلامي', exact: true })).toBeVisible();
+    await openNav(reviewer.page, 'الرئيسية');
+    await admin.page.goto(`/news/${id}`);
+    await admin.page.getByText('إجراءات إضافية', { exact: true }).click();
+    await expect(admin.page.getByRole('button', { name: 'سجل النسخ', exact: true })).toBeVisible();
+    await admin.page.getByRole('button', { name: 'تولّي المراجعة', exact: true }).click();
+    await admin.page.getByRole('alertdialog').getByRole('button', { name: 'تأكيد', exact: true }).click();
+    await expect(admin.page.getByRole('button', { name: 'إنهاء استلامي', exact: true })).toBeVisible();
+    expect(await admin.page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  } finally {
+    await admin.close();
+    await reviewer.close();
+    await writer.close();
+  }
+});

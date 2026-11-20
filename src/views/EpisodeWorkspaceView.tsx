@@ -10,7 +10,7 @@ import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { episodeReadiness } from '../shared/production';
-import { episodeStudioBookings } from '../shared/productionWorkQueues';
+import { episodeStudioBookings, episodeStudioSlot } from '../shared/productionWorkQueues';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { departmentName } from '../shared/departments';
 import { BookingForm } from '../components/planning/BookingForm';
@@ -152,18 +152,15 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const canSeeBookings = canBook || RbacService.canOpenScreen(currentUser, 'bookings');
   const resources = canSeeBookings ? apiService.getResources() : [];
   const studioBookings = canSeeBookings ? episodeStudioBookings(episode.id, apiService.getBookings(), resources) : [];
+  const studioSlot = episodeStudioSlot(episode);
+  const confirmedSlots = studioBookings.filter(item => item.status === 'CONFIRMED');
+  const studioTimingMismatch = confirmedSlots.length > 0 && !confirmedSlots.some(item =>
+    Date.parse(item.start) <= Date.parse(studioSlot.scheduledStart) && Date.parse(item.end) > Date.parse(studioSlot.scheduledStart));
   const openBooking = (studioOnly: boolean) => {
-    const day = (episode.recordingDate || episode.broadcastDate || '').slice(0, 10);
-    const [y, m, d] = (day || new Date().toISOString().slice(0, 10)).split('-').map(Number);
-    const [hh, mm] = (episode.startTime || '09:00').split(':').map(Number);
-    const start = new Date(y, m - 1, d, hh || 9, mm || 0);
-    // Studio time: an hour of preparation before air, and the programme's length after.
-    const from = new Date(start.getTime() - 60 * 60_000);
-    const to = new Date(start.getTime() + Math.max(episode.durationMinutes || 60, 30) * 60_000);
     const studio = resources.find(resource => resource.kind === 'STUDIO' && resource.isActive !== false && resource.name === episode.studioName)
       || resources.find(resource => resource.kind === 'STUDIO' && resource.isActive !== false);
     const title = `${episode.programName} — ${episode.title}`;
-    setBooking({ studioOnly, data: { resourceId: studioOnly ? studio?.id : undefined, title, start: from.toISOString(), end: to.toISOString(), link: { kind: 'episode', id: episode.id, title } } });
+    setBooking({ studioOnly, data: { resourceId: studioOnly ? studio?.id : undefined, title, start: studioSlot.from, end: studioSlot.to, link: { kind: 'episode', id: episode.id, title } } });
   };
   const guestCount = episodeGuestList(episode).length;
   const guestWait = readiness.blockers.some(blocker => blocker.key === 'guest');
@@ -434,6 +431,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <li className="py-2 flex flex-wrap items-center justify-between gap-x-3">
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800">حجز الاستوديو</h3>
+            {studioTimingMismatch && <p className="text-xs font-semibold text-amber-800">وقت بدء الحلقة خارج الحجوزات المؤكدة. راجع موعد الاستديو.</p>}
             {!canSeeBookings ? <p className="text-xs text-slate-600">تحتاج صلاحية عرض الحجوزات.</p> : studioBookings.length === 0 ? <p className="text-xs text-slate-600">لا يوجد حجز استوديو مرتبط بالحلقة.</p> : (
               <ul className="mt-1 space-y-1 text-xs text-slate-600">
                 {studioBookings.map(item => {

@@ -223,13 +223,15 @@ export function segmentReadiness(segment: any, episode: any, ctx: ReadinessConte
   }
 
   if (TALK_SEGMENT_TYPES.has(segment.segmentType) && guests.length) {
-    const count = segmentQuestions(episode, segment).filter((q) => (q.kind || 'MAIN') === 'MAIN').length;
+    const main = segmentQuestions(episode, segment).filter(q => (q.kind || 'MAIN') === 'MAIN');
+    const needsReassignment = main.some(q => q.guestId && !guests.some(guest => guest.guestId === q.guestId));
+    const count = main.filter(q => q.questionText?.trim()).length;
     items.push({
       key: 'questions',
       label: 'الأسئلة',
       departmentId: 'production',
-      state: count ? 'ready' : 'missing',
-      detail: count ? `${count} سؤال أساسي` : 'لا أسئلة محضّرة للحوار',
+      state: needsReassignment ? 'pending' : count ? 'ready' : 'missing',
+      detail: needsReassignment ? 'راجع الأسئلة الموجهة إلى ضيف لم يعد في الفقرة' : count ? `${count} سؤال أساسي` : 'لا أسئلة محضّرة للحوار',
     });
   }
 

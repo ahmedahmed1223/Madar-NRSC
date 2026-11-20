@@ -110,6 +110,11 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     }
   }, [bulletinId]);
   const [addMenu, setAddMenu] = useState(false);
+  const addMenuTrigger = useRef<HTMLButtonElement>(null);
+  const storyTypeMenu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (addMenu) storyTypeMenu.current?.querySelector('button')?.focus();
+  }, [addMenu]);
   const [source, setSource] = useState<'NEWS' | 'WIRES' | 'COPY' | null>(null);
   /** Sending copies of this bulletin's stories to another bulletin. */
   const [sendTo, setSendTo] = useState<{ target: string; ids: string[] } | null>(null);
@@ -127,6 +132,14 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [generatingHeadlines, setGeneratingHeadlines] = useState(false);
   const [sourceError, setSourceError] = useState('');
   const sourceWrites = useRef(new Map<string, string>());
+  const closeSourcePicker = () => {
+    if (addingSources) return false;
+    setSource(null);
+    setPicked([]);
+    setCopyFrom('');
+    setQuery('');
+    setSourceError('');
+  };
   const confirmedWrite = async (collection: 'bulletins' | 'bulletinStories' | 'bulletinFormats', id: string) => {
     const outcome = await dataStore.awaitWrite(collection, id);
     if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم الحفظ بعد؛ أعد المحاولة');
@@ -171,6 +184,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     (s) => (showKilled || !s.killed) && (statusFilter === 'ALL' || s.status === statusFilter) && matchesQuery(rowQuery, s.slug, s.script, s.anchorName, s.writerName)
   );
   const air = all.filter((s) => !s.floated && !s.killed);
+  const readinessIssues = evaluateBulletinReadiness(bulletin, all, apiService.getNews(), apiService.getMedia(), new Date());
+  const canExportAir = air.length > 0 && !readinessIssues.some(issue => issue.severity === 'blocker');
   const approvedCount = air.filter((s) => s.status === 'APPROVED').length;
   const readyCount = air.filter((s) => s.status === 'READY').length;
   const myApprovals = air.filter((s) => s.status === 'READY' && isApprover(bulletin, actor, s)).length;
@@ -251,6 +266,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     .filter((b) => b.id !== bulletin.id)
     .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`));
   const copyStories = copyFrom ? apiService.getBulletinStories(copyFrom).filter((s) => !s.killed) : [];
+  const copiedSources = new Set(all.map(story => story.sourceStoryId).filter(Boolean));
+  const copySelection = source === 'COPY' && picked.length
+    ? others.flatMap(origin => apiService.getBulletinStories(origin.id)
+      .filter(story => picked.includes(story.id))
+      .map(story => ({ story, origin }))).sort((a, b) => picked.indexOf(a.story.id) - picked.indexOf(b.story.id))
+    : [];
+  const copyDuration = copySelection.reduce((total, { story }) => total + storyTiming(story).total, 0);
   const inBulletin = new Set(all.map((s) => s.newsId).filter(Boolean));
 
   const pullNews = (n: NewsItem) => {
@@ -298,9 +320,10 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             const w = apiService.getWires().find(x => x.id === id)!;
             storyId = apiService.saveBulletinStory({ bulletinId: bulletin.id, slug: w.title, type: 'READER', script: w.summary || '', wireId: w.id, status: 'DRAFT' }).id;
           } else {
+            const existing = apiService.getBulletinStories(bulletin.id).find(story => story.sourceStoryId === id);
             const before = new Set(apiService.getBulletinStories(bulletin.id).map(s => s.id));
-            apiService.copyStoriesToBulletin([id], bulletin.id);
-            storyId = apiService.getBulletinStories(bulletin.id).find(s => !before.has(s.id))?.id;
+            if (!existing) apiService.copyStoriesToBulletin([id], bulletin.id);
+            storyId = existing?.id || apiService.getBulletinStories(bulletin.id).find(s => !before.has(s.id))?.id;
             if (!storyId) throw new Error('تعذر العثور على القصة المصدر');
           }
           sourceWrites.current.set(key, storyId);
@@ -412,8 +435,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               ]}
             />
             <a href={`/api/v1/bulletins/${encodeURIComponent(bulletin.id)}/mos`} download className="flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              <Download className="w-4 h-4" /> MOS
+              <Download className="w-4 h-4" /> MOS للتحرير
             </a>
+            {canExportAir && (
+              <a href={`/api/v1/bulletins/${encodeURIComponent(bulletin.id)}/mos?mode=air`} download className="flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-emerald-200 text-xs font-bold text-emerald-800 hover:bg-emerald-50">
+                <Download className="w-4 h-4" /> MOS للبث
+              </a>
+            )}
             {can('bulletins.manage') && (
               <button type="button" disabled={savingFormat} onClick={saveAsFormat} className="flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                 <Save className="w-4 h-4" /> حفظ كقالب
@@ -524,7 +552,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         </div>
       </div>
 
-      <ReadinessPanel issues={evaluateBulletinReadiness(bulletin, all, apiService.getNews(), apiService.getMedia(), new Date())} stories={all} users={users} onOpen={setEditing} />
+      <ReadinessPanel issues={readinessIssues} stories={all} users={users} onOpen={setEditing} />
       <ProductionFollowUp entityId={bulletin.id} kind="BULLETIN" storyIds={new Set(all.map(story => story.id))} user={currentUser} />
       {message && (
         <p role="status" className={`text-xs font-bold rounded-xl p-2.5 border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
@@ -535,13 +563,30 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       {/* Toolbar */}
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2 relative">
-          <button type="button" onClick={() => setAddMenu((v) => !v)} aria-expanded={addMenu} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+          <button ref={addMenuTrigger} type="button" onClick={() => setAddMenu((v) => !v)} aria-haspopup="menu" aria-expanded={addMenu} className="min-h-11 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
             <Plus className="w-4 h-4" /> قصة جديدة
           </button>
           {addMenu && (
-            <div role="menu" className="absolute top-full mt-1 right-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1 w-80">
+            <div ref={storyTypeMenu} role="menu" aria-label="نوع القصة" onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== addMenuTrigger.current) setAddMenu(false);
+            }} onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setAddMenu(false);
+                addMenuTrigger.current?.focus();
+                return;
+              }
+              const items = [...event.currentTarget.querySelectorAll('button')];
+              const index = items.indexOf(document.activeElement as HTMLButtonElement);
+              const destination = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+                : event.key === 'ArrowDown' ? (index + 1) % items.length
+                : event.key === 'ArrowUp' ? (index + items.length - 1) % items.length : -1;
+              if (destination < 0) return;
+              event.preventDefault();
+              items[destination]?.focus();
+            }} className="absolute top-full mt-1 right-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 grid gap-1 w-64 max-w-[calc(100vw-2rem)] max-h-[50vh] overflow-auto">
               {STORY_TYPES.map((t) => (
-                <button key={t.id} type="button" role="menuitem" onClick={() => addStory(t.id)} className="text-right px-2 py-1.5 rounded-lg hover:bg-blue-50 text-xs">
+                <button key={t.id} type="button" role="menuitem" tabIndex={-1} onClick={() => { addMenuTrigger.current?.focus(); addStory(t.id); }} className="min-h-11 text-right px-2 py-1.5 rounded-lg hover:bg-blue-50 focus:bg-blue-50 text-xs">
                   <span className="font-mono font-bold text-blue-700">{t.code}</span> {t.name}
                 </button>
               ))}
@@ -844,11 +889,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       </FormPage>
       <FormPage
         isOpen={!!source}
-        onClose={() => {
-          if (addingSources) return false;
-          setSource(null);
-          setPicked([]);
-        }}
+        onClose={closeSourcePicker}
         title={source === 'NEWS' ? 'إضافة من غرفة الأخبار' : source === 'WIRES' ? 'إضافة من مواد الوكالات' : 'نسخ قصص من نشرة أخرى'}
         subtitle="تُضاف كمسودات في آخر النشرة، ثم رتّبها وعدّلها"
         maxWidth="3xl"
@@ -857,7 +898,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           {sourceError && <p role="alert" className="text-sm text-rose-700">{sourceError}</p>}
           <fieldset disabled={addingSources} className="space-y-3">
           {source === 'COPY' ? (
-            <select aria-label="النشرة المصدر" value={copyFrom} onChange={(e) => { setCopyFrom(e.target.value); setPicked([]); }} className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs bg-white">
+            <select aria-label="النشرة المصدر" value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs bg-white">
               <option value="">— اختر النشرة —</option>
               {others.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -871,11 +912,11 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           <ul className="max-h-[55vh] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
             {(source === 'NEWS' ? news : source === 'WIRES' ? wires : copyStories).map((item: any) => {
               const on = picked.includes(item.id);
-              const already = source === 'NEWS' && inBulletin.has(item.id);
+              const already = source === 'NEWS' ? inBulletin.has(item.id) : source === 'COPY' && copiedSources.has(item.id);
               return (
                 <li key={item.id}>
                   <label className={`flex items-start gap-2 p-2.5 text-xs cursor-pointer ${on ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                    <input type="checkbox" checked={on} onChange={() => setPicked(on ? picked.filter((x) => x !== item.id) : [...picked, item.id])} className="mt-0.5" />
+                    <input type="checkbox" checked={on} disabled={source === 'COPY' && already && !on} onChange={() => setPicked(on ? picked.filter((x) => x !== item.id) : [...picked, item.id])} className="mt-0.5" />
                     <span className="flex-1 min-w-0">
                       <span className="font-bold text-slate-800 block">{source === 'COPY' ? item.slug : item.title}</span>
                       <span className="text-2xs text-slate-500">
@@ -893,8 +934,21 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             {source === 'WIRES' && wires.length === 0 && <li className="p-6 text-center text-xs text-slate-500">لا مواد متاحة.</li>}
             {source === 'NEWS' && news.length === 0 && <li className="p-6 text-center text-xs text-slate-500">لا أخبار معتمدة أو منشورة مطابقة.</li>}
           </ul>
+          {!!copySelection.length && (
+            <section aria-label="معاينة القصص المحددة" className="rounded-lg border border-slate-200 p-3 space-y-2 text-xs">
+              <p className="font-bold text-slate-800">المدة المضافة {mmss(copyDuration)} · المدة بعد الإضافة {mmss(air.reduce((total, story) => total + storyTiming(story).total, 0) + copyDuration)}</p>
+              <ol className="list-decimal ps-5">
+                {copySelection.map(({ story, origin }) => (
+                  <li key={story.id} className="break-words">
+                    {story.slug} · {origin.title}
+                    <button type="button" aria-label={`إلغاء اختيار ${story.slug}`} onClick={() => setPicked(current => current.filter(id => id !== story.id))} className="min-h-11 px-2 text-blue-700 hover:underline">إلغاء الاختيار</button>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <button type="button" onClick={() => setSource(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
+            <button type="button" onClick={closeSourcePicker} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
               إلغاء
             </button>
             <button type="button" disabled={!picked.length} onClick={() => void addPicked(false)} className={`px-5 py-2 text-xs font-bold rounded-xl disabled:opacity-50 ${source === 'NEWS' && approver ? 'border border-slate-300 text-slate-700 bg-white' : 'bg-blue-600 text-white'}`}>

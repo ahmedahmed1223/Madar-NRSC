@@ -572,12 +572,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- TASKS ACTIONS ---
   const handleSaveTask = async (taskData: Partial<EditorialTask>): Promise<boolean> => {
+    const existing = taskData.id && apiService.getTasks().some(task => task.id === taskData.id);
     let saved: EditorialTask | null = null;
     if (!attempt('حفظ المهمة', () => (saved = apiService.saveTask(taskData, currentUser)))) return false;
     refreshData();
     // Quick status moves confirm quietly; creating or editing a task waits for the server.
-    if (Object.keys(taskData).length <= 2) return true;
-    return confirmSaved('tasks', saved!.id, taskData.id ? 'حُفظت المهمة' : `أُسندت المهمة «${saved!.title}»`);
+    const quickMove = Object.keys(taskData).length <= 2;
+    return confirmSaved('tasks', saved!.id, quickMove ? undefined : existing ? 'حُفظت المهمة' : `أُسندت المهمة «${saved!.title}»`);
   };
 
   const handleDeleteTask = (taskId: string) => {

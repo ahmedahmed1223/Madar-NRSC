@@ -300,14 +300,17 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
 
 const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (after && kind !== 'delete') {
-    if (after.assigneeId && !(list?.('users') || []).some((u: any) => u.id === after.assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
-    const c = after.relatedEntityType === 'BULLETIN' ? 'bulletins' : after.relatedEntityType === 'BULLETIN_STORY' ? 'bulletinStories' : null;
-    if (c && !(list?.(c) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
+    if (before?.status !== after.status && !['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'DONE', 'COMPLETED', 'CANCELLED'].includes(after.status)) return 'حالة المهمة غير صالحة';
+    if (after.assigneeId && before?.assigneeId !== after.assigneeId && !(list?.('users') || []).some((u: any) => u.id === after.assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
+    const targets: Record<string, CollectionName> = { NEWS: 'news', EPISODE: 'episodes', PROGRAM: 'programs', BULLETIN: 'bulletins', BULLETIN_STORY: 'bulletinStories' };
+    const target = Object.hasOwn(targets, after.relatedEntityType) ? targets[after.relatedEntityType] : undefined;
+    if (target && (before?.relatedEntityType !== after.relatedEntityType || before?.relatedEntityId !== after.relatedEntityId)
+      && !(list?.(target) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
   }
   if (auth.can('tasks.create_assign')) return null;
   // Assignees may progress their own tasks.
-  if (kind === 'update' && before?.assigneeId === auth.user.id && after?.assigneeId === auth.user.id && !isSoftDelete(before, after)) {
-    const protectedFields = ['title', 'description', 'assigneeId', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'priority'];
+  if (auth.can('tasks.view') && kind === 'update' && before?.assigneeId === auth.user.id && after?.assigneeId === auth.user.id && !isSoftDelete(before, after)) {
+    const protectedFields = ['title', 'description', 'assigneeId', 'assignedToId', 'assignedToName', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority'];
     return protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
   }
   return 'صلاحياتك لا تسمح بإدارة المهام';
@@ -516,13 +519,15 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const episode = findShow(String(after?.episodeId), (c) => list?.(c) || []);
     if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
     if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
-    if (after.status === 'LIVE' && before?.status !== 'LIVE') {
+    if (after.status === 'LIVE') {
       const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
       if (bulletin) {
-        const stories = (list?.('bulletinStories') || []).filter((s: any) => s.bulletinId === bulletin.id);
+        const starting = before?.status !== 'LIVE';
+        const stories = (list?.('bulletinStories') || []).filter((s: any) =>
+          s.bulletinId === bulletin.id && (starting || s.id === after.currentSegmentId));
         const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date()).find(i => i.severity === 'blocker');
-        if (blocker) return `النشرة غير جاهزة للبث: ${blocker.message}`;
-        if (episode.rundown[0]?.id !== after.currentSegmentId) {
+        if (blocker) return `${starting ? 'النشرة غير جاهزة للبث' : 'الفقرة غير جاهزة للبث'}: ${blocker.message}`;
+        if (starting && episode.rundown[0]?.id !== after.currentSegmentId) {
           return 'تغيّر ترتيب النشرة. أعد المحاولة بعد مزامنة ترتيب الفقرات.';
         }
       }
@@ -653,6 +658,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       return data?.ownerId === auth.user.id;
     case 'news':
       return auth.can('news.view');
+    case 'tasks':
+      return auth.can('tasks.view') || auth.can('tasks.create_assign');
     case 'newsCorrections':
       const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
       return !!news && !news.deletedAt && auth.can('news.view') && canRead(auth, 'news', news);

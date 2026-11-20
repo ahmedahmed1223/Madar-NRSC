@@ -94,6 +94,18 @@ describe('readiness with guests and questions', () => {
   it('counts older questions aimed at the guest by name', () => {
     expect(segmentQuestions({ questions: [{ id: 'q', assignedToName: 'خالد' }] }, seg).length).toBe(1);
   });
+
+  it('requires reviewing a question still assigned to a replaced guest', () => {
+    const ready = {
+      rundown: [seg],
+      guests: [{ guestId: 'g1', bookingStatus: 'CONFIRMED' }],
+      questions: [{ id: 'q', segmentId: 's1', kind: 'MAIN', guestId: 'former', questionText: 'سؤال للضيف السابق' }],
+    };
+    expect(episodeReadiness(ready, ctx).blockers).toEqual([
+      expect.objectContaining({ key: 'questions', detail: expect.stringContaining('ضيف لم يعد في الفقرة') }),
+    ]);
+    expect(episodeReadiness({ ...ready, questions: [{ ...ready.questions[0], guestId: 'g1' }] }, ctx).ready).toBe(true);
+  });
 });
 
 describe('templates', () => {

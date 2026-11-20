@@ -1347,7 +1347,7 @@ export class ApiService {
     const source = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).filter((x) => storyIds.includes(x.id));
     source.sort(byRank).forEach((x) => {
       const { id: _id, rank: _r, status: _s, approvedById: _a, approvedByName: _n, approvedAt: _t, writerId: _w, writerName: _wn, createdAt: _c, floated: _f, killed: _k, approvals: _ap, returnNote: _rn, deletedAt: _d, ...rest } = x;
-      this.saveBulletinStory({ ...rest, bulletinId, status: 'DRAFT' });
+      this.saveBulletinStory({ ...rest, bulletinId, sourceStoryId: x.id, status: 'DRAFT' });
     });
     return source.length;
   }

@@ -118,6 +118,22 @@ describe('bulletins', () => {
     expect(mos.text).toContain('<roCreate>');
     expect(mos.text).toContain('<storyType>PKG</storyType>');
     expect(mos.text).not.toContain('خبر احتياطي'); // floated stories are not in the running order
+    expect((await director.get('/api/v1/bulletins/bul-demo-main/mos?mode=air')).status).toBe(200);
+
+    server.db.writeRow('bulletinStories', 'bst-late-unapproved', story('bst-late-unapproved', {
+      bulletinId: 'bul-demo-main', slug: 'عاجل لم يكتمل بعد', rank: first.rank - 0.5, status: 'DRAFT', script: 'نص ينتظر الاعتماد',
+    }), 0, null);
+    const current = row('onAir', 'bul-demo-main');
+    const move = (segmentId: string) => sync(director, [{ c: 'onAir', op: 'upsert', id: current.id, baseV: current.v, d: {
+      ...current.d, currentSegmentId: segmentId,
+    } }]);
+    expect((await move('bst-late-unapproved')).body.results[0]).toMatchObject({
+      ok: false, message: expect.stringContaining('الفقرة غير جاهزة للبث'),
+    });
+    expect(row('onAir', current.id).d.currentSegmentId).toBe('bst-late-lead');
+    expect((await director.get('/api/v1/bulletins/bul-demo-main/mos?mode=air')).status).toBe(409);
+    expect((await director.get('/api/v1/bulletins/bul-demo-main/mos')).status).toBe(200);
+    expect((await move(first.id)).body.results[0].ok).toBe(true);
   });
 
   it('creates scheduled bulletins once, only for formats set to auto-create', async () => {

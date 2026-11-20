@@ -8,7 +8,8 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { apiService } from '../services/api';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { newId } from '../shared/ids';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown, CheckSquare, X } from 'lucide-react';
 import { confirmDialog } from '../services/dialogs';
@@ -101,6 +102,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const assignableUsers = apiService.getUsers().filter((u) => u.isActive !== false && !u.deletedAt);
   const [status, setStatus] = useState<TaskStatus>('TODO');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const newTaskId = useRef<string | null>(null);
+  const moving = useRef(new Set<string>());
+  const [movingTasks, setMovingTasks] = useState<ReadonlySet<string>>(new Set());
   const draft = useFormDraft(`task:${currentUser.id}:${editingTask?.id || 'new'}`, isModalOpen,
     { title, description, priority, dueDate, assigneeId, status }, value => {
       setTitle(value.title); setDescription(value.description); setPriority(value.priority);
@@ -122,6 +127,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   };
 
   const handleOpenAdd = () => {
+    newTaskId.current = null;
+    setSaveError('');
     setEditingTask(null);
     setTitle('');
     setDescription('');
@@ -133,6 +140,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   };
 
   const handleOpenEdit = (t: EditorialTask) => {
+    setSaveError('');
     setEditingTask(t);
     setTitle(t.title);
     setDescription(t.description || '');
@@ -146,18 +154,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || saving) return;
+    const assignee = assignableUsers.find(u => u.id === assigneeId);
+    if (!assignee) { setSaveError('اختر مسؤولًا نشطًا عن المهمة.'); return; }
+    const deadline = fromLocalInputValue(dueDate);
+    if (!deadline) { setSaveError('حدد موعد تسليم صالحًا.'); return; }
     setSaving(true);
-    const assignee = assignableUsers.find((u) => u.id === assigneeId) || currentUser;
-    const assignedToName = assignee.fullName;
+    setSaveError('');
     try {
+    const id = editingTask?.id || newTaskId.current || newId('tsk');
+    if (!editingTask) newTaskId.current = id;
     const saved = await onSaveTask({
-      id: editingTask?.id,
+      id,
       title,
       description,
       priority,
-      dueDate: fromLocalInputValue(dueDate) || new Date(Date.now() + 86400000).toISOString(),
-      assignedToName,
-      assigneeName: assignedToName,
+      dueDate: deadline,
+      assignedToName: assignee.fullName,
+      assigneeName: assignee.fullName,
       status,
       assignedToId: assignee.id,
       assigneeId: assignee.id,
@@ -165,11 +178,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
       ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
     });
     if (saved !== false) { draft.clearDraft(); setIsModalOpen(false); }
+    else setSaveError('لم يؤكد الخادم حفظ المهمة. احتفظنا بالبيانات لإعادة المحاولة.');
     } finally { setSaving(false); }
   };
 
-  const handleQuickStatusChange = (taskId: string, newStatus: TaskStatus) => {
-    onSaveTask({ id: taskId, status: newStatus });
+  const handleQuickStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+    if (moving.current.has(taskId)) return false;
+    moving.current.add(taskId);
+    setMovingTasks(new Set(moving.current));
+    try {
+      return await onSaveTask({ id: taskId, status: newStatus }) !== false;
+    } finally {
+      moving.current.delete(taskId);
+      setMovingTasks(new Set(moving.current));
+    }
   };
 
   const handleDelete = async (t: EditorialTask) => {
@@ -261,7 +283,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       id={t.id}
       container={`col:${colStatus}`}
       label={t.title}
-      disabled={!canMove(t)}
+      disabled={!canMove(t) || movingTasks.has(t.id)}
       data-task-id={t.id}
       tabIndex={-1}
       className={`bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 outline-hidden ${focusRing(t.id)}`}
@@ -303,6 +325,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       </div>
 
       <h4 className="text-xs font-bold text-slate-800 leading-snug">{t.title}</h4>
+      {movingTasks.has(t.id) && <p role="status" className="text-xs font-semibold text-slate-600">بانتظار تأكيد نقل المهمة</p>}
 
       {t.description && (
         <p className="text-2xs text-slate-500 line-clamp-2">{t.description}</p>
@@ -328,6 +351,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <button
             key={m.status}
             type="button"
+            disabled={movingTasks.has(t.id)}
             onClick={() => handleQuickStatusChange(t.id, m.status)}
             className={`min-h-7 text-2xs px-2 py-0.5 rounded font-semibold ${m.className}`}
           >
@@ -436,18 +460,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* KANBAN VIEW */}
       {activeTab === 'KANBAN' ? (
         <SortableScope
-          onDrop={({ id, from, to }) => {
+          onDrop={async ({ id, from, to }) => {
             if (from === to) return;
             const task = tasks.find((x) => x.id === id);
             if (task && !canMove(task)) return;
             const status = to.slice(4) as TaskStatus;
             const previous = task?.status;
-            handleQuickStatusChange(id, status);
+            if (!await handleQuickStatusChange(id, status)) return;
             const label = columns.find((c) => c.status === status)?.label || status;
             notify({
               type: 'success',
               message: `نُقلت «${task?.title || ''}» إلى ${label}`,
-              action: previous ? { label: 'تراجع', run: () => handleQuickStatusChange(id, previous) } : undefined,
+              action: previous ? { label: 'تراجع', run: () => { void handleQuickStatusChange(id, previous); } } : undefined,
             });
           }}
         >
@@ -557,10 +581,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     </div>
                   </td>
                   <td className="py-3 px-3">
+                    {movingTasks.has(t.id) && <span role="status" className="block text-xs text-slate-600">بانتظار تأكيد نقل المهمة</span>}
                     {canMove(t) && t.status !== 'CANCELLED' ? (
                       <select
                         aria-label={`حالة المهمة: ${t.title}`}
                         value={t.status}
+                        disabled={movingTasks.has(t.id)}
                         onChange={(e) => handleQuickStatusChange(t.id, e.target.value as TaskStatus)}
                         className="min-h-9 px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 font-semibold"
                       >
@@ -613,11 +639,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <FormPage
         isOpen={isModalOpen}
         draft={draft}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { if (saving) return false; setIsModalOpen(false); }}
         title={editingTask ? 'تعديل المهمة التحريرية' : 'إسناد وتكليف بمهمة صحفية'}
         maxWidth="md"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} aria-busy={saving} className="space-y-4">
+          {saveError && <p role="alert" className="text-sm font-semibold text-rose-700">{saveError}</p>}
+          <fieldset disabled={saving} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
               <label htmlFor="task-title-input" className="block text-xs font-bold text-slate-700">عنوان المهمة الصحفية *</label>
@@ -676,6 +704,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               onChange={(e) => setAssigneeId(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
             >
+              {!assignableUsers.some(user => user.id === assigneeId) && <option value={assigneeId} disabled>اختر مسؤولًا نشطًا</option>}
               {assignableUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.fullName} — {u.jobTitle}
@@ -763,9 +792,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
               disabled={saving}
               className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-xs"
             >
-              حفظ المهمة
+              {saving ? 'بانتظار تأكيد الخادم…' : 'حفظ المهمة'}
             </button>
           </div>
+          </fieldset>
         </form>
       </FormPage>
     </div>

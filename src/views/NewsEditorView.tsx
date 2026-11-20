@@ -537,6 +537,12 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   // Review mode: the story waits for review and this person reviews or approves.
   const underReview = newsItem?.status === 'UNDER_REVIEW';
   const reviewClaim = activeReviewClaim(newsItem);
+  const takeOverReview = async () => {
+    if (!reviewClaim || !newsItem) return;
+    if (await confirmDialog(`يراجع ${reviewClaim.userName} هذا الخبر الآن. تولّي مراجعته؟`)) {
+      void runReview(() => claimReview(newsItem.id), 'تولّيت مراجعة الخبر');
+    }
+  };
   const mayClaim = underReview && claimDenial(can, currentUser.id, newsItem) === null;
   // Approvers decide directly; the pass is for reviewers without publishing authority.
   const mayPassQuality = underReview && !can('news.approve') && qualityPassDenial(can, currentUser.id, newsItem) === null;
@@ -1132,9 +1138,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 <button
                   type="button"
                   disabled={reviewBusy}
-                  onClick={async () => {
-                    if (await confirmDialog(`يراجع ${reviewClaim.userName} هذا الخبر الآن. تولّي مراجعته؟`)) void runReview(() => claimReview(newsItem!.id), 'تولّيت مراجعة الخبر');
-                  }}
+                  onClick={() => void takeOverReview()}
                   className="hidden sm:flex min-h-11 items-center gap-1.5 px-3 py-2 border border-sky-300 text-sky-800 rounded-lg text-xs font-bold disabled:opacity-50"
                 >
                   <Hand className="w-4 h-4" />
@@ -1234,9 +1238,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         <summary className="min-h-11 flex items-center text-sm font-semibold text-slate-700 cursor-pointer">إجراءات إضافية</summary>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setIsHistoryOpen(true)} className="min-h-11 px-3 flex items-center gap-2 text-sm"><History className="w-4 h-4" />سجل النسخ</button>
-          {canEditContent && <button type="button" disabled={saving} onClick={() => void saveContent(false)} className="min-h-11 px-3 flex items-center gap-2 text-sm disabled:opacity-50"><Save className="w-4 h-4" />حفظ وإغلاق</button>}
+          {reviewMode && canEditContent && <button type="button" disabled={saving || lock.status === 'acquiring'} onClick={handleSaveDraft} className="min-h-11 px-3 flex items-center gap-2 text-sm disabled:opacity-50"><Save className="w-4 h-4" />{saving ? 'جارٍ الحفظ...' : saveState === 'failed' ? 'إعادة محاولة الحفظ' : 'حفظ التغييرات'}</button>}
+          {canEditContent && <button type="button" disabled={saving || lock.status === 'acquiring'} onClick={() => void saveContent(false)} className="min-h-11 px-3 flex items-center gap-2 text-sm disabled:opacity-50"><Save className="w-4 h-4" />حفظ وإغلاق</button>}
           {reviewMode && !reviewClaim && mayClaim && <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => claimReview(newsItem.id), 'الخبر محجوز لمراجعتك (30 دقيقة)')} className="min-h-11 px-3 text-sm font-semibold text-sky-700">أراجعها الآن</button>}
           {reviewMode && reviewClaim?.userId === currentUser.id && <button type="button" disabled={reviewBusy} onClick={() => void runReview(() => releaseReview(newsItem.id), 'عاد الخبر إلى طابور المراجعة')} className="min-h-11 px-3 text-sm font-semibold text-slate-700">إنهاء استلامي</button>}
+          {reviewMode && reviewClaim && reviewClaim.userId !== currentUser.id && mayClaim && <button type="button" disabled={reviewBusy} onClick={() => void takeOverReview()} className="min-h-11 px-3 text-sm font-semibold text-sky-700">تولّي المراجعة</button>}
           {reviewMode && nextReviewId && onNextReview && <button type="button" onClick={() => onNextReview(nextReviewId)} className="min-h-11 px-3 text-sm font-semibold text-slate-700">تخطٍّ</button>}
           {!lockedByOther && transitions.filter(t => (reviewMode ? t === 'REJECTED' || t === 'DRAFT' : t !== primaryTransition) && TRANSITION_BUTTONS[t]).map(t => <button key={t} type="button" onClick={() => handleTriggerStatusChange(t)} className="min-h-11 px-3 text-sm font-semibold text-blue-700">{t === 'REJECTED' && reviewMode ? 'رفض نهائي' : newsItem?.status === 'SCHEDULED' && t === 'APPROVED' ? 'إلغاء الجدولة' : TRANSITION_BUTTONS[t]!.label}</button>)}
         </div>

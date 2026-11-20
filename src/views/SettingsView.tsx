@@ -245,7 +245,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [initialSection]);
   const chooseSection = async (next: SettingsSection) => {
-    if (saving) return;
+    if (saving || next === section) return;
     if (dirty && !await confirmDialog({ title: 'تغييرات غير محفوظة', message: 'الانتقال دون حفظ التغييرات؟', confirmLabel: 'تجاهل التغييرات' })) return;
     if (dirty) resetGeneral();
     setSection(next);
@@ -401,6 +401,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setGeneralError('المنطقة الزمنية غير معروفة؛ اختر من القائمة مثل Asia/Riyadh');
       return;
     }
+    setSaving(true);
     try {
       const patch = {
         organizationName: name,
@@ -417,7 +418,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (timezone !== baseline.defaultTimezone || useStationTime !== baseline.timeBasis) {
         if (!await confirmDialog({ title: 'تغيير توقيت المحطة', message: 'يتغير عرض وإدخال الأوقات لجميع الزملاء، ولا تتغير المواعيد المحفوظة. اعتماد التغيير؟', confirmLabel: 'اعتماد التوقيت' })) return;
       }
-      setSaving(true);
       // Preserve fields another administrator changed while this form was open.
       const changed = Object.fromEntries(Object.entries(patch).filter(([key]) => key === 'dateTime'
         ? useStationTime !== baseline.timeBasis
@@ -427,7 +427,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setGeneralError('لم يؤكد الخادم حفظ الإعدادات. بقيت القيم المدخلة؛ أعد المحاولة بعد التحقق من الاتصال.');
         return;
       }
-      setBaseline(values);
+      const confirmed = {
+        ...values,
+        organizationName: patch.organizationName,
+        organizationNameEn: patch.organizationNameEn,
+        primaryChannelName: patch.primaryChannelName,
+        defaultTimezone: patch.defaultTimezone,
+        defaultSegmentDurationSeconds: patch.defaultSegmentDurationSeconds,
+      };
+      restoreGeneral(confirmed);
+      setBaseline(confirmed);
       draft.clearDraft();
       setIsSaved(true);
     } catch (err: any) {
@@ -672,7 +681,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onQuery={setSettingsSearch}
       />
       <div className="min-w-0 space-y-5">
-      {isSaved && (
+      {isSaved && !dirty && (section === 'station' || section === 'editorial') && (
         <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.</span>
@@ -758,7 +767,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>{saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات العامة'}</span>
               </button>
               {dirty && <button type="button" disabled={saving} onClick={resetGeneral} className="min-h-11 px-3 rounded-lg text-slate-700 hover:bg-slate-100 font-bold">إلغاء التغييرات</button>}
-              <span role="status" className={`text-xs ${dirty ? 'text-amber-800 font-bold' : 'text-slate-500'}`}>{dirty ? 'تغييرات غير محفوظة' : 'كل التغييرات محفوظة'}</span>
+              <span role="status" className={`text-xs ${dirty ? 'text-amber-800 font-bold' : 'text-slate-500'}`}>{saving ? 'بانتظار تأكيد الحفظ' : dirty ? 'تغييرات غير محفوظة' : 'كل التغييرات محفوظة'}</span>
             </div>
           </form>
         </div>

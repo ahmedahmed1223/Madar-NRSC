@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { episodeStudioBookings, mediaDeliveryQueue } from '../../src/shared/productionWorkQueues';
+import { episodeStudioBookings, episodeStudioSlot, mediaDeliveryQueue } from '../../src/shared/productionWorkQueues';
+import { configureDateFormat } from '../../src/shared/dateFormat';
 import type { Booking, Resource } from '../../src/shared/planning';
 import type { DeptRequest } from '../../src/shared/production';
 
@@ -22,6 +23,19 @@ it('only shows active studio bookings linked to this episode and sorts by start 
     booking('wrong-kind', { link: { kind: 'news', id: 'episode', title: 'News' } })];
   expect(episodeStudioBookings('episode', records, [resource('studio', 'STUDIO'), resource('camera', 'CAMERA')]).map(b => b.id))
     .toEqual(['tentative', 'later']);
+});
+
+it('suggests the recording day at midnight in the station time zone', () => {
+  configureDateFormat({ defaultTimezone: 'Asia/Riyadh', dateTime: { timeBasis: 'station' } });
+  try {
+    expect(episodeStudioSlot({
+      recordingDate: '2026-11-20', broadcastDate: '2026-11-21', startTime: '00:00', durationMinutes: 45,
+    })).toEqual({
+      scheduledStart: '2026-11-19T21:00:00.000Z', from: '2026-11-19T20:00:00.000Z', to: '2026-11-19T21:45:00.000Z',
+    });
+  } finally {
+    configureDateFormat(null);
+  }
 });
 
 it('orders actionable media requests by urgency, real deadlines, age and stable ID', () => {
