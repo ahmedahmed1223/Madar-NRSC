@@ -14,6 +14,8 @@ import { episodeStudioBookings } from '../shared/productionWorkQueues';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { departmentName } from '../shared/departments';
 import { BookingForm } from '../components/planning/BookingForm';
+import { ProductionFollowUp } from '../components/common/ProductionFollowUp';
+import { ProductionAssignmentForm } from '../components/bulletins/AssignmentForm';
 import { LongTextField } from '../components/common/TextSizeControls';
 import { bookingStatusOf, type Booking } from '../shared/planning';
 import { RbacService } from '../services/rbacService';
@@ -345,7 +347,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             lock={{ status: lock.status, holderName: lock.holder?.userName }}
           />
         )}
-        {booking && <BookingForm isOpen confirmOnSave resourceKind={booking.studioOnly ? 'STUDIO' : undefined} onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking.data} />}
+        {booking && <BookingForm isOpen confirmOnSave reconfirmOnReschedule={booking.studioOnly} resourceKind={booking.studioOnly ? 'STUDIO' : undefined} onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking.data} />}
 
         {/* Episode Info Bar */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">
@@ -434,7 +436,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <h3 className="font-bold text-slate-800">حجز الاستوديو</h3>
             {!canSeeBookings ? <p className="text-xs text-slate-600">تحتاج صلاحية عرض الحجوزات.</p> : studioBookings.length === 0 ? <p className="text-xs text-slate-600">لا يوجد حجز استوديو مرتبط بالحلقة.</p> : (
               <ul className="mt-1 space-y-1 text-xs text-slate-600">
-                {studioBookings.map(item => <li key={item.id} className="break-words">{resources.find(resource => resource.id === item.resourceId)?.name} · {new Date(item.start).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {dataStore.hasPendingWrite('bookings', item.id) ? 'بانتظار تأكيد الخادم' : bookingStatusOf(item.status).name}</li>)}
+                {studioBookings.map(item => {
+                  const owner = apiService.getUsers().find(user => user.id === (item.assigneeId || item.bookedById))?.fullName || item.bookedByName;
+                  const canEditBooking = canBook && (RbacService.hasPermission(currentUser, 'resources.manage') || item.bookedById === currentUser.id);
+                  return (
+                    <li key={item.id} className="flex flex-wrap items-center gap-x-2 break-words">
+                      <span>{resources.find(resource => resource.id === item.resourceId)?.name} · {new Date(item.start).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {dataStore.hasPendingWrite('bookings', item.id) ? 'بانتظار تأكيد الخادم' : bookingStatusOf(item.status).name}{owner ? ` · ${owner}` : ''}</span>
+                      {canEditBooking && <button type="button" className="min-h-11 font-bold text-blue-700 hover:underline" onClick={() => setBooking({ data: item, studioOnly: true })}>تعديل حجز الاستديو</button>}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -442,6 +453,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         </li>
         </ul>
       </section>
+
+      <div className="space-y-2">
+        <ProductionAssignmentForm target={{ kind: 'EPISODE', id: episode.id, title: episode.title }} />
+        <ProductionFollowUp entityId={episode.id} kind="EPISODE" user={currentUser} />
+      </div>
 
       {/* Tabs */}
       <nav aria-label="خطوات إعداد الحلقة" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 border-b border-slate-200 pb-3 text-xs font-bold">

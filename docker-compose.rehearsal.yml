@@ -1,0 +1,38 @@
+name: madar-rehearsal
+
+services:
+  nrcs:
+    build: .
+    restart: unless-stopped
+    env_file: .env.rehearsal
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /data
+      BACKUP_DIRECTORY: /backups
+      SEED_DEMO_DATA: "false"
+      ALLOW_DEMO_IN_PRODUCTION: "false"
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "1"
+      APP_URL: https://${REHEARSAL_DOMAIN:?Set the rehearsal hostname}
+      UPDATE_MODE: manual
+    volumes:
+      - data:/data
+      - backups:/backups
+    stop_grace_period: 15s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: ["caddy", "reverse-proxy", "--from", "${REHEARSAL_DOMAIN:?Set the rehearsal hostname}", "--to", "nrcs:3000"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certificates:/data
+
+volumes:
+  data:
+  backups:
+  certificates:

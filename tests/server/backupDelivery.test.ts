@@ -1,8 +1,11 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { createTestServer } from '../helpers';
+import { createTestServer, loginAgent } from '../helpers';
+import { createApp } from '../../src/server/app';
+import { NewsroomDatabase } from '../../src/server/db';
 import { deliverBackup } from '../../src/server/backupDelivery';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
@@ -13,18 +16,46 @@ beforeEach(async () => {
 });
 afterEach(async () => { server.close(); await fs.rm(destination, { recursive: true, force: true }); });
 
-it('copies a complete snapshot and checksummed uploads to an external folder', async () => {
+it('restores a verified complete bundle and serves an episode, its assignment and uploaded file', async () => {
   await fs.mkdir(path.join(server.dir, 'uploads'));
   await fs.writeFile(path.join(server.dir, 'uploads', 'test.txt'), 'media');
   server.db.insertUpload({ id: 'backup-upload', storedName: 'test.txt', originalName: 'test.txt',
-    mimeType: 'text/plain', sizeBytes: 5, uploadedBy: 'usr-1', createdAt: new Date().toISOString() });
+    mimeType: 'text/plain', sizeBytes: 5, uploadedBy: 'usr-1', scope: 'media', createdAt: new Date().toISOString() });
+  const episode = server.db.listCollection('episodes')[0];
+  server.db.writeRow('tasks', 'tsk-recovery-probe', {
+    id: 'tsk-recovery-probe', title: 'مراجعة مادة الحلقة', relatedEntityType: 'EPISODE',
+    relatedEntityId: episode.id, assigneeId: 'usr-3', status: 'TODO',
+  }, 0, null);
   const backup = await server.db.createBackup('auto');
   await deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 });
   const bundle = path.join(destination, `${backup.fileName}.bundle`);
   expect(await fs.readFile(path.join(bundle, 'uploads', 'test.txt'), 'utf8')).toBe('media');
   const manifest = JSON.parse(await fs.readFile(path.join(bundle, 'manifest.json'), 'utf8'));
   expect(manifest.files).toHaveLength(2);
-  expect(manifest.files.every((file: any) => /^[a-f0-9]{64}$/.test(file.sha256))).toBe(true);
+  const restoredPath = await fs.mkdtemp(path.join(destination, 'restored-'));
+  for (const file of manifest.files) {
+    const bytes = await fs.readFile(path.join(bundle, file.path));
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256);
+    const target = path.join(restoredPath, file.path);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, bytes);
+  }
+  const restored = new NewsroomDatabase(restoredPath);
+  try {
+    const { app } = createApp(restored, { ...server.config, dataDir: restoredPath });
+    const admin = await loginAgent(app, 'admin@akhbar.tv');
+    const data = await admin.get('/api/v1/data');
+    expect(data.status).toBe(200);
+    expect(data.body.collections.episodes).toContainEqual(expect.objectContaining({ id: episode.id }));
+    expect(data.body.collections.tasks).toContainEqual(expect.objectContaining({
+      id: 'tsk-recovery-probe', d: expect.objectContaining({ relatedEntityId: episode.id }),
+    }));
+    const file = await admin.get('/api/v1/media/files/backup-upload');
+    expect(file.status).toBe(200);
+    expect(file.text).toBe('media');
+  } finally {
+    restored.close();
+  }
 });
 
 it('never reports a complete bundle when a referenced upload is missing', async () => {

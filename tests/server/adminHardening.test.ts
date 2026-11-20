@@ -22,6 +22,28 @@ beforeAll(async () => {
 });
 afterAll(() => server.close());
 
+it('honors a newsroom read restriction in sync, archive search and direct links', async () => {
+  const person = server.db.getCredentialsByEmail('trainee@akhbar.tv');
+  const user = row('users', person!.userId);
+  server.db.writeRow('users', user.id, { ...user.d, customPermissions: ['!news.view'] }, user.p, null);
+  try {
+    const restricted = await loginAgent(server.app, 'trainee@akhbar.tv');
+    const before = (await restricted.get('/api/v1/data')).body;
+    expect(before.collections.news).toEqual([]);
+    const article = row('news', 'nws-1');
+    const id = 'nws-rehearsal-restricted';
+    server.db.writeRow('news', id, { ...article.d, id, title: 'مادة لا تظهر في هذا الحساب' }, article.p, null);
+    const changes = await restricted.get('/api/v1/data/changes').query({ since: before.rev });
+    expect(changes.status).toBe(200);
+    expect(changes.body.changes.some((entry: { c: string }) => entry.c === 'news')).toBe(false);
+    expect((await restricted.get('/api/v1/archive/news').query({ q: id })).status).toBe(403);
+    expect((await restricted.get(`/api/v1/archive/news/${id}`)).status).toBe(403);
+    expect((await admin.get(`/api/v1/archive/news/${id}`)).status).toBe(200);
+  } finally {
+    server.db.writeRow('users', user.id, user.d, user.p, null);
+  }
+});
+
 describe('roles: codes are unique and custom roles go through customRoleId (C1)', () => {
   it('refuses a duplicate or empty code on update as on create, and audits role changes', async () => {
     const role = { id: 'role-archive-test', roleCode: 'ARCHIVE_TEST', nameAr: 'منسق أرشيف تجربة', nameEn: 'x', description: '', color: '#000', badgeBg: '', badgeText: '', isSystemRole: false, permissions: ['news.view'] };

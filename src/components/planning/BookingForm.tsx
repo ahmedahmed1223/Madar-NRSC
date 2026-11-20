@@ -21,11 +21,12 @@ interface BookingFormProps {
   booking?: Partial<Booking> | null;
   onSaved?: (b: Booking) => void;
   confirmOnSave?: boolean;
+  reconfirmOnReschedule?: boolean;
   resourceKind?: ResourceKind;
 }
 
 /** Book a studio, camera, live unit, edit suite or crew; clashes are shown before saving. */
-export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, currentUser, users, booking, onSaved, confirmOnSave, resourceKind }) => {
+export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, currentUser, users, booking, onSaved, confirmOnSave, reconfirmOnReschedule, resourceKind }) => {
   const resources = apiService.getResources(false).filter(resource => !resourceKind || resource.kind === resourceKind);
   const initialStart = booking?.start ? new Date(booking.start) : (() => {
     const d = new Date();
@@ -46,6 +47,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
   const [saveMessage, setSaveMessage] = useState('');
   const savingRef = useRef(false);
   const link: BookingLink | undefined = booking?.link;
+  const changeSlot = (setValue: (value: string) => void, value: string) => {
+    setValue(value);
+    if (reconfirmOnReschedule && booking?.id && status === 'CONFIRMED') setStatus('TENTATIVE');
+  };
 
   const draft = useMemo(
     () => ({ id: bookingId, resourceId, start: fromLocalInputValue(start), end: fromLocalInputValue(end), status }),
@@ -108,7 +113,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block text-xs font-bold text-slate-700">
               المورد
-              <select value={resourceId} onChange={(e) => setResourceId(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm">
+              <select value={resourceId} onChange={(e) => changeSlot(setResourceId, e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm">
                 {grouped.map((g) => (
                   <optgroup key={g.id} label={g.name}>
                     {g.items.map((r) => (
@@ -127,11 +132,11 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
             </label>
             <label className="block text-xs font-bold text-slate-700">
               من
-              <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} required className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+              <input type="datetime-local" value={start} onChange={(e) => changeSlot(setStart, e.target.value)} required className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
             </label>
             <label className="block text-xs font-bold text-slate-700">
               إلى
-              <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} required className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+              <input type="datetime-local" value={end} onChange={(e) => changeSlot(setEnd, e.target.value)} required className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
             </label>
             <label className="block text-xs font-bold text-slate-700">
               المستخدم / المسؤول
@@ -147,7 +152,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
             </label>
             <label className="block text-xs font-bold text-slate-700">
               الحالة
-              <select value={status} onChange={(e) => setStatus(e.target.value as Booking['status'])} className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm">
+              <select aria-label="الحالة" value={status} onChange={(e) => setStatus(e.target.value as Booking['status'])} className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm">
                 {BOOKING_STATUSES.filter((s) => s.id !== 'CANCELLED' || booking?.id).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -177,7 +182,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                   <span>متاح بدلاً منه:</span>
                   {alternatives.map((r) => (
-                    <button key={r.id} type="button" onClick={() => setResourceId(r.id)} className="px-2 py-0.5 rounded-lg bg-white border border-rose-200 font-bold hover:bg-rose-100">
+                    <button key={r.id} type="button" onClick={() => changeSlot(setResourceId, r.id)} className="px-2 py-0.5 rounded-lg bg-white border border-rose-200 font-bold hover:bg-rose-100">
                       {r.name}
                     </button>
                   ))}

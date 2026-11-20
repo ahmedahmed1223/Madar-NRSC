@@ -3,6 +3,7 @@ import { evaluateBulletinReadiness, stationClock, storyPresenter, timingDelta } 
 import { AR, countLabel } from '../shared/arabicPlural';
 import { stationTimeZone } from '../shared/dates';
 import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
+import { ProductionFollowUp } from '../components/common/ProductionFollowUp';
 import { AssignmentForm } from '../components/bulletins/AssignmentForm';
 import { totalVideoSeconds, videoLines, videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
@@ -524,6 +525,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       </div>
 
       <ReadinessPanel issues={evaluateBulletinReadiness(bulletin, all, apiService.getNews(), apiService.getMedia(), new Date())} stories={all} users={users} onOpen={setEditing} />
+      <ProductionFollowUp entityId={bulletin.id} kind="BULLETIN" storyIds={new Set(all.map(story => story.id))} user={currentUser} />
       {message && (
         <p role="status" className={`text-xs font-bold rounded-xl p-2.5 border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
           {message.text}

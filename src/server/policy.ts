@@ -651,6 +651,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'handoverReceipts': return false;
     case 'savedNewsFilters':
       return data?.ownerId === auth.user.id;
+    case 'news':
+      return auth.can('news.view');
     case 'newsCorrections':
       const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
       return !!news && !news.deletedAt && auth.can('news.view') && canRead(auth, 'news', news);

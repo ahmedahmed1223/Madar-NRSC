@@ -6,17 +6,21 @@ test('text-only bulletin airs and follows saved script with configurable screen 
   const id = `text-air-${Date.now()}`;
   const data = await (await page.request.get('/api/v1/data')).json();
   const script = 'نص مذيع فقط دون أي ملف فيديو مرتبط بالنشرة.';
+  const nextScript = 'نص الفقرة التالية بعد استعادة الاتصال بغرفة التحكم.';
   const send = async (ops: any[]) => {
     const response = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops } });
     expect((await response.json()).results.every((r: any) => r.ok)).toBe(true);
   };
   try {
     await send([{ c: 'bulletins', op: 'upsert', id, d: { ...data.collections.bulletins[0].d, id, title: id, status: 'PLANNING', approvalSteps: [] } },
-      { c: 'bulletinStories', op: 'upsert', id: `${id}-story`, d: { ...data.collections.bulletinStories[0].d, id: `${id}-story`, bulletinId: id, newsId: undefined, type: 'READER', script, slug: 'قصة نصية', status: 'DRAFT', clipMediaId: undefined, clipSeconds: 0 } }]);
+      { c: 'bulletinStories', op: 'upsert', id: `${id}-story`, d: { ...data.collections.bulletinStories[0].d, id: `${id}-story`, bulletinId: id, newsId: undefined, type: 'READER', script, slug: 'قصة نصية', rank: 1000, status: 'DRAFT', clipMediaId: undefined, clipSeconds: 0 } },
+      { c: 'bulletinStories', op: 'upsert', id: `${id}-next`, d: { ...data.collections.bulletinStories[0].d, id: `${id}-next`, bulletinId: id, newsId: undefined, type: 'READER', script: nextScript, slug: 'قصة تالية', rank: 2000, status: 'DRAFT', clipMediaId: undefined, clipSeconds: 0 } }]);
     await page.goto(`/bulletins/${id}`);
-    await page.getByRole('button', { name: 'فتح قصة نصية', exact: true }).click();
-    await page.getByTestId('story-editor').getByRole('button', { name: /حفظ واعتماد للهواء|اعتمادي/ }).click();
-    await expect(page.getByTestId('story-editor')).not.toBeVisible();
+    for (const name of ['فتح قصة نصية', 'فتح قصة تالية']) {
+      await page.getByRole('button', { name, exact: true }).click();
+      await page.getByTestId('story-editor').getByRole('button', { name: /حفظ واعتماد للهواء|اعتمادي/ }).click();
+      await expect(page.getByTestId('story-editor')).not.toBeVisible();
+    }
     await openNav(page, 'الإعدادات');
     await page.getByRole('button', { name: /عرض الهواء/ }).click();
     if (await page.getByLabel('عرض الكنترول الافتراضي', { exact: true }).inputValue() === 'TEXT') {
@@ -44,10 +48,18 @@ test('text-only bulletin airs and follows saved script with configurable screen 
           await expect(colleague.page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
         }
         await expect(page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
+        const presenterScreen = presenter.page.getByRole('region', { name: 'نص المذيع على الهواء' });
+        await presenter.page.context().setOffline(true);
+        await page.getByRole('button', { name: 'الفقرة التالية', exact: true }).click();
+        await expect(crew.page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(nextScript);
+        await expect(presenterScreen).toContainText(script);
+        await presenter.page.context().setOffline(false);
+        await expect(presenterScreen).toContainText(nextScript, { timeout: 20_000 });
       } finally {
         await crew.close();
       }
     } finally {
+      await presenter.page.context().setOffline(false);
       await presenter.close();
     }
   } finally { await close(); }
