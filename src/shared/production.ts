@@ -160,7 +160,7 @@ export interface ReadinessItem {
 
 interface ReadinessContext {
   requests: DeptRequest[];
-  media: { id: string; mediaType?: string; videoStatus?: string; title?: string; fileName?: string }[];
+  media: { id: string; mediaType?: string; videoStatus?: string; title?: string; fileName?: string; deletedAt?: string | null }[];
 }
 
 /** Segment types that are played out as a package and therefore need an edited video. */
@@ -186,7 +186,7 @@ export function segmentReadiness(segment: any, episode: any, ctx: ReadinessConte
       .map((r) => r.resultMediaId as string);
     const videos = [...new Set([...(segment.mediaIds || []), ...delivered])]
       .map((id: string) => ctx.media.find((m) => m.id === id))
-      .filter((m: any) => m && m.mediaType === 'VIDEO');
+      .filter((m) => m && !m.deletedAt && m.mediaType === 'VIDEO');
     const ready = videos.some((v: any) => isVideoReady(v.videoStatus)) || !!segment.videoAssetUrl;
     items.push({
       key: 'video',

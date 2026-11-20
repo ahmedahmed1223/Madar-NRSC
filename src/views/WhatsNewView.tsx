@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react';
 import type { User } from '../types';
 import { RELEASES } from '../content/whatsNew';
 import { markWhatsNewSeen } from '../services/whatsNewSeen';
+import { AppUpdatesPanel } from '../components/settings/AppUpdatesPanel';
 
 const KIND = {
   new: { label: 'جديد', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -24,6 +25,7 @@ export const WhatsNewView: React.FC<{ currentUser: User }> = ({ currentUser }) =
         </h1>
         <p className="text-xs text-slate-500 mt-1">آخر التحديثات والتحسينات في النظام.</p>
       </div>
+      <AppUpdatesPanel />
       {RELEASES.map((r, idx) => (
         <article key={r.version} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
           <header className="flex flex-wrap items-center gap-2">

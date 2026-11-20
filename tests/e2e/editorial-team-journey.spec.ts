@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { openNav, signIn } from './helpers';
+import { airProgram, prepareProgram } from './program-shift';
 test.use({ actionTimeout: 15_000 });
 
-test('team creates, reviews, prepares, approves and airs a bulletin story', async ({ browser }) => {
+test('a team prepares a program and a bulletin in parallel, supervises a handoff and airs both', async ({ browser }) => {
   test.setTimeout(180_000);
   const writer = await signIn(browser, 'journalist@akhbar.tv');
   const editor = await signIn(browser, 'editor@akhbar.tv');
   const manager = await signIn(browser, 'producer@akhbar.tv');
   const control = await signIn(browser, 'director@akhbar.tv');
+  const program = prepareProgram(browser);
+  void program.catch(() => undefined);
   const headline = `رحلة فريق التحرير ${Date.now()}`;
   const text = 'أكد المسؤولون اكتمال الاستعدادات لتشغيل المشروع الجديد بعد مراجعة البيانات والتنسيق مع الجهات المعنية، ويواصل فريق التحرير متابعة المستجدات والتحقق من التفاصيل قبل النشر.';
   let newsId = '';
@@ -113,10 +116,14 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     await expect.poll(async () => (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId)?.d.status).toBe('ENDED');
     await expect.poll(async () => (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId)?.d.log.length).toBeGreaterThan(0);
     const aired = (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId).d;
+    const approvedStory = (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === headline);
     expect(aired.status).toBe('ENDED');
+    expect(aired.log[0].segmentId).toBe(approvedStory.id);
     expect(aired.log[0].endedAt).toBeTruthy();
+    await airProgram(browser, control.page, await program);
     expect([...writer.errors, ...editor.errors, ...manager.errors, ...control.errors]).toEqual([]);
   } finally {
+    await Promise.allSettled([program]);
     await writer.close(); await editor.close(); await manager.close(); await control.close();
   }
 });

@@ -170,8 +170,10 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     requestAnimationFrame(() => document.getElementById(`episode-tab-${tab}`)?.focus());
   };
 
+  const [savingStatus, setSavingStatus] = useState(false);
+  const savingStatusRef = useRef(false);
   const handleUpdateStatus = async (newStatus: EpisodeStatus) => {
-    if (!canEditEpisode) return;
+    if (!canEditEpisode || lock.status === 'acquiring' || savingStatusRef.current) return;
     if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !readiness.ready) {
       setShowBlockers(true);
       void alertDialog({ title: 'الحلقة غير جاهزة للبث', message:
@@ -189,7 +191,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           : `الرانداون أطول من مدة الحلقة بـ ${minutesLabel(timingGap)} (المخطط ${minutesOf(plannedSeconds, slotSeconds)}).`;
       if (!(await confirmDialog(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`))) return;
     }
-    onSaveEpisode({ id: episode.id, status: newStatus });
+    savingStatusRef.current = true;
+    setSavingStatus(true);
+    try {
+      await onSaveEpisode({ id: episode.id, status: newStatus });
+    } finally {
+      savingStatusRef.current = false;
+      setSavingStatus(false);
+    }
   };
 
   const [savingScript, setSavingScript] = useState(false);
@@ -312,7 +321,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 aria-label="حالة الحلقة"
                 value={episode.status}
                 onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
-                disabled={!canEditEpisode}
+                aria-busy={savingStatus}
+                disabled={!canEditEpisode || lock.status === 'acquiring' || savingStatus}
                 className="min-h-11 px-3 border border-slate-300 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
               >
                 {EPISODE_STATUS_INFO.map((s) => (

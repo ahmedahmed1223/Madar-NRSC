@@ -60,10 +60,12 @@ import { removeStation, StationRemovalError, stationUsage } from './stationRemov
 import { applyDepartmentSettings } from '../shared/departments';
 import { rememberStationSettings } from '../shared/stations';
 import { searchArchive } from './archiveSearch';
+import { createAppUpdates } from './appUpdates';
+import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.1.2';
+export const APP_VERSION = '4.1.3';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -114,6 +116,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   applyDepartmentSettings(db.getRow('settings', 'singleton')?.d);
   rememberStationSettings(db.getRow('settings', 'singleton')?.d);
   const sync = new SyncService(db, config.dataDir, config.newsActiveDays);
+  const updates = createAppUpdates(config.updates);
+  const broadcastActive = () => db.listCollection('onAir').some(row => ['LIVE', 'RUNNING', 'PAUSED'].includes(String(row.d?.status)));
   let draining = false;
   const streams = new Set<Response>();
   app.locals.beginShutdown = () => {
@@ -238,6 +242,46 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     } catch (error) { if (error instanceof NewsCorrectionError) throw new HttpError(error.status, error.message); throw error; }
   });
   // --- Health ----------------------------------------------------------------
+  app.get('/api/v1/updates', requireAuth, wrap(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const canDeploy = req.auth!.can('system.settings');
+    const data: AppUpdateStatus = {
+      deployedVersion: APP_VERSION,
+      latest: await updates.latest(),
+      broadcastActive: broadcastActive(),
+      deployment: canDeploy ? updates.deployment : null,
+      requestedVersion: canDeploy ? updates.requestedVersion() : null,
+    };
+    res.json({ success: true, data });
+  }));
+
+  app.post('/api/v1/updates/deploy', requirePermission('system.settings'), wrap(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!updates.deployment) throw new HttpError(409, 'النشر من داخل البرنامج غير مهيأ على هذا الخادم');
+    if (req.body?.localAirEnded !== true) throw new HttpError(400, 'أكد انتهاء جلسات الهواء المحلية قبل طلب النشر');
+    if (broadcastActive()) throw new HttpError(409, 'توجد جلسة بث نشطة، أنهِها قبل طلب النشر', 'AIR_ACTIVE');
+    const latest = await updates.latest();
+    if (!latest) throw new HttpError(503, 'تعذر التحقق من أحدث إصدار منشور');
+    if (req.body.version !== latest.version || !isNewerVersion(latest.version, APP_VERSION)) {
+      throw new HttpError(409, 'تغيّر الإصدار المتاح. افحص الإصدارات مجددًا.');
+    }
+    const { sessionId, user: actor } = req.auth!;
+    const session = db.getSession(sessionId);
+    const user = db.getRow('users', actor.id)?.d as User | undefined;
+    if (!session || Date.parse(session.expiresAt) <= Date.now() || !user || user.isActive === false || user.deletedAt) {
+      throw new HttpError(401, 'انتهت صلاحية الجلسة');
+    }
+    if (!buildAuthContext(db, user, sessionId).can('system.settings')) {
+      throw new HttpError(403, 'تحتاج إلى صلاحية إدارة النظام لطلب النشر');
+    }
+    if (broadcastActive()) throw new HttpError(409, 'توجد جلسة بث نشطة، أنهِها قبل طلب النشر', 'AIR_ACTIVE');
+    const result = await updates.dispatch(latest.version);
+    if (result === 'failed') throw new HttpError(502, 'تعذر تأكيد استلام نظام النشر للطلب');
+    if (result === 'pending') throw new HttpError(409, 'طلب نشر لهذا الإصدار قيد المعالجة');
+    audit(user, 'APP_UPDATE_REQUEST', 'SYSTEM', latest.version, 'INFO', `طلب نشر إصدار مدار v${latest.version}`, req.ip);
+    res.status(202).json({ success: true, data: { version: latest.version } });
+  }));
+
   app.get('/api/v1/admin/runtime', requirePermission('system.settings'), (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ data: { version: APP_VERSION, databaseHealthy: db.isHealthy(),
@@ -902,8 +946,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     return current;
   };
   const requireAirEnded = (req: Request) => {
-    const active = db.listCollection('onAir').filter(row => ['LIVE', 'RUNNING', 'PAUSED'].includes(String(row.d?.status)));
-    if (active.length) throw new HttpError(409, 'توجد جلسة بث نشطة؛ أنهِ جميع جلسات الهواء قبل الاستعادة أو إعادة التهيئة', 'AIR_ACTIVE');
+    if (broadcastActive()) throw new HttpError(409, 'توجد جلسة بث نشطة؛ أنهِ جميع جلسات الهواء قبل الاستعادة أو إعادة التهيئة', 'AIR_ACTIVE');
     if (req.body?.localAirEnded !== true) throw new HttpError(400, 'أكد انتهاء جلسات الهواء المحلية غير المتصلة أيضاً', 'LOCAL_AIR_CONFIRMATION');
   };
   const authorizeDestructive = (req: Request, action: 'restore' | 'reset', sha256?: string) => {

@@ -15,6 +15,14 @@ import {
 } from '../../src/shared/episodePlan';
 import { episodeReadiness } from '../../src/shared/production';
 
+it('treats a trashed package as missing even when a delivery still references it', () => {
+  const episode = { rundown: [{ id: 's', title: 'التقرير', segmentType: 'REPORT', scriptText: 'النص', mediaIds: ['clip'] }] };
+  const media = { id: 'clip', mediaType: 'VIDEO', videoStatus: 'READY' };
+  expect(episodeReadiness(episode, { requests: [], media: [media] }).ready).toBe(true);
+  expect(episodeReadiness(episode, { requests: [], media: [{ ...media, deletedAt: '2026-11-20T01:00:00Z' }] }).blockers)
+    .toContainEqual(expect.objectContaining({ key: 'video', detail: 'لم يُرفق فيديو' }));
+});
+
 const topics = [
   { id: 't1', title: 'الأول' },
   { id: 't2', title: 'الثاني' },

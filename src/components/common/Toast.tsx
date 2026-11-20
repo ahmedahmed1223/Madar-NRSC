@@ -69,7 +69,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
       role={toast.type === 'error' ? 'alert' : 'status'}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className={`pointer-events-auto relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3.5 shadow-2xl ${styles.bg}`}
+      className={`pointer-events-none relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3.5 shadow-2xl ${styles.bg}`}
     >
       <div className="flex items-start gap-3">
         {styles.icon}
@@ -84,7 +84,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
               toast.action!.run();
               onDismiss(toast.id);
             }}
-            className="shrink-0 min-h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+            className="pointer-events-auto shrink-0 min-h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
           >
             {toast.action.label}
           </button>
@@ -92,7 +92,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className="shrink-0 min-w-8 min-h-8 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white rounded-md transition-colors"
+          className="pointer-events-auto shrink-0 min-w-8 min-h-8 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white rounded-md transition-colors"
           aria-label="إغلاق"
         >
           <X className="w-3.5 h-3.5" />

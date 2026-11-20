@@ -53,6 +53,33 @@ production smoke tests. Keep a single application instance with persistent SQLit
 Load testing, metrics/alerts, automatic failover and server-side pagination are separate
 remaining work; these changes do not promise zero downtime or zero data loss.
 
+## In-app Updates
+
+Open «ما الجديد» and select «فحص الإصدارات» to compare the browser build, the server build
+and the latest stable GitHub release. Once the server is running a newer build, select
+«تحميل الواجهة الجديدة» after pending writes have synced.
+
+- `UPDATE_MODE=manual` is the default. Publish the build with the existing deployment process.
+  If GitHub requires authentication to list releases, configure a repository-scoped
+  `UPDATE_GITHUB_TOKEN` with Contents read on the server.
+- `UPDATE_MODE=github` enables dispatch to the configured `UPDATE_GITHUB_WORKFLOW` in this
+  repository. Configure `workflow_dispatch` on `main` with a required string input named
+  `version`, and use a server token with Actions write and Contents read. The pipeline checks out
+  the exact release tag supplied in `version`, uses a protected environment and serializes deployments.
+- `UPDATE_MODE=webhook` delegates deployment to an operator-managed HTTPS endpoint such as a
+  Docker Compose release service. Set `UPDATE_WEBHOOK_URL` and `UPDATE_WEBHOOK_SECRET` with at
+  least 32 characters. The POST JSON contains `version` and `repository`. Validate
+  `X-Madar-Signature` against HMAC-SHA256 of `X-Madar-Timestamp + "." + raw request body` using
+  the shared secret and a constant-time comparison. Accept recent requests only and deduplicate
+  using `Idempotency-Key`. Return a 2xx after placing the exact release tag in the queue.
+
+Only system-settings managers can request deployment. Accepting a request records the dispatch,
+while the running version confirms deployment after the external system finishes. The external
+system owns backup, maintenance timing, stopping the server and validating readiness after start.
+For Compose, build the exact release from a clean checkout, keep the persistent data volumes,
+and verify both `/api/ready` and the version at `/api/health` after replacement. Verify the backup
+and pause deployment if any on-air session starts after the initial in-app check.
+
 ## Deployment Checklist
 
 - **Port and proxy.** Compose binds `127.0.0.1:3000`. Put an HTTPS reverse proxy in front and set

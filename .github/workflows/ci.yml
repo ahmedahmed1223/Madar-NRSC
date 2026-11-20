@@ -26,7 +26,7 @@ jobs:
       - name: Critical newsroom and production workflows
         run: npx playwright test tests/e2e/news-status-confirmation.spec.ts tests/e2e/news-ux.spec.ts tests/e2e/journey-fixes.spec.ts tests/e2e/collaboration.spec.ts tests/e2e/desk-improvements.spec.ts tests/e2e/settings-controls.spec.ts tests/e2e/settings-accessibility.spec.ts tests/e2e/datetime.spec.ts tests/e2e/news-customization.spec.ts tests/e2e/bulletin-save-confirmation.spec.ts tests/e2e/editorial-team-journey.spec.ts tests/e2e/editorial-mobile.spec.ts tests/e2e/editorial-keyboard.spec.ts tests/e2e/editorial-source-comparison.spec.ts
       - name: Daily role and editorial AI workflows
-        run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai
+        run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai app-updates
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

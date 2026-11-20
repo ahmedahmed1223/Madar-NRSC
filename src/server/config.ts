@@ -35,6 +35,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     APP_URL: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default(isProduction ? 'info' : 'debug'),
+    UPDATE_MODE: z.enum(['manual', 'github', 'webhook']).default('manual'),
+    UPDATE_GITHUB_TOKEN: z.string().optional(),
+    UPDATE_GITHUB_WORKFLOW: z.string().optional(),
+    UPDATE_WEBHOOK_URL: z.string().optional(),
+    UPDATE_WEBHOOK_SECRET: z.string().optional(),
 
     SESSION_TTL_HOURS: int(12, 1),
     // A temporary password issued by an administrator stops working after this many hours.
@@ -140,6 +145,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     appUrl: c.APP_URL,
     trustProxy,
     logLevel: c.LOG_LEVEL,
+    updates: {
+      mode: c.UPDATE_MODE, githubToken: c.UPDATE_GITHUB_TOKEN || undefined,
+      workflow: c.UPDATE_GITHUB_WORKFLOW || undefined,
+      webhookUrl: c.UPDATE_WEBHOOK_URL || undefined, webhookSecret: c.UPDATE_WEBHOOK_SECRET || undefined,
+    },
     sessionTtlMs: c.SESSION_TTL_HOURS * 60 * 60 * 1000,
     tempPasswordHours: c.TEMP_PASSWORD_HOURS,
     /** The process time zone (TZ); scheduled jobs and logs follow it, so production should set it. */
