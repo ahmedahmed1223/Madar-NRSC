@@ -1,11 +1,14 @@
 import { confirmDialog } from '../../services/dialogs';
 import React, { useEffect, useState } from 'react';
-import { CheckSquare, CornerDownLeft, Edit2, Plus, Square, Trash2 } from 'lucide-react';
+import { CheckSquare, CornerDownLeft, Edit2, Plus, Sparkles, Square, Trash2 } from 'lucide-react';
 import type { Episode, EpisodeQuestion } from '../../types';
 import { newId } from '../../shared/ids';
 import { FormPage } from '../common/FormPage';
 import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
 import { notify } from '../../services/notify';
+import { apiService } from '../../services/api';
+import { RbacService } from '../../services/rbacService';
+import { AiNewsCoPilotModal } from '../editor/AiNewsCoPilotModal';
 import { episodeGuestList, guestKey, QUESTION_KINDS, QuestionKind, questionKindName, segmentGuests, segmentQuestions, TALK_SEGMENT_TYPES } from '../../shared/episodePlan';
 
 interface Props {
@@ -37,6 +40,9 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
   const guests = episodeGuestList(episode);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [onlyTalk, setOnlyTalk] = useState(true);
+  const [copilot, setCopilot] = useState(false);
+  const canSuggest = canEdit && ['episodes.edit', 'episodes.create', 'news.create', 'news.edit_any', 'news.edit_own']
+    .some(permission => RbacService.hasPermission(apiService.getCurrentUser(), permission));
 
   const save = (next: EpisodeQuestion[]) => onSaveEpisode({ id: episode.id, questions: next.map((q, i) => ({ ...q, orderIndex: i + 1 })) });
 
@@ -193,9 +199,14 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
           <h3 className="text-sm font-bold text-slate-800">أسئلة الحوارات حسب الفقرة</h3>
           <p className="text-xs text-slate-500">لكل حوار أسئلة أساسية واحتياطية وأسئلة متابعة، موجهة لضيف محدد.</p>
         </div>
-        <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-          <input type="checkbox" checked={onlyTalk} onChange={(e) => setOnlyTalk(e.target.checked)} /> الحوارات فقط
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <input type="checkbox" checked={onlyTalk} onChange={(e) => setOnlyTalk(e.target.checked)} /> الحوارات فقط
+          </label>
+          {canSuggest && <button type="button" className="min-h-11 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-bold text-blue-700" onClick={() => setCopilot(true)}>
+            <Sparkles size={16} aria-hidden="true" /> اقتراح أسئلة وأفكار
+          </button>}
+        </div>
       </div>
 
       {shown.length === 0 && loose.length === 0 && (
@@ -233,6 +244,8 @@ export const EpisodeQuestionsPanel: React.FC<Props> = ({ episode, canEdit, onSav
         </section>
       )}
 
+      <AiNewsCoPilotModal isOpen={copilot && canSuggest} onClose={() => setCopilot(false)} planningOnly initialMode="QUESTIONS" currentTitle={episode.title}
+        onUseQuestion={questionText => setDraft({ segmentId: '', guestId: '', kind: 'MAIN', parentId: '', questionText, notes: '' })} />
       <FormPage isOpen={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'تعديل السؤال' : 'سؤال جديد'} maxWidth="md">
         {draft && (
           <form onSubmit={submit} className="space-y-3">

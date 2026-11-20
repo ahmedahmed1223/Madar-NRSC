@@ -75,6 +75,12 @@ for (const width of [390, 1440]) test(`prompter controls and keyboard at ${width
     await page.screenshot({ path: `test-results/prompter-${width}.png` });
     await reader.focus(); await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible();
+    await page.reload();
+    await page.getByRole('button', { name: 'الملقن', exact: true }).click();
+    await expect(modal.getByLabel('سرعة التمرير', { exact: true })).toHaveValue('54');
+    await expect(modal.getByLabel('حجم الخط', { exact: true })).toHaveText('38');
+    await expect(modal.getByRole('button', { name: 'لون النص أبيض', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(modal.getByRole('button', { name: 'بدء التمرير', exact: true })).toBeVisible();
   } finally {
     const exit = page.getByRole('button', { name: 'إغلاق الملقّن', exact: true });
     if (await exit.count()) await exit.click();

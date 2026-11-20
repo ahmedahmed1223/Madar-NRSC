@@ -49,33 +49,36 @@ test('producer can see and switch all preparation steps on mobile and desktop', 
 
 test('capture newsroom list and editor on desktop and mobile', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'editor@akhbar.tv');
-  await openNav(page, 'الأخبار');
-  await page.screenshot({ path: 'test-results/news-list-desktop.png' });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('aside')).toHaveAttribute('aria-hidden', 'true');
-  await expect.poll(async () => (await page.locator('aside').boundingBox())!.x).toBeGreaterThanOrEqual(390);
-  await page.screenshot({ path: 'test-results/news-list-mobile.png' });
-  await page.locator('button[title="تحرير الخبر"]').first().click();
-  await expect(page.locator('#news-headline-input')).toBeVisible();
-  expect((await page.locator('#news-headline-input').boundingBox())!.y).toBeLessThan(600);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const tools = page.locator('details', { hasText: 'أدوات الخبر' });
-  await expect(tools).not.toHaveAttribute('open');
-  await tools.locator('summary').click();
-  await expect(page.getByRole('button', { name: 'المساعد الذكي', exact: true })).toBeVisible();
-  await tools.locator('summary').click();
-  await page.screenshot({ path: 'test-results/news-editor-mobile.png' });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({ path: 'test-results/news-editor-desktop.png' });
-  const review = page.getByRole('button', { name: 'إرسال للمراجعة والتدقيق', exact: true });
-  if (await review.count()) {
-    await review.click();
-    const dialog = page.getByRole('dialog', { name: /نقل الخبر إلى/ });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel('ملاحظات المراجعة (اختيارية)')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
-    await expect(review).toBeFocused();
+  try {
+    await openNav(page, 'الأخبار');
+    await page.screenshot({ path: 'test-results/news-list-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('aside')).toHaveAttribute('aria-hidden', 'true');
+    await expect.poll(async () => (await page.locator('aside').boundingBox())!.x).toBeGreaterThanOrEqual(390);
+    await page.screenshot({ path: 'test-results/news-list-mobile.png' });
+    await page.locator('[data-news-id="nws-5"]').getByRole('button', { name: 'تحرير الخبر' }).click();
+    await expect(page.locator('#news-headline-input')).toBeVisible();
+    expect((await page.locator('#news-headline-input').boundingBox())!.y).toBeLessThan(600);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const tools = page.locator('details', { hasText: 'أدوات الخبر' });
+    await expect(tools).not.toHaveAttribute('open');
+    await tools.locator('summary').click();
+    await expect(page.getByRole('button', { name: 'المساعد الذكي', exact: true })).toBeVisible();
+    await tools.locator('summary').click();
+    await page.screenshot({ path: 'test-results/news-editor-mobile.png' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({ path: 'test-results/news-editor-desktop.png' });
+    const review = page.getByRole('button', { name: 'إرسال للمراجعة والتدقيق', exact: true });
+    if (await review.count()) {
+      await review.click();
+      const dialog = page.getByRole('dialog', { name: /نقل الخبر إلى/ });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel('ملاحظات المراجعة (اختيارية)')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(review).toBeFocused();
+    }
+  } finally {
+    await close();
   }
-  await close();
 });

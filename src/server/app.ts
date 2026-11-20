@@ -6,7 +6,7 @@ import compression from 'compression';
 import crypto from 'crypto';
 import type { AuditLog, Episode, User } from '../types/index';
 import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
-import type { AppConfig } from './config';
+import { AI_PROVIDERS, type AiProvider, type AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger, getRecentErrors, errorJournalHealth } from './logger';
 import { withRequestCorrelation, currentCorrelationId } from './requestCorrelation';
@@ -18,7 +18,7 @@ import { createRateLimiter } from './rateLimit';
 import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
-import { COPILOT_MODES, CopilotMode, isAiConfigured, runCopilot } from './ai';
+import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
@@ -63,7 +63,7 @@ import { searchArchive } from './archiveSearch';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.0.0';
+export const APP_VERSION = '4.1.0';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -829,7 +829,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- AI co-pilot ----------------------------------------------------------
 
   app.get('/api/v1/ai/status', requireAuth, (_req, res) => {
-    res.json({ success: true, configured: isAiConfigured(config), model: config.gemini.model });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, ...getAiStatus(config) });
   });
 
   const aiLimiter = createRateLimiter({
@@ -845,23 +846,35 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     aiLimiter,
     wrap(async (req, res) => {
       const mode = req.body?.mode as CopilotMode;
-      // Brief drafts are for anyone working on production cards; the other modes belong to the news editor.
-      const allowed = mode === 'BRIEF' ? req.auth!.can('cards.work') : req.auth!.can('news.create') || req.auth!.can('news.edit_any');
-      if (!allowed) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
-      if (!isAiConfigured(config)) throw new HttpError(503, 'المساعد الذكي غير مفعّل على الخادم (GEMINI_API_KEY)', 'AI_NOT_CONFIGURED');
+      if (!canUseCopilot(mode, (permission) => req.auth!.can(permission))) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
       if (!COPILOT_MODES.includes(mode)) throw new HttpError(400, 'وضع غير مدعوم');
+      const provider = req.body?.provider as AiProvider | undefined;
+      if (provider !== undefined && !AI_PROVIDERS.includes(provider)) throw new HttpError(400, 'خدمة ذكاء اصطناعي غير معروفة');
+      if (req.body?.model !== undefined) throw new HttpError(400, 'يُحدَّد نموذج الذكاء الاصطناعي في إعدادات الخادم');
+      const text = (value: unknown) => typeof value === 'string' ? value : undefined;
       try {
         const result = await runCopilot(config, {
           mode,
-          tone: String(req.body?.tone || ''),
-          title: String(req.body?.title || ''),
-          summary: String(req.body?.summary || ''),
-          content: String(req.body?.content || ''),
+          provider,
+          tone: text(req.body?.tone),
+          title: text(req.body?.title),
+          summary: text(req.body?.summary),
+          content: text(req.body?.content),
+          instruction: text(req.body?.instruction),
         });
+        res.setHeader('Cache-Control', 'no-store');
         res.json({ success: true, data: result });
-      } catch (err: any) {
-        logger.error('gemini request failed', { error: String(err?.message || err) });
-        throw new HttpError(502, 'تعذر الحصول على رد من خدمة الذكاء الاصطناعي، حاول مجدداً');
+      } catch (err) {
+        if (err instanceof Error && err.message === 'AI_NOT_CONFIGURED') {
+          throw new HttpError(503, 'خدمة الذكاء الاصطناعي المحددة غير مفعّلة على الخادم', 'AI_NOT_CONFIGURED');
+        }
+        const badResponse = err instanceof Error && err.message === 'AI_BAD_RESPONSE';
+        logger.error('AI copilot request failed', {
+          provider: provider ?? config.defaultAiProvider,
+          mode,
+          reason: badResponse ? 'bad-response' : 'upstream-failure',
+        });
+        throw new HttpError(502, 'تعذر الحصول على رد من خدمة الذكاء الاصطناعي، حاول مجدداً', badResponse ? 'AI_BAD_RESPONSE' : undefined);
       }
     })
   );

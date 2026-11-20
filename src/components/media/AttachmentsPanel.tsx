@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Paperclip, Scissors, X } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Paperclip, Scissors, Upload, X } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
 import { VIDEO_STATUSES, videoStatusName, isVideoReady } from '../../shared/production';
 import type { MediaFile, User } from '../../types';
 import { MediaPicker, mediaIcon } from './MediaPicker';
+import { ACCEPTED_UPLOAD_TYPES } from '../../services/mediaUpload';
 
 interface AttachmentsPanelProps {
   mediaIds: string[];
@@ -14,11 +15,13 @@ interface AttachmentsPanelProps {
   /** Called when the user asks the montage desk to work on a video. */
   onRequestMontage?: (media: MediaFile) => void;
   title?: string;
+  directUpload?: boolean;
 }
 
 /** Library items attached to a story or a segment, with the video workflow state. */
-export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, onChange, currentUser, readOnly, onRequestMontage, title = 'المرفقات من مكتبة الوسائط' }) => {
-  const [open, setOpen] = useState(false);
+export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, onChange, currentUser, readOnly, onRequestMontage, title = 'المرفقات من مكتبة الوسائط', directUpload }) => {
+  const [picker, setPicker] = useState<{ userId: string; files: File[] } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const canUpload = RbacService.hasPermission(currentUser, 'media.upload');
@@ -40,16 +43,24 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
           <Paperclip className="w-3.5 h-3.5 text-slate-500" />
           {title} ({attached.length})
         </span>
-        {!readOnly && (
-          <button type="button" onClick={() => setOpen(true)} className="text-xs font-bold text-blue-700 hover:underline">
-            + إرفاق
-          </button>
-        )}
+        {!readOnly && <div className="flex flex-wrap items-center gap-2">
+          {directUpload && canUpload && <>
+            <input ref={fileInput} type="file" aria-label="ملفات الخبر من الجهاز" multiple hidden accept={ACCEPTED_UPLOAD_TYPES.join(',')} onChange={event => {
+              const files = Array.from(event.currentTarget.files || []);
+              event.currentTarget.value = '';
+              if (!readOnly && canUpload && files.length) setPicker({ userId: currentUser.id, files });
+            }} />
+            <button type="button" onClick={() => fileInput.current?.click()} className="min-h-11 px-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 text-xs font-bold text-blue-700">
+              <Upload size={16} aria-hidden /> رفع من الجهاز
+            </button>
+          </>}
+          <button type="button" onClick={() => setPicker({ userId: currentUser.id, files: [] })} className="min-h-11 px-2 text-xs font-bold text-blue-700 hover:underline">+ إرفاق</button>
+        </div>}
       </div>
       {error && <p className="text-2xs text-rose-600 font-bold">{error}</p>}
       {attached.length === 0 && <p className="text-2xs text-slate-500">لا توجد مرفقات.</p>}
@@ -100,7 +111,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
         })}
       </ul>
       {missing > 0 && <p className="text-2xs text-amber-700">{missing} مرفق لم يعد موجوداً في المكتبة.</p>}
-      {open && <MediaPicker isOpen={open} onClose={() => setOpen(false)} selectedIds={mediaIds} onPick={onChange} canUpload={canUpload} />}
+      {picker?.userId === currentUser.id && !readOnly && <MediaPicker key={currentUser.id} isOpen onClose={() => setPicker(null)} selectedIds={mediaIds} onPick={onChange} canUpload={canUpload} initialFiles={picker.files} />}
     </div>
   );
 };

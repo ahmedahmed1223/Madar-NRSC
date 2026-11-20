@@ -1,4 +1,6 @@
 import { APP_NAME } from '../shared/brand';
+import { ENTITY_ID_PATTERN } from '../shared/collections';
+import { shiftHandoverPath } from '../shared/shiftHandovers';
 
 /**
  * Screen ⇄ URL mapping for the browser History API: every screen has its own address
@@ -12,6 +14,7 @@ export interface RouteState {
   /** The news editor is open on a new story. */
   newsNew?: boolean;
   episodeId?: string | null;
+  episodeSegmentId?: string;
   programId?: string | null;
   bulletinId?: string | null;
   /** Item highlighted on a list screen (diary entry, booking, wire). */
@@ -30,31 +33,50 @@ export function routeToPath(s: RouteState): string {
     case 'news-editor':
       if (s.newsId) return `/news/${clean(s.newsId)}`;
       return '/news/new';
-    case 'episode-workspace':
-      return s.episodeId ? `/episodes/${clean(s.episodeId)}` : '/episodes';
+    case 'episode-workspace': {
+      if (!s.episodeId) return '/episodes';
+      const path = `/episodes/${clean(s.episodeId)}`;
+      return s.episodeSegmentId && ENTITY_ID_PATTERN.test(s.episodeSegmentId) ? `${path}/segments/${clean(s.episodeSegmentId)}` : path;
+    }
     case 'program-detail':
     case 'program_detail':
       return s.programId ? `/programs/${clean(s.programId)}` : '/programs';
     case 'bulletins':
       return s.bulletinId ? `/bulletins/${clean(s.bulletinId)}` : '/bulletins';
-    case 'roster':
+    case 'roster': {
+      const target = s.focusId?.startsWith('handover/') ? s.focusId.slice('handover/'.length) : '';
+      if (ENTITY_ID_PATTERN.test(target)) return shiftHandoverPath(target);
       return s.focusId === 'handover' ? '/roster/handover' : '/roster';
+    }
+    case 'settings':
+      return s.focusId === 'monitor' ? '/settings/monitor' : '/settings';
     default:
       if (FOCUS_SCREENS.has(s.nav) && s.focusId) return `/${s.nav}/${clean(s.focusId)}`;
       return `/${s.nav}`;
   }
 }
 
-/** Splits an address into the screen and optional item id ("/news/abc" → news, abc). */
-export function parsePath(pathname: string): { view: string; id: string | null } {
-  const [view = '', id = ''] = pathname.replace(/^\/+/, '').split(/[/?#]/);
-  let decoded = id;
+function decodePathPart(value: string): string {
   try {
-    decoded = decodeURIComponent(id);
+    return decodeURIComponent(value);
   } catch {
-    // keep as typed
+    return value;
   }
-  return { view: view || 'dashboard', id: decoded || null };
+}
+
+/** Splits an address into the screen and optional item id ("/news/abc" → news, abc). */
+export function parsePath(pathname: string): { view: string; id: string | null; episodeSegmentId?: string } {
+  const [view = '', rawId = '', rawTarget = '', rawSegmentId = '', ...rest] = pathname.split(/[?#]/, 1)[0].replace(/^\/+/, '').split('/');
+  const id = decodePathPart(rawId);
+  if (view === 'roster' && id === 'handover') {
+    const target = decodePathPart(rawTarget);
+    if (ENTITY_ID_PATTERN.test(target)) return { view, id: `handover/${target}` };
+  }
+  if (view === 'episodes' && id && rawTarget === 'segments' && !rest.some(Boolean)) {
+    const episodeSegmentId = decodePathPart(rawSegmentId);
+    if (ENTITY_ID_PATTERN.test(episodeSegmentId)) return { view, id, episodeSegmentId };
+  }
+  return { view: view || 'dashboard', id: id || null };
 }
 
 const TITLES: Record<string, string> = {

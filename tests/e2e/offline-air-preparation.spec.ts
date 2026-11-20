@@ -22,12 +22,27 @@ test('prepares through UI and cancels logout before purging local work', async (
     await preparation.getByRole('checkbox').check();
     await preparation.getByRole('button', { name: 'تجهيز النسخة', exact: true }).click();
     await expect(preparation.getByRole('status')).toContainText('تحقق حفظ النسخة');
+    await expect(preparation.locator('summary')).toContainText('تطابق آخر بيانات متزامنة');
+    const saved = (await (await page.request.get('/api/v1/data')).json()).collections.bulletinStories.find((row: any) => row.id === `${id}-story`);
+    const updated = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [
+      { c: 'bulletinStories', op: 'upsert', id: saved.id, baseV: saved.v, d: { ...saved.d, slug: 'فقرة محدثة بعد تجهيز النسخة' } },
+    ] } });
+    expect((await updated.json()).results[0].ok).toBe(true);
+    await expect(preparation.locator('summary')).toContainText('تختلف عن آخر بيانات متزامنة');
     const popup = page.waitForEvent('popup');
     await preparation.getByRole('link', { name: 'فتح النسخة المحلية', exact: true }).click();
     viewer = await popup;
     await viewer.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await viewer.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
     await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).toBeVisible();
+    await expect(viewer.getByText('جُهزت هذه النسخة في', { exact: false })).toBeVisible();
+    await viewer.getByLabel('لون النص').selectOption('cyan');
+    await viewer.getByRole('button', { name: 'المرآة', exact: true }).click();
+    await viewer.getByRole('button', { name: 'قفل النسخة', exact: true }).click();
+    await viewer.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
+    await viewer.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    await expect(viewer.getByLabel('لون النص')).toHaveValue('cyan');
+    await expect(viewer.getByRole('button', { name: 'المرآة', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: /^حساب/ }).click();
     await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
     const confirmation = page.getByRole('alertdialog');

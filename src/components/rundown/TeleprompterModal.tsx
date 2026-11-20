@@ -21,11 +21,14 @@ import { segmentClock } from '../../shared/durations';
 import { segmentTypeName } from '../../shared/episodeNouns';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import { prompterScrollDelta, prompterShortcut } from '../../shared/prompterControls';
+import { useReadingPreferences } from '../../hooks/useReadingPreferences';
+import { READING_FONT_MIN, READING_FONT_MAX } from '../../services/readingPreferences';
 
 interface TeleprompterModalProps {
   isOpen: boolean;
   onClose: () => void;
   segments: RundownSegment[];
+  userId: string;
   episodeTitle?: string;
   /** While this episode is on air, the prompter follows the director's current segment. */
   episodeId?: string;
@@ -33,10 +36,14 @@ interface TeleprompterModalProps {
   kind?: 'episode' | 'bulletin';
 }
 
-export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
+export const TeleprompterModal: React.FC<TeleprompterModalProps> = (props) =>
+  props.isOpen ? <OpenTeleprompter key={JSON.stringify([props.userId, props.episodeId])} {...props} /> : null;
+
+const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
   isOpen,
   onClose,
   segments,
+  userId,
   episodeTitle = 'الرانداون المباشر',
   episodeId,
   kind,
@@ -56,10 +63,9 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [followId, isOpen, liveVersion, followDirector, segments]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [scrollSpeed, setScrollSpeed] = useState(48); // pixels per second
-  const [fontSize, setFontSize] = useState(36); // px
-  const [isMirrored, setIsMirrored] = useState(false);
-  const [colorTheme, setColorTheme] = useState<'yellow' | 'white' | 'cyan'>('yellow');
+  const { preferences, update, storageFailed } = useReadingPreferences(userId);
+  const { speed: scrollSpeed, fontSize, mirrored: isMirrored, color: colorTheme } = preferences;
+  const changeFont = (delta: number) => update({ fontSize: Math.max(READING_FONT_MIN, Math.min(READING_FONT_MAX, fontSize + delta)) });
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [displayError, setDisplayError] = useState('');
@@ -195,13 +201,13 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
       if (!action) return;
       e.preventDefault(); e.stopPropagation();
       if (e.repeat && ['PLAY', 'FULLSCREEN', 'MIRROR', 'CLOSE'].includes(action)) return;
-      if (action === 'FASTER') setScrollSpeed(s => Math.min(180, s + 6));
-      if (action === 'SLOWER') setScrollSpeed(s => Math.max(6, s - 6));
-      if (action === 'LARGER') setFontSize(f => Math.min(72, f + 2));
-      if (action === 'SMALLER') setFontSize(f => Math.max(22, f - 2));
+      if (action === 'FASTER') update({ speed: Math.min(180, scrollSpeed + 6) });
+      if (action === 'SLOWER') update({ speed: Math.max(6, scrollSpeed - 6) });
+      if (action === 'LARGER') changeFont(2);
+      if (action === 'SMALLER') changeFont(-2);
       if (action === 'RESET') handleResetScroll();
       if (action === 'FULLSCREEN') void toggleFullscreen();
-      if (action === 'MIRROR') setIsMirrored(m => !m);
+      if (action === 'MIRROR') update({ mirrored: !isMirrored });
       if (action === 'PAGE_UP' || action === 'PAGE_DOWN') {
         setIsPlaying(false);
         const el = scrollContainerRef.current;
@@ -228,7 +234,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
     const el = modalRef.current;
     el?.addEventListener('keydown', handleKeyDown);
     return () => el?.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentSegmentIndex, segments.length, onClose]);
+  }, [isOpen, currentSegmentIndex, segments.length, onClose, update, scrollSpeed, changeFont, isMirrored]);
 
   if (!isOpen) return null;
 
@@ -247,6 +253,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   return (
     <div ref={modalRef} role="dialog" aria-modal="true" aria-label="الملقّن" className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-amber-300" dir="rtl">
       <div className="h-32 shrink-0 overflow-auto px-3"><PronunciationPanel notes={matchingPronunciations(activeSegment?.scriptText || activeSegment?.script || '', apiService.getPronunciationTerms())} /></div>
+      {storageFailed && <p role="status" className="px-3 text-sm text-amber-300">تعذر حفظ إعدادات القراءة على الجهاز. ستطبق في هذه النافذة.</p>}
       {/* Studio Prompter Top Bar */}
       <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">
@@ -267,21 +274,21 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
             <button
               type="button"
-              onClick={() => setColorTheme('yellow')}
+              onClick={() => update({ color: 'yellow' })}
               className={`w-6 h-6 rounded-md bg-amber-400 ${colorTheme === 'yellow' ? 'ring-2 ring-white' : 'opacity-70'}`}
               title="أصفر استوديو كلاسيكي"
               aria-label="لون النص أصفر" aria-pressed={colorTheme === 'yellow'}
             />
             <button
               type="button"
-              onClick={() => setColorTheme('white')}
+              onClick={() => update({ color: 'white' })}
               className={`w-6 h-6 rounded-md bg-white ${colorTheme === 'white' ? 'ring-2 ring-blue-500' : 'opacity-70'}`}
               title="أبيض عالي التباين"
               aria-label="لون النص أبيض" aria-pressed={colorTheme === 'white'}
             />
             <button
               type="button"
-              onClick={() => setColorTheme('cyan')}
+              onClick={() => update({ color: 'cyan' })}
               className={`w-6 h-6 rounded-md bg-cyan-400 ${colorTheme === 'cyan' ? 'ring-2 ring-white' : 'opacity-70'}`}
               title="سماوي هادئ"
               aria-label="لون النص سماوي" aria-pressed={colorTheme === 'cyan'}
@@ -291,7 +298,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           {/* Mirror Toggle (for physical hardware prompters) */}
           <button
             type="button"
-            onClick={() => setIsMirrored(!isMirrored)}
+            onClick={() => update({ mirrored: !isMirrored })}
             className={`p-2 rounded-lg transition-colors ${
               isMirrored ? 'bg-amber-700 text-white' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
             }`}
@@ -306,7 +313,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
             <Type className="w-3.5 h-3.5 text-slate-400" aria-hidden />
             <button
               type="button"
-              onClick={() => setFontSize((f) => Math.max(22, f - 4))}
+              onClick={() => changeFont(-4)}
               className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
               title="تصغير الخط"
               aria-label="تصغير الخط"
@@ -316,7 +323,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
             <output aria-label="حجم الخط" className="w-6 text-center font-mono">{fontSize}</output>
             <button
               type="button"
-              onClick={() => setFontSize((f) => Math.min(64, f + 4))}
+              onClick={() => changeFont(4)}
               className="px-1.5 py-0.5 hover:bg-slate-800 rounded font-bold"
               title="تكبير الخط"
               aria-label="تكبير الخط"
@@ -326,7 +333,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           </div>
 
           {/* Speed Controls */}
-          <label className="flex items-center gap-2 text-sm flex-1 min-w-48"><span className="whitespace-nowrap">سرعة التمرير</span><input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
+          <label className="flex items-center gap-2 text-sm flex-1 min-w-48"><span className="whitespace-nowrap">سرعة التمرير</span><input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => update({ speed: Number(e.target.value) })} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
           <button type="button" aria-label="ملء الشاشة (F)" title="ملء الشاشة (F)" className="p-2 bg-zinc-800 rounded-md" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
           {followId && <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={followDirector} onChange={e => setFollowDirector(e.target.checked)}/>متابعة المخرج</label>}
 

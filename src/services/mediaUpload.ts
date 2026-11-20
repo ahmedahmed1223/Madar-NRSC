@@ -75,7 +75,7 @@ export function uploadFile<T>(url: string, file: File, onProgress?: (percent: nu
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
     for (const [name, value] of Object.entries(extraHeaders || {})) xhr.setRequestHeader(name, value);
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      if (e.lengthComputable && e.total > 0) onProgress?.(Math.min(100, Math.floor((e.loaded / e.total) * 100)));
     };
     xhr.onload = () => {
       let body: any = null;

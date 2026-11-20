@@ -57,6 +57,44 @@ describe('requests between departments', () => {
     const denied = await sync(trainee, [put({ id: 'req-3', type: 'STUDIO', title: 'x' })]);
     expect(denied.body.results[0].code).toBe('FORBIDDEN');
   });
+
+  it('takes a completion result only from available media at the time of the write', async () => {
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const media = await loginAgent(server.app, 'media@akhbar.tv');
+    const id = 'req-current-delivery-media';
+    expect((await sync(journalist, [put({ id, type: 'MONTAGE', title: 'Montage delivery' })])).body.results[0].ok).toBe(true);
+
+    const removedId = 'med-removed-delivery';
+    const softDeletedId = 'med-soft-deleted-delivery';
+    const availableId = 'med-available-delivery';
+    const asset = { mediaType: 'VIDEO', videoStatus: 'READY', title: 'Delivery', url: '/fixture.mp4' };
+    server.db.writeRow('media', removedId, { ...asset, id: removedId }, 0, null);
+    server.db.deleteRow('media', removedId, null);
+    server.db.writeRow('media', softDeletedId, { ...asset, id: softDeletedId, deletedAt: new Date().toISOString() }, 0, null);
+    server.db.writeRow('media', availableId, { ...asset, id: availableId }, 0, null);
+
+    for (const resultMediaId of [removedId, softDeletedId]) {
+      const current = row(id);
+      const denied = await sync(media, [put({ ...current.d, status: 'DONE', resultMediaId }, current.v)]);
+      expect(denied.body.results[0]).toMatchObject({ ok: false, message: 'مادة التسليم غير متاحة.' });
+      expect(row(id).v).toBe(current.v);
+    }
+    const current = row(id);
+    const done = await sync(media, [put({ ...current.d, status: 'DONE', resultMediaId: availableId }, current.v)]);
+    expect(done.body.results[0].ok).toBe(true);
+    expect(row(id).d).toMatchObject({ status: 'DONE', resultMediaId: availableId });
+
+    server.db.deleteRow('media', availableId, null);
+    const history = row(id);
+    const reopened = await sync(journalist, [put({ ...history.d, status: 'ACCEPTED' }, history.v)]);
+    expect(reopened.body.results[0].ok).toBe(true);
+    const accepted = row(id);
+    const staleResult = await sync(media, [put({ ...accepted.d, status: 'DONE' }, accepted.v)]);
+    expect(staleResult.body.results[0]).toMatchObject({ ok: false, message: 'مادة التسليم غير متاحة.' });
+    const withoutAttachment = await sync(media, [put({ ...accepted.d, status: 'DONE', resultMediaId: undefined }, accepted.v)]);
+    expect(withoutAttachment.body.results[0].ok).toBe(true);
+    expect(row(id).d.resultMediaId).toBeUndefined();
+  });
 });
 
 describe('on-air readiness gate', () => {

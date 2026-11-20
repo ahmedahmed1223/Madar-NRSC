@@ -8,11 +8,14 @@ import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
+import { dataStore } from '../services/dataStore';
 import { episodeReadiness } from '../shared/production';
+import { episodeStudioBookings } from '../shared/productionWorkQueues';
+import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { departmentName } from '../shared/departments';
 import { BookingForm } from '../components/planning/BookingForm';
 import { LongTextField } from '../components/common/TextSizeControls';
-import type { Booking } from '../shared/planning';
+import { bookingStatusOf, type Booking } from '../shared/planning';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useRef, useEffect} from 'react';
 import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers, Edit2 } from 'lucide-react';
@@ -42,6 +45,7 @@ interface EpisodeWorkspaceViewProps {
   onBack: () => void;
   onOpenNews?: (id: string) => void;
   onOpenRequests?: (segmentId: string) => void;
+  initialSegmentId?: string;
 }
 
 export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
@@ -54,6 +58,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   onBack,
   onOpenNews,
   onOpenRequests,
+  initialSegmentId,
 }) => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'RUNDOWN' | 'QUESTIONS' | 'GUESTS' | 'SCRIPT' | 'NOTES'>('PLAN');
 
@@ -99,7 +104,14 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
 
   // Status updates
-  const readiness = episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
+  const [, refreshPreparation] = useState(0);
+  useEffect(() => dataStore.subscribe(event => {
+    if (event.type === 'sync-status' || (event.type === 'data-changed' && event.collections.some(collection => ['requests', 'media', 'bookings', 'resources'].includes(collection)))) {
+      refreshPreparation(revision => revision + 1);
+    }
+  }), []);
+  const requests = apiService.getRequests();
+  const readiness = episodeReadiness(episode, { requests, media: apiService.getMedia() });
   // Timing plan is separate from material readiness: planned rundown vs the slot.
   const slotSeconds = (Number(episode.durationMinutes) || 0) * 60;
   const plannedSeconds = (episode.rundown || []).reduce((sum, seg: any) => sum + (Number(seg.durationSeconds) || 0), 0);
@@ -108,6 +120,15 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const gap = minutesGap(plannedSeconds, slotSeconds);
   const [showBlockers, setShowBlockers] = useState(false);
   const [focusSegment, setFocusSegment] = useState<{ id: string; key: string; sequence: number } | undefined>();
+  const linkedSegment = initialSegmentId && ENTITY_ID_PATTERN.test(initialSegmentId) ? episode.rundown?.find(segment => segment.id === initialSegmentId) : undefined;
+  useEffect(() => {
+    if (!initialSegmentId || !linkedSegment) {
+      setFocusSegment(previous => previous?.key === 'link' ? undefined : previous);
+      return;
+    }
+    setActiveTab('RUNDOWN');
+    setFocusSegment({ id: initialSegmentId, key: 'link', sequence: Date.now() });
+  }, [episode.id, initialSegmentId, !!linkedSegment]);
   const resolveBlocker = (blocker: typeof readiness.blockers[number]) => {
     if (blocker.key.startsWith('req:')) { onOpenRequests?.(blocker.segmentId); return; }
     setFocusSegment({ id: blocker.segmentId, key: blocker.key, sequence: Date.now() });
@@ -124,10 +145,12 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     });
     return () => cancelAnimationFrame(frame);
   }, [focusSegment, activeTab]);
-  const [booking, setBooking] = useState<Partial<Booking> | null>(null);
+  const [booking, setBooking] = useState<{ data: Partial<Booking>; studioOnly: boolean } | null>(null);
   const canBook = RbacService.hasPermission(currentUser, 'resources.book') || RbacService.hasPermission(currentUser, 'resources.manage');
-  const episodeBookings = apiService.getBookings().filter((b) => b.link?.kind === 'episode' && b.link.id === episode.id && b.status !== 'CANCELLED');
-  const bookStudio = () => {
+  const canSeeBookings = canBook || RbacService.canOpenScreen(currentUser, 'bookings');
+  const resources = canSeeBookings ? apiService.getResources() : [];
+  const studioBookings = canSeeBookings ? episodeStudioBookings(episode.id, apiService.getBookings(), resources) : [];
+  const openBooking = (studioOnly: boolean) => {
     const day = (episode.recordingDate || episode.broadcastDate || '').slice(0, 10);
     const [y, m, d] = (day || new Date().toISOString().slice(0, 10)).split('-').map(Number);
     const [hh, mm] = (episode.startTime || '09:00').split(':').map(Number);
@@ -135,7 +158,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     // Studio time: an hour of preparation before air, and the programme's length after.
     const from = new Date(start.getTime() - 60 * 60_000);
     const to = new Date(start.getTime() + Math.max(episode.durationMinutes || 60, 30) * 60_000);
-    setBooking({ title: `${episode.programName} — ${episode.title}`, start: from.toISOString(), end: to.toISOString(), link: { kind: 'episode', id: episode.id, title: `${episode.programName} — ${episode.title}` } });
+    const studio = resources.find(resource => resource.kind === 'STUDIO' && resource.isActive !== false && resource.name === episode.studioName)
+      || resources.find(resource => resource.kind === 'STUDIO' && resource.isActive !== false);
+    const title = `${episode.programName} — ${episode.title}`;
+    setBooking({ studioOnly, data: { resourceId: studioOnly ? studio?.id : undefined, title, start: from.toISOString(), end: to.toISOString(), link: { kind: 'episode', id: episode.id, title } } });
+  };
+  const guestCount = episodeGuestList(episode).length;
+  const guestWait = readiness.blockers.some(blocker => blocker.key === 'guest');
+  const openPreparationTab = (tab: 'RUNDOWN' | 'GUESTS') => {
+    setActiveTab(tab);
+    requestAnimationFrame(() => document.getElementById(`episode-tab-${tab}`)?.focus());
   };
 
   const handleUpdateStatus = async (newStatus: EpisodeStatus) => {
@@ -265,17 +297,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 تعديل بيانات الحلقة
               </button>
             )}
-            {canBook && (
-              <button
-                type="button"
-                onClick={bookStudio}
-                title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
-                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
-              >
-                <CalendarPlus className="w-4 h-4" />
-                {episodeBookings.length ? `محجوز (${episodeBookings.length})` : 'حجز استوديو'}
-              </button>
-            )}
+            {canBook && <button type="button" onClick={() => openBooking(false)} className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"><CalendarPlus className="w-4 h-4" />حجز مورد</button>}
             <ExportMenu
               items={[
                 { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
@@ -313,7 +335,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             lock={{ status: lock.status, holderName: lock.holder?.userName }}
           />
         )}
-        {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
+        {booking && <BookingForm isOpen confirmOnSave resourceKind={booking.studioOnly ? 'STUDIO' : undefined} onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking.data} />}
 
         {/* Episode Info Bar */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-8 pt-3 border-t border-slate-100 text-xs text-slate-600">
@@ -340,13 +362,16 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         </div>
       </div>
 
-      {/* On-air readiness across departments */}
-      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready && timingOk ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
+      {initialSegmentId && !linkedSegment && <p role="status" className="text-sm text-slate-600">الفقرة المطلوبة غير متاحة؛ يمكنك متابعة العمل من الحلقة.</p>}
+      <section aria-label="قائمة تحضير الحلقة" className="p-4 rounded-2xl border bg-white border-slate-200">
+        <h2 className="text-sm font-bold text-slate-900 mb-3">قائمة تحضير الحلقة</h2>
+        <ul className="divide-y divide-slate-200 text-sm">
+        <li className="py-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-800">
+            <h3 className="text-sm font-bold text-slate-800">
               جاهزية البث: {readiness.readySegments} من {countLabel(readiness.total, EP_NOUNS.segment)} جاهزة
-            </h2>
+            </h3>
             <p className="text-2xs text-slate-500 mt-0.5">
               {readiness.ready
                 ? 'كل الأقسام سلّمت المواد المطلوبة.'
@@ -360,34 +385,52 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
               <div className={`h-full ${readiness.ready ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${readiness.total ? (readiness.readySegments / readiness.total) * 100 : 0}%` }} />
             </div>
             {readiness.blockers.length > 0 && (
-              <button type="button" onClick={() => setShowBlockers((v) => !v)} aria-expanded={showBlockers} className="text-xs font-bold text-blue-700 hover:underline">
+              <button type="button" onClick={() => setShowBlockers((v) => !v)} aria-expanded={showBlockers} className="min-h-11 text-xs font-bold text-blue-700 hover:underline">
                 {showBlockers ? 'إخفاء النواقص' : 'عرض النواقص'}
               </button>
             )}
           </div>
         </div>
-        {slotSeconds > 0 && readiness.total > 0 && (
-          <p
-            role={timingOk ? undefined : 'status'}
-            className={`mt-2 text-2xs font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
-          >
-            خطة الوقت: {minutesOf(plannedSeconds, slotSeconds)}
-            {timingOk ? ' — مكتملة' : ` — ${gap.text}`}
-          </p>
-        )}
-        {readiness.warnings.length > 0 && <div className="mt-3 text-xs text-amber-800"><button type="button" onClick={() => setActiveTab('GUESTS')} className="min-h-11 text-blue-700 underline">متابعة الضيوف ({readiness.warnings.length})</button><ul>{readiness.warnings.map((w, i) => <li key={i}>{w.guestName}: {w.detail}</li>)}</ul></div>}
         {showBlockers && readiness.blockers.length > 0 && (
           <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
             {readiness.blockers.map((b, i) => (
               <li key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
                 <span className="font-bold text-slate-800 break-words min-w-0">{b.segmentTitle}</span>
                 <span className="text-amber-800">{b.detail}</span>
-                <span className="text-xs text-slate-600">المسؤول: {departmentName(b.departmentId)}{apiService.getRequests().filter(r => r.link?.segmentId === b.segmentId && r.departmentId === b.departmentId && ['OPEN', 'ACCEPTED'].includes(r.status)).map(r => r.assigneeName || r.addressedToName).filter(Boolean).filter((name, i, all) => all.indexOf(name) === i).map(name => `، ${name}`).join('')}</span>
+                <span className="text-xs text-slate-600">المسؤول: {departmentName(b.departmentId)}{requests.filter(r => r.link?.segmentId === b.segmentId && r.departmentId === b.departmentId && ['OPEN', 'ACCEPTED'].includes(r.status)).map(r => r.assigneeName || r.addressedToName).filter(Boolean).filter((name, i, all) => all.indexOf(name) === i).map(name => `، ${name}`).join('')}</span>
                 <button type="button" aria-label={`معالجة النقص: ${b.segmentTitle} - ${b.label}`} onClick={() => resolveBlocker(b)} className="min-h-11 mr-auto px-3 text-blue-700 font-semibold hover:underline">معالجة النقص</button>
               </li>
             ))}
           </ul>
         )}
+        </li>
+        <li className="py-2 flex flex-wrap items-center justify-between gap-x-3">
+          <div>
+            <h3 className="font-bold text-slate-800">خطة الوقت</h3>
+            <p className="text-xs text-slate-600">{slotSeconds > 0 && readiness.total > 0 ? `${minutesOf(plannedSeconds, slotSeconds)} · ${timingOk ? 'ضمن المدة المخططة' : gap.text}` : 'بانتظار تحديد مدة الحلقة وإضافة الفقرات'}</p>
+          </div>
+          <button type="button" onClick={() => openPreparationTab('RUNDOWN')} className="min-h-11 text-xs font-bold text-blue-700 hover:underline">مراجعة الرانداون</button>
+        </li>
+        <li className="py-2 flex flex-wrap items-center justify-between gap-x-3">
+          <div className="min-w-0">
+            <h3 className="font-bold text-slate-800">الضيوف</h3>
+            <p className="text-xs text-slate-600">{!guestCount ? 'لا يوجد ضيوف مدرجون' : guestWait || readiness.warnings.length ? 'توجد حجوزات أو تجهيزات تحتاج متابعة' : 'لا توجد متابعة معلّقة للضيوف'}</p>
+            {readiness.warnings.length > 0 && <ul className="mt-1 space-y-1 text-xs text-amber-800 break-words">{readiness.warnings.map((warning, index) => <li key={index}>{warning.guestName}: {warning.detail}</li>)}</ul>}
+          </div>
+          <button type="button" onClick={() => openPreparationTab('GUESTS')} className="min-h-11 text-xs font-bold text-blue-700 hover:underline">متابعة الضيوف</button>
+        </li>
+        <li className="py-2 flex flex-wrap items-center justify-between gap-x-3">
+          <div className="min-w-0">
+            <h3 className="font-bold text-slate-800">حجز الاستوديو</h3>
+            {!canSeeBookings ? <p className="text-xs text-slate-600">تحتاج صلاحية عرض الحجوزات.</p> : studioBookings.length === 0 ? <p className="text-xs text-slate-600">لا يوجد حجز استوديو مرتبط بالحلقة.</p> : (
+              <ul className="mt-1 space-y-1 text-xs text-slate-600">
+                {studioBookings.map(item => <li key={item.id} className="break-words">{resources.find(resource => resource.id === item.resourceId)?.name} · {new Date(item.start).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {dataStore.hasPendingWrite('bookings', item.id) ? 'بانتظار تأكيد الخادم' : bookingStatusOf(item.status).name}</li>)}
+              </ul>
+            )}
+          </div>
+          {canBook && <button type="button" onClick={() => openBooking(true)} className="min-h-11 inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:underline"><CalendarPlus className="w-4 h-4" />حجز استوديو</button>}
+        </li>
+        </ul>
       </section>
 
       {/* Tabs */}
@@ -407,6 +450,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('RUNDOWN')}
+          id="episode-tab-RUNDOWN"
           aria-pressed={activeTab === 'RUNDOWN'}
           className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'RUNDOWN'
@@ -435,6 +479,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('GUESTS')}
+          id="episode-tab-GUESTS"
           aria-pressed={activeTab === 'GUESTS'}
           className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'GUESTS'
@@ -496,6 +541,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       {/* TAB 1: RUNDOWN */}
       {activeTab === 'RUNDOWN' && (
         <RundownTable
+          userId={currentUser.id}
           segments={episode.rundown || []}
           plannedDurationMinutes={episode.durationMinutes}
           onUpdateRundown={onUpdateRundown}

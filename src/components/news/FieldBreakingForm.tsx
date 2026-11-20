@@ -93,7 +93,7 @@ export const FieldBreakingForm: React.FC<FieldBreakingFormProps> = ({ currentUse
       </label>
 
       <div className="rounded-xl border border-slate-200 p-3">
-        <AttachmentsPanel mediaIds={mediaIds} onChange={setMediaIds} currentUser={currentUser} title="صورة (اختيارية)" />
+        <AttachmentsPanel mediaIds={mediaIds} onChange={setMediaIds} currentUser={currentUser} title="وسائط (اختيارية)" directUpload readOnly={sending} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">

@@ -1,25 +1,28 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { confirmDialog, promptDialog } from '../services/dialogs';
+import { navigateTo } from '../services/uiEvents';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
-import React, { useEffect, useMemo, useState } from 'react';
+import { isMediaDeliveryRequest, mediaDeliveryQueue } from '../shared/productionWorkQueues';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, CheckCircle2, Edit2, Link2, Plus, Trash2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
-import { DeptRequest, isRequestClosed, requestStatusName, requestTypeOf } from '../shared/production';
+import { DeptRequest, isRequestClosed, isVideoReady, requestStatusName, requestTypeOf } from '../shared/production';
 import { RequestFormPage } from '../components/requests/RequestFormPage';
 import { MediaPicker } from '../components/media/MediaPicker';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface RequestsViewProps {
   focusId?: string | null;
   currentUser: User;
   onOpenNews: (newsId: string) => void;
-  onOpenEpisode: (episodeId: string) => void;
+  onOpenEpisode: (episodeId: string, segmentId?: string) => void;
   focusSegmentId?: string;
   onClearFocus?: () => void;
 }
@@ -33,14 +36,20 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+type RequestTab = 'INBOX' | 'SENT' | 'ALL' | 'DELIVERY';
 
 /** Requests between departments: what my department has to do, and what I asked others for. */
 export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenNews, onOpenEpisode, focusId, focusSegmentId, onClearFocus }) => {
   const canManage = RbacService.hasPermission(currentUser, 'requests.manage');
   const canCreate = RbacService.hasPermission(currentUser, 'requests.create');
+  const canUpload = RbacService.hasPermission(currentUser, 'media.upload');
+  const canSeeMedia = RbacService.hasPermission(currentUser, 'media.view') && RbacService.canOpenScreen(currentUser, 'media');
+  const canSeeNews = RbacService.hasPermission(currentUser, 'news.view') && RbacService.canOpenScreen(currentUser, 'news');
+  const canSeeEpisodes = RbacService.canOpenScreen(currentUser, 'episode-workspace') && (RbacService.hasPermission(currentUser, 'programs.view') || RbacService.hasPermission(currentUser, 'rundown.view'));
+  const { isOnline } = useOnlineStatus();
   const myDept = departmentIdOf(currentUser);
   const [requests, setRequests] = useState<DeptRequest[]>(() => apiService.getRequests());
-  const [tab, setTab] = useState<'INBOX' | 'SENT' | 'ALL'>(focusSegmentId || focusId ? 'ALL' : 'INBOX');
+  const [tab, setTab] = useState<RequestTab>(focusSegmentId || focusId ? 'ALL' : 'INBOX');
   const [dept, setDept] = useState<string>(myDept);
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState('');
@@ -49,40 +58,92 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [editing, setEditing] = useState<DeptRequest | null>(null);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const running = useRef(new Set<string>());
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const focusedRequest = focusId && ENTITY_ID_PATTERN.test(focusId) ? requests.find(request => request.id === focusId && !request.deletedAt) : undefined;
   useEffect(() => {
-    if (focusId) { setTab('ALL'); setQuery(''); setTypeFilter('ALL'); setShowClosed(true); }
-  }, [focusId]);
+    if (focusId || focusSegmentId) { setTab('ALL'); setQuery(''); setTypeFilter('ALL'); setShowClosed(true); }
+  }, [focusId, focusSegmentId]);
 
   useEffect(
     () =>
       dataStore.subscribe((evt) => {
-        if (evt.type === 'data-changed' && evt.collections.includes('requests')) setRequests(apiService.getRequests());
+        if (evt.type === 'sync-status' || (evt.type === 'data-changed' && evt.collections.some(collection => collection === 'requests' || collection === 'media'))) setRequests(apiService.getRequests());
       }),
     []
   );
 
-  const act = (fn: () => void, ok: string) => {
-    try {
-      fn();
-      setRequests(apiService.getRequests());
-      setMessage({ ok: true, text: ok });
-    } catch (err: any) {
-      setMessage({ ok: false, text: err?.message || 'تعذر تنفيذ الإجراء' });
+  const assertCurrent = (request: DeptRequest) => {
+    const current = apiService.getRequests().find(item => item.id === request.id);
+    if (!current || current.status !== request.status || current.updatedAt !== request.updatedAt || dataStore.hasPendingWrite('requests', request.id)) {
+      throw new Error('تغير الطلب. راجع النسخة الحالية قبل تنفيذ الإجراء.');
     }
   };
 
-  const list = useMemo(() => {
-    return requests
-      .filter(r => focusedRequest ? r.id === focusedRequest.id : !focusSegmentId || r.link?.segmentId === focusSegmentId)
-      .filter((r) => (tab === 'INBOX' ? r.departmentId === dept : tab === 'SENT' ? r.requesterId === currentUser.id : true))
-      .filter((r) => showClosed || !isRequestClosed(r.status))
-      .filter((r) => typeFilter === 'ALL' || r.type === typeFilter)
-      .filter((r) => matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []))
-      .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
-  }, [requests, tab, dept, showClosed, currentUser.id, query, typeFilter, focusSegmentId, focusedRequest]);
+  const act = async (request: DeptRequest, fn: () => void | Promise<void>, ok: string) => {
+    if (!isOnline || running.current.has(request.id) || dataStore.hasPendingWrite('requests', request.id)) return;
+    running.current.add(request.id);
+    setBusy(new Set(running.current));
+    setMessage(null);
+    try {
+      assertCurrent(request);
+      await fn();
+      setMessage({ ok: true, text: ok });
+    } catch (err) {
+      setMessage({ ok: false, text: err instanceof Error ? err.message : 'تعذر تنفيذ الإجراء' });
+    } finally {
+      running.current.delete(request.id);
+      setBusy(new Set(running.current));
+      setRequests(apiService.getRequests());
+    }
+  };
 
-  const inboxCount = requests.filter((r) => r.departmentId === myDept && !isRequestClosed(r.status)).length;
+  const confirmRequestWrite = async (id: string) => {
+    const outcome = await dataStore.awaitWrite('requests', id);
+    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم تحديث الطلب بعد.');
+  };
+  const changeStatus = (request: DeptRequest, changes: Partial<DeptRequest>, success: string) => act(request, async () => {
+    apiService.updateRequest(request.id, changes);
+    await confirmRequestWrite(request.id);
+  }, success);
+
+  const complete = async (request: DeptRequest, resultMediaId?: string) => {
+    if (!await confirmDialog({ title: 'إنجاز الطلب', message: `تأكيد إنجاز «${request.title}»${resultMediaId ? ' وتسليم المادة المحددة' : ''}؟`, confirmLabel: 'تأكيد الإنجاز' })) return;
+    await act(request, async () => {
+      if (resultMediaId) {
+        const media = apiService.getMedia().find(item => item.id === resultMediaId);
+        if (!media) throw new Error('مادة التسليم غير متاحة.');
+        if (request.type === 'MONTAGE' && media.mediaType !== 'VIDEO') throw new Error('اختر فيديو متاحاً لتسليم المونتاج.');
+        if (request.type === 'MONTAGE' && !isVideoReady(media.videoStatus)) {
+          if (!canUpload) throw new Error('يتطلب تسليم فيديو غير جاهز صلاحية تعديل الوسائط.');
+          apiService.updateMedia(media.id, { videoStatus: 'READY', editorId: currentUser.id, editorName: currentUser.fullName });
+        }
+        const outcome = await dataStore.awaitWrite('media', media.id);
+        if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ المادة بعد.');
+        assertCurrent(request);
+      }
+      apiService.updateRequest(request.id, { status: 'DONE', ...(isMediaDeliveryRequest(request.type) ? { resultMediaId } : {}) });
+      await confirmRequestWrite(request.id);
+    }, resultMediaId ? 'أُنجز الطلب وسُلّمت المادة' : 'أُنجز الطلب');
+  };
+
+  const pendingIds = new Set(requests.filter(request => dataStore.hasPendingWrite('requests', request.id)).map(request => request.id));
+  const delivery = mediaDeliveryQueue(requests, myDept, canManage, pendingIds);
+  const canSeeDelivery = canManage || REQUEST_TYPES.some(type => type.departmentId === myDept && isMediaDeliveryRequest(type.id));
+  const listTab = (tab === 'DELIVERY' && !canSeeDelivery) || (tab === 'ALL' && !canManage && !focusSegmentId) ? 'INBOX' : tab;
+  const matchesFilters = (r: DeptRequest) => (typeFilter === 'ALL' || r.type === typeFilter)
+    && matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []);
+  const list = focusedRequest ? [focusedRequest] : listTab === 'DELIVERY' ? delivery.filter(matchesFilters) : requests
+      .filter(r => !focusSegmentId || r.link?.segmentId === focusSegmentId)
+      .filter(r => listTab === 'ALL' || (listTab === 'INBOX' ? r.departmentId === (canManage ? dept : myDept) : r.requesterId === currentUser.id))
+      .filter((r) => showClosed || pendingIds.has(r.id) || !isRequestClosed(r.status))
+      .filter(matchesFilters)
+      .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
+
+  const newsById = new Map(canSeeNews && list.some(request => request.link?.kind === 'news') ? apiService.getNews().map(item => [item.id, item] as const) : []);
+  const episodesById = new Map(canSeeEpisodes && list.some(request => request.link?.episodeId) ? apiService.getEpisodes().map(item => [item.id, item] as const) : []);
+  const mediaById = new Map(canSeeMedia && list.some(request => request.resultMediaId) ? apiService.getMedia().map(item => [item.id, item] as const) : []);
+  const inboxCount = requests.filter((r) => r.departmentId === myDept && (pendingIds.has(r.id) || !isRequestClosed(r.status))).length;
 
   return (
     <div className="space-y-5">
@@ -117,17 +178,22 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <FilterTabs<"ALL" | "INBOX" | "SENT">
+        <FilterTabs<RequestTab>
           label="الطلبات"
-          active={tab}
-          onChange={setTab}
+          active={listTab}
+          onChange={next => {
+            if (focusId || focusSegmentId) onClearFocus?.();
+            setTab(next);
+            setTypeFilter('ALL');
+          }}
           tabs={[
             { id: 'INBOX' as const, label: 'الوارد لقسمي', count: inboxCount, tone: 'violet' as const },
+            ...(canSeeDelivery ? [{ id: 'DELIVERY' as const, label: 'تسليم الوسائط', count: delivery.length, tone: 'amber' as const }] : []),
             ...(canCreate ? [{ id: 'SENT' as const, label: 'طلباتي', tone: 'blue' as const }] : []),
             ...(canManage ? [{ id: 'ALL' as const, label: 'كل الطلبات', tone: 'slate' as const }] : []),
           ]}
         />
-        {tab === 'INBOX' && canManage && (
+        {listTab === 'INBOX' && canManage && (
           <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="القسم" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
             {DEPARTMENTS.map((d) => (
               <option key={d.id} value={d.id}>
@@ -146,41 +212,51 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
         />
         <select aria-label="نوع الطلب" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
           <option value="ALL">كل الأنواع</option>
-          {REQUEST_TYPES.map((t) => (
+          {REQUEST_TYPES.filter(type => listTab !== 'DELIVERY' || (isMediaDeliveryRequest(type.id) && (canManage || type.departmentId === myDept))).map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 min-h-11 text-xs text-slate-600 mr-auto cursor-pointer">
+        {listTab !== 'DELIVERY' && <label className="flex items-center gap-1.5 min-h-11 text-xs text-slate-600 mr-auto cursor-pointer">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="w-4 h-4 accent-blue-600" />
           عرض المنجز والمغلق
-        </label>
+        </label>}
       </div>
+
+      {!isOnline && <p role="status" className="text-sm text-amber-800">لا اتصال بالخادم؛ يمكن مراجعة الطلبات وتحتاج إجراءاتها إلى الاتصال.</p>}
 
       <div className="space-y-2">
         {list.length === 0 && (
           <p className="text-center text-xs text-slate-500 py-10 bg-white border border-dashed border-slate-300 rounded-2xl">
-            {tab === 'INBOX' ? `لا توجد طلبات مفتوحة لقسم ${departmentName(dept)}.` : showClosed ? 'لا توجد طلبات.' : 'لا توجد طلبات مفتوحة. فعّل «عرض المنجز والمغلق» لرؤية ما سبق.'}
+            {listTab === 'DELIVERY' ? 'لا توجد طلبات وسائط مطابقة بانتظار التسليم.' : listTab === 'INBOX' ? `لا توجد طلبات مفتوحة لقسم ${departmentName(canManage ? dept : myDept)}.` : showClosed ? 'لا توجد طلبات.' : 'لا توجد طلبات مفتوحة. فعّل «عرض المنجز والمغلق» لرؤية ما سبق.'}
           </p>
         )}
         {list.map((r) => {
           const type = requestTypeOf(r.type);
           const isHandler = departmentIdOf(currentUser) === r.departmentId || canManage;
           const isRequester = r.requesterId === currentUser.id;
-          const overdue = r.dueAt && !isRequestClosed(r.status) && new Date(r.dueAt).getTime() < Date.now();
+          const pendingWrite = pendingIds.has(r.id);
+          const busyRow = busy.has(r.id) || pendingWrite;
+          const dueAt = r.dueAt && Number.isFinite(Date.parse(r.dueAt)) ? r.dueAt : undefined;
+          const overdue = dueAt && !isRequestClosed(r.status) && Date.parse(dueAt) < Date.now();
+          const link = r.link;
+          const linkedNews = link?.kind === 'news' && link.newsId && ENTITY_ID_PATTERN.test(link.newsId) ? newsById.get(link.newsId) : undefined;
+          const linkedEpisode = link?.episodeId && ENTITY_ID_PATTERN.test(link.episodeId) ? episodesById.get(link.episodeId) : undefined;
+          const canOpenEpisode = linkedEpisode && (link?.kind !== 'segment' || linkedEpisode.rundown?.some(segment => segment.id === link.segmentId));
+          const resultMedia = !pendingWrite && r.resultMediaId ? mediaById.get(r.resultMediaId) : undefined;
           return (
             <article key={r.id} className={`bg-white border rounded-2xl p-4 space-y-2 ${r.priority === 'URGENT' && !isRequestClosed(r.status) ? 'border-red-300' : 'border-slate-200'}`}>
               <div className="flex flex-wrap items-center gap-2 text-2xs">
                 <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold">{type?.name}</span>
                 <span className="text-slate-500">إلى: {departmentName(r.departmentId)}</span>
                 {r.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
-                <span className={`px-2 py-0.5 rounded-md border font-bold ${STATUS_STYLE[r.status]}`}>{requestStatusName(r.status)}</span>
+                <span className={`px-2 py-0.5 rounded-md border font-bold ${pendingWrite ? STATUS_STYLE.ACCEPTED : STATUS_STYLE[r.status]}`}>{pendingWrite ? 'بانتظار تأكيد الخادم' : requestStatusName(r.status)}</span>
                 {overdue && <span className="px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 font-bold">متأخر</span>}
                 <span className="text-slate-500 mr-auto">{when(r.createdAt)}</span>
               </div>
-              <h2 className="text-sm font-bold text-slate-900">{r.title}</h2>
-              {r.details && <p className="text-xs text-slate-600 whitespace-pre-line">{r.details}</p>}
+              <h2 className="text-sm font-bold text-slate-900 break-words">{r.title}</h2>
+              {r.details && <p className="text-xs text-slate-600 whitespace-pre-line break-words">{r.details}</p>}
               {r.lines && r.lines.length > 0 && (
                 <ul className="text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 pr-6 space-y-0.5 font-bold text-slate-700 list-disc marker:text-slate-400">
                   {r.lines.map((l, i) => (
@@ -195,38 +271,42 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                 </span>
                 {r.addressedToName && !r.assigneeName && <span className="font-bold text-violet-700">موجّه إلى: {r.addressedToName}</span>}
                 {r.assigneeName && <span>المنفذ: {r.assigneeName}</span>}
-                {r.dueAt && <span>مطلوب قبل: {when(r.dueAt)}</span>}
-                {r.link && (
+                {dueAt ? <span>مطلوب قبل: {when(dueAt)}</span> : listTab === 'DELIVERY' && <span>موعد التسليم غير محدد</span>}
+                {link && (linkedNews || canOpenEpisode ? (
                   <button
                     type="button"
-                    onClick={() => (r.link!.newsId ? onOpenNews(r.link!.newsId) : r.link!.episodeId && onOpenEpisode(r.link!.episodeId))}
-                    className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+                    onClick={() => { if (linkedNews) onOpenNews(linkedNews.id); else if (linkedEpisode) onOpenEpisode(linkedEpisode.id, link.kind === 'segment' ? link.segmentId : undefined); }}
+                    className="min-h-11 inline-flex items-center gap-1 min-w-0 text-blue-700 hover:underline"
                   >
-                    <Link2 className="w-3 h-3" />
-                    {r.link.title}
+                    <Link2 className="w-3 h-3 shrink-0" />
+                    <span className="break-words min-w-0">{link.title}</span>
                   </button>
-                )}
+                ) : <span>المصدر المرتبط غير متاح</span>)}
+                {resultMedia && <button type="button" onClick={() => navigateTo.emit(`/media/${encodeURIComponent(resultMedia.id)}`)} className="min-h-11 text-blue-700 hover:underline break-words min-w-0">المادة المسلّمة: {resultMedia.title || resultMedia.fileName}</button>}
               </div>
               {r.resolution && <p className="text-2xs text-rose-700">السبب: {r.resolution}</p>}
 
-              <div className="flex flex-wrap gap-2 pt-1">
+              <fieldset disabled={busyRow || !isOnline} className="flex flex-wrap gap-2 pt-1 min-w-0 disabled:opacity-60">
                 {isHandler && r.status === 'OPEN' && (!r.addressedToId || r.addressedToId === currentUser.id || canManage) && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'استلمت الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
+                  <button type="button" onClick={() => changeStatus(r, { status: 'ACCEPTED' }, 'استلمت الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
                     استلام الطلب
                   </button>
                 )}
                 {isHandler && (r.status === 'OPEN' || r.status === 'ACCEPTED') && (
                   <button
                     type="button"
-                    onClick={() => (r.type === 'MONTAGE' ? setDoneFor(r) : act(() => apiService.updateRequest(r.id, { status: 'DONE' }), 'أُنجز الطلب'))}
+                    onClick={() => complete(r)}
                     className="inline-flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الإنجاز
                   </button>
                 )}
+                {isHandler && !isRequestClosed(r.status) && isMediaDeliveryRequest(r.type) && (canSeeMedia ? (
+                  <button type="button" onClick={() => setDoneFor(r)} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-blue-700">إرفاق مادة وتسليمها</button>
+                ) : <span className="self-center text-xs text-slate-600">إرفاق النتيجة يحتاج صلاحية مكتبة الوسائط.</span>)}
                 {isHandler && r.status === 'ACCEPTED' && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'OPEN' }), 'أُعيد الطلب للقائمة')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={() => changeStatus(r, { status: 'OPEN' }, 'أُعيد الطلب للقائمة')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إعادته للقائمة
                   </button>
                 )}
@@ -235,7 +315,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                     type="button"
                     onClick={async () => {
                       const reason = await promptDialog({ title: 'رفض الطلب', label: 'سبب الرفض', required: true, multiline: true });
-                      if (reason && reason.trim()) act(() => apiService.updateRequest(r.id, { status: 'REJECTED', resolution: reason.trim() }), 'رُفض الطلب');
+                      if (reason && reason.trim()) void changeStatus(r, { status: 'REJECTED', resolution: reason.trim() }, 'رُفض الطلب');
                     }}
                     className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 text-xs font-bold"
                   >
@@ -243,7 +323,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   </button>
                 )}
                 {(isRequester || canManage) && !isRequestClosed(r.status) && (
-                  <button type="button" onClick={async () => (await confirmDialog('إلغاء هذا الطلب؟')) && act(() => apiService.updateRequest(r.id, { status: 'CANCELLED' }), 'أُلغي الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={async () => (await confirmDialog('إلغاء هذا الطلب؟')) && changeStatus(r, { status: 'CANCELLED' }, 'أُلغي الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إلغاء الطلب
                   </button>
                 )}
@@ -258,7 +338,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                     type="button"
                     onClick={async () => {
                       const ok = await confirmDialog({ title: 'حذف الطلب', message: `حذف الطلب «${r.title}» نهائياً؟ لن يظهر لقسم ${departmentName(r.departmentId)} بعد الآن.`, confirmLabel: 'حذف الطلب', danger: true });
-                      if (ok) act(() => apiService.deleteRequest(r.id), 'حُذف الطلب');
+                      if (ok) void act(r, async () => { apiService.deleteRequest(r.id); await confirmRequestWrite(r.id); }, 'حُذف الطلب');
                     }}
                     className="inline-flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-bold hover:bg-red-50"
                   >
@@ -267,11 +347,11 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   </button>
                 )}
                 {(isRequester || canManage) && r.status === 'DONE' && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'أُعيد فتح الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={() => changeStatus(r, { status: 'ACCEPTED' }, 'أُعيد فتح الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إعادة فتح
                   </button>
                 )}
-              </div>
+              </fieldset>
             </article>
           );
         })}
@@ -289,13 +369,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
           isOpen
           onClose={() => setDoneFor(null)}
           selectedIds={doneFor.resultMediaId ? [doneFor.resultMediaId] : []}
-          canUpload={RbacService.hasPermission(currentUser, 'media.upload')}
+          canUpload={canUpload}
+          resultMode={doneFor.type === 'MONTAGE' ? 'video' : 'any'}
           onPick={(ids) => {
-            const resultMediaId = ids[ids.length - 1];
-            act(() => {
-              if (resultMediaId) apiService.updateMedia(resultMediaId, { videoStatus: 'READY', editorId: currentUser.id, editorName: currentUser.fullName });
-              apiService.updateRequest(doneFor.id, { status: 'DONE', resultMediaId });
-            }, resultMediaId ? 'أُنجز المونتاج وسُلّم الفيديو' : 'أُنجز الطلب');
+            if (ids[0]) void complete(doneFor, ids[0]);
           }}
         />
       )}

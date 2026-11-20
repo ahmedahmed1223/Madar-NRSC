@@ -1,6 +1,9 @@
 import path from 'path';
 import { z } from 'zod';
 
+export const AI_PROVIDERS = ['gemini', 'openai', 'openrouter'] as const;
+export type AiProvider = (typeof AI_PROVIDERS)[number];
+
 const bool = (fallback: boolean) =>
   z
     .string()
@@ -88,6 +91,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_MODEL: z.string().trim().min(1).max(120).default('gpt-4.1-mini'),
+    OPENROUTER_API_KEY: z.string().optional(),
+    OPENROUTER_MODEL: z.string().trim().min(1).max(120).default('openai/gpt-4.1-mini'),
+    AI_DEFAULT_PROVIDER: z.enum(AI_PROVIDERS).optional().or(z.literal('').transform(() => undefined)),
   });
 
   const parsed = schema.safeParse(env);
@@ -105,7 +113,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('SEED_DEMO_DATA=true is refused in production: demo accounts share a published password. Set SEED_DEMO_DATA=false (or ALLOW_DEMO_IN_PRODUCTION=true for a demo server only).');
   }
 
-  const geminiKey = c.GEMINI_API_KEY && c.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY' ? c.GEMINI_API_KEY : undefined;
+  const providers = {
+    gemini: { apiKey: c.GEMINI_API_KEY?.trim() === 'MY_GEMINI_API_KEY' ? undefined : c.GEMINI_API_KEY?.trim() || undefined, model: c.GEMINI_MODEL },
+    openai: { apiKey: c.OPENAI_API_KEY?.trim() || undefined, model: c.OPENAI_MODEL },
+    openrouter: { apiKey: c.OPENROUTER_API_KEY?.trim() || undefined, model: c.OPENROUTER_MODEL },
+  };
+  if (c.AI_DEFAULT_PROVIDER && !providers[c.AI_DEFAULT_PROVIDER].apiKey) {
+    throw new Error('AI_DEFAULT_PROVIDER requires a key for the selected provider');
+  }
+  const defaultAiProvider = c.AI_DEFAULT_PROVIDER ?? AI_PROVIDERS.find((id) => providers[id].apiKey) ?? null;
 
   let trustProxy: boolean | number | string = false;
   if (c.TRUST_PROXY) {
@@ -154,7 +170,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
     mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,
     storageSyncSeconds: c.STORAGE_SYNC_SECONDS,
-    gemini: { apiKey: geminiKey, model: c.GEMINI_MODEL },
+    ...providers,
+    defaultAiProvider,
     mail: c.SMTP_HOST
       ? {
           host: c.SMTP_HOST,

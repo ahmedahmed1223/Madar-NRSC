@@ -539,13 +539,21 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const { acks: _b, ...restAfter } = after || {};
     return JSON.stringify(restBefore) === JSON.stringify(restAfter) ? null : 'التنبيه لا يُعدَّل بعد إرساله';
   },
-  requests: ({ auth, kind, before, after }) => {
+  requests: ({ auth, kind, before, after, list }) => {
     const canManage = auth.can('requests.manage');
     if (kind === 'delete' || isSoftDelete(before, after)) {
       return canManage || (before?.requesterId === auth.user.id && before?.status === 'OPEN') ? null : 'لا يمكنك حذف هذا الطلب';
     }
     if (kind === 'create' && !auth.can('requests.create')) return 'صلاحياتك لا تسمح بإرسال طلبات للأقسام';
-    return requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
+    const denied = requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
+    if (denied) return denied;
+    const resultId = after.resultMediaId;
+    const completingWithResult = after.status === 'DONE' && (before?.status !== 'DONE' || changed(before, after, 'resultMediaId'));
+    if (completingWithResult && resultId != null && resultId !== '' &&
+      (typeof resultId !== 'string' || !list?.('media').some(asset => asset.id === resultId && !asset.deletedAt))) {
+      return 'مادة التسليم غير متاحة.';
+    }
+    return null;
   },
   roster: ({ auth, kind, after }) => {
     if (!auth.can('roster.manage')) return 'صلاحياتك لا تسمح بتعديل جدول المناوبات';

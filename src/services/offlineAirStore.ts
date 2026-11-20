@@ -1,4 +1,5 @@
 import { offlineAirPacketSchema, type OfflineAirPacket } from '../shared/offlineAir';
+import { fingerprintOfflineAirSnapshot, offlineAirStateMarker, serializeOfflineAirSnapshot } from '../shared/offlineAirFreshness';
 
 export interface OfflineEncryptedValue {
   version: 1;
@@ -40,6 +41,7 @@ export async function decryptWithKey(record: OfflineEncryptedValue, key: CryptoK
 export interface OfflinePacketMetadata {
   packetId: string; dbId: string; userId: string; showId: string;
   preparedAt: string; shellVersion: string;
+  snapshotFingerprint?: string;
 }
 interface StoredPacket extends OfflinePacketMetadata {
   encrypted: OfflineEncryptedValue;
@@ -79,7 +81,8 @@ const metadataOf = (row: StoredPacket): OfflinePacketMetadata => ({
 });
 
 export async function listPacketMetadata(): Promise<OfflinePacketMetadata[]> {
-  return (await transaction<StoredPacket[]>('readonly', store => store.getAll())).map(metadataOf);
+  return (await transaction<StoredPacket[]>('readonly', store => store.getAll()))
+    .map(row => ({ ...metadataOf(row), snapshotFingerprint: row.snapshotFingerprint }));
 }
 
 export async function savePacket(packet: OfflineAirPacket, secret: string): Promise<OfflinePacketMetadata> {
@@ -87,9 +90,13 @@ export async function savePacket(packet: OfflineAirPacket, secret: string): Prom
   // A new packet never replaces another packet: previous sessions remain recoverable.
   if (await transaction('readonly', store => store.get(packet.packetId))) throw new Error('معرّف النسخة موجود مسبقاً');
   const { record } = await encryptOfflineValue(packet, secret);
+  const snapshotFingerprint = await fingerprintOfflineAirSnapshot(serializeOfflineAirSnapshot(
+    packet.baseRows.map(({ collection, id, v }) => [collection, id, v]),
+    offlineAirStateMarker(packet.confirmedState),
+  ));
   const row: StoredPacket = {
     packetId: packet.packetId, dbId: packet.dbId, userId: packet.userId,
-    showId: packet.show.id, preparedAt: packet.preparedAt, shellVersion: packet.shellVersion, encrypted: record,
+    showId: packet.show.id, preparedAt: packet.preparedAt, shellVersion: packet.shellVersion, encrypted: record, snapshotFingerprint,
   };
   await transaction('readwrite', store => store.add(row));
   try {
@@ -100,7 +107,7 @@ export async function savePacket(packet: OfflineAirPacket, secret: string): Prom
     await deletePacket(packet.packetId);
     throw error;
   }
-  return metadataOf(row);
+  return { ...metadataOf(row), snapshotFingerprint };
 }
 
 export async function unlockPacket(packetId: string, secret: string) {

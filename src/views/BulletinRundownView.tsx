@@ -1009,7 +1009,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         )}
       </FormPage>
 
-      <TeleprompterModal isOpen={prompter} onClose={() => setPrompter(false)} segments={show.rundown as unknown as RundownSegment[]} episodeTitle={bulletin.title} episodeId={bulletin.id} />
+      <TeleprompterModal isOpen={prompter} onClose={() => setPrompter(false)} segments={show.rundown as unknown as RundownSegment[]} episodeTitle={bulletin.title} episodeId={bulletin.id} userId={currentUser.id} />
     </div>
   );
 };

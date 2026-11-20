@@ -121,11 +121,11 @@ const CHECKS: LiveCheck[] = [
   },
   {
     id: 'ai',
-    name: 'المساعد التحريري الذكي (Gemini)',
+    name: 'المساعد التحريري الذكي',
     category: 'التكاملات',
     run: async () => {
-      const res = await apiFetch<{ configured: boolean; model: string }>('/api/v1/ai/status');
-      return res.configured ? ok(`مفعّل عبر الخادم بالنموذج ${res.model}`) : warn('غير مفعّل: أضف GEMINI_API_KEY في إعدادات الخادم');
+      const res = await apiFetch<{ configured: boolean; model: string; defaultProvider: string | null }>('/api/v1/ai/status');
+      return res.configured ? ok(`المزوّد الافتراضي ${res.defaultProvider} بالنموذج ${res.model}`) : warn('أضف مفتاح أحد المزوّدين في بيئة الخادم');
     },
   },
 ];

@@ -1,12 +1,14 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import type { User } from '../../types';
 import { apiService } from '../../services/api';
+import { dataStore } from '../../services/dataStore';
 import { notify } from '../../services/notify';
 import { FormPage } from '../common/FormPage';
 import { fromLocalInputValue, toLocalInputValue } from '../../shared/dates';
-import { Booking, BookingLink, bookingConflicts, BOOKING_STATUSES, RESOURCE_KINDS, resourceKindName } from '../../shared/planning';
+import { newId } from '../../shared/ids';
+import { Booking, BookingLink, bookingConflicts, BOOKING_STATUSES, RESOURCE_KINDS, resourceKindName, type ResourceKind } from '../../shared/planning';
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
 
@@ -18,11 +20,13 @@ interface BookingFormProps {
   /** Existing booking to edit, or defaults for a new one. */
   booking?: Partial<Booking> | null;
   onSaved?: (b: Booking) => void;
+  confirmOnSave?: boolean;
+  resourceKind?: ResourceKind;
 }
 
 /** Book a studio, camera, live unit, edit suite or crew; clashes are shown before saving. */
-export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, currentUser, users, booking, onSaved }) => {
-  const resources = apiService.getResources(false);
+export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, currentUser, users, booking, onSaved, confirmOnSave, resourceKind }) => {
+  const resources = apiService.getResources(false).filter(resource => !resourceKind || resource.kind === resourceKind);
   const initialStart = booking?.start ? new Date(booking.start) : (() => {
     const d = new Date();
     d.setMinutes(0, 0, 0);
@@ -37,11 +41,15 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
   const [status, setStatus] = useState<Booking['status']>(booking?.status || 'CONFIRMED');
   const [assigneeId, setAssigneeId] = useState(booking?.assigneeId || currentUser.id);
   const [notes, setNotes] = useState(booking?.notes || '');
+  const [bookingId] = useState(() => booking?.id || newId('bkg'));
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const savingRef = useRef(false);
   const link: BookingLink | undefined = booking?.link;
 
   const draft = useMemo(
-    () => ({ id: booking?.id || '__new__', resourceId, start: fromLocalInputValue(start), end: fromLocalInputValue(end), status }),
-    [booking?.id, resourceId, start, end, status]
+    () => ({ id: bookingId, resourceId, start: fromLocalInputValue(start), end: fromLocalInputValue(end), status }),
+    [bookingId, resourceId, start, end, status]
   );
   const validTimes = !!draft.start && !!draft.end && Date.parse(draft.end) > Date.parse(draft.start);
   const clashes = validTimes ? bookingConflicts(draft as Booking, apiService.getBookings()) : [];
@@ -51,11 +59,15 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
     ? resources.filter((r) => r.id !== resourceId && r.kind === kind && !bookingConflicts({ ...draft, resourceId: r.id } as Booking, apiService.getBookings()).length)
     : [];
 
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveMessage('');
     try {
       const saved = apiService.saveBooking({
-        ...(booking?.id ? { id: booking.id } : {}),
+        id: bookingId,
         resourceId,
         title: title.trim(),
         start: draft.start,
@@ -65,22 +77,34 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
         notes: notes.trim() || undefined,
         link,
       });
+      if (confirmOnSave) {
+        const result = await dataStore.awaitWrite('bookings', saved.id);
+        if (!result.ok) {
+          setSaveMessage(result.message || 'لم يؤكد الخادم الحجز بعد.');
+          return;
+        }
+      }
       notify({ type: 'success', message: booking?.id ? 'حُدّث الحجز' : 'تم الحجز' });
       onSaved?.(saved);
       onClose();
     } catch (err: any) {
-      notify({ type: 'error', title: 'تعذر الحجز', message: err?.message });
+      if (confirmOnSave) setSaveMessage(err?.message || 'تعذر الحجز');
+      else notify({ type: 'error', title: 'تعذر الحجز', message: err?.message });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
   const grouped = RESOURCE_KINDS.map((k) => ({ ...k, items: resources.filter((r) => r.kind === k.id) })).filter((g) => g.items.length);
 
   return (
-    <FormPage isOpen={isOpen} onClose={onClose} title={booking?.id ? 'تعديل حجز' : 'حجز مورد'} subtitle={link ? `مرتبط بـ: ${link.title}` : 'استوديو، كاميرا، وحدة بث، غرفة مونتاج أو طاقم'}>
+    <FormPage isOpen={isOpen} onClose={() => { if (savingRef.current) return false; onClose(); }} title={booking?.id ? 'تعديل حجز' : resourceKind === 'STUDIO' ? 'حجز استوديو' : 'حجز مورد'} subtitle={link ? `مرتبط بـ: ${link.title}` : 'استوديو، كاميرا، وحدة بث، غرفة مونتاج أو طاقم'}>
       {resources.length === 0 ? (
-        <p className="text-sm text-slate-600 p-6 text-center">لا توجد موارد قابلة للحجز بعد. يضيفها مسؤول الحجوزات من شاشة «حجز الموارد».</p>
+        <p className="text-sm text-slate-600 p-6 text-center">{resourceKind === 'STUDIO' ? 'لا توجد استوديوهات قابلة للحجز.' : 'لا توجد موارد قابلة للحجز بعد.'} يضيفها مسؤول الحجوزات من شاشة «حجز الموارد».</p>
       ) : (
-        <form onSubmit={save} className="space-y-4">
+        <form onSubmit={save}>
+          <fieldset disabled={saving} className="space-y-4 min-w-0">
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block text-xs font-bold text-slate-700">
               المورد
@@ -172,9 +196,11 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
             </button>
             <button type="submit" disabled={!validTimes || clashes.length > 0} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold">
               <CalendarPlus className="w-4 h-4" />
-              {booking?.id ? 'حفظ الحجز' : 'احجز'}
+              {saving ? 'بانتظار تأكيد الخادم…' : booking?.id ? 'حفظ الحجز' : 'احجز'}
             </button>
           </div>
+          </fieldset>
+          {saveMessage && <p role="status" className="mt-3 text-sm text-amber-800">{saveMessage}</p>}
         </form>
       )}
     </FormPage>

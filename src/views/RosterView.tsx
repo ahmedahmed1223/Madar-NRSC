@@ -10,6 +10,7 @@ import { onDutyAt, SHIFTS, ShiftId, RosterEntry } from '../shared/roster';
 import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ShiftHandovers } from '../components/roster/ShiftHandovers';
+import { ENTITY_ID_PATTERN } from '../shared/collections';
 
 interface RosterViewProps {
   users: User[];
@@ -37,8 +38,16 @@ const weekStartOf = (date: string) => {
 
 /** Who is on duty in each department, per day and shift. */
 export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNavigate, focusId }) => {
-  const [tab, setTab] = useState<'roster' | 'handover'>(() => focusId === 'handover' || new URLSearchParams(window.location.search).get('tab') === 'handover' ? 'handover' : 'roster');
-  useEffect(() => { if (focusId === 'handover') setTab('handover'); }, [focusId]);
+  const exactId = focusId?.startsWith('handover/') ? focusId.slice('handover/'.length) : undefined;
+  const handoverId = exactId && ENTITY_ID_PATTERN.test(exactId) ? exactId : undefined;
+  const focusHandover = focusId === 'handover' || !!handoverId;
+  const [tab, setTab] = useState<'roster' | 'handover'>(() => focusHandover || new URLSearchParams(window.location.search).get('tab') === 'handover' ? 'handover' : 'roster');
+  useEffect(() => { setTab(focusHandover || new URLSearchParams(window.location.search).get('tab') === 'handover' ? 'handover' : 'roster'); }, [focusId, focusHandover]);
+  const changeTab = (next: 'roster' | 'handover') => {
+    if (next === tab) return;
+    setTab(next);
+    onNavigate(next === 'handover' ? '/roster/handover' : '/roster');
+  };
   const canManage = RbacService.hasPermission(currentUser, 'roster.manage');
   const [entries, setEntries] = useState<RosterEntry[]>(() => apiService.getRoster());
   const [weekStart, setWeekStart] = useState(() => weekStartOf(localDateString()));
@@ -81,11 +90,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
 
   const weekLabel = `${days[0]} — ${days[6]}`;
 
-  if (tab === 'handover') return <div className="space-y-4"><FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={setTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} /><ShiftHandovers currentUser={currentUser} onNavigate={onNavigate} /></div>;
+  if (tab === 'handover') return <div className="space-y-4"><FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={changeTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} /><ShiftHandovers currentUser={currentUser} onNavigate={onNavigate} focusId={handoverId} /></div>;
 
   return (
     <div className="space-y-5">
-      <FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={setTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} />
+      <FilterTabs<'roster' | 'handover'> label="عرض المناوبات" active={tab} onChange={changeTab} tabs={[{ id: 'roster', label: 'جدول المناوبات' }, { id: 'handover', label: 'تسليم الوردية' }]} />
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">

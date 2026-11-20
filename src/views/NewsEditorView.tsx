@@ -1280,8 +1280,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}
-            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
-            title="المساعد التحريري الذكي: إعادة الصياغة التلفزيونية وتوليد العناوين والشارات"
+            disabled={!canEditContent || saving}
+            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300 disabled:opacity-40"
+            title="المساعد التحريري الذكي للصياغة والتدقيق والاقتراحات"
           >
             <Bot className="w-3.5 h-3.5 text-blue-600" />
             المساعد الذكي
@@ -1945,6 +1946,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               mediaIds={mediaIds}
               onChange={setMediaIds}
               currentUser={currentUser}
+              directUpload
               readOnly={!canEditContent}
               onRequestMontage={
                 newsItem?.id
@@ -2254,7 +2256,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
       {/* AI Newsroom Co-Pilot Modal */}
       <AiNewsCoPilotModal
-        isOpen={isAiCopilotOpen}
+        isOpen={isAiCopilotOpen && canEditContent}
         onClose={() => setIsAiCopilotOpen(false)}
         currentTitle={title}
         currentSummary={summary}

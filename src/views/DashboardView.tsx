@@ -20,6 +20,8 @@ import { apiService } from '../services/api';
 import { useSetupReminder } from '../components/setup/SetupWizard';
 import { sectionOrderFor } from '../shared/navigation';
 import { setupCommand } from '../services/uiEvents';
+import { AdminExceptionSummary, ApprovedMaterialSummary } from '../components/dashboard/DailyDashboardSummaries';
+import { canShowAdminExceptions, canShowApprovedMaterial, isApprovedMaterial } from '../shared/dailyDashboardSummaries';
 interface DashboardViewProps {
   newsList: NewsItem[];
   breakingNews?: BreakingNews[];
@@ -29,7 +31,7 @@ interface DashboardViewProps {
   guests: Guest[];
   categories?: Category[];
   currentUser: User;
-  onNavigate: (view: AppView) => void;
+  onNavigate: (view: AppView | '/settings/monitor') => void;
   onSelectEpisode?: (episodeId: string) => void;
   onSelectNews?: (newsId: string) => void;
   onCreateNews?: () => void;
@@ -64,7 +66,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onCreateTask = () => {},
   onOpenBulletin,
 }) => {
-  useLiveData(['settings'], 60_000);
+  useLiveData(['settings', 'roles'], 60_000);
   const referenceTime = Date.now();
   const stationZone = apiService.getSettings().defaultTimezone;
   const [activeQueueTab, setActiveQueueTab] = useState<'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'PUBLISHED'>('UNDER_REVIEW');
@@ -129,12 +131,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Each role sees the panels of its job: the news queues for writers and editors, the broadcast
   // schedule for programme and air staff and for managers, the guest directory for those who book guests.
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
+  const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
   const domain = sectionOrderFor(currentUser)[1];
   const showQueues = can('news.create') || can('news.review');
   const showSchedule = can('programs.view') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
   const showGuests = can('guests.view') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
   const setup = useSetupReminder(currentUser);
   const sideOnly = !showSchedule && !showQueues;
+  const openApprovedMaterial = (id: string) => {
+    const viewer = apiService.getCurrentUser();
+    if (viewer.id !== currentUser.id || !canShowApprovedMaterial((permission) => RbacService.hasPermission(viewer, permission), (screen) => RbacService.canOpenScreen(viewer, screen))) return false;
+    const item = apiService.getNewsById(id);
+    if (!item || !isApprovedMaterial(item)) return false;
+    onSelectNews(id);
+    return true;
+  };
 
   return (
     <div className="space-y-6">
@@ -192,6 +203,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </section>
       )}
+
+      {canShowAdminExceptions(can, canOpen) && <AdminExceptionSummary key={currentUser.id} onOpenMonitor={() => onNavigate('/settings/monitor')} />}
+      {canShowApprovedMaterial(can, canOpen) && <ApprovedMaterialSummary key={currentUser.id} items={newsList} now={referenceTime} onOpen={openApprovedMaterial} />}
 
       {/* Managers first see whether tonight is on track; everyone else starts with their own work. */}
       {isManager && (

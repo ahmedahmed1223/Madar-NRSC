@@ -4,7 +4,7 @@ import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../share
 import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { notify } from '../../services/notify';
 import {
   BellRing,
@@ -38,6 +38,10 @@ import { NotificationDropdown } from './NotificationDropdown';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { dataStore } from '../../services/dataStore';
 import { RbacService } from '../../services/rbacService';
+import { groupNotifications, isNotificationSnoozed, notificationInboxPath } from '../../shared/notificationInbox';
+import { useNotificationSnoozes } from '../../hooks/useNotificationSnoozes';
+
+const EMPTY_NOTIFICATIONS: AppNotification[] = [];
 
 interface TopbarProps {
   currentUser: User;
@@ -80,11 +84,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState({ pending: dataStore.pendingCount(), online: true });
   const [isTwoFactorOpen, setIsTwoFactorOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  /** Notifications already on screen when the app opened, or already announced. */
-  const announced = useRef(new Set(ApiService.getMyNotifications().map((n) => n.id)));
+  const userId = currentUser.id;
+  const [notificationState, setNotificationState] = useState({ userId, items: EMPTY_NOTIFICATIONS });
+  const notifications = notificationState.userId === userId ? notificationState.items : EMPTY_NOTIFICATIONS;
+  const { entries, now, update: updateSnooze, storageFailed } = useNotificationSnoozes(userId);
+  const snoozesRef = useRef(entries);
+  snoozesRef.current = entries;
+  const inbox = useMemo(() => groupNotifications(notifications, userId, entries, now), [notifications, userId, entries, now]);
+  const bellButton = useRef<HTMLButtonElement>(null);
   const navigateRef = useRef(onNavigate);
   navigateRef.current = onNavigate;
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const pathFor = (notice: AppNotification) => notificationInboxPath(notice.linkUrl, (screen) => RbacService.canOpenScreen(currentUserRef.current, screen));
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
   const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
@@ -111,32 +123,45 @@ export const Topbar: React.FC<TopbarProps> = ({
     return () => clearInterval(interval);
   }, [stationTz, dateSettings]);
 
-  useEffect(
-    () =>
-      dataStore.subscribe((evt) => {
-        if (evt.type === 'sync-status') setSyncStatus({ pending: evt.pending, online: evt.online });
-        if (evt.type !== 'data-changed' || !evt.collections.includes('notifications')) return;
-        const mine = ApiService.getMyNotifications();
-        setNotifications(mine);
-        // Arrivals from the server while the app is open are announced once, with a way to open them.
-        const fresh = evt.remote ? mine.filter((n) => !n.isRead && !announced.current.has(n.id)) : [];
-        mine.forEach((n) => announced.current.add(n.id));
-        const here = decodeURIComponent(window.location.pathname);
-        const worth = fresh.filter((n) => !n.linkUrl || decodeURIComponent(n.linkUrl) !== here);
-        if (worth.length > 3) notify({ type: 'info', title: `${worth.length} إشعارات جديدة`, message: 'افتح الجرس لقراءتها.' });
-        else
-          worth.forEach((n) =>
-            notify({
-              type: n.urgent ? 'warning' : 'info',
-              title: n.title,
-              message: n.message,
-              duration: n.urgent ? 12000 : 7000,
-              action: n.linkUrl ? { label: 'فتح', run: () => (ApiService.markNotificationRead(n.id), navigateRef.current?.(n.linkUrl!)) } : undefined,
-            })
-          );
-      }),
-    []
-  );
+  useEffect(() => {
+    const mine = ApiService.getMyNotifications();
+    setNotificationState({ userId, items: mine });
+    setIsNotifOpen(false);
+    // Do not repeat notices already loaded for this account when opening the app.
+    const announced = new Set(mine.map((n) => n.id));
+    return dataStore.subscribe((evt) => {
+      if (evt.type === 'sync-status') setSyncStatus({ pending: evt.pending, online: evt.online });
+      if (evt.type !== 'data-changed' || !evt.collections.includes('notifications')) return;
+      if (currentUserRef.current.id !== userId || ApiService.getCurrentUser().id !== userId) return;
+      const mine = ApiService.getMyNotifications();
+      setNotificationState({ userId, items: mine });
+      // Arrivals from the server while the app is open are announced once, with a way to open them.
+      const fresh = evt.remote ? mine.filter((n) => !n.isRead && !announced.has(n.id)) : [];
+      mine.forEach((n) => announced.add(n.id));
+      const here = window.location.pathname;
+      const receivedAt = Date.now();
+      const worth = fresh.filter((n) => pathFor(n) !== here && !isNotificationSnoozed(n, snoozesRef.current, receivedAt));
+      const ordinary = worth.filter((n) => !n.urgent);
+      if (ordinary.length > 3) notify({ type: 'info', title: `${ordinary.length} إشعارات جديدة`, message: 'افتح الجرس لقراءتها.' });
+      worth.filter((n) => n.urgent || ordinary.length <= 3).forEach((n) => {
+        notify({
+          type: n.urgent ? 'warning' : 'info',
+          title: n.title,
+          message: n.message,
+          duration: n.urgent ? 12000 : 7000,
+          action: pathFor(n) ? {
+            label: 'فتح',
+            run: () => {
+              const path = pathFor(n);
+              if (!path || currentUserRef.current.id !== userId || ApiService.getCurrentUser().id !== userId) return;
+              ApiService.markNotificationRead(n.id);
+              navigateRef.current?.(path);
+            },
+          } : undefined,
+        });
+      });
+    });
+  }, [userId]);
 
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
@@ -178,7 +203,10 @@ export const Topbar: React.FC<TopbarProps> = ({
     };
     const offRoute = routeChanged.on(closeAll);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !document.querySelector('[role=alertdialog]')) closeAll();
+      if (e.key === 'Escape' && !document.querySelector('[role=alertdialog]')) {
+        if (bellButton.current?.getAttribute('aria-expanded') === 'true') bellButton.current.focus();
+        closeAll();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {
@@ -187,17 +215,15 @@ export const Topbar: React.FC<TopbarProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    setNotifications(ApiService.getMyNotifications());
-  }, [isNotifOpen, isUserMenuOpen]);
-
-  const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
-  // The bell's dot is red only while something urgent is unread; otherwise it is the signal colour.
-  const unreadUrgent = (notifications || []).some((n) => !n.isRead && n.urgent);
+  const { unreadCount, unreadUrgent } = inbox;
+  const closeInbox = () => {
+    setIsNotifOpen(false);
+    bellButton.current?.focus();
+  };
 
   const handleMarkAllRead = () => {
     ApiService.markAllNotificationsRead();
-    setNotifications(ApiService.getMyNotifications());
+    setNotificationState({ userId, items: ApiService.getMyNotifications() });
   };
 
   // The role's own name as defined in «المستخدمون والصلاحيات» (one name everywhere), else the job title.
@@ -432,6 +458,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Notifications Button */}
         <div className="relative">
           <button
+            ref={bellButton}
             type="button"
             onClick={() => {
               if (!isNotifOpen) intercomCommand.emit('close');
@@ -439,26 +466,35 @@ export const Topbar: React.FC<TopbarProps> = ({
             }}
             aria-label={unreadCount > 0 ? `الإشعارات (${unreadCount} غير مقروء)` : 'الإشعارات'}
             aria-expanded={isNotifOpen}
+            aria-controls={isNotifOpen ? 'notification-inbox' : undefined}
             className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors relative"
             title="الإشعارات التحريرية"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span aria-hidden="true" className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white ${unreadUrgent ? 'bg-red-600' : 'bg-blue-600'}`} />
+              <span aria-hidden="true" data-testid="notification-unread-count" dir="ltr" className={`absolute -end-0.5 top-0.5 min-w-4 rounded-full px-1 text-center text-2xs font-bold leading-4 tabular-nums text-white ring-2 ring-white ${unreadUrgent ? 'bg-red-700' : 'bg-blue-700'}`}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </button>
 
-          <NotificationDropdown
-            isOpen={isNotifOpen}
-            onClose={() => setIsNotifOpen(false)}
-            notifications={notifications}
+          {isNotifOpen && <NotificationDropdown
+            inbox={inbox}
+            userId={userId}
+            storageFailed={storageFailed}
+            onClose={closeInbox}
             onMarkAllRead={handleMarkAllRead}
             onMarkRead={(id) => {
               ApiService.markNotificationRead(id);
-              setNotifications(ApiService.getMyNotifications());
+              setNotificationState({ userId, items: ApiService.getMyNotifications() });
             }}
-            onNavigate={(url) => url && onNavigate(url)}
-          />
+            onSnooze={updateSnooze}
+            pathFor={pathFor}
+            onNavigate={(path) => {
+              closeInbox();
+              onNavigate?.(path);
+            }}
+          />}
         </div>
 
         <ThemeToggle />

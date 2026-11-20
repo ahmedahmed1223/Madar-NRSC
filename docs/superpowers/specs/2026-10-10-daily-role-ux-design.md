@@ -1,7 +1,7 @@
 # Daily Role UX: Roadmap and Phase One Design
 
 Date: 2026-10-10
-Status: Phase one implemented and verified; later roadmap stages remain required
+Status: The five stages are implemented for [Madar 4.1.0](../../releases/4.1.0.md).
 Branch: codex/daily-role-ux
 
 ## Intent
@@ -201,5 +201,6 @@ Self-reviewed for scope, duplicate functionality, ownership, offline-save claims
 timezone consistency, conflict handling, and measurable acceptance criteria.
 No unresolved placeholders. User approved the written specification and phase-one
 plan. Phase one is implemented with independent review fixes; evidence is recorded
-in docs/releases/daily-role-ux-phase-one-verification.md. Stage two has a separate
-written specification awaiting review. No full-roadmap release is claimed.
+in docs/releases/daily-role-ux-phase-one-verification.md. The workspace, field and
+presentation, and notification stages have separate designs dated 2026-11-20.
+The 4.1.0 release notes cover the combined delivery.

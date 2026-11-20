@@ -5,12 +5,13 @@ import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
 import { GuestFollowUp } from './GuestFollowUp';
 import React, { useRef, useState } from 'react';
-import { AlertTriangle, Phone, Plus, Replace, Send, Trash2, UserPlus } from 'lucide-react';
+import { AlertTriangle, Phone, Plus, Replace, Send, Sparkles, Trash2, UserPlus } from 'lucide-react';
 import type { Episode, EpisodeGuest, Guest, RundownSegment, User } from '../../types';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
 import { Avatar } from '../common/Avatar';
 import { FormPage } from '../common/FormPage';
+import { AiNewsCoPilotModal } from '../editor/AiNewsCoPilotModal';
 import {
   arrivalFromBooking,
   BOOKING_STATUSES,
@@ -55,6 +56,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
   const requests = apiService.getRequests();
   const canRequest = RbacService.hasPermission(currentUser, 'requests.create');
   const [adding, setAdding] = useState(false);
+  const [copilot, setCopilot] = useState(false);
   const [newGuestId, setNewGuestId] = useState('');
   const [newStatus, setNewStatus] = useState<BookingStatus>('CANDIDATE');
   const [drafts, setDrafts] = useState<Record<string, { cgName?: string; cgTitle?: string; briefPoints?: string; note?: string }>>({});
@@ -185,11 +187,14 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
             ))}
           </div>
         </div>
-        {canEditEpisode && (
+        {canEditEpisode && <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setCopilot(true)} className="min-h-11 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-bold text-blue-700">
+            <Sparkles size={16} aria-hidden="true" /> اقتراح ضيوف بالذكاء الاصطناعي
+          </button>
           <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold">
             <UserPlus className="w-4 h-4" /> ترشيح ضيف
           </button>
-        )}
+        </div>}
       </div>
 
       {message && (
@@ -414,6 +419,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
         })}
       </div>
 
+      <AiNewsCoPilotModal isOpen={copilot && canEditEpisode} onClose={() => setCopilot(false)} planningOnly initialMode="GUESTS" currentTitle={episode.title} />
       <FormPage isOpen={adding} onClose={() => setAdding(false)} title="ترشيح ضيف للحلقة" maxWidth="md">
         <form onSubmit={addGuest} className="space-y-4">
           <label className="block text-xs font-bold text-slate-700">

@@ -74,13 +74,13 @@ Verified on 2026-11-20 on `codex/daily-role-ux`, with `origin/main` at `2f310ee`
   because existing App navigation strips query arguments. Cost: one new supported
   subpath needs router coverage; its regression was observed RED then GREEN.
 
-## Remaining Roadmap and Limits
+## Roadmap Status at Phase Two
 
 Stages three through five still require their specifications/plans and execution:
 producer readiness/media delivery/crew acknowledgement; reporter/presenter tools;
 grouped notifications, private snooze and authorized operational summaries.
 The independent whole-roadmap review, merge into `main`, version bump, push and
-release remain pending. This verification covers the existing first two stages.
+release remained pending at this point. [Madar 4.1.0](4.1.0.md) records the combined delivery.
 
 Incoming personal-work summaries currently refresh on mounting/account change;
 the handover list has explicit refresh and confirmed detail reads. Local recovery

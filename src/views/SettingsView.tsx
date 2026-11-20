@@ -78,6 +78,7 @@ interface SettingsViewProps {
   onOpenUsers?: () => void;
   /** Section to open with (e.g. 'sources' from the wires screen); wins over the remembered one. */
   initialSection?: SettingsSection;
+  onSectionChange?: (section: SettingsSection) => void;
   /** Source row to highlight, scroll to and open the feed editor of (with initialSection 'sources'). */
   focusSourceId?: string | null;
 }
@@ -219,6 +220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteSource,
   onOpenUsers,
   initialSection,
+  onSectionChange,
   focusSourceId,
 }) => {
   const [section, setSection] = useState<SettingsSection>(() => {
@@ -247,6 +249,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (dirty && !await confirmDialog({ title: 'تغييرات غير محفوظة', message: 'الانتقال دون حفظ التغييرات؟', confirmLabel: 'تجاهل التغييرات' })) return;
     if (dirty) resetGeneral();
     setSection(next);
+    onSectionChange?.(next);
     try {
       localStorage.setItem(SECTION_KEY, next);
     } catch {

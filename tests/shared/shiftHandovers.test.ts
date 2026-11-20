@@ -1,8 +1,17 @@
 import { expect, it } from 'vitest';
-import { handoverDraftError } from '../../src/shared/shiftHandovers';
+import { handoverDraftError, personalHandoverReceiptState, type HandoverRow } from '../../src/shared/shiftHandovers';
 import { ALL_PERMISSIONS, DEFAULT_ROLE_DEFINITIONS, evaluatePermission } from '../../src/shared/rbac';
 
 const draft = (extra: Record<string, unknown> = {}) => ({ id: 'h-1', schemaVersion: 1, departmentId: 'newsroom', sourceDate: '2026-10-11', sourceShift: 'MORNING', recipientDate: '2026-10-11', recipientShift: 'EVENING', title: 'Shift', note: '', references: [], ...extra });
+
+it('identifies only the signed-in crew member’s pending or confirmed receipt', () => {
+  const row = { d: { state: 'PUBLISHED' }, canAcknowledge: true, receipts: [{ userId: 'colleague' }] } as HandoverRow;
+  expect(personalHandoverReceiptState(row, 'crew')).toBe('pending');
+  expect(personalHandoverReceiptState(row, 'colleague')).toBe('confirmed');
+  expect(personalHandoverReceiptState({ ...row, canAcknowledge: false }, 'crew')).toBeNull();
+  expect(personalHandoverReceiptState({ ...row, canAcknowledge: false }, 'colleague')).toBe('confirmed');
+  expect(personalHandoverReceiptState({ ...row, d: { ...row.d, state: 'DRAFT' } }, 'crew')).toBeNull();
+});
 it('accepts exact bounded plain text and rejects overflow', () => {
   expect(handoverDraftError(draft({ title: 'a'.repeat(120), note: 'b'.repeat(2000), references: [{ collection: 'news', id: 'n', note: 'c'.repeat(500) }] }))).toBeNull();
   for (const extra of [{ title: 'a'.repeat(121) }, { note: 'b'.repeat(2001) }, { title: ' ' }, { note: '<script>x</script>' }, { references: [{ collection: 'news', id: 'n', note: 'c'.repeat(501) }] }]) expect(handoverDraftError(draft(extra))).toBeTruthy();

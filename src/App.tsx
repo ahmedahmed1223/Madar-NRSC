@@ -151,6 +151,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [reviewQueueIds, setReviewQueueIds] = useState<string[]>([]);
   const [newsReturnDesk, setNewsReturnDesk] = useState<'news' | 'breaking'>('news');
   const [requestSegmentId, setRequestSegmentId] = useState<string | undefined>();
+  useEffect(() => {
+    if (activeNav !== 'requests') setRequestSegmentId(undefined);
+  }, [activeNav]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -177,6 +180,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [newNewsStoryId, setNewNewsStoryId] = useState<string | null>(null);
   const [editProgramId, setEditProgramId] = useState<string | null>(null);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
+  const [episodeSegmentId, setEpisodeSegmentId] = useState<string>();
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
   // Load all initial data from apiService
@@ -379,9 +383,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   /** Opens a notification/deep link path ("/tasks", "/episodes/<id>", "/wires/<id>", ...). */
   const openLink = (nav: string) => {
-    const { view, id } = parsePath(nav);
+    const { view, id, episodeSegmentId: linkedSegment } = parsePath(nav);
     setFocusId(id);
-    if (view === 'episodes' && id) handleSelectEpisode(id);
+    if (view === 'requests') setRequestSegmentId(undefined);
+    if (view === 'episodes' && id) handleSelectEpisode(id, linkedSegment);
     else if (view === 'bulletins') openBulletin(id);
     else if (view === 'news' && id === 'new') handleCreateNewNewsClick();
     else if (view === 'news' && id) handleEditNewsClick(id);
@@ -541,8 +546,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     }
   };
 
-  const handleSelectEpisode = (episodeId: string) => {
+  const handleSelectEpisode = (episodeId: string, segmentId?: string) => {
     setSelectedEpisodeId(episodeId);
+    setEpisodeSegmentId(segmentId);
     setActiveNav('episode-workspace');
   };
 
@@ -692,6 +698,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     nav: activeNav,
     newsId: selectedNewsItem?.id,
     episodeId: selectedEpisodeId,
+    episodeSegmentId,
     programId: selectedProgramId,
     bulletinId: activeBulletinId,
     focusId,
@@ -811,6 +818,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             if (navId === 'episodes') {
               setFilterProgramId(null);
             }
+            if (navId === 'requests') setRequestSegmentId(undefined);
             setActiveNav(navId);
             setFocusId(null);
             setIsMobileSidebarOpen(false);
@@ -1061,6 +1069,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               <EpisodeWorkspaceView
                 key={activeEpisode.id}
                 episode={activeEpisode}
+                initialSegmentId={episodeSegmentId}
                 allGuests={guests}
                 allNews={newsList}
                 currentUser={currentUser}
@@ -1068,7 +1077,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveEpisode={handleSaveEpisode}
                 onBack={() => setActiveNav('episodes')}
                 onOpenNews={(id) => handleEditNewsClick(id)}
-                onOpenRequests={segmentId => { setRequestSegmentId(segmentId); setActiveNav('requests'); }}
+                onOpenRequests={segmentId => { setRequestSegmentId(segmentId); setFocusId(null); setActiveNav('requests'); }}
               />
             )}
 
@@ -1165,7 +1174,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveSource={handleSaveSource}
                 onDeleteSource={handleDeleteSource}
                 onOpenUsers={() => setActiveNav('users')}
-                initialSection={settingsTarget?.section}
+                initialSection={focusId === 'monitor' ? 'monitor' : settingsTarget?.section}
+                onSectionChange={section => {
+                  setFocusId(section === 'monitor' ? 'monitor' : null);
+                  setSettingsTarget(null);
+                }}
                 focusSourceId={settingsTarget?.sourceId}
               />
             )}

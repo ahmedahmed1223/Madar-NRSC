@@ -7,7 +7,7 @@ import type { NewsroomDatabase } from './db';
 import type { EntityRow } from '../shared/collections';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { isDepartmentId } from '../shared/departments';
-import { handoverDraftError, handoverPlainText, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
+import { handoverDraftError, handoverPlainText, shiftHandoverPath, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
 import { canRead } from './policy';
 
 class HandoverError extends Error {
@@ -175,7 +175,7 @@ function alertHandoverRecipients(db: NewsroomDatabase, record: ShiftHandover, ki
     if (!handoverVisible(db, auth, record)) continue;
     const notificationId = `handover-${createHash('sha256').update(JSON.stringify([record.id, id, kind])).digest('hex')}`;
     if (db.getRow('notifications', notificationId, true)) continue;
-    writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: '/roster/handover' }, { id: notificationId, createdAt: new Date(now).toISOString() });
+    writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: shiftHandoverPath(record.id) }, { id: notificationId, createdAt: new Date(now).toISOString() });
     sent++;
   }
   return sent;

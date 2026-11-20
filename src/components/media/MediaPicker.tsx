@@ -3,10 +3,12 @@ import { matchesQuery } from '../../shared/search';
 import { Check, FileText, Film, Image as ImageIcon, Loader2, Music, RotateCcw, Search, Upload, X } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { apiService } from '../../services/api';
-import { ACCEPTED_UPLOAD_TYPES, mediaTypeForMime, uploadMediaFile } from '../../services/mediaUpload';
+import { ACCEPTED_UPLOAD_TYPES, mediaTypeForMime, uploadMediaFile, type UploadedFile } from '../../services/mediaUpload';
+import { dataStore } from '../../services/dataStore';
 import type { MediaFile } from '../../types';
 import { videoStatusName } from '../../shared/production';
 import { AR, countLabel } from '../../shared/arabicPlural';
+import { newId } from '../../shared/ids';
 
 const TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
 
@@ -17,8 +19,10 @@ export const mediaIcon = (type?: string) =>
 interface QueuedUpload {
   key: string;
   file: File;
-  status: 'waiting' | 'uploading' | 'done' | 'error';
-  percent: number;
+  status: 'waiting' | 'uploading' | 'confirming' | 'done' | 'error';
+  percent: number | null;
+  uploaded?: UploadedFile;
+  mediaId?: string;
   error?: string;
 }
 
@@ -29,20 +33,31 @@ interface MediaPickerProps {
   selectedIds: string[];
   onPick: (ids: string[]) => void;
   canUpload: boolean;
+  initialFiles?: File[];
+  resultMode?: 'video' | 'any';
+}
+
+function queueFiles(files: File[]): QueuedUpload[] {
+  return files.map(file => ({ key: newId('upload'), file, status: 'waiting', percent: null }));
 }
 
 /** Chooses items from the media library, or uploads a new file straight into it. */
-export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selectedIds, onPick, canUpload }) => {
+export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, ...props }) => {
+  if (!isOpen) return null;
+  return <OpenMediaPicker {...props} />;
+};
+
+const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, selectedIds, onPick, canUpload, initialFiles = [], resultMode }) => {
   const [query, setQuery] = useState('');
-  const [type, setType] = useState('ALL');
-  const [picked, setPicked] = useState<string[]>(selectedIds);
-  const [queue, setQueue] = useState<QueuedUpload[]>([]);
+  const [type, setType] = useState(resultMode === 'video' ? 'VIDEO' : 'ALL');
+  const [picked, setPicked] = useState<string[]>(resultMode ? selectedIds.slice(0, 1) : selectedIds);
+  const [queue, setQueue] = useState(() => queueFiles(initialFiles));
   const [version, setVersion] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const running = useRef(false);
-  const abortCurrent = useRef<(() => void) | null>(null);
+  const run = useRef(0);
+  const abortCurrent = useRef<{ key: string; abort: () => void } | null>(null);
   const queueRef = useRef(queue);
-  queueRef.current = queue;
 
   const items = useMemo(() => {
     const q = query.trim();
@@ -52,53 +67,76 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
       .filter((m) => type === 'ALL' || m.mediaType === type)
       .filter((m) => !q || matchesQuery(q, m.title, m.fileName, m.tags || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, type, version, isOpen]);
+  }, [query, type, version]);
 
-  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const toggle = (id: string) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : resultMode ? [id] : [...p, id]);
 
+  const updateQueue = (update: (list: QueuedUpload[]) => QueuedUpload[]) => {
+    queueRef.current = update(queueRef.current);
+    setQueue(queueRef.current);
+  };
   const patch = (key: string, change: Partial<QueuedUpload>) =>
-    setQueue((list) => list.map((u) => (u.key === key ? { ...u, ...change } : u)));
+    updateQueue(list => list.map(u => u.key === key ? { ...u, ...change } : u));
 
-  const uploadOne = async (item: QueuedUpload) => {
-    patch(item.key, { status: 'uploading', percent: 0, error: undefined });
+  const uploadOne = async (item: QueuedUpload, token: number) => {
+    const current = () => token === run.current && queueRef.current.some(row => row.key === item.key);
+    let up = item.uploaded;
+    let mediaId = item.mediaId;
     try {
-      const task = uploadMediaFile(item.file, (percent) => patch(item.key, { percent }));
-      abortCurrent.current = task.abort;
-      const up = await task.promise;
-      const mediaType = mediaTypeForMime(up.mimeType);
-      const saved = apiService.saveMedia({
-        url: up.url,
-        fileName: up.originalName,
-        originalName: up.originalName,
-        mimeType: up.mimeType,
-        fileSizeBytes: up.sizeBytes,
-        mediaType,
-        title: item.file.name.replace(/\.[^.]+$/, ''),
-        videoStatus: mediaType === 'VIDEO' ? 'RAW' : undefined,
-        tags: [],
-      } as Partial<MediaFile>);
-      setPicked((p) => (p.includes(saved.id) ? p : [...p, saved.id]));
+      if (!up) {
+        if (resultMode === 'video' && item.file.type && mediaTypeForMime(item.file.type) !== 'VIDEO') throw new Error('اختر ملف فيديو للمونتاج.');
+        patch(item.key, { status: 'uploading', percent: null, error: undefined });
+        const task = uploadMediaFile(item.file, (percent) => { if (current()) patch(item.key, { percent }); });
+        abortCurrent.current = { key: item.key, abort: task.abort };
+        up = await task.promise;
+        if (!current()) return;
+      }
+      if (resultMode === 'video' && mediaTypeForMime(up.mimeType) !== 'VIDEO') throw new Error('اختر ملف فيديو للمونتاج.');
+      patch(item.key, { status: 'confirming', uploaded: up, error: undefined });
+      if (mediaId && !apiService.getMedia().some(row => row.id === mediaId)) mediaId = undefined;
+      if (!mediaId) {
+        const mediaType = mediaTypeForMime(up.mimeType);
+        mediaId = apiService.saveMedia({
+          url: up.url,
+          fileName: up.originalName,
+          originalName: up.originalName,
+          mimeType: up.mimeType,
+          fileSizeBytes: up.sizeBytes,
+          mediaType,
+          title: item.file.name.replace(/\.[^.]+$/, ''),
+          videoStatus: mediaType === 'VIDEO' ? 'RAW' : undefined,
+          tags: [],
+        } as Partial<MediaFile>).id;
+        patch(item.key, { mediaId });
+      }
+      const outcome = await dataStore.awaitWrite('media', mediaId);
+      if (!current()) return;
+      if (!outcome.ok) {
+        if (!outcome.pending) patch(item.key, { mediaId: undefined });
+        throw new Error(outcome.pending ? 'لم يؤكد الخادم حفظ المرفق بعد' : outcome.message || 'تعذر حفظ المرفق');
+      }
+      if (!apiService.getMedia().some(row => row.id === mediaId)) throw new Error('تعذر العثور على المرفق المحفوظ');
+      const confirmedId = mediaId;
+      setPicked(p => resultMode ? [confirmedId] : p.includes(confirmedId) ? p : [...p, confirmedId]);
       setVersion((v) => v + 1);
       patch(item.key, { status: 'done', percent: 100 });
     } catch (err: any) {
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-      patch(item.key, { status: 'error', error: offline ? 'لا اتصال — أعد المحاولة عند عودته' : err?.message || 'فشل رفع الملف' });
+      if (current()) patch(item.key, { status: 'error', error: offline ? 'لا اتصال. أعد المحاولة عند عودته.' : err?.message || 'فشل رفع الملف' });
     } finally {
       abortCurrent.current = null;
     }
   };
 
   /** Sends waiting files one at a time (kinder to a weak field connection than all at once). */
-  const runQueue = async () => {
-    if (running.current) return;
+  const runQueue = async (token: number) => {
+    if (running.current || !canUpload) return;
     running.current = true;
     try {
-      for (;;) {
+      while (token === run.current) {
         const next = queueRef.current.find((u) => u.status === 'waiting');
         if (!next) break;
-        // Mark it before the await so the next loop turn does not pick it again.
-        queueRef.current = queueRef.current.map((u) => (u.key === next.key ? { ...u, status: 'uploading' as const } : u));
-        await uploadOne(next);
+        await uploadOne(next, token);
       }
     } finally {
       running.current = false;
@@ -106,28 +144,34 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
   };
 
   const addFiles = (files: FileList | null) => {
-    if (!files?.length) return;
-    const added: QueuedUpload[] = [...files].map((file, i) => ({ key: `${Date.now()}-${i}-${file.name}`, file, status: 'waiting', percent: 0 }));
-    setQueue((list) => [...list, ...added]);
+    if (!canUpload || !files?.length) return;
+    updateQueue(list => [...list, ...queueFiles([...files])]);
   };
 
-  // Start (or continue) whenever new files are waiting.
   useEffect(() => {
-    if (queue.some((u) => u.status === 'waiting')) void runQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue]);
+    return () => {
+      run.current++;
+      abortCurrent.current?.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (!queue.some(u => u.status === 'waiting')) return;
+    const token = run.current;
+    queueMicrotask(() => { if (token === run.current) void runQueue(token); });
+  }, [canUpload, queue]);
 
-  const retryUpload = (key: string) => patch(key, { status: 'waiting', percent: 0, error: undefined });
+  const retryUpload = (key: string) => patch(key, { status: 'waiting', percent: null, error: undefined });
   const removeUpload = (item: QueuedUpload) => {
-    if (item.status === 'uploading') abortCurrent.current?.();
-    setQueue((list) => list.filter((u) => u.key !== item.key));
+    updateQueue(list => list.filter(u => u.key !== item.key));
+    if (abortCurrent.current?.key === item.key) abortCurrent.current.abort();
   };
 
-  const uploading = queue.some((u) => u.status === 'uploading' || u.status === 'waiting');
+  const uploading = queue.some(u => ['uploading', 'waiting', 'confirming'].includes(u.status));
+  const failed = queue.some(u => u.status === 'error');
   const doneCount = queue.filter((u) => u.status === 'done').length;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="إرفاق من مكتبة الوسائط" subtitle="اختر مادة أو أكثر، أو ارفع ملفات جديدة" maxWidth="4xl">
+    <Modal isOpen onClose={onClose} title={resultMode ? 'اختيار مادة التسليم' : 'إرفاق من مكتبة الوسائط'} subtitle={resultMode ? 'اختر مادة واحدة للتسليم' : 'اختر مادة أو أكثر، أو ارفع ملفات جديدة'} maxWidth="4xl">
       <div className="space-y-3 text-right">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
@@ -136,25 +180,26 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault(); }}
               placeholder="ابحث بالعنوان أو اسم الملف أو الوسم..."
               aria-label="بحث في مكتبة الوسائط"
               className="w-full pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-xs"
             />
           </div>
-          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="نوع المادة" className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+          {resultMode !== 'video' && <select value={type} onChange={(e) => setType(e.target.value)} aria-label="نوع المادة" className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
             <option value="ALL">كل الأنواع</option>
             <option value="VIDEO">فيديو</option>
             <option value="IMAGE">صور</option>
             <option value="AUDIO">صوت</option>
             <option value="DOCUMENT">مستندات</option>
-          </select>
+          </select>}
           {canUpload && (
             <>
               <input
                 ref={fileRef}
                 type="file"
-                multiple
-                accept={ACCEPTED_UPLOAD_TYPES.join(',')}
+                multiple={!resultMode}
+                accept={ACCEPTED_UPLOAD_TYPES.filter(mime => resultMode !== 'video' || mediaTypeForMime(mime) === 'VIDEO').join(',')}
                 className="hidden"
                 onChange={(e) => {
                   addFiles(e.target.files);
@@ -174,15 +219,10 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
         </div>
         {queue.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span role="status" className="font-bold text-slate-700">
-                {uploading ? `رُفع ${doneCount} من ${queue.length}` : `اكتمل رفع ${doneCount} من ${queue.length}`}
+                {`المرفقات المؤكدة: ${doneCount} من ${queue.length}`}
               </span>
-              {!uploading && (
-                <button type="button" onClick={() => setQueue([])} className="min-h-9 px-2 rounded-lg text-slate-600 hover:bg-slate-100">
-                  إخفاء القائمة
-                </button>
-              )}
             </div>
             <ul aria-label="الملفات المرفوعة" className="max-h-40 overflow-y-auto space-y-1.5 overscroll-contain">
               {queue.map((u) => (
@@ -192,29 +232,26 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold" dir="auto">{u.file.name}</span>
-                    {u.status === 'uploading' && (
-                      <span className="mt-1 block h-1.5 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
-                        <span className="block h-full bg-blue-600 transition-[width]" style={{ width: `${u.percent}%` }} />
-                      </span>
-                    )}
+                    {u.status === 'uploading' && <progress aria-label={`رفع ${u.file.name}`} max={100} value={u.percent ?? undefined} className="mt-1 block h-2 w-full accent-blue-600" />}
                     {u.status === 'error' && <span className="block">{u.error}</span>}
                   </span>
                   <span className="shrink-0 tabular-nums">
-                    {u.status === 'waiting' ? 'في الانتظار' : u.status === 'uploading' ? `${u.percent}%` : u.status === 'done' ? 'تم' : ''}
+                    {u.status === 'waiting' ? 'في الانتظار' : u.status === 'uploading' ? (u.percent === null ? 'جارٍ الرفع' : `${u.percent}%`) : u.status === 'confirming' ? 'بانتظار التأكيد' : u.status === 'done' ? 'تم' : ''}
                   </span>
                   {u.status === 'error' && (
-                    <button type="button" onClick={() => retryUpload(u.key)} aria-label={`إعادة رفع ${u.file.name}`} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-lg hover:bg-white">
-                      <RotateCcw className="w-4 h-4" />
+                    <button type="button" disabled={!canUpload} onClick={() => retryUpload(u.key)} aria-label={`إعادة المحاولة: ${u.file.name}`} className="min-h-11 px-2 inline-flex items-center justify-center gap-1 rounded-lg hover:bg-white">
+                      <RotateCcw className="w-4 h-4" /> إعادة المحاولة
                     </button>
                   )}
-                  {u.status !== 'done' && (
-                    <button type="button" onClick={() => removeUpload(u)} aria-label={u.status === 'uploading' ? `إلغاء رفع ${u.file.name}` : `إزالة ${u.file.name}`} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-lg hover:bg-white">
+                  {u.status !== 'done' && u.status !== 'confirming' && (
+                    <button type="button" onClick={() => removeUpload(u)} aria-label={u.status === 'uploading' ? `إلغاء رفع ${u.file.name}` : `إزالة ${u.file.name}`} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg hover:bg-white">
                       <X className="w-4 h-4" />
                     </button>
                   )}
                 </li>
               ))}
             </ul>
+            {(uploading || failed) && <p id="media-picker-queue-help" className="text-xs text-slate-600">{uploading ? 'أبقِ نافذة المرفقات مفتوحة حتى يكتمل الرفع والتأكيد.' : 'أعد المحاولة أو أزل الملفات المتعثرة لاعتماد المرفقات. نص الخبر باقٍ في المحرر.'}</p>}
           </div>
         )}
 
@@ -266,10 +303,11 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, onClose, selec
                 onPick(picked);
                 onClose();
               }}
-              title={uploading ? 'يُرفق ما اكتمل رفعه فقط؛ أعد الاختيار بعد اكتمال البقية' : undefined}
-              className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+              disabled={uploading || failed || (!!resultMode && !picked.length)}
+              aria-describedby={uploading || failed ? 'media-picker-queue-help' : undefined}
+              className="min-h-11 px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50"
             >
-              اعتماد المرفقات
+              {resultMode ? 'متابعة التسليم' : 'اعتماد المرفقات'}
             </button>
           </div>
         </div>

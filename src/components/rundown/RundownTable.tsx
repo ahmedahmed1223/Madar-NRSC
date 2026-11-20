@@ -24,6 +24,7 @@ import { apiService } from '../../services/api';
 import { minutesLabel, segmentClock } from '../../shared/durations';
 
 interface RundownTableProps {
+  userId: string;
   segments: RundownSegment[];
   plannedDurationMinutes: number;
   onUpdateRundown: (segments: RundownSegment[]) => void;
@@ -37,6 +38,7 @@ interface RundownTableProps {
 }
 
 export const RundownTable: React.FC<RundownTableProps> = ({
+  userId,
   segments,
   plannedDurationMinutes,
   onUpdateRundown,
@@ -64,8 +66,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
     const segment = segments.find(s => s.id === focusSegment.id);
     if (!segment) return;
     setSearchQuery(''); setFilterType('ALL');
-    if (canEdit) { setEditingSegment(segment); setIsAddModalOpen(true); }
-    else requestAnimationFrame(() => document.querySelector(`[data-sortable-item="${CSS.escape(segment.id)}"]`)?.scrollIntoView({ block: 'center' }));
+    if (canEdit && focusSegment.key !== 'link') { setEditingSegment(segment); setIsAddModalOpen(true); return; }
+    const frame = requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-sortable-item="${CSS.escape(segment.id)}"]`);
+      row?.scrollIntoView({ block: 'center' });
+      if (focusSegment.key === 'link') row?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [focusSegment]);
 
   // Total runtime calculation
@@ -435,6 +442,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       id={seg.id}
                       container="rundown"
                       label={seg.title}
+                      tabIndex={focusSegment?.key === 'link' && focusSegment.id === seg.id ? -1 : undefined}
                       key={seg.id}
                       className={`hover:bg-slate-50/70 transition-colors ${
                         seg.isCompleted ? 'bg-emerald-50/30 line-through opacity-70' : ''
@@ -658,6 +666,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
       {/* Broadcast Teleprompter Modal */}
       <TeleprompterModal
+        userId={userId}
         isOpen={isPrompterOpen}
         onClose={() => setIsPrompterOpen(false)}
         segments={segments}

@@ -30,6 +30,22 @@ describe('screen ⇄ address mapping', () => {
     expect(screenTitle('news-editor', 'عنوان')).toBe('عنوان · محرر الخبر · مدار');
     expect(screenTitle('settings')).toBe('الإعدادات · مدار');
   });
+  it('round-trips an exact handover and the system monitor', () => {
+    const route = routeToPath({ nav: 'roster', focusId: 'handover/shift:one' });
+    expect(route).toBe('/roster/handover/shift%3Aone');
+    expect(parsePath(route)).toEqual({ view: 'roster', id: 'handover/shift:one' });
+    expect(parsePath('/roster/handover/%2Fprivate')).toEqual({ view: 'roster', id: 'handover' });
+    expect(routeToPath({ nav: 'settings', focusId: 'monitor' })).toBe('/settings/monitor');
+  });
+  it('round-trips an exact episode segment and rejects malformed nested targets', () => {
+    const episode = { nav: 'episode-workspace', episodeId: 'ep-2' };
+    const path = routeToPath({ ...episode, episodeSegmentId: 'segment:two' });
+    expect(path).toBe('/episodes/ep-2/segments/segment%3Atwo');
+    expect(parsePath(path)).toEqual({ view: 'episodes', id: 'ep-2', episodeSegmentId: 'segment:two' });
+    expect(parsePath('/episodes/ep-2/segments/%2Fprivate')).toEqual({ view: 'episodes', id: 'ep-2' });
+    expect(parsePath('/episodes/ep-2/segments/segment-1/other')).toEqual({ view: 'episodes', id: 'ep-2' });
+    expect(routeToPath({ ...episode, episodeSegmentId: '../private' })).toBe('/episodes/ep-2');
+  });
   it('keeps the handover tab in the roster deep link', () => {
     expect(routeToPath({ nav: 'roster', focusId: 'handover' })).toBe('/roster/handover');
     expect(parsePath('/roster/handover')).toEqual({ view: 'roster', id: 'handover' });

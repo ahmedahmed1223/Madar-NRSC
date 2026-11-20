@@ -1,447 +1,255 @@
-import React, { useState } from 'react';
-import { Sparkles, Bot, CheckCircle2, Copy, RefreshCw, Tv, Check, AlertCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Copy, Sparkles } from 'lucide-react';
 import { Modal } from '../common/Modal';
-import { apiFetch, ApiError } from '../../services/http';
+import { apiFetch } from '../../services/http';
+import { plainText } from '../../shared/newsWorkflow';
+import { proofreadHtml } from '../../shared/proofread';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
-interface AiNewsCoPilotModalProps {
+const TEXT_MODES = [
+  { id: 'TV_REWRITE', label: 'الصياغة التلفزيونية' },
+  { id: 'HEADLINES', label: 'توليد العناوين والشارات' },
+  { id: 'ANCHOR_LEAD', label: 'مقدمة المذيع' },
+  { id: 'PROOFREAD', label: 'التدقيق الأسلوبي' },
+] as const;
+const PLANNING_MODES = [
+  { id: 'IDEAS', label: 'أفكار وزوايا' },
+  { id: 'QUESTIONS', label: 'أسئلة المقابلة' },
+  { id: 'GUESTS', label: 'ضيوف مقترحون' },
+] as const;
+type TextMode = typeof TEXT_MODES[number]['id'];
+type PlanningMode = typeof PLANNING_MODES[number]['id'];
+type Mode = TextMode | PlanningMode;
+type Provider = 'gemini' | 'openai' | 'openrouter';
+type ProviderStatus = { defaultProvider: Provider | null; providers: { id: Provider; model: string }[] };
+type Suggestion = { title: string; reason: string };
+type Result =
+  | { type: 'TV_REWRITE'; title: string; summary: string; content: string }
+  | { type: 'HEADLINES'; headlines: { title: string; type: string; strap: string }[] }
+  | { type: 'ANCHOR_LEAD'; lead1: string; lead2: string }
+  | { type: 'PROOFREAD'; notes: string[]; polishedContent: string }
+  | { type: PlanningMode; suggestions: Suggestion[] };
+type EditorPatch = { title?: string; shortTitle?: string; summary?: string; content?: string };
+
+const PROVIDER_NAMES: Record<Provider, string> = { gemini: 'Gemini', openai: 'OpenAI', openrouter: 'OpenRouter' };
+const control = 'min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 disabled:opacity-50';
+const action = 'min-h-11 rounded-lg bg-blue-700 px-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50 aria-disabled:opacity-50';
+const resultPanel = 'space-y-3 rounded-xl border border-slate-200 p-3';
+const isPlanning = (mode: Mode): mode is PlanningMode => PLANNING_MODES.some(option => option.id === mode);
+
+interface Props {
   isOpen: boolean;
   onClose: () => void;
   currentTitle: string;
-  currentSummary: string;
-  currentContent: string;
-  onApplyChanges: (data: {
-    title?: string;
-    summary?: string;
-    content?: string;
-    shortTitle?: string;
-  }) => void;
+  currentSummary?: string;
+  currentContent?: string;
+  planningOnly?: boolean;
+  initialMode?: Mode;
+  onApplyChanges?: (data: EditorPatch) => void;
+  onUseQuestion?: (question: string) => void;
 }
 
-export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
-  isOpen,
-  onClose,
-  currentTitle,
-  currentSummary,
-  currentContent,
-  onApplyChanges,
-}) => {
-  const [activeMode, setActiveMode] = useState<
-    'TV_REWRITE' | 'HEADLINES' | 'ANCHOR_LEAD' | 'PROOFREAD' | 'FACT_CHECK'
-  >('TV_REWRITE');
+function localResult(mode: TextMode, title: string, summary: string, html: string): Result {
+  const excerpt = (summary.trim() || plainText(html) || title).slice(0, 300);
+  if (mode === 'PROOFREAD') {
+    const result = proofreadHtml(html);
+    return { type: mode, notes: result.issues.map(issue => issue.message), polishedContent: result.fixAll() };
+  }
+  if (mode === 'HEADLINES') return { type: mode, headlines: [{ title: (title.trim() || excerpt).slice(0, 90), type: 'من النص', strap: excerpt }] };
+  if (mode === 'ANCHOR_LEAD') return { type: mode, lead1: excerpt, lead2: title.trim() !== excerpt ? title.trim() : '' };
+  return { type: mode, title, summary: excerpt, content: html };
+}
 
-  const [tone, setTone] = useState<'URGENT' | 'NEUTRAL_FORMAL' | 'ANALYTICAL' | 'HUMAN_INTEREST'>('NEUTRAL_FORMAL');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [generatedResult, setGeneratedResult] = useState<any>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [isTemplateMode, setIsTemplateMode] = useState(false);
+export function AiNewsCoPilotModal({ isOpen, ...props }: Props) {
+  return isOpen ? <OpenCopilot {...props} /> : null;
+}
 
-  const cleanText = (html: string) => {
-    return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim();
-  };
+function OpenCopilot({
+  onClose, currentTitle, currentSummary = '', currentContent = '', planningOnly,
+  initialMode = planningOnly ? 'QUESTIONS' : 'TV_REWRITE', onApplyChanges, onUseQuestion,
+}: Omit<Props, 'isOpen'>) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [status, setStatus] = useState<ProviderStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [provider, setProvider] = useState<Provider | ''>('');
+  const [tone, setTone] = useState('NEUTRAL_FORMAL');
+  const [briefTitle, setBriefTitle] = useState(currentTitle);
+  const [brief, setBrief] = useState('');
+  const [instruction, setInstruction] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
+  const [local, setLocal] = useState(false);
+  const [error, setError] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+  const request = useRef<AbortController | null>(null);
+  const snapshot = useRef({ title: '', summary: '', content: '' });
+  const planning = isPlanning(mode);
+  const validInput = planning ? !!(brief.trim() || briefTitle.trim()) : !!(currentTitle.trim() || currentSummary.trim() || plainText(currentContent));
 
-  /** Offline template used only when the server has no GEMINI_API_KEY configured. */
-  const buildTemplateResult = (): any => {
-    const rawBody = cleanText(currentContent) || currentSummary || currentTitle || 'خبر إخباري جديد';
-    const mainHeadline = currentTitle || 'قمة دولية تبحث استقرار الاقتصاد وتحديات الطاقة النظيفة';
-      if (activeMode === 'TV_REWRITE') {
-        const rewrittenLead = `أكدت المصادر الرسمية في مستهل التطورات المتسارعة، أن الجهود المشتركة تتجه نحو تبني حلول استراتيجية شاملة. وفي هذا السياق، أوضح المتحدثون أن المرحلة الراهنة تتطلب تعزيز التنسيق المباشر بين مختلف الأطراف الفاعلة لضمان استدامة النتائج المحققة ومواكبة متطلبات الميدان.`;
-        const tvScript = `<h3>مقدمة المذيع:</h3><p><strong>[CG_ANCHOR: استوديو الأخبار]</strong><br />مساء الخير، نبدأ جولتنا الإخبارية بهذا التطور الميداني الأبرز، حيث تتواصل التحركات الرسمية المكثفة لإنجاز الأهداف المعلنة وسط ترحيب واسع من الأوساط المعنية.</p><h3>متن التقرير المصور:</h3><p>${rawBody.slice(0, 300) || rewrittenLead}</p><p>وتشير المعطيات الميدانية إلى أن الساعات القادمة ستشهد إعلاناً رسمياً يتضمن تفاصيل الآليات التنفيذية والجداول الزمنية المعتمدة.</p>`;
+  useEffect(() => {
+    const abort = new AbortController();
+    setStatusError(false);
+    setStatus(null);
+    void apiFetch<ProviderStatus>('/api/v1/ai/status', { signal: abort.signal }).then(data => {
+      if (abort.signal.aborted) return;
+      setStatus(data);
+      setProvider(data.defaultProvider || '');
+    }).catch(() => {
+      if (!abort.signal.aborted) setStatusError(true);
+    });
+    return () => abort.abort();
+  }, [reload]);
 
-        return ({
-          type: 'TV_REWRITE',
-          title: `تطورات حاسمة: ${mainHeadline.slice(0, 60)}`,
-          summary: `متابعة إخبارية حية لأبرز مخرجات التنسيق المشترك والقرارات الاستراتيجية المرتقبة.`,
-          content: tvScript,
-        });
-      } else if (activeMode === 'HEADLINES') {
-        return ({
-          type: 'HEADLINES',
-          headlines: [
-            {
-              title: `عاجل: ${mainHeadline.slice(0, 50)}`,
-              type: 'عاجل ومكثف',
-              strap: 'تطورات متسارعة وقرارات حاسمة في الميدان',
-            },
-            {
-              title: `اتفاق استراتيجي جديد يعيد رسم المشهد في الملفات الحيوية`,
-              type: 'رسمي متزن',
-              strap: 'إشادة دولية واسعة بالمخرجات المعلنة',
-            },
-            {
-              title: `ما وراء التطورات: قراءة في الأبعاد الاقتصادية والسياسية للحدث`,
-              type: 'تحليلي معمق',
-              strap: 'خبراء يؤكدون أهمية المرحلة المقبلة',
-            },
-          ],
-        });
-      } else if (activeMode === 'ANCHOR_LEAD') {
-        return ({
-          type: 'ANCHOR_LEAD',
-          lead1: `أهلاً بكم، نبدأ نشرتنا من هذا الملف البارز؛ حيث أعلنت الجهات المعنية قبل قليل حزمة من الإجراءات المشتركة، واصفة الخطوة بأنها محطة مفصلية في مسار العمل المستمر. التفاصيل في سياق هذا التقرير:`,
-          lead2: `في متابعتنا المباشرة، تتصدر هذه التطورات المشهد الإخباري اليوم، مع ترقب واسع لما ستسفر عنه الاجتماعات المنعقدة حالياً لتحديد الخطوات التنفيذية المقبلة.`,
-        });
-      } else if (activeMode === 'PROOFREAD') {
-        return ({
-          type: 'PROOFREAD',
-          correctionsCount: 3,
-          notes: [
-            'تم ضبط صياغة الأفعال للمبني للمعلوم لتعزيز الرشاقة الصحفية التلفزيونية.',
-            'تم استبدال الكلمات التقريرية الطويلة بمفردات مسموعة واضحة وسريعة النطق.',
-            'تم التحقق من مطابقة الأرقام والنسب وفق الدليل الأسلوبي المعتمد.',
-          ],
-          polishedContent: `<p>${rawBody || 'النص بعد التدقيق الصياغي واللغوي المعتمد وفق المعايير المهنية لغرفة الأخبار.'}</p>`,
-        });
+  useEffect(() => () => request.current?.abort(), []);
+
+  const clearResult = () => { setResult(null); setError(''); setCopyStatus(''); };
+
+  const generate = async () => {
+    if (request.current || !validInput || !status) return;
+    clearResult();
+    snapshot.current = { title: currentTitle, summary: currentSummary, content: currentContent };
+    if (!provider) {
+      if (!isPlanning(mode)) {
+        setResult(localResult(mode, currentTitle, currentSummary, currentContent));
+        setLocal(true);
       }
-
-    return null;
-  };
-
-  const handleGenerate = async () => {
-    setIsProcessing(true);
-    setGeneratedResult(null);
-    setAiError(null);
-    setIsTemplateMode(false);
+      return;
+    }
+    const controller = new AbortController();
+    request.current = controller;
+    setBusy(true);
+    setLocal(false);
     try {
-      const res = await apiFetch<{ data: any }>('/api/v1/ai/copilot', {
-        method: 'POST',
-        json: { mode: activeMode, tone, title: currentTitle, summary: currentSummary, content: currentContent },
+      const response = await apiFetch<{ data: Result }>('/api/v1/ai/copilot', {
+        method: 'POST', signal: controller.signal,
+        json: isPlanning(mode)
+          ? { mode, provider, title: briefTitle.trim(), content: brief.trim() }
+          : { mode, provider, tone, title: currentTitle, summary: currentSummary, content: currentContent, instruction: instruction.trim() },
       });
-      setGeneratedResult(res.data);
-    } catch (err: any) {
-      if (err instanceof ApiError && err.code === 'AI_NOT_CONFIGURED') {
-        setIsTemplateMode(true);
-        setGeneratedResult(buildTemplateResult());
-      } else {
-        setAiError(err?.message || 'تعذر الاتصال بالمساعد الذكي');
-      }
+      if (controller.signal.aborted) return;
+      if (response.data?.type !== mode) throw new Error('تعذر قراءة المقترح');
+      setResult(response.data);
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'تعذر توليد المقترحات');
     } finally {
-      setIsProcessing(false);
+      if (!controller.signal.aborted) { request.current = null; setBusy(false); }
     }
   };
 
-  const handleCopy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
+  const stale = result && !isPlanning(result.type) && (
+    snapshot.current.title !== currentTitle || snapshot.current.summary !== currentSummary || snapshot.current.content !== currentContent
+  );
+  const apply = (patch: EditorPatch) => {
+    if (stale || !onApplyChanges) return;
+    onApplyChanges(patch.content === undefined ? patch : { ...patch, content: sanitizeHtml(patch.content) });
+    onClose();
+  };
+  const copy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyStatus('نُسخ المقترح.');
+    } catch {
+      setCopyStatus('تعذر النسخ. يمكنك تحديد النص ونسخه.');
+    }
   };
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="المساعد التحريري الذكي لغرفة الأخبار"
-      maxWidth="xl"
-    >
-      <div className="space-y-5 text-right">
-        {/* Modes Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveMode('TV_REWRITE');
-              setGeneratedResult(null);
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeMode === 'TV_REWRITE'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Tv className="w-3.5 h-3.5" />
-            الصياغة التلفزيونية
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveMode('HEADLINES');
-              setGeneratedResult(null);
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeMode === 'HEADLINES'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            توليد العناوين والشارات
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveMode('ANCHOR_LEAD');
-              setGeneratedResult(null);
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeMode === 'ANCHOR_LEAD'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5 text-purple-500" />
-            مقدمة المذيع
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveMode('PROOFREAD');
-              setGeneratedResult(null);
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeMode === 'PROOFREAD'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            التدقيق الأسلوبي
-          </button>
-        </div>
-
-        {/* Action Trigger Box */}
-        <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
-              <Bot className="w-5 h-5" />
-            </div>
-            <div>
-              <strong className="text-xs text-slate-800 font-bold block">
-                تحليل وتوليد المحتوى الصحفي والتلفزيوني الذكي
-              </strong>
-              <span className="text-2xs text-slate-500">
-                يعتمد على معايير الدليل التحريري وأسلوب الإلقاء التلفزيوني السلس
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label htmlFor="ai-tone-select" className="text-xs font-bold text-slate-700 sr-only">
-              نبرة التحرير
-            </label>
-            <select
-              id="ai-tone-select"
-              value={tone}
-              onChange={(e) => setTone(e.target.value as any)}
-              className="px-3.5 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            >
-              <option value="NEUTRAL_FORMAL">أسلوب إخباري رصين</option>
-              <option value="URGENT">تغطية عاجلة وميدانية</option>
-              <option value="ANALYTICAL">قراءة تحليلية معمقة</option>
-              <option value="HUMAN_INTEREST">قصة إنسانية مشوقة</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={isProcessing}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
-            >
-              {isProcessing ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  جاري المعالجة...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  توليد المقترحات
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Results Area */}
-        {aiError && (
-          <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{aiError}</span>
-          </div>
-        )}
-
-        {generatedResult && isTemplateMode && (
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-semibold">
-            وضع القوالب: خدمة الذكاء الاصطناعي غير مفعّلة على الخادم، والنص أدناه قالب تحريري ثابت وليس صياغة آلية للخبر.
-          </div>
-        )}
-
-        {generatedResult && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-            {generatedResult.type === 'TV_REWRITE' && (
-              <div className="space-y-3 bg-white border border-slate-200 p-4 rounded-xl shadow-2xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Tv className="w-4 h-4 text-blue-600" />
-                    المسودة التلفزيونية المقترحة
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onApplyChanges({
-                        title: generatedResult.title,
-                        summary: generatedResult.summary,
-                        content: generatedResult.content,
-                      });
-                      onClose();
-                    }}
-                    className="flex items-center gap-1 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    اعتماد واستبدال بالمحرر
-                  </button>
-                </div>
-
-                <div>
-                  <span className="text-2xs text-slate-500 font-bold block">العنوان المقترح:</span>
-                  <div className="text-xs font-bold text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1">
-                    {generatedResult.title}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-2xs text-slate-500 font-bold block">مقدمة المذيع / الملخص:</span>
-                  <div className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 leading-relaxed">
-                    {generatedResult.summary}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-2xs text-slate-500 font-bold block">متن التقرير التلفزيوني:</span>
-                  <div
-                    className="rich-content text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1"
-                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(generatedResult.content) }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {generatedResult.type === 'HEADLINES' && (
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-slate-700 block">
-                  خيارات العناوين المقترحة للشاشة والموقع:
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {generatedResult.headlines.map((hl: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-300 transition-all flex items-center justify-between gap-3 shadow-2xs"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-2xs font-bold rounded">
-                            {hl.type}
-                          </span>
-                          <strong className="text-xs text-slate-800 font-bold">{hl.title}</strong>
-                        </div>
-                        <p className="text-2xs text-slate-500">{hl.strap}</p>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(hl.title, `hl-${idx}`)}
-                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"
-                          title="نسخ العنوان"
-                        >
-                          {copiedKey === `hl-${idx}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-700" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onApplyChanges({ title: hl.title, shortTitle: hl.title });
-                            onClose();
-                          }}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-xs"
-                        >
-                          استخدام
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {generatedResult.type === 'ANCHOR_LEAD' && (
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-slate-700 block">
-                  صيغ مقترحة لمقدمة المذيع على الهواء:
-                </span>
-                <div className="space-y-2">
-                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xs font-bold text-purple-700">الصيغة المباشرة:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onApplyChanges({ summary: generatedResult.lead1 });
-                          onClose();
-                        }}
-                        className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold"
-                      >
-                        اعتماد كملخص
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-700 leading-relaxed">{generatedResult.lead1}</p>
-                  </div>
-
-                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xs font-bold text-blue-700">الصيغة التفاعلية:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onApplyChanges({ summary: generatedResult.lead2 });
-                          onClose();
-                        }}
-                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold"
-                      >
-                        اعتماد كملخص
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-700 leading-relaxed">{generatedResult.lead2}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {generatedResult.type === 'PROOFREAD' && (
-              <div className="space-y-3 bg-emerald-50/50 border border-emerald-200 p-4 rounded-xl">
-                <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
-                  <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                    تقرير التدقيق والتصويب الأسلوبي
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onApplyChanges({ content: generatedResult.polishedContent });
-                      onClose();
-                    }}
-                    className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold"
-                  >
-                    تطبيق النص المصوب
-                  </button>
-                </div>
-
-                <ul className="space-y-1 text-xs text-emerald-800">
-                  {generatedResult.notes.map((note: string, idx: number) => (
-                    <li key={idx} className="flex items-start gap-1.5">
-                      <span className="text-emerald-700 font-bold">•</span>
-                      <span>{note}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
+  return <Modal isOpen onClose={onClose} title={planningOnly ? 'المساعد الذكي لإعداد الحلقة' : 'المساعد التحريري الذكي لغرفة الأخبار'} maxWidth="2xl">
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="خيارات المساعد">
+        {(planningOnly ? PLANNING_MODES : [...TEXT_MODES, ...PLANNING_MODES]).map(option =>
+          <button key={option.id} type="button" disabled={busy} aria-pressed={mode === option.id} className={mode === option.id ? action : control}
+            onClick={() => { setMode(option.id); clearResult(); }}>{option.label}</button>)}
       </div>
-    </Modal>
-  );
-};
+      {status && status.providers.length > 0 && <label className="block space-y-1 text-sm font-semibold">
+        <span>مزوّد الذكاء الاصطناعي</span>
+        <select aria-label="مزوّد الذكاء الاصطناعي" className={control + ' block max-w-full'} value={provider} disabled={busy}
+          onChange={event => { setProvider(event.target.value as Provider); clearResult(); }}>
+          {status.providers.map(item => <option key={item.id} value={item.id}>{PROVIDER_NAMES[item.id]} · {item.model}</option>)}
+        </select>
+      </label>}
+      {status?.providers.length === 0 && <p role="status" className="text-sm text-slate-600">
+        يحتاج الاقتراح عبر الإنترنت إلى مزوّد مفعّل على الخادم. يبقى التدقيق والقالب المحلي متاحين في محرر الأخبار.
+      </p>}
+      {statusError && <div className="flex flex-wrap items-center gap-2 text-sm">
+        <p role="alert">تعذر تحميل المزوّدين.</p>
+        <button type="button" className={control} onClick={() => setReload(value => value + 1)}>إعادة المحاولة</button>
+      </div>}
+      {!status && !statusError && <p role="status" className="text-sm text-slate-600">جارٍ تحميل المزوّدين…</p>}
+      {planning ? <>
+        <label className="block space-y-1 text-sm font-semibold">
+          <span>عنوان الموضوع للمساعد</span>
+          <input aria-label="عنوان الموضوع للمساعد" value={briefTitle} disabled={busy} maxLength={500} className={control + ' block w-full'}
+            onChange={event => { setBriefTitle(event.target.value); clearResult(); }} />
+        </label>
+        <label className="block space-y-1 text-sm font-semibold">
+          <span>موجز الموضوع للمساعد</span>
+          <textarea aria-label="موجز الموضوع للمساعد" value={brief} disabled={busy} maxLength={8000} rows={4} className={control + ' block w-full py-2'}
+            onChange={event => { setBrief(event.target.value); clearResult(); }} placeholder="مثلاً زاوية التغطية أو تخصص الضيف المطلوب" />
+        </label>
+      </> : <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1 text-sm font-semibold">
+          <span>نبرة التحرير</span>
+          <select aria-label="نبرة التحرير" disabled={busy} className={control + ' block w-full'} value={tone} onChange={event => { setTone(event.target.value); clearResult(); }}>
+            <option value="NEUTRAL_FORMAL">أسلوب إخباري رصين</option>
+            <option value="URGENT">تغطية عاجلة وميدانية</option>
+            <option value="ANALYTICAL">قراءة تحليلية معمقة</option>
+            <option value="HUMAN_INTEREST">قصة إنسانية مشوقة</option>
+          </select>
+        </label>
+        <label className="block space-y-1 text-sm font-semibold">
+          <span>توجيه تحريري اختياري</span>
+          <input aria-label="توجيه تحريري اختياري" className={control + ' block w-full'} value={instruction} maxLength={800} disabled={busy || !provider}
+            onChange={event => { setInstruction(event.target.value); clearResult(); }} placeholder="مثلاً اختصر الجمل الطويلة" />
+        </label>
+      </div>}
+      {provider && <p className="text-xs text-slate-600">
+        سيرسل هذا الطلب {planning ? 'العنوان والموجز المدخل' : 'عنوان الخبر وملخصه ونصه الحالي'} إلى {PROVIDER_NAMES[provider]} عند التوليد.
+        استخدم المواد التي يمكنك مشاركتها مع المزوّد.
+      </p>}
+      <button type="button" aria-disabled={busy || undefined} disabled={!busy && (!validInput || !status || (planning && !provider))} onClick={() => void generate()} className={action + ' inline-flex items-center gap-2'}>
+        <Sparkles size={16} aria-hidden="true" />{busy ? 'جارٍ توليد المقترحات…' : 'توليد المقترحات'}
+      </button>
+      {error && <p role="alert" className="flex gap-2 text-sm text-rose-700"><AlertCircle size={16} aria-hidden="true" />{error}</p>}
+      {copyStatus && <p role="status" className="text-sm text-slate-600">{copyStatus}</p>}
+      {local && result && <p className="text-sm text-amber-800">الناتج محلي ويعتمد على النص الموجود.</p>}
+      {stale && <p role="status" className="text-sm text-amber-800">تغير النص في المحرر. أعد التوليد لتراجعه مع أحدث نسخة.</p>}
+      {result?.type === 'TV_REWRITE' && <section className={resultPanel} aria-label="المسودة التلفزيونية المقترحة">
+        <h3 className="font-bold">{result.title}</h3><p className="text-sm">{result.summary}</p>
+        <div className="rich-content text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHtml(result.content) }} />
+        <button type="button" className={action} disabled={!!stale || !onApplyChanges} onClick={() => apply({ title: result.title, summary: result.summary, content: result.content })}>استخدام في محرر الخبر</button>
+      </section>}
+      {result?.type === 'HEADLINES' && <ul className="space-y-2">
+        {result.headlines.map((headline, index) => <li key={index} className={resultPanel}>
+          <h3 className="font-bold">{headline.title}</h3><p className="text-sm">{headline.type} · {headline.strap}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={control} onClick={() => void copy(headline.title)}>نسخ العنوان</button>
+            <button type="button" className={action} disabled={!!stale || !onApplyChanges} onClick={() => apply({ title: headline.title, shortTitle: headline.title })}>استخدام العنوان</button>
+          </div>
+        </li>)}
+      </ul>}
+      {result?.type === 'ANCHOR_LEAD' && <ul className="space-y-2">
+        {[result.lead1, result.lead2].filter(Boolean).map((lead, index) => <li key={index} className={resultPanel}>
+          <p className="text-sm">{lead}</p>
+          <button type="button" className={action} disabled={!!stale || !onApplyChanges} onClick={() => apply({ summary: lead })}>استخدام كملخص</button>
+        </li>)}
+      </ul>}
+      {result?.type === 'PROOFREAD' && <section className={resultPanel} aria-label="نتيجة التدقيق">
+        {result.notes.length > 0 && <ul className="list-disc ps-5 text-sm">{result.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+        <div className="rich-content text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHtml(result.polishedContent) }} />
+        <button type="button" className={action} disabled={!!stale || !onApplyChanges || !plainText(result.polishedContent)} onClick={() => apply({ content: result.polishedContent })}>تطبيق النص المصوب</button>
+      </section>}
+      {result && 'suggestions' in result && <section className="space-y-3" aria-label="المقترحات">
+        {result.type === 'GUESTS' && <p className="text-sm text-amber-800">تحقّق من الهوية والصفة الحالية ومدى ملاءمة كل اسم قبل التواصل أو الحجز.</p>}
+        {result.suggestions.length === 0 && <p className="text-sm text-slate-600">لم تُرجع الخدمة مقترحات لهذا الموجز. جرّب تحديد الموضوع أو المطلوب أكثر.</p>}
+        <ul className="space-y-2">{result.suggestions.map((suggestion, index) => <li key={index} className={resultPanel}>
+          <h3 className="font-bold break-words">{suggestion.title}</h3><p className="text-sm break-words">{suggestion.reason}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={control + ' inline-flex items-center gap-2'} onClick={() => void copy(suggestion.title)}><Copy size={16} aria-hidden="true" />نسخ المقترح</button>
+            {result.type === 'QUESTIONS' && onUseQuestion && <button type="button" className={action} onClick={() => { onClose(); onUseQuestion(suggestion.title); }}>فتح مسودة سؤال</button>}
+          </div>
+        </li>)}</ul>
+      </section>}
+    </div>
+  </Modal>;
+}

@@ -22,6 +22,7 @@ import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stat
 import { DriftIndicator } from '../components/onair/DriftIndicator';
 import { countLabel } from '../shared/arabicPlural';
 import { EP_NOUNS } from '../shared/episodeNouns';
+import { offlineAirStateMarker, serializeOfflineAirSnapshot, type OfflineAirSourceVersion } from '../shared/offlineAirFreshness';
 
 interface OnAirViewProps {
   currentUser: User;
@@ -96,6 +97,15 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const showLength = programmeSeconds(episode as any);
   const untilStart = episode && !live && state?.status !== 'ENDED' ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const isBulletin = (episode as any)?.kind === 'bulletin';
+  const offlineSources: { collection: OfflineAirSourceVersion[0]; id: string }[] = episode ? [
+    { collection: isBulletin ? 'bulletins' : 'episodes', id: episode.id },
+    ...(isBulletin ? rundown.map(segment => ({ collection: 'bulletinStories' as const, id: segment.id })) : []),
+  ] : [];
+  const synchronized = episode && dataStore.synchronizedVersions(currentUser.id, offlineSources, { collection: 'onAir', id: episode.id });
+  const offlineSnapshot = synchronized ? serializeOfflineAirSnapshot(
+    offlineSources.map(({ collection, id }, index) => [collection, id, synchronized.versions[index]]),
+    offlineAirStateMarker(state ? { ...state } : null),
+  ) : undefined;
   // A bulletin is ready when every story on air is approved; an episode when every department delivered.
   const readiness = !episode
     ? null
@@ -298,7 +308,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             )}
           </section>
 
-          <OfflineAirPreparation key={episodeId} showId={episodeId} userId={currentUser.id}/>
+          <OfflineAirPreparation key={JSON.stringify([currentUser.id, episodeId])} showId={episodeId} userId={currentUser.id} snapshot={offlineSnapshot} dbId={synchronized?.dbId}/>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Rundown with live states */}
             <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl overflow-hidden" aria-label="الرانداون">

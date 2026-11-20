@@ -16,13 +16,14 @@ beforeAll(async () => {
   version = created.body.row.v;
 });
 afterAll(() => server.close());
-const alerts = () => server.db.listCollection('notifications').filter(r => r.d.linkUrl === '/roster/handover');
+const alerts = () => server.db.listCollection('notifications').filter(r => r.d.linkUrl?.startsWith('/roster/handover'));
 it('alerts current eligible recipients once without notes or delivery-consent bypass', async () => {
   expect((await post('/notify-shift/publish', { baseV: version })).status).toBe(200);
   expect((await post('/notify-shift/publish', { baseV: version })).status).toBe(409);
   expect(alerts()).toHaveLength(1);
   const notification = alerts()[0].d;
   expect(notification.userId).toBe(recipientId);
+  expect(notification.linkUrl).toBe('/roster/handover/notify-shift');
   expect(notification.urgent).toBeUndefined();
   expect(JSON.stringify(notification)).not.toContain('Never copy');
   expect(wantsDelivery(server.db.getRow('notificationPrefs', recipientId)!.d, notification.category, 'email')).toBe(false);

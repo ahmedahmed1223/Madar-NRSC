@@ -189,7 +189,7 @@ export class DataStore {
    */
   awaitWrite(c: CollectionName, id: string, timeoutMs = 12_000): Promise<WriteOutcome> {
     const k = keyOf(c, id);
-    if (!this.dirty.has(k) && !this.inFlight.has(k)) return Promise.resolve({ ok: true });
+    if (!this.hasPendingWrite(c, id)) return Promise.resolve({ ok: true });
     // No connection: say so at once instead of waiting; the write stays queued on this device.
     if (this.waitingForConnection()) return Promise.resolve({ ...QUEUED_OUTCOME });
     return new Promise((resolve) => {
@@ -205,6 +205,11 @@ export class DataStore {
       this.waiters.set(k, [...(this.waiters.get(k) || []), done]);
       this.scheduleFlush(0);
     });
+  }
+
+  hasPendingWrite(c: CollectionName, id: string): boolean {
+    const key = keyOf(c, id);
+    return this.dirty.has(key) || this.inFlight.has(key);
   }
 
   private settleWaiters(k: string, outcome: WriteOutcome) {
@@ -268,6 +273,19 @@ export class DataStore {
   /** Snapshot for status chips: what waits, whether the server answers, and when the next retry is. */
   syncState() {
     return { pending: this.pendingCount(), online: this.online, browserOnline: this.connectivity.isOnline(), retryAt: this.retryAt };
+  }
+
+  /** Versions may be compared with an offline packet only while all source records are synchronized. */
+  synchronizedVersions(userId: string, sources: { collection: CollectionName; id: string }[], check: { collection: CollectionName; id: string }) {
+    if (!this.ready || !this.dbId || this.userId !== userId || !this.online || !this.connectivity.isOnline() || this.dbSwitched) return null;
+    const isPending = ({ collection, id }: { collection: CollectionName; id: string }) => {
+      const key = keyOf(collection, id);
+      return this.dirty.has(key) || this.inFlight.has(key);
+    };
+    if ([...sources, check].some(isPending)) return null;
+    const versions = sources.map(({ collection, id }) => this.meta.get(collection)?.get(id)?.v || 0);
+    if (versions.some(version => version === 0)) return null;
+    return { dbId: this.dbId, versions };
   }
 
   private emitStatus() {
