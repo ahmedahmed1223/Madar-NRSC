@@ -48,3 +48,21 @@ it('revoked view permission and removed roster members are not alerted', async (
     expect(alerts()).toHaveLength(3);
   } finally { date.mockRestore(); }
 });
+it('serializes concurrent reminders and skips acknowledged or removed recipients', async () => {
+  const user = server.db.getRow('users', recipientId)!;
+  server.db.writeRow('users', recipientId, { ...user.d, customPermissions: [] }, user.p, null);
+  const date = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-11T14:00:00Z'));
+  try {
+    const replies = await Promise.all([post('/notify-shift/remind', {}), post('/notify-shift/remind', {})]);
+    expect(replies.map(r => r.status).sort()).toEqual([200, 429]);
+    expect(alerts()).toHaveLength(4);
+    const incoming = await loginAgent(server.app, 'journalist@akhbar.tv');
+    expect((await incoming.post('/api/v1/shift-handovers/notify-shift/acknowledge').set('X-NRCS-Client', 'web').send({ note: '' })).status).toBe(200);
+    date.mockReturnValue(Date.parse('2026-10-11T15:00:00Z'));
+    expect((await post('/notify-shift/remind', {})).body.sent).toBe(0);
+    server.db.deleteRow('roster', 'incoming', null);
+    date.mockReturnValue(Date.parse('2026-10-11T16:00:00Z'));
+    expect((await post('/notify-shift/remind', {})).body.sent).toBe(0);
+    expect(alerts()).toHaveLength(4);
+  } finally { date.mockRestore(); }
+});

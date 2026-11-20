@@ -107,3 +107,12 @@ it('reading never acknowledges and explicit receipts require recipient membershi
   expect(server.db.listCollection('handoverReceipts').filter(r => r.d.publicationId === 'published')).toHaveLength(1);
   expect((await manager.get('/api/v1/shift-handovers/correction')).body.row.receipts).toEqual([]);
 });
+it('recipient roster grants cross-department published reads and removal revokes them', async () => {
+  const crew = await loginAgent(server.app, 'crew@akhbar.tv');
+  const userId = (await crew.get('/api/v1/auth/me')).body.user.id;
+  expect((await crew.get('/api/v1/shift-handovers/published')).status).toBe(404);
+  server.db.writeRow('roster', 'cross-recipient', { id: 'cross-recipient', departmentId: 'newsroom', date: '2026-10-11', shift: 'EVENING', userId }, 0, null);
+  expect((await crew.get('/api/v1/shift-handovers/published')).status).toBe(200);
+  server.db.deleteRow('roster', 'cross-recipient', null);
+  expect((await crew.get('/api/v1/shift-handovers/published')).status).toBe(404);
+});

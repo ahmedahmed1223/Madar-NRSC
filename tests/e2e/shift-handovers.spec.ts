@@ -22,6 +22,9 @@ test('outgoing editor publishes and incoming editor explicitly receives without 
     await outgoing.page.getByRole('button', { name: 'إضافة المرجع' }).click();
     await outgoing.page.getByRole('button', { name: 'حفظ المسودة', exact: true }).click();
     await expect(outgoing.page.getByRole('status').filter({ hasText: 'حُفظت المسودة' })).toBeVisible();
+    await outgoing.page.getByLabel('ملاحظات القسم').fill('Confirmed second save');
+    await outgoing.page.getByRole('button', { name: 'حفظ المسودة', exact: true }).click();
+    await expect(outgoing.page.getByRole('button', { name: 'نشر التسليم', exact: true })).toBeEnabled();
     await outgoing.page.getByRole('button', { name: 'نشر التسليم', exact: true }).click();
     const confirmation = outgoing.page.getByRole('alertdialog');
     await expect(confirmation).toContainText('1');
@@ -57,4 +60,24 @@ for (const email of ['producer@akhbar.tv', 'crew@akhbar.tv']) test(`${email} can
     await expect(session.page.getByRole('status').filter({ hasText: 'حُفظت المسودة' })).toBeVisible();
     expect(session.errors).toEqual([]);
   } finally { await session.close(); }
+});
+for (const email of ['producer@akhbar.tv', 'crew@akhbar.tv']) test(`${email} receives a roster-directed handover explicitly`, async ({ browser }) => {
+  const administrator = await signIn(browser, 'admin@akhbar.tv');
+  const incoming = await signIn(browser, email);
+  try {
+    const data = await (await administrator.page.request.get('/api/v1/data')).json();
+    const user = data.collections.users.find((r: any) => r.d.email === email);
+    const id = `2026-10-11:newsroom:EVENING:${user.id}`;
+    await administrator.page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [{ c: 'roster', op: 'upsert', id, d: { id, departmentId: 'newsroom', date: '2026-10-11', shift: 'EVENING', userId: user.id, userName: user.d.fullName } }] } });
+    const recordId = `handover-incoming-${user.id}`;
+    const created = await administrator.page.request.post('/api/v1/shift-handovers', { headers: { 'X-NRCS-Client': 'web' }, data: { id: recordId, schemaVersion: 1, departmentId: 'newsroom', sourceDate: '2026-10-11', sourceShift: 'MORNING', recipientDate: '2026-10-11', recipientShift: 'EVENING', title: `Incoming ${email}`, note: 'Roster-directed', references: [] } });
+    expect(created.ok()).toBe(true);
+    const row = (await created.json()).row;
+    expect((await administrator.page.request.post(`/api/v1/shift-handovers/${recordId}/publish`, { headers: { 'X-NRCS-Client': 'web' }, data: { baseV: row.v } })).ok()).toBe(true);
+    await incoming.page.goto('/roster/handover');
+    await incoming.page.getByRole('button', { name: `Incoming ${email}`, exact: true }).click();
+    await incoming.page.getByRole('button', { name: 'تأكيد الاستلام', exact: true }).click();
+    await expect(incoming.page.getByRole('status').filter({ hasText: 'تأكد استلام الوردية' })).toBeVisible();
+    expect(incoming.errors).toEqual([]);
+  } finally { await administrator.close(); await incoming.close(); }
 });

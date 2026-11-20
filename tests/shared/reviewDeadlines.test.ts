@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { stationWallTime } from '../../src/shared/stationWallTime';
-import { selectReviewDeadlines, reviewDeadlineLabel } from '../../src/shared/reviewDeadlines';
+import { selectReviewDeadlines, reviewDeadlineLabel, reviewBroadcastVisibility } from '../../src/shared/reviewDeadlines';
 import type { NewsItem, Episode } from '../../src/types';
 import type { Bulletin, BulletinStory } from '../../src/shared/bulletins';
 
@@ -44,4 +44,9 @@ it('uses review submission time and never substitutes embargo or publication dat
   expect(select([news('a', { publishDate: '2026-10-11T09:00:00Z', embargoUntil: '2026-10-11T09:00:00Z' })])[0].deadlineMs).toBeNull();
   expect(select([news('b'), news('a', { workflowLogs: [{ toStatus: 'UNDER_REVIEW', timestamp: '2026-10-11T09:00:00Z' } as any] })]).map(r => r.newsId)).toEqual(['b', 'a']);
   expect(select([news('draft', { status: 'DRAFT' }), news('deleted', { deletedAt: 'now' })])).toEqual([]);
+});
+it('does not expose broadcast deadlines without the relevant effective read permission', () => {
+  expect(reviewBroadcastVisibility(() => false)).toEqual({ bulletins: false, episodes: false });
+  expect(reviewBroadcastVisibility(code => code === 'rundown.view')).toEqual({ bulletins: true, episodes: false });
+  expect(reviewBroadcastVisibility(code => code === 'programs.view')).toEqual({ bulletins: false, episodes: true });
 });

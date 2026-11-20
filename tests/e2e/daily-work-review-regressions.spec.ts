@@ -115,15 +115,21 @@ test('Escape stops a stalled deletion and a lost delete acknowledgement reconcil
     await row.getByRole('button', { name: 'حذف الفلتر', exact: true }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'حذف', exact: true }).click();
   };
+  let stalledDelete: import('@playwright/test').Route | undefined;
   await page.route('**/api/v1/data/sync', async route => {
     if (!route.request().postDataJSON().ops.some((op: any) => op.c === 'savedNewsFilters')) return route.continue();
+    stalledDelete = route;
   });
   await confirmDelete();
   await expect(page.getByRole('button', { name: 'إيقاف الانتظار', exact: true })).toBeVisible();
+  await expect.poll(() => !!stalledDelete).toBe(true);
   await page.getByRole('button', { name: 'إيقاف الانتظار', exact: true }).focus();
   await page.keyboard.press('Escape');
   await expect(row.getByRole('button', { name: 'حذف الفلتر', exact: true })).toBeEnabled();
+  // Dispose the held route before unrouteAll can continue it to the server.
+  await stalledDelete!.abort().catch(() => {});
   await page.unrouteAll({ behavior: 'ignoreErrors' });
+  expect((await (await page.request.get('/api/v1/saved-news-filters')).json()).rows.some((r: any) => r.d.name === 'حذف متعثر آمن')).toBe(true);
   await page.route('**/api/v1/data/sync', async route => {
     if (!route.request().postDataJSON().ops.some((op: any) => op.c === 'savedNewsFilters')) return route.continue();
     const committed = await route.fetch();

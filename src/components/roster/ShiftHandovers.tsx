@@ -56,6 +56,9 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
   const unknown = useRef<{ action: string; id: string; draft?: HandoverDraftInput; baseV?: number; lastReminderAt?: string } | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const reloadRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const messageRef = useRef<HTMLParagraphElement>(null);
+  const clearConfirmedDraft = useRef(false);
   const session = useFormDraft(`handover:${currentUser.id}:${selected?.id || 'new'}`, !!draft, { draft, baseV: baseV ?? null }, value => {
     if (value.draft && !handoverDraftError({ ...value.draft, title: value.draft.title || 'استعادة' })) {
       setDraft(value.draft); setBaseV(value.baseV ?? undefined);
@@ -67,7 +70,15 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     apiService.getShiftHandovers(controller.signal).then(setRows).catch(error => { if (!controller.signal.aborted) setMessage(error.message); });
     return () => { controller.abort(); abortRef.current?.abort(); };
   }, [currentUser.id, canView, isOnline]);
-  useLayoutEffect(() => { if (!pending && (selected || draft)) (titleRef.current || reloadRef.current)?.focus(); }, [pending, draft?.id, selected?.id]);
+  useLayoutEffect(() => {
+    if (pending) return;
+    if (selected || draft) (titleRef.current || reloadRef.current)?.focus({ preventScroll: true });
+    else if (openerRef.current?.isConnected) openerRef.current.focus();
+  }, [pending, draft?.id, selected?.id]);
+  useLayoutEffect(() => { if (message && !pending) messageRef.current?.scrollIntoView({ block: 'nearest' }); }, [message, pending]);
+  useLayoutEffect(() => {
+    if (!pending && clearConfirmedDraft.current) { clearConfirmedDraft.current = false; session.clearDraft(); }
+  }, [pending, selected?.v, baseV, draft]);
   const reload = async () => {
     try {
       const values = await apiService.getShiftHandovers(); setRows(values);
@@ -75,6 +86,7 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     } catch (error: any) { setMessage(error.message); }
   };
   const accept = (row: HandoverRow) => {
+    clearConfirmedDraft.current = true;
     setRows(values => [row, ...values.filter(r => r.id !== row.id)]);
     setSelected(row);
     if (row.d.state === 'DRAFT') { setBaseV(row.v); session.clearDraft(); }
@@ -90,6 +102,15 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     try {
       const uncertain = unknown.current;
       let row: HandoverRow | undefined;
+      if (!uncertain && action === 'save' && draft && baseV === undefined) {
+        // A restored create may have committed before refresh discarded the request state.
+        try { row = await apiService.getShiftHandover(id, controller.signal); }
+        catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+        if (row) {
+          if (!matchingHandoverDraft(row, draft)) { setConflict(true); throw new Error('توجد نسخة مختلفة على الخادم؛ راجع النسخة الحالية'); }
+          accept(row); setMessage('تأكدت نتيجة العملية السابقة من الخادم'); return;
+        }
+      }
       if (uncertain) {
         if (uncertain.id !== id || uncertain.action !== action) throw new Error('راجع نتيجة العملية السابقة قبل تنفيذ إجراء مختلف');
         try { row = await apiService.getShiftHandover(id, controller.signal); }
@@ -100,6 +121,10 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
           : action === 'delete' ? !row
           : row?.lastReminderAt && row.lastReminderAt !== uncertain.lastReminderAt;
         if (confirmed) {
+          if (action === 'save' && uncertain.draft && JSON.stringify(uncertain.draft) !== JSON.stringify(draft)) {
+            setConflict(true);
+            throw new Error('تغيرت الحقول بعد العملية السابقة؛ راجع النسخة الحالية قبل تأكيد الحفظ');
+          }
           unknown.current = null;
           if (row) accept(row); else { setSelected(null); setDraft(null); session.clearDraft(); setRows(values => values.filter(r => r.id !== id)); }
           setMessage('تأكدت نتيجة العملية السابقة من الخادم'); return;
@@ -127,6 +152,7 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     } finally { setPending(false); abortRef.current = null; }
   };
   const open = async (row: HandoverRow) => {
+    if (!selected && !draft) openerRef.current = document.activeElement as HTMLElement;
     setMessage(''); setConflict(false); unknown.current = null;
     try {
       const fresh = await apiService.getShiftHandover(row.id);
@@ -134,14 +160,27 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
       setDraft(fresh.d.state === 'DRAFT' && fresh.d.references.every(r => r.available) ? editable(fresh) : null);
     } catch (error: any) { setMessage(error.message); }
   };
-  const create = () => { setMessage(''); setConflict(false); setSelected(null); setDraft(blank(currentUser)); setBaseV(undefined); unknown.current = null; };
+  const create = () => { openerRef.current = document.activeElement as HTMLElement; setMessage(''); setConflict(false); setSelected(null); setDraft(blank(currentUser)); setBaseV(undefined); unknown.current = null; };
   const close = () => {
     if (pending) { abortRef.current?.abort(); return; }
     void session.close(() => { setSelected(null); setDraft(null); });
   };
+  const reviewCurrent = async () => {
+    const id = selected?.id || draft?.id;
+    if (!id) { await reload(); return; }
+    if (draft && !await confirmDialog({ title: 'مراجعة النسخة الحالية', message: 'تحميل نسخة الخادم بدلاً من الحقول المحلية؟', confirmLabel: 'تحميل النسخة' })) return;
+    try {
+      const row = await apiService.getShiftHandover(id);
+      session.clearDraft();
+      try { localStorage.removeItem(`madar-form-draft:v1:handover:${currentUser.id}:${id}`); } catch { /* Keep confirmed read usable. */ }
+      unknown.current = null; setConflict(false); clearConfirmedDraft.current = true;
+      setSelected(row); setBaseV(row.v); setDraft(row.d.state === 'DRAFT' && row.d.references.every(r => r.available) ? editable(row) : null);
+      setMessage('حُمّلت النسخة الحالية من الخادم');
+    } catch (error: any) { setMessage(error.message); }
+  };
   const choices = referenceChoices(currentUser);
   const update = (value: Partial<HandoverDraftInput>) => setDraft(previous => previous ? { ...previous, ...value } : previous);
-  const status = <>{message && <p role="status" className="text-sm text-slate-700 break-words border-s-2 border-amber-500 ps-3 py-2">{message}</p>}{!isOnline && <p role="status" className="text-sm text-amber-800">غير متصل؛ الحفظ والنشر والاستلام تحتاج تأكيد الخادم.</p>}</>;
+  const status = <>{message && <p ref={messageRef} role="status" className="text-sm text-slate-700 break-words border-s-2 border-amber-500 ps-3 py-2">{message}</p>}{!isOnline && <p role="status" className="text-sm text-amber-800">غير متصل؛ الحفظ والنشر والاستلام تحتاج تأكيد الخادم.</p>}</>;
   if (!canView) return <p role="status" className="text-sm text-slate-600">تحتاج صلاحية قراءة تسليم الوردية؛ النشر وحده لا يمنح حق القراءة.</p>;
   return <section className="space-y-3 min-w-0" aria-label="تسليم الوردية">
     <div className="flex flex-wrap justify-between gap-2"><h2 className="text-base font-bold text-slate-900">تسليم الوردية</h2><div className="flex gap-2"><button className={button} title="تحديث التسليمات" aria-label="تحديث التسليمات" disabled={pending || !isOnline} onClick={reload}><RefreshCw size={18} /></button><button className={button} disabled={!canPublish || pending || !isOnline} title={!canPublish ? 'تحتاج صلاحية النشر والقراءة' : undefined} onClick={create}><Plus size={18} />إنشاء تسليم</button></div></div>
@@ -179,7 +218,7 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
               if (selected.d.references.some(r => !r.available) && !await confirmDialog({ title: 'مراجع غير متاحة', message: 'إنشاء التصحيح دون نقل المراجع غير المتاحة؟', confirmLabel: 'إنشاء التصحيح' })) return;
               const next = { ...editable(selected), id: newId('handover'), supersedesId: selected.id, title: `تصحيح: ${selected.d.title}`.slice(0, 120) }; setSelected(null); setBaseV(undefined); setDraft(next); setMessage('');
             }}>إنشاء تصحيح</button>}</>}
-            <button ref={reloadRef} className={button} disabled={!isOnline} onClick={async () => { if (selected && draft && !await confirmDialog({ title: 'مراجعة النسخة الحالية', message: 'تحميل نسخة الخادم بدلاً من الحقول المحلية؟', confirmLabel: 'تحميل النسخة' })) return; if (selected) { unknown.current = null; session.clearDraft(); await open(selected); } else { unknown.current = null; setConflict(false); await reload(); } }}><RefreshCw size={18} />مراجعة النسخة الحالية</button>
+            <button ref={reloadRef} className={button} disabled={!isOnline} onClick={reviewCurrent}><RefreshCw size={18} />مراجعة النسخة الحالية</button>
           </>}
         </div>
         {draft && handoverDraftError(draft) && <p className="text-xs text-slate-600">{handoverDraftError(draft)}</p>}

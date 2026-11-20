@@ -14,7 +14,7 @@ import { isRequestClosed, requestStatusName, requestTypeOf, episodeReadiness } f
 import { onDutyAt, shiftName } from '../../shared/roster';
 import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
-import { selectReviewDeadlines, reviewDeadlineLabel } from '../../shared/reviewDeadlines';
+import { selectReviewDeadlines, reviewDeadlineLabel, reviewBroadcastVisibility } from '../../shared/reviewDeadlines';
 import { IncomingHandovers } from '../roster/ShiftHandovers';
 
 interface MyWorkPanelProps {
@@ -93,6 +93,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review');
   const now = referenceTime ?? Date.now();
+  const reviewAccess = reviewBroadcastVisibility(code => RbacService.hasPermission(currentUser, code));
 
   const myNews: Row[] = newsList
     .filter((n) => n.authorId === me && ['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION', 'REJECTED'].includes(n.status))
@@ -106,7 +107,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     }));
 
   const toReview: Row[] = canReview
-    ? selectReviewDeadlines(newsList.filter(n => n.authorId !== me), apiService.getBulletins(), apiService.getBulletinStories(), episodes, apiService.getSettings().defaultTimezone, now)
+    ? selectReviewDeadlines(newsList.filter(n => n.authorId !== me), reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? episodes : [], apiService.getSettings().defaultTimezone, now)
         .map((row) => { const n = newsList.find(n => n.id === row.newsId)!; return { id: n.id, title: n.title, meta: `${reviewDeadlineLabel(row, now)}${row.destination ? ` · ${row.destination.title}` : ''}`, tone: row.overdue ? 'red' as const : 'amber' as const, onClick: () => onOpenNews(n.id) }; })
     : [];
 

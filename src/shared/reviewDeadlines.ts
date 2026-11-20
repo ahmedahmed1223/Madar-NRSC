@@ -11,6 +11,9 @@ export interface ReviewDeadline {
 const priority: Record<string, number> = { LOW: 0, NORMAL: 1, MEDIUM: 1, HIGH: 2, URGENT: 3, CRITICAL: 4 };
 export const submittedForReview = (news: NewsItem) => [...(news.workflowLogs || [])].reverse().find(log => log.toStatus === 'UNDER_REVIEW')?.timestamp || news.updatedAt;
 const submittedAt = (news: NewsItem) => Date.parse(submittedForReview(news)) || 0;
+export function reviewBroadcastVisibility(can: (permission: string) => boolean): { bulletins: boolean; episodes: boolean } {
+  return { bulletins: can('rundown.view') || can('bulletins.edit') || can('bulletins.manage'), episodes: can('programs.view') || can('episodes.view') };
+}
 
 /** All source arrays must already be restricted to currently readable entities. */
 export function selectReviewDeadlines(news: NewsItem[], bulletins: Bulletin[], stories: BulletinStory[], episodes: Episode[], zone: string, now: number): ReviewDeadline[] {

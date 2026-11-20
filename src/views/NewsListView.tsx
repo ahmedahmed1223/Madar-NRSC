@@ -1,6 +1,6 @@
 import { NewsVideosList } from '../components/news/NewsVideosEditor';
 import { SavedNewsFilters } from '../components/news/SavedNewsFilters';
-import { selectReviewDeadlines, submittedForReview, reviewDeadlineLabel } from '../shared/reviewDeadlines';
+import { selectReviewDeadlines, submittedForReview, reviewDeadlineLabel, reviewBroadcastVisibility } from '../shared/reviewDeadlines';
 import { useLiveData } from '../hooks/useLiveData';
 import { videosOf } from '../shared/newsVideos';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
@@ -235,7 +235,8 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
 
   const reviewNow = Date.now();
-  const deadlines = selectReviewDeadlines(filteredNews, apiService.getBulletins(), apiService.getBulletinStories(), apiService.getEpisodes(), apiService.getSettings().defaultTimezone, reviewNow);
+  const reviewAccess = reviewBroadcastVisibility(code => RbacService.hasPermission(currentUser, code));
+  const deadlines = selectReviewDeadlines(filteredNews, reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? apiService.getEpisodes() : [], apiService.getSettings().defaultTimezone, reviewNow);
   const newsById = new Map(filteredNews.map(n => [n.id, n]));
   const reviewQueue = deadlines.map(row => newsById.get(row.newsId)!);
   const deadlineById = new Map(deadlines.map(row => [row.newsId, row]));
