@@ -47,8 +47,10 @@ type GroupBy = 'department' | 'station' | 'role';
 type Show = 'ALL' | 'FREE' | 'ISSUES';
 type DrillKind = 'open' | 'late' | 'blocked';
 
-const SELECT = 'px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white';
-const TOOL = 'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50';
+const SELECT = 'min-w-0 max-w-full min-h-11 sm:min-h-9 px-3 border border-slate-300 rounded-lg text-sm sm:text-xs bg-white';
+const TOOL = 'inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50';
+const FILTER_BAR = 'grid grid-cols-2 items-center gap-2 no-print sm:flex sm:flex-wrap';
+const EXPORT_TOOLS = 'col-span-full flex flex-wrap items-center gap-2 sm:ms-auto';
 const TH = 'p-3 font-bold text-right whitespace-nowrap';
 const TD = 'p-3 tabular-nums';
 /** The name column stays in view while a wide table scrolls sideways on a phone (RTL: the right edge). */
@@ -340,16 +342,22 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
 
   const periodFilter = (
     <>
-      <select aria-label="الفترة" value={range} onChange={(e) => setRange(e.target.value as Range)} className={SELECT}>
+      <select aria-label="الفترة" value={range} onChange={(e) => setRange(e.target.value as Range)} className={`${SELECT} ${range === 'custom' ? 'col-span-full' : ''}`}>
         {(Object.keys(RANGE_NAMES) as Range[]).map((r) => (
           <option key={r} value={r}>{RANGE_NAMES[r]}</option>
         ))}
       </select>
       {range === 'custom' && (
-        <>
-          <input type="date" aria-label="من يوم" value={fromDay} max={toDay} onChange={(e) => setFromDay(e.target.value)} className={SELECT} />
-          <input type="date" aria-label="إلى يوم" value={toDay} min={fromDay} onChange={(e) => setToDay(e.target.value)} className={SELECT} />
-        </>
+        <div className="col-span-full grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <div className="grid gap-1 min-w-0">
+            <label htmlFor="workload-from-day" className="text-xs text-slate-600">من يوم</label>
+            <input id="workload-from-day" type="date" value={fromDay} max={toDay} onChange={(e) => setFromDay(e.target.value)} className={SELECT} />
+          </div>
+          <div className="grid gap-1 min-w-0">
+            <label htmlFor="workload-to-day" className="text-xs text-slate-600">إلى يوم</label>
+            <input id="workload-to-day" type="date" value={toDay} min={fromDay} onChange={(e) => setToDay(e.target.value)} className={SELECT} />
+          </div>
+        </div>
       )}
     </>
   );
@@ -412,7 +420,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
       {tab === 'LOAD' && canView && (
         <div className="space-y-5">
           <PrintHeading title="متابعة الفرق والتكاليف" />
-          <div className="flex flex-wrap items-center gap-2 no-print">
+          <div role="group" aria-label="تصفية عبء العمل وتصديره" className={FILTER_BAR}>
             {periodFilter}
             {stationSelect(station, setStation, 'كل المحطات', true)}
             <select aria-label="القسم" value={department} onChange={(e) => setDepartment(e.target.value)} className={SELECT}>
@@ -427,7 +435,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
                 <option key={id} value={id}>{name}</option>
               ))}
             </select>
-            <span className="flex items-center gap-2 mr-auto">
+            <span className={EXPORT_TOOLS}>
               {printButton}
               <button type="button" onClick={exportLoad} className={TOOL}>
                 <Download className="w-4 h-4" />
@@ -447,7 +455,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
             ].map((m) => (
               <div key={m.label} className="p-4 min-w-0">
                 <dt className="text-xs font-semibold text-slate-600">{m.label} <span className="font-normal text-slate-500">({m.period})</span></dt>
-                <dd className={`font-mono text-3xl font-bold leading-tight mt-1 ${m.value ? m.tone : 'text-slate-900'}`}>
+                <dd className={`font-mono text-3xl font-bold leading-tight mt-1 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_button]:text-start ${m.value ? m.tone : 'text-slate-900'}`}>
                   {m.open ? <Count value={m.value} label={m.label} onOpen={m.open} /> : <span className="tabular-nums">{m.value}</span>}
                 </dd>
                 {m.note && <dd className="text-2xs text-slate-500 mt-1 truncate">{m.note}</dd>}
@@ -459,7 +467,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
             <section id="workload-drill" aria-label={drill.title} className="bg-white border border-blue-200 rounded-xl p-4 space-y-2 scroll-mt-20">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-slate-900">{drill.title} <span className="font-normal text-slate-500">({drill.items.length})</span></h2>
-                <button type="button" onClick={() => setDrill(null)} aria-label="إغلاق القائمة" className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+                <button type="button" onClick={() => setDrill(null)} aria-label="إغلاق القائمة" className="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-lg text-slate-500 hover:bg-slate-100">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -669,9 +677,9 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
       {tab === 'OUTPUT' && canView && (
         <div className="space-y-5">
           <PrintHeading title="الإنتاج" detail={`الفترة: ${periodLabel}`} />
-          <div className="flex flex-wrap items-center gap-2 no-print">
+          <div role="group" aria-label="تصفية الإنتاج وتصديره" className={FILTER_BAR}>
             {periodFilter}
-            <span className="flex items-center gap-2 mr-auto">
+            <span className={EXPORT_TOOLS}>
               {printButton}
               <button type="button" onClick={exportOutput} className={TOOL}>
                 <Download className="w-4 h-4" />
@@ -741,16 +749,16 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
 
       {tab === 'FILE' && (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center gap-2 no-print">
+          <div role="group" aria-label="تصفية ملف الإنجاز وتصديره" className={FILTER_BAR}>
             {canView && (
-              <select aria-label="الموظف" value={person.id} onChange={(e) => setPersonId(e.target.value)} className={SELECT}>
+              <select aria-label="الموظف" value={person.id} onChange={(e) => setPersonId(e.target.value)} className={`${SELECT} col-span-full`}>
                 {visibleUsers.map((u) => (
                   <option key={u.id} value={u.id}>{u.fullName} — {stationName(stations, u.stationId)}</option>
                 ))}
               </select>
             )}
             {periodFilter}
-            <span className="flex items-center gap-2 mr-auto">
+            <span className={EXPORT_TOOLS}>
               {printButton}
               <button type="button" onClick={exportFile} className={TOOL}>
                 <Download className="w-4 h-4" />

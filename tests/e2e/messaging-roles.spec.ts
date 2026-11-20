@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createRequire } from 'module';
 import fs from 'fs';
-import { openNav, signIn } from './helpers';
+import { openNav, openSettingsSection, signIn } from './helpers';
 
 /**
  * Version 4 beyond production cards: messaging between colleagues, roles that open only the
@@ -211,7 +211,7 @@ test('the administrator follows the system and ends a colleague\'s sessions', as
   const reporter = await signIn(browser, 'reporter@akhbar.tv');
   const admin = await signIn(browser, 'admin@akhbar.tv');
   await admin.page.goto('/settings');
-  await admin.page.getByText('مراقبة النظام').first().click();
+  await openSettingsSection(admin.page, 'مراقبة النظام');
   const monitor = admin.page.getByRole('region', { name: 'مراقبة النظام' });
   await expect(monitor.getByText('النسخ الاحتياطي الدوري معطل')).toBeVisible();
   await expect(monitor.getByText('قاعدة البيانات', { exact: true })).toBeVisible();
@@ -249,7 +249,7 @@ test('each colleague chooses the text size of their device', async ({ browser })
   await expect(page.locator('main')).toBeVisible();
   expect(await rootSize()).toBe(21);
   await page.goto('/settings');
-  await page.getByText('تفضيلات هذا الجهاز').first().click();
+  await openSettingsSection(page, 'تفضيلات هذا الجهاز');
   await expect(page.getByLabel('حجم الخط')).toHaveValue('larger');
   await page.getByLabel('حجم الخط').selectOption('compact');
   expect(await rootSize()).toBe(16);

@@ -29,7 +29,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-slate-200/80 px-4 py-2.5 rounded-2xl shadow-2xs mb-4">
       {/* Navigation Breadcrumb Trail */}
-      <div className="flex items-center flex-wrap gap-2 text-xs">
+      <div className="flex items-center flex-wrap gap-2 min-w-0 max-w-full text-xs">
         {onBack && (
           <button
             type="button"
@@ -42,17 +42,17 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           </button>
         )}
 
-        <div className="flex items-center gap-1.5 text-slate-500">
-          <Home className="w-3.5 h-3.5 text-slate-500" />
+        <div className="flex items-center gap-1.5 min-w-0 max-w-full text-slate-500">
+          <Home className="w-3.5 h-3.5 shrink-0 text-slate-500" />
           {items.map((item, index) => {
             const isLast = index === items.length - 1;
             return (
               <React.Fragment key={index}>
-                <ChevronLeft className="w-3.5 h-3.5 text-slate-300 rtl:rotate-180" />
+                <ChevronLeft className="w-3.5 h-3.5 shrink-0 text-slate-300 rtl:rotate-180" />
                 {isLast ? (
-                  <span className="font-bold text-slate-900 truncate max-w-[200px] sm:max-w-xs flex items-center gap-1">
+                  <span className="font-bold text-slate-900 min-w-0 max-w-[200px] sm:max-w-xs flex items-center gap-1">
                     {item.icon}
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
                   </span>
                 ) : item.onClick ? (
                   <button
@@ -82,7 +82,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
       </div>
 
       {/* Optional action buttons on the left (RTL) */}
-      {actions && <div className="flex items-center gap-2 self-end sm:self-auto">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 min-w-0 max-w-full self-end sm:self-auto">{actions}</div>}
     </div>
   );
 };

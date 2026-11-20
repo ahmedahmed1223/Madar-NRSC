@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { openNav, signIn } from './helpers';
 
 test('empty required fields explain themselves in Arabic', async ({ page }) => {
@@ -32,6 +34,61 @@ test('chat lives in the top bar; panels close with Esc and when the screen chang
   await expect(page.getByText('مركز الإشعارات التحريرية')).toHaveCount(0);
   expect(errors).toEqual([]);
   await close();
+});
+
+test('the mobile messages screen opens the department drawer and sends to its chosen channel', async ({ browser }) => {
+  const sender = await signIn(browser, 'editor@akhbar.tv', { viewport: { width: 390, height: 844 }, bypassCSP: true });
+  const receiver = await signIn(browser, 'producer@akhbar.tv', { viewport: { width: 1440, height: 900 }, bypassCSP: true });
+  const text = `رسالة تجريبية بين الأقسام ${Date.now()}`;
+  try {
+    await openNav(sender.page, 'المراسلات');
+    await sender.page.getByRole('button', { name: 'محادثة الأقسام', exact: true }).click();
+    const drawer = sender.page.getByRole('dialog', { name: 'المحادثة الداخلية بين الأقسام' });
+    await expect(drawer).toBeVisible();
+    const senderChannel = drawer.getByLabel('قناة المحادثة');
+    await senderChannel.selectOption('general');
+    await drawer.getByRole('textbox', { name: 'نص الرسالة' }).fill(text);
+    await senderChannel.selectOption('field');
+    await expect(drawer.getByRole('textbox', { name: 'نص الرسالة' })).toHaveValue('');
+    const fieldText = `رسالة لقسم المراسلين ${Date.now()}`;
+    await drawer.getByRole('textbox', { name: 'نص الرسالة' }).fill(fieldText);
+    await drawer.getByRole('button', { name: 'إرسال الرسالة' }).click();
+    await expect(drawer.getByRole('status')).toHaveText('أُرسلت الرسالة');
+    await senderChannel.selectOption('general');
+    await expect(drawer.getByRole('textbox', { name: 'نص الرسالة' })).toHaveValue(text);
+    await drawer.getByRole('button', { name: 'إرسال الرسالة' }).click();
+    await expect(drawer.getByRole('status')).toHaveText('أُرسلت الرسالة');
+    await receiver.page.getByRole('button', { name: /^المحادثة الداخلية/ }).click();
+    const received = receiver.page.getByRole('dialog', { name: 'المحادثة الداخلية بين الأقسام' });
+    const receiverChannel = received.getByLabel('قناة المحادثة');
+    const fieldOption = receiverChannel.locator('option[value="field"]');
+    await expect(fieldOption).toContainText('غير مقروء');
+    await receiverChannel.selectOption('general');
+    await expect(received.getByText(text, { exact: true })).toBeVisible();
+    await expect(receiverChannel.locator('option[value="general"]')).not.toContainText('غير مقروء');
+    await expect(fieldOption).toContainText('غير مقروء');
+    await receiverChannel.selectOption('field');
+    await expect(received.getByText(fieldText, { exact: true })).toBeVisible();
+    await expect(fieldOption).not.toContainText('غير مقروء');
+    expect((await drawer.boundingBox())?.width).toBeLessThanOrEqual(390);
+    const axe = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
+    for (const [fixture, dark] of [[sender, false], [receiver, true]] as const) {
+      await fixture.page.evaluate(night => document.documentElement.classList.toggle('dark', night), dark);
+      await fixture.page.addScriptTag({ content: axe });
+      const panel = fixture.page.getByRole('dialog', { name: 'المحادثة الداخلية بين الأقسام' });
+      const violations = await panel.evaluate(async element => (await (window as any).axe.run(element, {
+        runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa'],
+      })).violations.map((violation: any) => violation.id));
+      expect(violations).toEqual([]);
+      await fixture.page.screenshot({ path: test.info().outputPath(dark ? 'intercom-desktop-dark.png' : 'intercom-mobile-light.png') });
+    }
+    await received.getByRole('button', { name: 'فتح القناة', exact: true }).click();
+    await expect(receiver.page).toHaveURL(/\/messages\/field$/);
+    await expect(received).not.toBeVisible();
+  } finally {
+    await receiver.close();
+    await sender.close();
+  }
 });
 
 test('reduce motion stops pulsing; badges never blink when the device asks for less motion', async ({ browser }) => {

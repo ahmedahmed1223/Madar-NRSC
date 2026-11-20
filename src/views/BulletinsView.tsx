@@ -234,20 +234,22 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
       {tab === 'WORK' && <ManagerWorkQueue currentUser={currentUser} onOpen={onOpenBulletin} />}
       {tab === 'DAY' && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="تاريخ عرض النشرات" className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
             <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="اليوم السابق" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronRight className="w-4 h-4" />
             </button>
-            <span className="text-sm font-bold text-slate-800 min-w-[8rem] text-center">{dayLabel(date)}</span>
+            <span aria-live="polite" className="text-sm font-bold text-slate-800 text-center sm:min-w-32">{dayLabel(date)}</span>
             <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="اليوم التالي" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="min-h-11 sm:min-h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white" />
-            {date !== localDateString() && (
-              <button type="button" onClick={() => setDate(localDateString())} className="min-h-11 sm:min-h-9 px-2 text-xs font-bold text-blue-700 hover:underline">
-                العودة لليوم
-              </button>
-            )}
+            <div className="col-span-full flex flex-wrap items-center gap-2">
+              <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="flex-1 min-w-0 min-h-11 sm:min-h-9 px-3 border border-slate-300 rounded-lg text-sm bg-white" />
+              {date !== localDateString() && (
+                <button type="button" onClick={() => setDate(localDateString())} className="min-h-11 sm:min-h-9 px-2 text-sm font-semibold text-blue-700 hover:underline">
+                  العودة لليوم
+                </button>
+              )}
+            </div>
           </div>
 
           {canManage && missing.length > 0 && (
@@ -257,7 +259,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
               </p>
               <div className="flex flex-wrap gap-2">
                 {missing.map((f) => (
-                  <button key={f.id} type="button" onClick={() => createScheduled(f)} className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-bold text-amber-900 hover:bg-amber-100">
+                  <button key={f.id} type="button" onClick={() => createScheduled(f)} className="min-h-11 px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-bold text-amber-900 hover:bg-amber-100">
                     + {f.name} ({f.startTime})
                   </button>
                 ))}

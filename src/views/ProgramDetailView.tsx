@@ -7,9 +7,10 @@ import { localDateString } from '../shared/dates';
 import { programTemplateView } from '../components/programs/programTemplateView';
 import { episodeStatusInfo } from '../components/episodes/episodeDetails';
 import React, { useState } from 'react';
-import { Tv, Calendar, Clock, User as UserIcon, Video, Plus, Edit2, Layers, FileText, Users, Sliders, Building, Radio } from 'lucide-react';
+import { Tv, Calendar, Clock, User as UserIcon, Video, Plus, Edit2, Sliders, Building, Radio } from 'lucide-react';
 import { Program, Episode, User } from '../types';
 import { Badge } from '../components/common/Badge';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { apiService } from '../services/api';
 
@@ -79,9 +80,9 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
         onBack={onBack}
         backLabel="العودة لدليل البرامج"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {allPrograms.length > 0 && onSwitchProgram && (
-              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-1.5 min-w-0 max-w-full bg-slate-50 px-2.5 rounded-xl border border-slate-200">
                 <Tv className="w-3.5 h-3.5 text-blue-600" />
                 <label htmlFor="program-switcher-select" className="text-2xs font-medium text-slate-500">
                   تبديل:
@@ -90,7 +91,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   id="program-switcher-select"
                   value={program.id}
                   onChange={(e) => onSwitchProgram(e.target.value)}
-                  className="text-xs font-bold text-slate-800 bg-transparent border-none focus:outline-hidden cursor-pointer"
+                  className="min-h-11 sm:min-h-8 min-w-0 text-xs font-bold text-slate-800 bg-transparent border-none cursor-pointer"
                 >
                   {allPrograms.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -105,7 +106,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             <button
               type="button"
               onClick={() => onEditProgram(program)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
+              className="min-h-11 sm:min-h-8 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
             >
               <Edit2 className="w-3.5 h-3.5 text-slate-500" />
               <span>تعديل</span>
@@ -116,7 +117,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             <button
               type="button"
               onClick={() => onCreateEpisodeForProgram(program.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-xs"
+              className="min-h-11 sm:min-h-8 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-xs"
             >
               <Plus className="w-4 h-4" />
               <span>حلقة جديدة</span>
@@ -126,8 +127,20 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
         }
       />
 
-      {/* Program Hero Banner */}
-      <div className="theme-fixed relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white">
+      <FilterTabs<typeof activeTab>
+        label="أقسام البرنامج"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: 'overview', label: 'الملف التعريفي والهوية' },
+          { id: 'episodes', label: 'حلقات البرنامج والرانداون', count: programEpisodes.length },
+          { id: 'template', label: 'قالب الرانداون المعياري' },
+          { id: 'team', label: 'طاقم العمل والإنتاج' },
+        ]}
+      />
+
+      {activeTab !== 'overview' && <h1 className="sm:hidden [overflow-wrap:anywhere]">{program.name}</h1>}
+      <div className={`theme-fixed relative rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-lg text-white ${activeTab === 'overview' ? '' : 'hidden sm:block'}`}>
         <div className="absolute inset-0 z-0">
           <img
             src={program.coverImageUrl || '/cover.svg'}
@@ -208,62 +221,6 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             )}
           </div>
         </div>
-      </div>
-
-      {/* Tabs Navigation Bar */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-1 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveTab('overview')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-            activeTab === 'overview'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>الملف التعريفي والهوية</span>
-        </button>
-
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('episodes')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-            activeTab === 'episodes'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Video className="w-4 h-4" />
-          <span>حلقات البرنامج والرانداون ({programEpisodes.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('template')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-            activeTab === 'template'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>قالب الرانداون المعياري</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('team')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-            activeTab === 'team'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>طاقم العمل والإنتاج</span>
-        </button>
       </div>
 
       {/* TAB CONTENT: 1. OVERVIEW */}

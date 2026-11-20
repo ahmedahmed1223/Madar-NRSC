@@ -247,24 +247,25 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="relative w-full md:w-80">
+      <div role="group" aria-label="تصفية الحلقات" className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 flex flex-col lg:flex-row lg:items-end justify-between gap-3">
+        <div className="relative w-full min-w-0 lg:max-w-80">
           <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="episodes-search-input"
             type="search"
+            aria-label="البحث في الحلقات"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بعنوان الحلقة أو البرنامج..."
             autoComplete="off"
             spellCheck="false"
-            className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="w-full min-h-11 pr-10 pl-12 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-search-cancel-button]:hidden"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+              className="absolute left-0 inset-y-0 w-11 inline-flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-900"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -272,14 +273,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+        <div className="grid grid-cols-2 gap-2.5 w-full min-w-0 lg:w-auto">
+          <div className="grid gap-1 text-xs text-slate-600 min-w-0 lg:max-w-64">
             <label htmlFor="episodes-program-filter" className="font-medium">البرنامج:</label>
             <select
               id="episodes-program-filter"
               value={selectedProgId}
               onChange={(e) => setSelectedProgId(e.target.value)}
-              className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold transition-all"
+              className="min-h-11 min-w-0 w-full px-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="ALL">جميع البرامج ({programs.length})</option>
               {programs.map((p) => (
@@ -290,13 +291,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+          <div className="grid gap-1 text-xs text-slate-600 min-w-0">
             <label htmlFor="episodes-status-filter" className="font-medium">الحالة:</label>
             <select
               id="episodes-status-filter"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold transition-all"
+              className="min-h-11 min-w-0 w-full px-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="ALL">جميع الحالات</option>
               {EPISODE_STATUS_INFO.map((s) => (
@@ -311,24 +312,24 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
       {/* Episodes Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[11rem] lg:min-w-[16rem]" label="الحلقة" sortKey="title" sort={sort} onSort={toggleSort} />
+        <div role="region" aria-label="قائمة الحلقات" className="sm:overflow-x-auto">
+          <table role="table" className="max-sm:block w-full text-right text-xs">
+            <thead role="rowgroup" className="max-sm:block">
+              <tr role="row" className="max-sm:grid max-sm:grid-cols-2 max-sm:[&_button]:min-h-11 bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
+                <SortTh className="px-3 sm:py-3.5 sm:px-4 sm:min-w-[11rem] lg:min-w-[16rem]" label="الحلقة" sortKey="title" sort={sort} onSort={toggleSort} />
                 <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الرقم" sortKey="number" sort={sort} onSort={toggleSort} />
-                <SortTh className="py-3.5 px-3" label="موعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
+                <SortTh className="px-3 sm:py-3.5" label="موعد البث" sortKey="date" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <SortTh className="py-3.5 px-3 hidden xl:table-cell" label="المقدم / المنتج" sortKey="presenter" sort={sort} onSort={toggleSort} />
                 <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="الفقرات" sortKey="segments" sort={sort} onSort={toggleSort} defaultDir="desc" />
                 <th className="py-3.5 px-3 text-center hidden md:table-cell">الضيوف</th>
                 <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
-                <th className="py-3.5 px-2 sm:px-4 text-center"><span className="sr-only sm:not-sr-only">إجراءات</span></th>
+                <th role="columnheader" scope="col" className="max-sm:sr-only sm:py-3.5 sm:px-4 text-center">إجراءات</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800">
+            <tbody role="rowgroup" className="max-sm:block divide-y divide-slate-200 text-slate-800">
               {filteredEpisodes.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                <tr role="row" className="max-sm:block">
+                  <td role="cell" colSpan={8} className="max-sm:block p-6 sm:py-12 text-center text-slate-500">
                     لا توجد حلقات مطابقة لمعايير البحث. انقر على "إعداد حلقة جديدة" لبدء العمل.
                   </td>
                 </tr>
@@ -340,13 +341,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                   const guestsCount = ep.guests?.length || 0;
 
                   return (
-                    <tr key={ep.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr role="row" key={ep.id} className="max-sm:grid max-sm:gap-2 max-sm:p-3 hover:bg-slate-50/80 transition-colors">
                       {/* Title & Program */}
-                      <td className="py-3.5 px-3 sm:px-4">
+                      <td role="cell" className="min-w-0 sm:py-3.5 sm:px-4 [overflow-wrap:anywhere]">
                         <button
                           type="button"
                           onClick={() => onSelectEpisode(ep.id)}
-                          className="font-bold text-slate-800 hover:text-blue-600 text-right block leading-snug"
+                          className="font-bold text-slate-800 hover:text-blue-600 text-right block leading-snug max-sm:text-sm"
                         >
                           {ep.title}
                         </button>
@@ -371,12 +372,13 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       </td>
 
                       {/* Air date & time */}
-                      <td className="py-3.5 px-3">
-                        <div className="text-slate-700 tabular-nums">
-                          <div className="whitespace-nowrap">{arabicDate(ep.broadcastDate)}</div>
-                          <div className="text-2xs text-slate-500 whitespace-nowrap">
-                            {ep.startTime}–{ep.endTime}
-                          </div>
+                      <td role="cell" className="sm:py-3.5 sm:px-3">
+                        <div className="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-2 text-slate-700 tabular-nums">
+                          <span aria-hidden="true" className="sm:hidden text-slate-500">البث</span>
+                          <span className="sm:block">{arabicDate(ep.broadcastDate)}</span>
+                          <span dir="ltr" className="sm:block text-2xs text-slate-500 whitespace-nowrap">
+                            {ep.startTime} – {ep.endTime}
+                          </span>
                         </div>
                       </td>
 
@@ -410,15 +412,14 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-2 sm:px-4 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      <td role="cell" className="sm:py-3.5 sm:px-4 text-center">
+                        <div className="flex flex-wrap items-center sm:justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => onSelectEpisode(ep.id)}
                             className="min-h-11 sm:min-h-9 whitespace-nowrap px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-1"
                           >
-                            <span className="hidden sm:inline">فتح مساحة العمل</span>
-                            <span className="sm:hidden">فتح</span>
+                            <span>فتح مساحة العمل</span>
                             <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
                           </button>
 

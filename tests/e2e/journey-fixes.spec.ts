@@ -17,17 +17,54 @@ test('task draft survives browser Back and an immediate reload without saving a 
   await close();
 });
 
-test('task list actions have task-specific accessible names and fit a scroll region on mobile', async ({ browser }) => {
+test('task list displays task-specific actions and status without sideways scrolling on mobile', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
   await openNav(page, 'المهام');
   await page.getByRole('button', { name: 'قائمة', exact: true }).click();
   await expect(page.getByRole('button', { name: /^تعديل المهمة:/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^حذف المهمة:/ }).first()).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('region', { name: 'قائمة المهام' })).toBeVisible();
+  const list = page.getByRole('region', { name: 'قائمة المهام' });
+  const status = list.getByRole('combobox', { name: /^حالة المهمة:/ }).first();
+  const edit = list.getByRole('button', { name: /^تعديل المهمة:/ }).first();
+  await expect(status).toBeVisible();
+  await expect(edit).toBeVisible();
+  expect(await list.evaluate(element => element.scrollWidth)).toBeLessThanOrEqual(await list.evaluate(element => element.clientWidth));
+  for (const control of [status, edit]) {
+    const bounds = (await control.boundingBox())!;
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: 'test-results/workdesk-after-390-tasks.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
   await close();
+});
+
+test('department requests keep search and filters usable on mobile', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 390, height: 844 } });
+  try {
+    await openNav(page, 'طلبات الأقسام');
+    const tabs = page.getByRole('combobox', { name: 'الطلبات', exact: true });
+    const search = page.getByRole('searchbox', { name: 'بحث في الطلبات' });
+    const department = page.getByRole('combobox', { name: 'القسم', exact: true });
+    const type = page.getByRole('combobox', { name: 'نوع الطلب', exact: true });
+    await expect(department).toBeVisible();
+    for (const control of [tabs, search, department, type]) {
+      const bounds = (await control.boundingBox())!;
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    }
+    await page.screenshot({ path: 'test-results/workdesk-after-390-requests.png' });
+    await tabs.selectOption('ALL');
+    await expect(department).toHaveCount(0);
+    await search.fill('لا توجد نتيجة لهذا البحث 49862');
+    await expect(page.getByText(/لا توجد طلبات مفتوحة/)).toBeVisible();
+  } finally {
+    await close();
+  }
 });
 
 test('task creation preserves the draft on refusal and a later status move waits for confirmation', async ({ browser }) => {

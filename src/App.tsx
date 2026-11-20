@@ -1141,7 +1141,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {['settings', 'database', 'tests'].includes(activeNav) && (
               <div className="space-y-5">
                 {(RbacService.hasPermission(currentUser, 'system.database_manage') || RbacService.hasPermission(currentUser, 'system.self_healing')) && (
-                  <div className="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="أقسام الإعدادات">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] gap-1.5 sm:flex sm:flex-wrap" role="tablist" aria-label="أقسام الإعدادات">
                     {[
                       { id: 'settings', label: 'الإعدادات العامة', show: RbacService.hasPermission(currentUser, 'system.settings') },
                       { id: 'database', label: 'النسخ الاحتياطي وقاعدة البيانات', show: RbacService.hasPermission(currentUser, 'system.database_manage') },
@@ -1155,7 +1155,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                           role="tab"
                           aria-selected={activeNav === t.id}
                           onClick={() => setActiveNav(t.id)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
+                          className={`min-h-11 px-2 py-2 sm:px-4 rounded-lg text-xs font-bold leading-tight border transition-colors ${
                             activeNav === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                           }`}
                         >

@@ -41,6 +41,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
   const entries = apiService.getDiary();
   const focused = focusId ? entries.find((e) => e.id === focusId) : undefined;
   const [anchor, setAnchor] = useState(() => focused?.date || localDateString());
+  const [mobileDay, setMobileDay] = useState<string | null>(focused?.date || null);
   const [query, setQuery] = useState('');
   const [coverage, setCoverage] = useState('ALL');
   const [onlyMine, setOnlyMine] = useState(false);
@@ -48,10 +49,16 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
   const [booking, setBooking] = useState<Partial<Booking> | null>(null);
   const today = localDateString();
   const days = useMemo(() => weekDays(anchor), [anchor]);
+  const currentDay = mobileDay === 'ALL' || (mobileDay && days.includes(mobileDay))
+    ? mobileDay
+    : days.includes(today) ? today : days[0];
+  const hasFilters = Boolean(query.trim()) || coverage !== 'ALL' || onlyMine;
+  const navigateWeek = (date: string) => { setAnchor(date); setMobileDay(hasFilters ? 'ALL' : null); };
 
   useEffect(() => {
     if (focused) {
       setAnchor(focused.date);
+      setMobileDay(focused.date);
       setEditing(focused);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,40 +90,47 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
           {undecided > 0 && (
             <button type="button" onClick={() => {
                 const first = entries.filter((e) => e.date >= today && e.coverage === 'UNDECIDED').map((e) => e.date).sort()[0];
-                if (first) setAnchor(first);
+                if (first) {
+                  setAnchor(first);
+                  setMobileDay(first);
+                }
                 setCoverage('UNDECIDED');
               }} className="mt-1.5 min-h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs font-bold hover:bg-amber-100">
               {countLabel(undecided, { one: 'حدث قادم', two: 'حدثان قادمان', few: 'أحداث قادمة', many: 'حدثاً قادماً' })} بلا قرار تغطية
             </button>
           )}
         </div>
-        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 shrink-0">
-          <button type="button" onClick={() => setAnchor(shiftDay(anchor, -7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
+        <div role="group" aria-label="أسبوع التغطية" className="grid grid-cols-[auto_minmax(0,1fr)_auto] sm:flex sm:flex-wrap items-center gap-2 lg:shrink-0">
+          <button type="button" onClick={() => navigateWeek(shiftDay(anchor, -7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-xs font-bold text-slate-700 px-1 whitespace-nowrap" aria-live="polite">
-            من {arabicDate(days[0])} إلى {arabicDate(days[6])}
+          <span className="grid justify-items-center sm:flex sm:gap-1 text-xs font-bold text-slate-700" aria-live="polite">
+            <time dateTime={days[0]}>{arabicDate(days[0])}</time>
+            <span className="sr-only sm:not-sr-only">إلى</span>
+            <time dateTime={days[6]}>{arabicDate(days[6])}</time>
           </span>
-          <button type="button" onClick={() => setAnchor(shiftDay(anchor, 7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
+          <button type="button" onClick={() => navigateWeek(shiftDay(anchor, 7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => setAnchor(today)} className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold whitespace-nowrap">
-            هذا الأسبوع
-          </button>
-          {canManage && (
-            <button type="button" onClick={() => setEditing({ date: days.includes(today) ? today : days[0] })} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs whitespace-nowrap">
-              <Plus className="w-4 h-4" /> حدث جديد
+          <div className="col-span-full flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => navigateWeek(today)} className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold whitespace-nowrap">
+              هذا الأسبوع
             </button>
-          )}
+            {canManage && (
+              <button type="button" onClick={() => setEditing({ date: currentDay === 'ALL' ? (days.includes(today) ? today : days[0]) : currentDay })} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs whitespace-nowrap">
+                <Plus className="w-4 h-4" /> حدث جديد
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="bg-white p-3 rounded-2xl border border-slate-200 flex flex-col lg:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث في الأحداث والأماكن والمكلفين..." aria-label="بحث في الأجندة" className="w-full min-h-11 sm:min-h-0 pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-xs" />
+      <div role="group" aria-label="تصفية أجندة التغطية" className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+        <div className="relative min-w-0 col-span-full lg:col-span-1">
+          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+          <input type="search" value={query} onChange={(e) => { setQuery(e.target.value); setMobileDay('ALL'); }} placeholder="ابحث في أحداث الأسبوع..." aria-label="بحث في الأجندة" className="w-full min-h-11 pr-9 pl-3 border border-slate-300 rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-blue-500" />
         </div>
-        <select value={coverage} onChange={(e) => setCoverage(e.target.value)} aria-label="قرار التغطية" className="min-h-11 sm:min-h-0 px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+        <select value={coverage} onChange={(e) => { setCoverage(e.target.value); setMobileDay('ALL'); }} aria-label="قرار التغطية" className="min-h-11 min-w-0 px-2 border border-slate-300 rounded-lg text-sm bg-white">
           <option value="ALL">كل القرارات</option>
           {COVERAGE_DECISIONS.map((c) => (
             <option key={c.id} value={c.id}>
@@ -124,17 +138,31 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
             </option>
           ))}
         </select>
-        <label className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer">
-          <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} className="accent-blue-600" />
+        <label className="inline-flex items-center gap-1.5 min-h-11 px-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">
+          <input type="checkbox" checked={onlyMine} onChange={(e) => { setOnlyMine(e.target.checked); setMobileDay('ALL'); }} className="accent-blue-600" />
           تكليفاتي فقط
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+      <div className="grid gap-1 sm:hidden">
+        <label htmlFor="diary-day" className="text-xs font-semibold text-slate-700">اليوم المعروض</label>
+        <select id="diary-day" value={currentDay} onChange={(e) => setMobileDay(e.target.value)} className="min-h-11 min-w-0 px-3 rounded-lg border border-slate-300 bg-white text-sm">
+          <option value="ALL">كل أيام الأسبوع</option>
+          {days.map((day) => <option key={day} value={day}>{dayName(day)} {arabicDate(day)}{day === today ? ' (اليوم)' : ''}</option>)}
+        </select>
+      </div>
+
+      {hasFilters && currentDay === 'ALL' && visible.length === 0 && (
+        <p role="status" className="sm:hidden rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-sm text-slate-700">
+          لا أحداث في هذا الأسبوع تطابق الفلاتر.
+        </p>
+      )}
+      <div role="group" aria-label="أحداث الأسبوع" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {days.map((day) => {
           const list = visible.filter((e) => e.date === day);
+          const hiddenOnPhone = currentDay === 'ALL' ? hasFilters && list.length === 0 : currentDay !== day;
           return (
-            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 md:min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
+            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`min-w-0 rounded-xl border p-2.5 space-y-2 md:min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'} ${hiddenOnPhone ? 'hidden sm:block' : ''}`}>
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
                   {dayName(day)}
@@ -156,11 +184,11 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                 const produced = newsList.filter((n) => n.diaryId === e.id && !n.deletedAt).length;
                 return (
                   <button key={e.id} type="button" onClick={() => setEditing(e)} className={`w-full text-right p-2 rounded-xl border bg-white hover:shadow-sm space-y-1 ${focusId === e.id ? 'ring-2 ring-blue-500' : 'border-slate-200'}`}>
-                    <p className="text-xs font-bold text-slate-900 leading-snug">
+                    <p className="text-xs font-bold text-slate-900 leading-snug [overflow-wrap:anywhere]">
                       {e.priority === 'HIGH' && <Flag className="w-3 h-3 text-red-600 inline ms-0.5" aria-label="أولوية عالية" />} {e.title}
                     </p>
                     <p className="text-2xs text-slate-500">
-                      {e.startTime ? `${e.startTime}${e.endTime ? `–${e.endTime}` : ''}` : 'طوال اليوم'} · {diaryKindName(e.kind)}
+                      {e.startTime ? <span dir="ltr" className="inline-block tabular-nums">{e.startTime}{e.endTime ? ` – ${e.endTime}` : ''}</span> : 'طوال اليوم'} · {diaryKindName(e.kind)}
                     </p>
                     {e.location && (
                       <p className="text-2xs text-slate-500 flex items-center gap-0.5">

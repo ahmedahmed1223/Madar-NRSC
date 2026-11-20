@@ -56,7 +56,7 @@ test('resource booking: clashes are shown and refused, a free alternative is off
   await form.getByRole('button', { name: 'كاميرا ميدانية B' }).click();
   await expect(form.getByText(/متاح في هذا الوقت/)).toBeVisible();
   await form.getByRole('button', { name: 'احجز' }).click();
-  await expect(page.getByText('تصوير تقرير الأسواق').first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'جدول الموارد' }).getByRole('button', { name: /تصوير تقرير الأسواق/ })).toBeVisible();
   expect(errors).toEqual([]);
   await close();
 });

@@ -54,7 +54,7 @@ interface ProductionCardsViewProps {
 type Tab = 'MINE' | 'TODAY' | 'ALL' | 'TEMPLATES' | 'REPORTS';
 const OPEN_STATES: CardState[] = ['BLOCKED', 'LATE', 'IN_PROGRESS', 'NEW', 'READY'];
 
-const SELECT = 'px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white';
+const SELECT = 'min-h-11 min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white';
 
 /**
  * Assignments («التكليفات», stored as production cards) shared between stations: my steps, the
@@ -383,34 +383,37 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               يُبث اليوم
             </h2>
             {board.airing.length === 0 ? empty('لا تكليفات بموعد بث اليوم.') : (
-              <div role="region" tabIndex={0} aria-label="جدول ما يُبث اليوم (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-                <table className="w-full min-w-[34rem] text-xs">
-                  <thead>
-                    <tr className="text-right text-slate-600 border-b border-slate-200">
-                      <th scope="col" className="p-3 font-bold">البث</th>
-                      <th scope="col" className="p-3 font-bold">المادة</th>
-                      <th scope="col" className="p-3 font-bold">الحالة</th>
-                      <th scope="col" className="p-3 font-bold">بانتظار</th>
+              <div role="region" aria-label="جدول ما يُبث اليوم" className="bg-white border border-slate-200 rounded-xl">
+                <table role="table" className="max-sm:block w-full text-xs">
+                  <thead role="rowgroup" className="max-sm:sr-only">
+                    <tr role="row" className="text-right text-slate-600 border-b border-slate-200">
+                      <th role="columnheader" scope="col" className="p-3 font-bold">البث</th>
+                      <th role="columnheader" scope="col" className="p-3 font-bold">المادة</th>
+                      <th role="columnheader" scope="col" className="p-3 font-bold">الحالة</th>
+                      <th role="columnheader" scope="col" className="p-3 font-bold">بانتظار</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody role="rowgroup" className="max-sm:block">
                     {board.airing.map((card) => {
                       const states = cardStates(card, now);
                       const waiting = currentStep(card);
                       return (
-                        <tr key={card.id} className="border-b border-slate-100 last:border-0">
-                          <td className="p-3 font-bold tabular-nums whitespace-nowrap">{timeOnly(card.airAt)}</td>
-                          <td className="p-3">
-                            <button type="button" onClick={() => onFocus(card.id)} className="font-bold text-blue-700 hover:underline text-right">{card.title}</button>
+                        <tr role="row" key={card.id} className="max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:items-center max-sm:gap-x-3 max-sm:gap-y-1 max-sm:px-3 max-sm:py-2 border-b border-slate-200 last:border-0">
+                          <td role="cell" className="sm:p-3 font-bold tabular-nums whitespace-nowrap">{timeOnly(card.airAt)}</td>
+                          <td role="cell" className="sm:p-3 min-w-0 [overflow-wrap:anywhere]">
+                            <button type="button" onClick={() => onFocus(card.id)} className="min-h-11 sm:min-h-8 font-bold max-sm:text-sm text-blue-700 hover:underline text-right">{card.title}</button>
                           </td>
-                          <td className="p-3">
+                          <td role="cell" className="max-sm:col-span-full sm:p-3">
                             <span className="flex flex-wrap gap-1">
                               {states.map((state) => (
                                 <span key={state} className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${CARD_STATE_STYLE[state]}`}>{CARD_STATE_NAMES[state]}</span>
                               ))}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-700">{waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${stepAssigneeLabel(waiting, stations)}` : '—'}</td>
+                          <td role="cell" className="max-sm:col-span-full sm:p-3 text-slate-700 [overflow-wrap:anywhere]">
+                            <span className="sm:hidden font-semibold" aria-hidden="true">بانتظار </span>
+                            {waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${stepAssigneeLabel(waiting, stations)}` : '—'}
+                          </td>
                         </tr>
                       );
                     })}
@@ -424,8 +427,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
 
       {tab === 'ALL' && (
         <section className="space-y-3" aria-label="كل التكليفات">
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="search" aria-label="بحث في التكليفات" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث بالعنوان أو الشخص…" className={`${SELECT} w-56 max-w-full`} />
+          <div role="group" aria-label="تصفية التكليفات" className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+            <input type="search" aria-label="بحث في التكليفات" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="بحث بالعنوان أو الشخص…" className={`${SELECT} col-span-full w-full sm:w-56`} />
             <select aria-label="الحالة" value={stateFilter} onChange={(e) => setStateFilter(e.target.value as 'OPEN' | CardState)} className={SELECT}>
               <option value="OPEN">كل الجارية</option>
               {(Object.keys(CARD_STATE_NAMES) as CardState[]).map((s) => (
@@ -443,7 +446,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            <select aria-label="نوع المادة" value={kind} onChange={(e) => setKind(e.target.value)} className={SELECT}>
+            <select aria-label="نوع المادة" value={kind} onChange={(e) => setKind(e.target.value)} className={`${SELECT} col-span-full`}>
               <option value="ALL">كل الأنواع</option>
               {CARD_KINDS.map((k) => (
                 <option key={k.id} value={k.id}>{k.name}</option>

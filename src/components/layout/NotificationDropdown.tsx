@@ -17,7 +17,7 @@ interface NotificationDropdownProps {
   onNavigate: (path: string) => void;
 }
 
-const actionClass = 'inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-2';
+const actionClass = 'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-md px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-2';
 
 export function NotificationDropdown({ inbox, userId, storageFailed, onClose, onMarkAllRead, onMarkRead, onSnooze, pathFor, onNavigate }: NotificationDropdownProps) {
   const list = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export function NotificationDropdown({ inbox, userId, storageFailed, onClose, on
             {inbox.unreadCount > 0 && <span className="bg-blue-600 text-white text-2xs font-bold px-1.5 py-0.5 rounded-full tabular-nums">{inbox.unreadCount}</span>}
           </h2>
           {hasUnread && (
-            <button type="button" onClick={() => { list.current?.focus({ preventScroll: true }); onMarkAllRead(); }} className={`${actionClass} -my-1.5`}>
+            <button type="button" onClick={() => { list.current?.focus({ preventScroll: true }); onMarkAllRead(); }} className={`${actionClass} sm:-my-1.5`}>
               <Check className="w-3 h-3" aria-hidden="true" />
               تحديد الكل كمقروء
             </button>
@@ -62,7 +62,7 @@ export function NotificationDropdown({ inbox, userId, storageFailed, onClose, on
                   return (
                     <li key={notice.id} className={`px-4 py-2.5 ${notice.isRead ? '' : 'bg-blue-50/40'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        {path ? <button type="button" className="flex min-h-9 min-w-0 items-center gap-1 rounded-md text-start text-xs font-bold text-blue-700 hover:underline focus-visible:outline-2" onClick={() => {
+                        {path ? <button type="button" className="flex min-h-11 sm:min-h-9 min-w-0 items-center gap-1 rounded-md text-start text-xs font-bold text-blue-700 hover:underline focus-visible:outline-2" onClick={() => {
                           if (markable) onMarkRead(notice.id);
                           onNavigate(path);
                         }}>
@@ -104,7 +104,7 @@ export function NotificationDropdown({ inbox, userId, storageFailed, onClose, on
             </ul>
           </details>}
         </div>
-        <button type="button" onClick={() => onNavigate('/alerts')} className="w-full flex min-h-10 items-center justify-center gap-1.5 border-t border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50">
+        <button type="button" onClick={() => onNavigate('/alerts')} className="w-full flex min-h-11 items-center justify-center gap-1.5 border-t border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50">
           <Settings2 className="w-3.5 h-3.5" aria-hidden="true" />
           ما يصلني على البريد والجوال
         </button>

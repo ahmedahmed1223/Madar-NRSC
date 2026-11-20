@@ -10,7 +10,7 @@ import { stepTypesOf } from '../shared/productionCards';
 import { localDateString } from '../shared/dates';
 import { when } from '../components/cards/cardUi';
 import React, { useState, useMemo } from 'react';
-import { BarChart3, Clock, Tv, FileText, Users, Calendar, Printer, Download, Filter } from 'lucide-react';
+import { BarChart3, Clock, Tv, FileText, Users, Calendar, Printer, Download } from 'lucide-react';
 import { NewsItem, Episode, Guest, Category } from '../types';
 
 const PERIODS = [
@@ -19,15 +19,25 @@ const PERIODS = [
   { id: 'month', name: 'آخر 30 يوماً' },
   { id: 'all', name: 'كل الفترات' },
 ] as const;
+const STATION_COLUMNS = [
+  { key: 'total', label: 'أخبار' },
+  { key: 'published', label: 'منشورة' },
+  { key: 'approved', label: 'معتمدة' },
+  { key: 'review', label: 'قيد المراجعة' },
+  { key: 'drafts', label: 'مسودات' },
+  { key: 'cards', label: 'تكليفات شاركت فيها' },
+  { key: 'cardSteps', label: 'خطوات تكليفات أنجزتها' },
+] as const;
+const REPORT_FILTER = 'w-full min-w-0 min-h-11 sm:min-h-9 px-3 bg-white border border-slate-300 rounded-lg text-sm sm:text-xs text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500';
 
 /** A headline figure: what it measures (and over which period), the figure, and how it was counted. */
 const Metric: React.FC<{ label: string; scope: string; icon: React.ElementType; value: React.ReactNode; note: React.ReactNode }> = ({ label, scope, icon: Icon, value, note }) => (
-  <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-2">
+  <div className="min-w-0 bg-white p-3 sm:p-5 rounded-xl border border-slate-200 space-y-2">
     <div className="flex items-start justify-between gap-2">
       <h2 className="text-xs font-bold text-slate-700">
         {label} <span className="font-normal text-slate-500">({scope})</span>
       </h2>
-      <Icon className="w-5 h-5 shrink-0 text-slate-400" aria-hidden="true" />
+      <Icon className="hidden sm:block w-5 h-5 shrink-0 text-slate-400" aria-hidden="true" />
     </div>
     <p className="text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
     <p className="text-2xs text-slate-600">{note}</p>
@@ -207,7 +217,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:self-auto">
           <button
             type="button"
             onClick={handleExportCsv}
@@ -235,18 +245,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       </div>
 
       {/* Filter & Period Toolbar */}
-      <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <Calendar className="w-4 h-4 text-slate-500" aria-hidden="true" />
-          <span id="reports-period-label" className="font-bold text-slate-700">الفترة:</span>
-          <div role="group" aria-labelledby="reports-period-label" className="inline-flex flex-wrap rounded-xl bg-slate-100 p-1">
+      <div role="group" aria-label="تصفية التقارير" className="no-print bg-white p-3 sm:p-4 rounded-xl border border-slate-200 grid grid-cols-2 lg:grid-cols-4 items-end gap-3 text-xs">
+        <div className="col-span-full lg:col-span-2 grid gap-1 min-w-0">
+          <span id="reports-period-label" className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+            <Calendar className="w-4 h-4 text-slate-500" aria-hidden="true" /> الفترة
+          </span>
+          <div role="group" aria-labelledby="reports-period-label" className="grid grid-cols-2 sm:grid-cols-4 rounded-lg bg-slate-100 p-1 gap-1">
             {PERIODS.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 aria-pressed={selectedPeriod === p.id}
                 onClick={() => setSelectedPeriod(p.id)}
-                className={`min-h-9 px-3 py-1 rounded-lg font-bold text-xs whitespace-nowrap ${
+                className={`min-h-11 sm:min-h-9 px-2 sm:px-3 py-1 rounded-md font-bold text-xs ${
                   selectedPeriod === p.id ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -257,13 +268,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         {(stations.length > 1 || groups.length > 0) && (
-          <div className="flex items-center gap-2">
-            <label htmlFor="reports-station-filter" className="text-slate-600 font-medium">المحطة:</label>
+          <div className="grid gap-1 min-w-0">
+            <label htmlFor="reports-station-filter" className="text-slate-700 font-semibold">المحطة</label>
             <select
               id="reports-station-filter"
               value={selectedStation}
               onChange={(e) => setSelectedStation(e.target.value)}
-              className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium"
+              className={REPORT_FILTER}
             >
               <option value="ALL">{seesAll ? 'كل المحطات' : 'كل محطاتي'}</option>
               {groups.length > 0 && (
@@ -276,14 +287,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-500" aria-hidden="true" />
-          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">التصنيف:</label>
+        <div className={`grid gap-1 min-w-0 ${stations.length > 1 || groups.length > 0 ? '' : 'col-span-full lg:col-span-2'}`}>
+          <label htmlFor="reports-category-filter" className="text-slate-700 font-semibold">التصنيف</label>
           <select
             id="reports-category-filter"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+            className={REPORT_FILTER}
           >
             <option value="ALL">كل التصنيفات ({newsList.length})</option>
             {categories.map((c) => (
@@ -296,7 +306,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       </div>
 
       {/* Top Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         <Metric
           label="معدل نشر الأخبار"
           scope={periodLabel}
@@ -390,21 +400,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {stationBreakdown.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-slate-800">حسب المحطة <span className="text-2xs font-normal text-slate-500">({periodLabel})</span></h2>
-          <div role="region" tabIndex={0} aria-label="جدول المحطات (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-xs">
-              <thead>
-                <tr className="text-slate-600 border-b border-slate-200">
-                  {['المحطة', 'أخبار', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'تكليفات شاركت فيها', 'خطوات تكليفات أنجزتها'].map((h, i) => (
-                    <th key={h} scope="col" className={`p-3 font-bold text-right whitespace-nowrap ${i === 0 ? 'sticky right-0 bg-white' : ''}`}>{h}</th>
+          <div role="region" tabIndex={0} aria-label="جدول المحطات" className="bg-white border border-slate-200 rounded-xl sm:overflow-x-auto print:overflow-visible">
+            <table role="table" className="max-sm:block w-full sm:min-w-[40rem] print:min-w-0 text-xs">
+              <thead role="rowgroup" className="max-sm:sr-only">
+                <tr role="row" className="text-slate-600 border-b border-slate-200">
+                  <th role="columnheader" scope="col" className="sticky right-0 bg-white p-3 text-start font-bold">المحطة</th>
+                  {STATION_COLUMNS.map(({ key, label }) => (
+                    <th role="columnheader" key={key} scope="col" className="p-3 font-bold text-start whitespace-nowrap print:whitespace-normal">{label}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody role="rowgroup" className="max-sm:block">
                 {stationBreakdown.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-100 last:border-0">
-                    <th scope="row" className="p-3 text-right font-bold text-slate-900 whitespace-nowrap sticky right-0 bg-white">{r.name}</th>
-                    {[r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps].map((v, i) => (
-                      <td key={i} className="p-3 tabular-nums">{v}</td>
+                  <tr role="row" key={r.id} className="max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-2.5 max-sm:p-3 border-b border-slate-200 last:border-0">
+                    <th role="rowheader" scope="row" className="max-sm:col-span-full sm:p-3 text-start font-bold text-slate-900 max-sm:text-sm sm:whitespace-nowrap sm:sticky sm:right-0 bg-white [overflow-wrap:anywhere]">{r.name}</th>
+                    {STATION_COLUMNS.map(({ key, label }) => (
+                      <td role="cell" key={key} className="sm:p-3 tabular-nums">
+                        <span aria-hidden="true" className="block sm:hidden text-slate-600">{label}</span>
+                        <span className="max-sm:font-semibold">{r[key]}</span>
+                      </td>
                     ))}
                   </tr>
                 ))}

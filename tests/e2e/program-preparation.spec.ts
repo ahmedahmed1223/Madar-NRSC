@@ -25,6 +25,22 @@ test('creates a programme and starts a new episode from its confirmed template',
     await page.unroute(syncPath);
     const program = (await collections()).programs.find((row: any) => row.d.name === name);
     expect(program).toBeTruthy();
+    await page.goto(`/programs/${program.id}`);
+    const programSections = page.getByRole('combobox', { name: 'أقسام البرنامج' });
+    await programSections.selectOption('episodes');
+    await expect(page.getByRole('heading', { name: 'حلقات البرنامج وجداول الرانداون' })).toBeInViewport();
+    await page.screenshot({ path: 'test-results/workdesk-after-390-program.png' });
+    await page.setViewportSize({ width: 320, height: 844 });
+    const switcher = (await page.locator('#program-switcher-select').boundingBox())!;
+    expect(switcher.x).toBeGreaterThanOrEqual(0);
+    expect(switcher.x + switcher.width).toBeLessThanOrEqual(320);
+    await page.getByRole('button', { name: 'البحث السريع (Ctrl + K)', exact: true }).click({ trial: true });
+    await page.screenshot({ path: 'test-results/ui-review/program-320.png' });
+    await page.setViewportSize({ width: 1440, height: 844 });
+    await page.getByRole('tab', { name: 'قالب الرانداون المعياري' }).click();
+    await expect(page.getByRole('tab', { name: 'قالب الرانداون المعياري' })).toHaveAttribute('aria-selected', 'true');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(programSections).toHaveValue('template');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
     const startEpisode = async (title: string, structure: RegExp, day: string) => {

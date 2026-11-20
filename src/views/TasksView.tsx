@@ -540,47 +540,53 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </SortableScope>
       ) : (
         /* LIST VIEW */
-        <div role="region" aria-label="قائمة المهام" tabIndex={0} className="bg-white border border-slate-200 rounded-lg overflow-x-auto shadow-2xs">
-          <table className="w-full min-w-[720px] text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                <th scope="col" className="py-3 px-4">عنوان المهمة</th>
-                <th scope="col" className="py-3 px-3 whitespace-nowrap">الأولوية</th>
-                <th scope="col" className="py-3 px-3 whitespace-nowrap">المسؤول المكلف</th>
-                <th scope="col" className="py-3 px-3 whitespace-nowrap">تاريخ الاستحقاق</th>
-                <th scope="col" className="py-3 px-3">الحالة</th>
-                <th scope="col" className="py-3 px-4 text-center">إجراءات</th>
+        <div role="region" aria-label="قائمة المهام" className="bg-white border border-slate-200 rounded-lg shadow-2xs">
+          <table role="table" className="max-lg:block w-full text-right text-xs">
+            <thead role="rowgroup" className="max-lg:sr-only">
+              <tr role="row" className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                <th role="columnheader" scope="col" className="py-3 px-4">عنوان المهمة</th>
+                <th role="columnheader" scope="col" className="py-3 px-3">الأولوية</th>
+                <th role="columnheader" scope="col" className="py-3 px-3">المسؤول المكلف</th>
+                <th role="columnheader" scope="col" className="py-3 px-3">تاريخ الاستحقاق</th>
+                <th role="columnheader" scope="col" className="py-3 px-3">الحالة</th>
+                <th role="columnheader" scope="col" className="py-3 px-4 text-center">إجراءات</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody role="rowgroup" className="max-lg:block divide-y divide-slate-200">
               {filteredTasks.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-10 px-4 text-center text-slate-500">
+                <tr role="row" className="max-lg:block">
+                  <td role="cell" colSpan={6} className="max-lg:block py-10 px-4 text-center text-slate-500">
                     {tasks.length === 0 ? 'لا مهام بعد.' : mineOnly && !searchQuery && selectedStatus === 'ALL' ? 'لا مهام مسندة إليك الآن. ألغِ «مهامي فقط» لرؤية مهام الفريق.' : 'لا مهام تطابق البحث أو التصفية.'}
                   </td>
                 </tr>
               )}
               {taskListPage.visible.map((t) => (
-                <tr key={t.id} data-task-id={t.id} tabIndex={-1} className={`hover:bg-slate-50/70 outline-hidden ${focusId === t.id ? 'bg-blue-50' : ''}`}>
-                  <td className="py-3 px-4 font-bold text-slate-800">
+                <tr role="row" key={t.id} data-task-id={t.id} tabIndex={-1} className={`max-lg:grid max-lg:grid-cols-2 max-lg:gap-x-3 max-lg:gap-y-2.5 max-lg:p-3 hover:bg-slate-50/70 outline-hidden ${focusId === t.id ? 'bg-blue-50' : ''}`}>
+                  <td role="cell" className="min-w-0 max-lg:col-span-2 lg:py-3 lg:px-4 font-bold text-slate-800 [overflow-wrap:anywhere]">
                     <div className="space-y-1">
-                      <div>{t.title}</div>
+                      <div className="max-lg:text-sm">{t.title}</div>
                       {relatedChip(t)}
                     </div>
                   </td>
-                  <td className="py-3 px-3">
+                  <td role="cell" className="lg:py-3 lg:px-3">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">الأولوية</div>
                     <Badge variant={priorityVariant(t.priority)} size="sm">
                       {priorityLabel(t.priority)}
                     </Badge>
                   </td>
-                  <td className="py-3 px-3 font-semibold text-slate-700">{assigneeOf(t)}</td>
-                  <td className="py-3 px-3 tabular-nums text-slate-600">
+                  <td role="cell" className="min-w-0 lg:py-3 lg:px-3 text-slate-700 [overflow-wrap:anywhere]">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">المسؤول المكلف</div>
+                    <span className="font-semibold">{assigneeOf(t)}</span>
+                  </td>
+                  <td role="cell" className="lg:py-3 lg:px-3 max-lg:col-span-2 tabular-nums text-slate-600">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">تاريخ الاستحقاق</div>
                     <div className="flex flex-wrap items-center gap-1">
                       <span className={overdueDays(t) ? 'text-amber-800 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
                       <OverdueBadge task={t} />
                     </div>
                   </td>
-                  <td className="py-3 px-3">
+                  <td role="cell" className="min-w-0 lg:py-3 lg:px-3">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">الحالة</div>
                     {movingTasks.has(t.id) && <span role="status" className="block text-xs text-slate-600">بانتظار تأكيد نقل المهمة</span>}
                     {canMove(t) && t.status !== 'CANCELLED' ? (
                       <select
@@ -588,7 +594,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         value={t.status}
                         disabled={movingTasks.has(t.id)}
                         onChange={(e) => handleQuickStatusChange(t.id, e.target.value as TaskStatus)}
-                        className="min-h-9 px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 font-semibold"
+                        className="min-h-11 lg:min-h-9 max-w-full max-lg:w-full px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 font-semibold"
                       >
                         {TASK_STATUS_OPTIONS.filter((o) => canAssign || o.value !== 'CANCELLED').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
@@ -601,8 +607,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </Badge>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="flex items-center justify-center gap-1">
+                  <td role="cell" className="max-lg:self-end lg:py-3 lg:px-4 text-center">
+                    <div className="flex items-center justify-end lg:justify-center gap-1">
                       {canAssign && (
                       <button
                         type="button"

@@ -66,7 +66,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   ];
 
 
-  const specialties = Array.from(new Set(guests.map((g) => g.specialty)));
+  const specialties = Array.from(new Set(guests.map((g) => g.specialty).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ar'));
 
   const handleOpenAdd = () => {
     setEditingGuest(null);
@@ -140,7 +140,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
         <button
           type="button"
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 min-h-11 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           إضافة ضيف جديد
@@ -149,28 +149,29 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
+      <div role="group" aria-label="تصفية دليل الضيوف" className="bg-white p-3 rounded-xl border border-slate-200 grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-end gap-3">
+        <div className="relative min-w-0">
           <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="guests-search-input"
             type="search"
+            aria-label="البحث في دليل الضيوف"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم، المؤسسة، أو التخصص..."
             autoComplete="off"
             spellCheck="false"
-            className="w-full pr-10 pl-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="w-full min-h-11 pr-10 pl-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-blue-500"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <label htmlFor="guests-specialty-filter" className="text-xs text-slate-500 shrink-0 font-medium">مجال التخصص:</label>
+        <div className="grid gap-1 min-w-0">
+          <label htmlFor="guests-specialty-filter" className="text-xs text-slate-700 font-semibold">مجال التخصص</label>
           <select
             id="guests-specialty-filter"
             value={selectedSpecialty}
             onChange={(e) => setSelectedSpecialty(e.target.value)}
-            className="px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all w-full sm:w-auto"
+            className="w-full min-w-0 min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <option value="ALL">جميع المجالات</option>
             {specialties.map((s) => (
@@ -183,51 +184,19 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       </div>
 
       {/* Guests Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         {guestPage.visible.map((guest) => (
-          <div
+          <article
             key={guest.id}
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 flex flex-col justify-between hover:shadow-md transition-all group"
+            className="min-w-0 bg-white rounded-xl border border-slate-200 p-3 sm:p-4 flex flex-col"
           >
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 shrink-0 rounded-2xl ring-2 ring-slate-100" />
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-slate-800 text-sm">{guest.fullName}</h3>
-                    <p className="text-xs text-slate-500">{guest.jobTitle}</p>
-                    <p className="text-xs text-blue-700 font-semibold">{guest.organization}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEdit(guest)}
-                    className="min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                    aria-label={`تعديل بيانات الضيف: ${guest.fullName}`}
-                    title="تعديل بيانات الضيف"
-                  >
-                    <Edit2 className="w-4 h-4" aria-hidden />
-                  </button>
-                  )}
-
-                  {canManage && onDeleteGuest && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if ((await confirmDialog(`هل أنت متأكد من حذف الضيف: "${guest.fullName}"؟`))) {
-                          onDeleteGuest(guest.id);
-                        }
-                      }}
-                      className="min-h-10 min-w-10 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                      aria-label={`حذف الضيف: ${guest.fullName}`}
-                      title="حذف الضيف من الأرشيف"
-                    >
-                      <Trash2 className="w-4 h-4" aria-hidden />
-                    </button>
-                  )}
+            <div className="space-y-3 flex-1">
+              <div className="flex items-start gap-3 min-w-0">
+                <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 shrink-0 rounded-xl ring-2 ring-slate-100" />
+                <div className="min-w-0 [overflow-wrap:anywhere]">
+                  <h2 className="font-bold text-slate-900 text-base leading-snug">{guest.fullName}</h2>
+                  <p className="text-xs text-slate-500">{guest.jobTitle}</p>
+                  <p className="text-xs text-blue-700 font-semibold">{guest.organization}</p>
                 </div>
               </div>
 
@@ -244,25 +213,27 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               </div>
 
               {/* Contact Info */}
-              <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+              {(guest.phone || guest.email || guest.notes) && (
+              <div className="text-xs text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
                 {guest.phone && (
-                  <div className="flex items-center gap-2">
+                  <a href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-2 min-h-11 sm:min-h-8 hover:text-blue-700 hover:underline" aria-label={`اتصال بـ ${guest.fullName}: ${guest.phone}`}>
                     <Phone className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
-                    <a href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`} className="font-mono text-left hover:text-blue-700 hover:underline" dir="ltr" aria-label={`اتصال بـ ${guest.fullName}: ${guest.phone}`}>{guest.phone}</a>
-                  </div>
+                    <span dir="ltr" className="min-w-0 tabular-nums [overflow-wrap:anywhere]">{guest.phone}</span>
+                  </a>
                 )}
                 {guest.email && (
-                  <div className="flex items-center gap-2">
+                  <a href={`mailto:${guest.email}`} className="flex items-center gap-2 min-h-11 sm:min-h-8 hover:text-blue-700 hover:underline" title={guest.email}>
                     <Mail className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
-                    <a href={`mailto:${guest.email}`} className="min-w-0 text-left truncate hover:text-blue-700 hover:underline" dir="ltr" title={guest.email}>{guest.email}</a>
-                  </div>
+                    <span dir="ltr" className="min-w-0 [overflow-wrap:anywhere]">{guest.email}</span>
+                  </a>
                 )}
                 {guest.notes && (
-                  <p className="text-2xs text-slate-500 mt-1 line-clamp-2">
+                  <p className="py-1 text-xs text-slate-600 line-clamp-2 [overflow-wrap:anywhere]">
                     {guest.notes}
                   </p>
                 )}
               </div>
+              )}
             </div>
 
             <div className="pt-4 border-t border-slate-100 mt-4 space-y-1.5 text-xs text-slate-500">
@@ -274,8 +245,43 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 </div>
               ))}
             </div>
-          </div>
+            {canManage && (
+              <div className="flex items-center gap-1 border-t border-slate-100 mt-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenEdit(guest)}
+                  className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  aria-label={`تعديل بيانات الضيف: ${guest.fullName}`}
+                  title="تعديل بيانات الضيف"
+                >
+                  <Edit2 className="w-4 h-4" aria-hidden />
+                </button>
+
+                {onDeleteGuest && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if ((await confirmDialog(`هل أنت متأكد من حذف الضيف: "${guest.fullName}"؟`))) {
+                        onDeleteGuest(guest.id);
+                      }
+                    }}
+                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    aria-label={`حذف الضيف: ${guest.fullName}`}
+                    title="حذف الضيف من الأرشيف"
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden />
+                  </button>
+                )}
+              </div>
+            )}
+          </article>
         ))}
+        {filteredGuests.length === 0 && (
+          <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
+            <p role="status" className="text-sm text-slate-700">{guests.length ? 'لا ضيوف يطابقون البحث أو التخصص.' : 'لا ضيوف في الدليل بعد.'}</p>
+            {guests.length > 0 && <button type="button" onClick={() => { setSearchQuery(''); setSelectedSpecialty('ALL'); }} className="min-h-11 px-3 text-sm font-semibold text-blue-700 hover:underline">مسح الفلاتر</button>}
+          </div>
+        )}
       </div>
       <ShowMore remaining={guestPage.remaining} onMore={guestPage.showMore} onAll={guestPage.showAll} noun="ضيف" />
 

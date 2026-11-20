@@ -433,16 +433,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         </div>
       )}
 
-      <SavedNewsFilters key={currentUser.id} userId={currentUser.id}
-        definition={{ activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }}
-        onApply={filter => {
-          setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
-          setSelectedCategory(categories.find(category => category.nameAr === filter.selectedCategory)?.id || filter.selectedCategory);
-          setSelectedSource(filter.selectedSource || 'ALL'); setSelectedPriority(filter.selectedPriority);
-          setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
-          setFromDate(filter.fromDate); setToDate(filter.toDate);
-          setPage(0); setSelectedIds([]); anchorRef.current = undefined;
-        }} />
       {/* Filter Toolbar */}
       <div className="py-3 border-y border-slate-200 flex flex-wrap items-center gap-3">
         {/* Search */}
@@ -597,6 +587,17 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           />
         </div>
       </div>
+
+      <SavedNewsFilters key={currentUser.id} userId={currentUser.id}
+        definition={{ activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }}
+        onApply={filter => {
+          setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
+          setSelectedCategory(categories.find(category => category.nameAr === filter.selectedCategory)?.id || filter.selectedCategory);
+          setSelectedSource(filter.selectedSource || 'ALL'); setSelectedPriority(filter.selectedPriority);
+          setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
+          setFromDate(filter.fromDate); setToDate(filter.toDate);
+          setPage(0); setSelectedIds([]); anchorRef.current = undefined;
+        }} />
 
       {/* Bulk Action Bar (when selected) */}
       {bulkResult && (

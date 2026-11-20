@@ -56,3 +56,19 @@ test('reloads the browser after a newer build is deployed even when the release 
     await expect(panel.getByRole('button', { name: 'فحص الإصدارات' })).toBeVisible();
   } finally { await close(); }
 });
+
+test('explains why a newer release has no deployment button on an unconfigured host', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv');
+  try {
+    const status: AppUpdateStatus = {
+      deployedVersion: '4.1.4', latest: { version: '9.10.0', url: 'https://github.com/ahmedahmed1223/Madar-NRSC/releases/tag/v9.10.0' },
+      broadcastActive: false, deployment: null, requestedVersion: null,
+    };
+    await page.route('**/api/v1/updates', route => route.fulfill({ json: { data: status } }));
+    await page.goto('/whats-new');
+    const panel = page.getByRole('region', { name: 'تحديثات مدار' });
+    await panel.getByRole('button', { name: 'فحص الإصدارات' }).click();
+    await expect(panel.getByRole('status')).toContainText('النشر من داخل مدار غير مهيأ على هذا الخادم');
+    await expect(panel.getByRole('button', { name: 'طلب نشر الإصدار على الخادم' })).toHaveCount(0);
+  } finally { await close(); }
+});

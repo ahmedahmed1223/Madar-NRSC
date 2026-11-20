@@ -68,9 +68,8 @@ export function FilterTabs<K extends string>({
 
   return (
     <div className={className}>
-      <label className="sm:hidden block">
-        <span className="sr-only">{label}</span>
-        <select aria-label={label} value={active} onChange={(e) => onChange(e.target.value as K)} className="w-full px-3 py-2.5 bg-white text-sm font-bold text-slate-800">
+      <div className="sm:hidden">
+        <select aria-label={label} value={active} onChange={(e) => onChange(e.target.value as K)} className="block w-full min-h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
           {tabs.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}
@@ -78,7 +77,7 @@ export function FilterTabs<K extends string>({
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       <div
         ref={listRef}

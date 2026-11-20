@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { DEMO_PASSWORD } from './helpers';
+import { DEMO_PASSWORD, openSettingsSection } from './helpers';
 
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 test('new settings sections are accessible on desktop and mobile in both themes', async ({ browser }) => {
@@ -18,10 +18,10 @@ test('new settings sections are accessible on desktop and mobile in both themes'
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const theme of ['light', 'dark']) {
-      await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: /تفضيلات هذا الجهاز/ }).click();
+      await openSettingsSection(page, 'تفضيلات هذا الجهاز');
       await page.getByLabel('المظهر', { exact: true }).selectOption(theme);
       for (const section of ['المؤسسة والفريق', 'الأخبار والتحرير', 'تفضيلات هذا الجهاز', 'حالة النظام']) {
-        await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: new RegExp(section) }).click();
+        await openSettingsSection(page, section);
         await page.waitForTimeout(300);
         const violations = await page.evaluate(async () => {
           const result = await (window as any).axe.run(document, { runOnly: ['wcag2a', 'wcag2aa'] });

@@ -230,9 +230,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   const roleName = findUserRole(currentUser, RbacService.getRoleDefinitions())?.nameAr?.split(' (')[0] || currentUser.jobTitle;
 
   return (
-    <header className="app-topbar no-print h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+    <header className="app-topbar no-print h-16 bg-white border-b border-slate-200 px-1.5 min-[360px]:px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
       {/* Right side (RTL Start): Station Live Clock & Search */}
-      <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-1 min-[360px]:gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
         {/* Mobile menu trigger */}
         {onToggleMobileMenu && (
           <button
@@ -316,7 +316,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           onClick={handleSearchClick}
           aria-label="البحث السريع (Ctrl + K)"
-          className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl xl:hidden transition-colors"
+          className="p-2 shrink-0 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl xl:hidden transition-colors"
           title="البحث السريع"
         >
           <Search className="w-4 h-4" />
@@ -340,7 +340,7 @@ export const Topbar: React.FC<TopbarProps> = ({
       </div>
 
       {/* Left side (RTL End): Quick Actions, Notifications, Role Switcher */}
-      <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+      <div className="flex items-center min-[360px]:gap-1 sm:gap-3 shrink-0">
         {/* PWA Workstation Install Prompt */}
         <PWAInstallButton />
 
@@ -445,9 +445,10 @@ export const Topbar: React.FC<TopbarProps> = ({
           aria-label={chat.unread > 0 ? `المحادثة الداخلية (${chat.unread} رسالة جديدة)` : 'المحادثة الداخلية'}
           aria-expanded={chat.open}
           title="المحادثة الداخلية بين الأقسام"
-          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
+          className={`min-h-11 min-w-11 inline-flex items-center justify-center gap-1.5 p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
         >
           <MessageSquare className="w-5 h-5" />
+          <span className="hidden lg:inline text-xs font-semibold whitespace-nowrap">محادثة الأقسام</span>
           {chat.unread > 0 && (
             <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-blue-600 text-white rounded-full text-3xs leading-4 text-center font-bold tabular-nums">
               {chat.unread > 9 ? '9+' : chat.unread}

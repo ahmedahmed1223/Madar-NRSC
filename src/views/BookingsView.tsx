@@ -54,7 +54,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
   const dayStart = new Date(y, m - 1, d).getTime();
   const dayEnd = new Date(y, m - 1, d + 1).getTime();
   const pct = (ms: number) => ((Math.min(Math.max(ms, dayStart), dayEnd) - dayStart) / (dayEnd - dayStart)) * 100;
-  const todays = useMemo(() => bookingsOnDay(bookings, day), [bookings, day]);
+  const todays = useMemo(
+    () => bookingsOnDay(bookings, day).filter((booking) => booking.status !== 'CANCELLED').sort((a, b) => a.start.localeCompare(b.start)),
+    [bookings, day],
+  );
   const visible = resources.filter((r) => r.isActive !== false && (kind === 'ALL' || r.kind === kind));
   const nowPct = now >= dayStart && now < dayEnd ? pct(now) : null;
 
@@ -66,10 +69,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
   const userName = (id?: string) => users.find((u) => u.id === id)?.fullName || '';
   const canEdit = (b: Booking) => canManage || b.bookedById === currentUser.id;
 
-  const newAt = (resourceId: string, hour: number) => {
+  const newAt = (resourceId: string | undefined, hour: number) => {
     if (!canBook) return;
     const start = new Date(y, m - 1, d, hour);
     setEditing({ resourceId, start: start.toISOString(), end: new Date(start.getTime() + 2 * 3600_000).toISOString() });
+  };
+  const openNewBooking = (resourceId?: string) => {
+    if (day === localDateString()) setEditing({ resourceId });
+    else newAt(resourceId, 9);
   };
 
   return (
@@ -82,27 +89,29 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
           </h1>
           <p className="text-xs text-slate-500 mt-1">الاستوديوهات والكاميرات ووحدات البث وغرف المونتاج والطواقم على جدول اليوم؛ لا يقبل النظام حجزين متعارضين للمورد نفسه.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="تاريخ الحجوزات وإجراءاتها" className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
           <button type="button" onClick={() => setDay(shiftDay(day, -1))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="اليوم" className="min-h-11 sm:min-h-9 px-2 py-1.5 rounded-xl border border-slate-200 bg-white text-xs" />
+          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="اليوم" className="min-w-0 w-full sm:w-auto min-h-11 sm:min-h-9 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-sm sm:text-xs" />
           <button type="button" onClick={() => setDay(shiftDay(day, 1))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => setDay(localDateString())} className="min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
-            اليوم
-          </button>
-          {canManage && (
-            <button type="button" onClick={() => setManaging(true)} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
-              <Settings2 className="w-3.5 h-3.5" /> الموارد
+          <div className="col-span-full flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setDay(localDateString())} className="min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+              اليوم
             </button>
-          )}
-          {canBook && (
-            <button type="button" onClick={() => setEditing({})} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
-              <Plus className="w-3.5 h-3.5" /> حجز جديد
-            </button>
-          )}
+            {canManage && (
+              <button type="button" onClick={() => setManaging(true)} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+                <Settings2 className="w-3.5 h-3.5" /> الموارد
+              </button>
+            )}
+            {canBook && (
+              <button type="button" onClick={() => openNewBooking()} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+                <Plus className="w-3.5 h-3.5" /> حجز جديد
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -143,10 +152,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
         {visible.length === 0 ? (
           <p className="p-8 text-center text-xs text-slate-500">{resources.length ? 'لا موارد من هذا النوع.' : canManage ? 'أضف الموارد القابلة للحجز من زر «الموارد».' : 'لم يضف مسؤول الحجوزات أي موارد بعد.'}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="min-w-[900px]">
-              <div className="flex border-b border-slate-100 text-2xs text-slate-500">
-                <div className="w-40 shrink-0" />
+          <div role="region" aria-label="جدول الموارد" tabIndex={0} className="lg:isolate lg:overflow-x-auto focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600">
+            <div className="lg:min-w-[900px]">
+              <div className="hidden lg:flex border-b border-slate-200 text-2xs text-slate-600">
+                <div className="sticky start-0 z-30 w-44 xl:w-48 shrink-0 px-2 py-1 border-e border-slate-200 bg-slate-50 font-semibold">المورد</div>
                 <div className="flex-1 grid grid-cols-24" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                   {HOURS.map((h) => (
                     <span key={h} className="py-1 text-center border-s border-slate-100 font-mono">
@@ -156,14 +165,39 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                 </div>
               </div>
               {visible.map((r) => {
-                const rows = todays.filter((b) => b.resourceId === r.id && b.status !== 'CANCELLED');
+                const rows = todays.filter((b) => b.resourceId === r.id);
                 return (
-                  <div key={r.id} className="flex border-b border-slate-100 last:border-0">
-                    <div className="w-40 shrink-0 p-2 text-xs">
-                      <p className="font-bold text-slate-800 truncate">{r.name}</p>
-                      <p className="text-2xs text-slate-500">{resourceKindName(r.kind)}</p>
+                  <div key={r.id} className="lg:flex border-b border-slate-200 last:border-0">
+                    <div className="flex items-center justify-between gap-2 p-3 lg:sticky lg:start-0 lg:z-30 lg:w-44 lg:shrink-0 lg:border-e lg:border-slate-200 lg:bg-white lg:p-2 xl:w-48 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 max-lg:text-sm [overflow-wrap:anywhere] lg:truncate" title={r.name}>{r.name}</p>
+                        <p className="text-2xs text-slate-600">{resourceKindName(r.kind)}</p>
+                      </div>
+                      {canBook && (
+                        <button type="button" aria-label={`حجز ${r.name}`} title={`حجز ${r.name}`} onClick={() => openNewBooking(r.id)} className="min-h-11 shrink-0 inline-flex items-center justify-center gap-1 px-2.5 lg:min-h-9 lg:min-w-9 lg:px-0 rounded-lg border border-slate-300 text-blue-700 font-bold hover:bg-blue-50">
+                          <Plus className="w-4 h-4" aria-hidden="true" />
+                          <span className="lg:sr-only">حجز</span>
+                        </button>
+                      )}
                     </div>
-                    <div className="flex-1 relative h-14">
+                    <div className="lg:hidden px-3 pb-3">
+                      {rows.length === 0 ? <p className="text-xs text-slate-600">لا حجوزات في هذا اليوم.</p> : (
+                        <ul className="space-y-1">
+                          {rows.map((b) => (
+                            <li key={b.id}>
+                              <button type="button" onClick={() => setViewing(b)} className="w-full min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-start hover:border-blue-400">
+                                <span className="block text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{b.title}</span>
+                                <span className="flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
+                                  <span dir="ltr" className="tabular-nums">{fmtTime(b.start)} – {fmtTime(b.end)}</span>
+                                  <span>{bookingStatusOf(b.status).name}</span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="hidden lg:block flex-1 relative h-14">
                       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                         {HOURS.map((h) => (
                           <button

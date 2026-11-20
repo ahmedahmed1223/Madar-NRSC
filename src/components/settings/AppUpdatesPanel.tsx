@@ -8,7 +8,7 @@ import { confirmDialog } from '../../services/dialogs';
 const checkStatus = () => apiFetch<{ data: AppUpdateStatus }>('/api/v1/updates', { cache: 'no-store' });
 const button = 'min-h-11 inline-flex items-center gap-2 px-3 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-800 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-blue-600';
 
-export function AppUpdatesPanel() {
+export function AppUpdatesPanel({ canManage }: { canManage: boolean }) {
   const localVersion = __APP_VERSION__;
   const [status, setStatus] = useState<AppUpdateStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,6 +72,9 @@ export function AppUpdatesPanel() {
           : 'الخادم يشغّل أحدث إصدار منشور أو إصدارًا أحدث.'}
         {status.broadcastActive && <p className="mt-1">يتاح التحديث بعد انتهاء البث النشط.</p>}
         {requested && <p className="mt-1">استلم نظام النشر الطلب للإصدار <b dir="ltr">v{requested}</b>. افحص الإصدار مجددًا بعد اكتمال النشر.</p>}
+        {newer && !status.deployment && <p className="mt-1">{canManage
+          ? 'النشر من داخل مدار غير مهيأ على هذا الخادم. استخدم منصة الاستضافة لنشر الإصدار.'
+          : 'اطلب من مدير النظام نشر الإصدار على الخادم، ثم افحص الإصدارات مرة أخرى.'}</p>}
       </div>}
       <div className="flex flex-wrap items-center gap-2">
         {canReload && <button type="button" className={button} disabled={busy || status?.broadcastActive} onClick={() => void applyBrowser()}>

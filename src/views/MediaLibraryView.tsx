@@ -27,6 +27,7 @@ const breakable = (name = '') =>
     </React.Fragment>
   ));
 import { Badge } from '../components/common/Badge';
+import { FilterTabs } from '../components/common/FilterTabs';
 import { Modal } from '../components/common/Modal';
 
 interface MediaLibraryViewProps {
@@ -39,7 +40,16 @@ interface MediaLibraryViewProps {
   focusId?: string | null;
 }
 
-const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
+const MEDIA_TYPE_NAMES: Record<MediaType, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة', PDF: 'وثيقة PDF' };
+const MEDIA_FILTERS = [
+  { id: 'ALL', label: 'الكل' },
+  { id: 'IMAGE', label: 'الصور' },
+  { id: 'VIDEO', label: 'الفيديو' },
+  { id: 'AUDIO', label: 'الصوتيات' },
+  { id: 'DOCUMENT', label: 'الوثائق' },
+] as const;
+type MediaFilter = (typeof MEDIA_FILTERS)[number]['id'];
+const mediaFilterType = (asset: MediaAsset) => asset.mediaType === 'PDF' ? 'DOCUMENT' : asset.mediaType;
 
 const TAG_SUGGESTIONS = [
   'أخبار_عاجلة',
@@ -90,7 +100,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   // Same rule as the server: media.delete, or the owner with upload rights.
   const canDeleteAsset = (a: MediaAsset) =>
     RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id));
-  const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [selectedType, setSelectedType] = useState<MediaFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
@@ -286,13 +296,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   };
 
   const filteredAssets = (mediaAssets || []).filter((a) => {
-    if (selectedType !== 'ALL' && a.mediaType !== selectedType) return false;
+    if (selectedType !== 'ALL' && mediaFilterType(a) !== selectedType) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, a.title, a.fileName, (a as any).originalName, a.description, a.tags || []);
     }
     return true;
   });
   const assetPage = useIncremental(filteredAssets, 48, `${searchQuery}|${selectedType}`);
+  const typeCounts = { ALL: mediaAssets.length, IMAGE: 0, VIDEO: 0, AUDIO: 0, DOCUMENT: 0 };
+  for (const asset of mediaAssets) typeCounts[mediaFilterType(asset)]++;
+  const resetFilters = () => { setSearchQuery(''); setSelectedType('ALL'); };
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {
@@ -333,24 +346,25 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
+      <div role="group" aria-label="تصفية مكتبة الوسائط" className="bg-white p-3 rounded-xl border border-slate-200 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="relative min-w-0">
           <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="media-search-input"
             type="search"
+            aria-label="البحث في مكتبة الوسائط"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالعنوان، اسم الملف، أو الوسوم..."
+            placeholder="ابحث في الملفات والوسوم…"
             autoComplete="off"
             spellCheck="false"
-            className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+            className="w-full min-h-11 pr-10 pl-12 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-search-cancel-button]:hidden"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+              className="absolute left-0 inset-y-0 w-11 inline-flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-900"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -358,54 +372,23 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
-          {[
-            { key: 'ALL', label: 'الكل' },
-            { key: 'IMAGE', label: 'الصور' },
-            { key: 'VIDEO', label: 'الفيديو' },
-            { key: 'AUDIO', label: 'الصوتيات' },
-            { key: 'DOCUMENT', label: 'الوثائق' },
-          ].map(({ key, label }) => {
-            const count =
-              key === 'ALL'
-                ? mediaAssets.length
-                : mediaAssets.filter((a) => a.mediaType === key).length;
-
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={selectedType === key}
-                onClick={() => setSelectedType(key)}
-                className={`min-h-11 sm:min-h-9 px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  selectedType === key
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <span>{label}</span>
-                <span
-                  className={`text-2xs px-1.5 rounded-md tabular-nums ${
-                    selectedType === key ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <FilterTabs<MediaFilter>
+          label="نوع الوسائط"
+          active={selectedType}
+          onChange={setSelectedType}
+          tabs={MEDIA_FILTERS.map((tab) => ({ ...tab, count: typeCounts[tab.id] }))}
+        />
       </div>
 
       {/* Assets Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {assetPage.visible.map((asset) => (
-          <div
+          <article
             key={asset.id}
-            className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:border-blue-300 transition-colors"
+            className="min-w-0 bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-blue-300 transition-colors"
           >
             {/* Visual Thumbnail */}
-            <div className="theme-fixed relative h-44 bg-slate-900 flex items-center justify-center overflow-hidden">
+            <div className="theme-fixed relative aspect-video bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
                 <ThumbImage src={asset.fileUrl || asset.url} alt={asset.title} icon={getMediaIcon('IMAGE')} className="w-full h-full object-cover" />
               ) : asset.mediaType === 'VIDEO' ? (
@@ -430,13 +413,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
 
               <div className="absolute top-2 right-2">
                 <Badge variant="default" size="sm">
-                  {asset.mediaType === 'IMAGE'
-                    ? 'صورة'
-                    : asset.mediaType === 'VIDEO'
-                    ? 'فيديو'
-                    : asset.mediaType === 'AUDIO'
-                    ? 'صوت'
-                    : 'وثيقة'}
+                  {MEDIA_TYPE_NAMES[asset.mediaType] || 'وثيقة'}
                 </Badge>
               </div>
 
@@ -452,16 +429,17 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             {/* Content info */}
             <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
               <div>
-                <h2
-                  dir="auto"
-                  onClick={() => setPreviewAsset(asset)}
-                  className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug cursor-pointer hover:text-blue-600 transition-colors"
-                >
-                  {asset.title || (
-                    <span dir="ltr" className="block text-right font-mono font-semibold [overflow-wrap:anywhere]" title={asset.fileName}>
-                      {breakable(asset.fileName)}
-                    </span>
-                  )}
+                <h2 className="text-sm font-bold leading-snug">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewAsset(asset)}
+                    aria-label={`معاينة المادة: ${asset.title || asset.fileName}`}
+                    title="معاينة المادة"
+                    className="w-full min-h-11 sm:min-h-9 flex items-center justify-between gap-2 text-start rounded-lg text-slate-800 hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <span dir="auto" className="min-w-0 line-clamp-2 [overflow-wrap:anywhere]">{asset.title || breakable(asset.fileName)}</span>
+                    <Eye className="w-5 h-5 shrink-0 text-blue-700" aria-hidden="true" />
+                  </button>
                 </h2>
                 {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-2xs font-bold">
@@ -478,7 +456,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                     {asset.tags.map((tg) => (
                       <span
                         key={tg}
-                        className="text-2xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md"
+                        className="max-w-full text-2xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md [overflow-wrap:anywhere]"
                       >
                         #{tg}
                       </span>
@@ -492,15 +470,6 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   {asset.uploadedByName || 'النظام'}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewAsset(asset)}
-                    className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="معاينة المادة"
-                    aria-label={`معاينة المادة: ${asset.title || asset.fileName}`}
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
                   {canDeleteAsset(asset) && (
                   <button
                     type="button"
@@ -517,14 +486,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 </div>
               </div>
             </div>
-          </div>
+          </article>
         ))}
 
         {filteredAssets.length === 0 && (
           <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <HardDrive className="w-10 h-10 mb-3 text-slate-400" aria-hidden="true" />
-            <p className="font-semibold text-sm">{mediaAssets.length === 0 ? 'المكتبة فارغة.' : 'لا مواد تطابق البحث أو النوع المختار.'}</p>
-            {canUpload && <p className="text-xs text-slate-500 mt-1">ارفع ملفاً من «رفع مادة وسائط جديدة».</p>}
+            <p role="status" className="font-semibold text-sm">{mediaAssets.length === 0 ? 'المكتبة فارغة.' : 'لا مواد تطابق البحث أو النوع المختار.'}</p>
+            {mediaAssets.length > 0 ? (
+              <button type="button" onClick={resetFilters} className="min-h-11 px-3 text-sm font-semibold text-blue-700 hover:underline">مسح الفلاتر</button>
+            ) : canUpload && <p className="text-xs text-slate-500 mt-1">ارفع ملفاً من «رفع مادة وسائط جديدة».</p>}
           </div>
         )}
       </div>

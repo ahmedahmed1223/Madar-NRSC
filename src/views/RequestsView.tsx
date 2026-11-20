@@ -177,9 +177,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
         <FilterTabs<RequestTab>
           label="الطلبات"
+          className="col-span-full"
           active={listTab}
           onChange={next => {
             if (focusId || focusSegmentId) onClearFocus?.();
@@ -193,8 +194,16 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             ...(canManage ? [{ id: 'ALL' as const, label: 'كل الطلبات', tone: 'slate' as const }] : []),
           ]}
         />
+        <input
+          type="search"
+          aria-label="بحث في الطلبات"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="بحث بالعنوان أو الشخص أو الخبر…"
+          className="col-span-full min-h-11 w-full min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white sm:w-56"
+        />
         {listTab === 'INBOX' && canManage && (
-          <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="القسم" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
+          <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="القسم" className="min-h-11 min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white">
             {DEPARTMENTS.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
@@ -202,15 +211,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             ))}
           </select>
         )}
-        <input
-          type="search"
-          aria-label="بحث في الطلبات"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="بحث بالعنوان أو الشخص أو الخبر…"
-          className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white w-56 max-w-full"
-        />
-        <select aria-label="نوع الطلب" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
+        <select aria-label="نوع الطلب" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`min-h-11 min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white ${listTab === 'INBOX' && canManage ? '' : 'col-span-full'}`}>
           <option value="ALL">كل الأنواع</option>
           {REQUEST_TYPES.filter(type => listTab !== 'DELIVERY' || (isMediaDeliveryRequest(type.id) && (canManage || type.departmentId === myDept))).map((t) => (
             <option key={t.id} value={t.id}>
@@ -218,7 +219,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             </option>
           ))}
         </select>
-        {listTab !== 'DELIVERY' && <label className="flex items-center gap-1.5 min-h-11 text-xs text-slate-600 mr-auto cursor-pointer">
+        {listTab !== 'DELIVERY' && <label className="col-span-full flex items-center gap-2 min-h-11 text-sm text-slate-700 sm:ms-auto cursor-pointer">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="w-4 h-4 accent-blue-600" />
           عرض المنجز والمغلق
         </label>}

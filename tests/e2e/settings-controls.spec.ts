@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openNav, signIn } from './helpers';
+import { openNav, openSettingsSection, signIn } from './helpers';
 
 test('unsaved station settings recover after reload and can be discarded', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv');
@@ -22,15 +22,21 @@ test('settings sections fit desktop and mobile and device preferences apply', as
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const section of ['المؤسسة والفريق', 'الأخبار والتحرير', 'تفضيلات هذا الجهاز', 'حالة النظام']) {
-      await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: new RegExp(section) }).click();
+      await openSettingsSection(page, section);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     }
     await expect(page.getByText('جارٍ قراءة الحالة...')).not.toBeVisible();
     await expect(page.getByText('قاعدة البيانات', { exact: true })).toBeVisible();
-    await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: /المؤسسة والفريق/ }).click();
+    await openSettingsSection(page, 'المؤسسة والفريق');
     await page.screenshot({ path: `test-results/settings-${width}.png`, fullPage: true });
+    if (width === 390) {
+      const search = page.getByRole('searchbox', { name: 'البحث في الإعدادات' });
+      await search.fill('العاجل');
+      await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: 'الأخبار والتحرير' }).click();
+      await expect(page.getByRole('combobox', { name: 'قسم الإعدادات' })).toHaveValue('editorial');
+    }
   }
-  await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: /تفضيلات هذا الجهاز/ }).click();
+  await openSettingsSection(page, 'تفضيلات هذا الجهاز');
   await page.getByLabel('المظهر', { exact: true }).selectOption('dark');
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.getByLabel('تقليل الحركة', { exact: true }).check();
@@ -89,7 +95,7 @@ test('settings search opens editorial defaults and defaults reach new stories', 
 test('rejected settings save keeps entered values and does not announce success', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 390, height: 844 } });
   await openNav(page, 'الإعدادات');
-  await page.getByRole('button', { name: /المؤسسة والفريق/ }).click();
+  await openSettingsSection(page, 'المؤسسة والفريق');
   await page.locator('#station-name-input').fill('اسم لم يؤكد حفظه');
   const data = await (await page.request.get('/api/v1/data')).json();
   const row = data.collections.settings[0];

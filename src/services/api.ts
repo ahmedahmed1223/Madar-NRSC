@@ -2156,7 +2156,7 @@ export class ApiService {
     return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
-  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): void {
+  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): string {
     const me = this.getCurrentUser();
     const message = { id: newId('msg'), channel, text: text.trim(), isUrgent, ...(extra.attachments?.length ? { attachments: extra.attachments } : {}), ...(extra.ref ? { ref: extra.ref } : {}) };
     const error = messageError(message);
@@ -2167,6 +2167,7 @@ export class ApiService {
     // keep the local window bounded; the server keeps the full history
     if (all.length > 3000) all.length = 3000;
     setStored(COLLECTIONS.messages.storageKey, all);
+    return message.id;
   }
 
   /** Older messages of one conversation than this browser holds (oldest first). */

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createRequire } from 'module';
 import fs from 'fs';
-import { openNav, signIn } from './helpers';
+import { openNav, openSettingsSection, signIn } from './helpers';
 
 /**
  * The version 4 journey: an administrator shapes the stations, a chief editor creates a card
@@ -43,7 +43,7 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
   const admin = await signIn(browser, 'admin@akhbar.tv');
   const { page } = admin;
   await page.goto('/settings');
-  await page.getByText('المحطات والتكليفات').first().click();
+  await openSettingsSection(page, 'المحطات والتكليفات');
   const form = page.getByRole('form', { name: 'المحطات والتكليفات' });
   await expect(form.getByLabel('اسم المحطة 1')).toHaveValue('غزة');
   await expect(form.getByLabel('اسم المحطة 3')).toHaveValue('إسطنبول');
@@ -65,7 +65,7 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
 
   // Verify that the confirmed settings survive a reload.
   await page.reload();
-  await page.getByText('المحطات والتكليفات').first().click();
+  await openSettingsSection(page, 'المحطات والتكليفات');
   await expect(page.getByLabel('اسم المحطة 4')).toHaveValue('عمّان');
 
   // Colleagues are placed in stations from the user form.

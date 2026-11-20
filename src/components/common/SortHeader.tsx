@@ -67,7 +67,7 @@ export function SortTh<K extends string>({
   const active = sort.key === sortKey;
   const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUpNarrowWide : ArrowDownNarrowWide;
   return (
-    <th className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th role="columnheader" scope="col" className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button
         type="button"
         onClick={() => onSort(sortKey, defaultDir)}

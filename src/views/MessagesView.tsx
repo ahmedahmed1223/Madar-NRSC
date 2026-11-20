@@ -4,6 +4,7 @@ import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
+import { intercomCommand } from '../services/uiEvents';
 import { confirmDialog } from '../services/dialogs';
 import { Avatar } from '../components/common/Avatar';
 import { FormPage } from '../components/common/FormPage';
@@ -145,7 +146,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
 
   return (
     <div className="@container space-y-3">
-      <div className={`${active ? 'hidden @4xl:flex' : 'flex'} flex-col justify-between gap-3`}>
+      <div className={`${active ? 'hidden @4xl:flex' : 'flex'} flex-wrap items-start justify-between gap-3`}>
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <MessagesSquare className="w-5 h-5 text-blue-600" />
@@ -153,6 +154,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
           </h1>
           <p className="text-xs text-slate-500 mt-1">رسائل مباشرة ومجموعات وقنوات مفتوحة للمحطات والأقسام، مع الملفات والإشارة إلى مواد النظام.</p>
         </div>
+        <button type="button" onClick={() => intercomCommand.emit('open')} className="min-h-11 inline-flex items-center gap-2 px-3 rounded-xl border border-slate-200 bg-white text-xs font-bold text-blue-700 hover:bg-slate-50">
+          <Hash className="size-4" aria-hidden="true" /> محادثة الأقسام
+        </button>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] @4xl:grid-cols-[20rem_minmax(0,1fr)] bg-white border border-slate-200 rounded-2xl overflow-hidden @4xl:h-[calc(100dvh-13rem)] @4xl:min-h-[30rem]">

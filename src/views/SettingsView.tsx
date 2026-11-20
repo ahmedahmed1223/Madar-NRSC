@@ -135,11 +135,15 @@ const sameName = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLower
 
 /**
  * Sections grouped by what they set up. A vertical list beside the content on wide screens (the
- * content starts in the first viewport), a compact grid above it on phones. The search narrows the
- * list itself, matching labels and hints.
+ * content starts in the first viewport), a grouped selector above it on smaller screens.
+ * Searching shows matching sections by label and hint.
  */
 const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSection) => void; counts: Record<string, number>; query: string; onQuery: (q: string) => void }> = ({ section, onChange, counts, query, onQuery }) => {
-  const shown = SECTIONS.filter((s) => !query.trim() || matchesQuery(query, s.label, s.hint));
+  const searching = Boolean(query.trim());
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    items: SECTIONS.filter((s) => s.group === group.id && (!searching || matchesQuery(query, s.label, s.hint))),
+  })).filter(({ items }) => items.length);
   return (
     <div className="space-y-3 lg:sticky lg:top-4">
       <div role="search">
@@ -150,15 +154,25 @@ const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSe
         </div>
       </div>
       <nav aria-label="أقسام الإعدادات" className="space-y-3">
-        {!shown.length && <p role="status" className="text-sm text-slate-600 px-1">لا توجد إعدادات مطابقة</p>}
-        {GROUPS.map((group) => {
-          const items = shown.filter((s) => s.group === group.id);
-          if (!items.length) return null;
-          return (
+        {!searching && (
+          <div className="lg:hidden">
+            <label htmlFor="settings-section" className={GENERAL_LABEL}>قسم الإعدادات</label>
+            <select id="settings-section" value={section} onChange={(e) => { if (isSection(e.target.value)) onChange(e.target.value); }} className={GENERAL_INPUT}>
+              {groups.map(({ id, label, items }) => (
+                <optgroup key={id} label={label}>
+                  {items.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
+        {!groups.length && <p role="status" className="text-sm text-slate-600 px-1">لا توجد إعدادات مطابقة</p>}
+        <div className={`space-y-3 ${searching ? '' : 'hidden lg:block'}`}>
+          {groups.map((group) => (
             <div key={group.id}>
               <h2 className="text-2xs font-bold text-slate-500 px-1 mb-1">{group.label}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1">
-                {items.map((sec) => {
+                {group.items.map((sec) => {
                   const Icon = sec.icon;
                   const active = sec.id === section;
                   return (
@@ -180,8 +194,8 @@ const SettingsNav: React.FC<{ section: SettingsSection; onChange: (s: SettingsSe
                 })}
               </div>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </nav>
     </div>
   );
