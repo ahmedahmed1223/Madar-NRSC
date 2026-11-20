@@ -43,7 +43,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
   return (
     <div className="space-y-2" data-testid="news-videos">
       {videos.length === 0 && (
-        <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3">
+        <p className="text-2xs text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3">
           لا مقاطع بعد. أضف رابطاً، أو اختر من مكتبة الوسائط، أو اكتب مكان المقطع ليعرف فريق التنفيذ أين يجده.
         </p>
       )}
@@ -57,7 +57,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
           return (
             <li key={v.id} className={`p-2.5 rounded-xl border ${err ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'} space-y-2`}>
               <div className="flex items-center gap-1.5">
-                <span className="w-6 h-6 shrink-0 rounded-lg bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
+                <span className="w-6 h-6 shrink-0 rounded-lg bg-slate-900 text-white text-2xs font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
                 <input
                   value={v.title}
                   onChange={(e) => update(v.id, { title: e.target.value })}
@@ -75,7 +75,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                   onChange={(e) => update(v.id, { kind: e.target.value as NewsVideoKind })}
                   disabled={disabled}
                   aria-label={`نوع المقطع ${i + 1}`}
-                  className="text-[11px] px-1.5 py-1 border border-slate-200 rounded-lg"
+                  className="text-2xs px-1.5 py-1 border border-slate-200 rounded-lg"
                 >
                   {(Object.keys(VIDEO_KIND_NAMES) as NewsVideoKind[]).map((k) => (
                     <option key={k} value={k}>
@@ -143,7 +143,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
               )}
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                <label className="flex items-center gap-1 text-2xs text-slate-600">
                   المدة
                   <input
                     value={dur}
@@ -169,10 +169,10 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                   maxLength={1000}
                   aria-label={`ملاحظة للتنفيذ عن المقطع ${i + 1}`}
                   placeholder="ملاحظة للتنفيذ (نقطة البدء، الصوت، الحقوق…)"
-                  className="flex-1 min-w-[10rem] px-2 py-1 text-[11px] border border-slate-200 rounded-lg"
+                  className="flex-1 min-w-[10rem] px-2 py-1 text-2xs border border-slate-200 rounded-lg"
                 />
               </div>
-              {err && <p className="text-[11px] font-bold text-amber-800">{err}</p>}
+              {err && <p className="text-2xs font-bold text-amber-800">{err}</p>}
             </li>
           );
         })}
@@ -188,7 +188,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
               onClick={() => add(k)}
               disabled={disabled || videos.length >= MAX_NEWS_VIDEOS || (k === 'library' && !library.length)}
               title={k === 'library' && !library.length ? 'لا فيديوهات في مكتبة الوسائط' : undefined}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-2xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               <Plus className="w-3 h-3" />
               <Icon className="w-3.5 h-3.5" /> {k === 'link' ? 'رابط مقطع' : k === 'library' ? 'من المكتبة' : 'مكان مقطع (نص)'}
@@ -196,7 +196,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
           );
         })}
         {videos.length > 0 && (
-          <span className="text-[11px] text-slate-500 w-full tabular-nums">
+          <span className="text-2xs text-slate-500 w-full tabular-nums">
             {videos.length} · المجموع {formatClipDuration(total) || '—'}
           </span>
         )}
@@ -222,23 +222,23 @@ export const NewsVideosList: React.FC<{ videos: NewsVideo[] }> = ({ videos }) =>
           const href = v.kind === 'link' ? v.url : m?.fileUrl || m?.url;
           return (
             <li key={v.id} className="flex items-start gap-2 text-xs">
-              <span className="w-5 h-5 shrink-0 rounded-md bg-slate-900 text-white text-[10px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
+              <span className="w-5 h-5 shrink-0 rounded-md bg-slate-900 text-white text-2xs font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-slate-800">
                   {v.title || 'مقطع'}
                   {v.seconds ? <span className="font-mono font-normal text-slate-500 mr-1.5">{formatClipDuration(v.seconds)}</span> : null}
-                  <span className="mr-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">{VIDEO_KIND_NAMES[v.kind]}</span>
+                  <span className="mr-1.5 text-2xs font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">{VIDEO_KIND_NAMES[v.kind]}</span>
                 </p>
                 {v.kind === 'location' ? (
                   <p className="text-slate-700 select-all">📍 {v.location}</p>
                 ) : href ? (
-                  <a href={href} target="_blank" rel="noreferrer" dir="ltr" className="block text-left font-mono text-[11px] text-blue-700 hover:underline break-all">
+                  <a href={href} target="_blank" rel="noreferrer" dir="ltr" className="block text-left font-mono text-2xs text-blue-700 hover:underline break-all">
                     {v.kind === 'library' ? m?.title || m?.fileName || href : href}
                   </a>
                 ) : (
                   <p className="text-amber-700">المادة غير موجودة في المكتبة</p>
                 )}
-                {v.note && <p className="text-[11px] text-slate-500">{v.note}</p>}
+                {v.note && <p className="text-2xs text-slate-500">{v.note}</p>}
               </div>
             </li>
           );

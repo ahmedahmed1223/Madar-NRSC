@@ -13,6 +13,11 @@ import { NEWS_COLUMNS, sanitizeNewsListPreferences } from '../shared/newsListPre
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
+import { buildVocabulary, completeQuery, didYouMean, matchingRecentSearches, FEW_RESULTS } from '../shared/arabicSearch';
+import { clearRecentSearches, loadRecentSearches, rememberSearch } from '../services/recentSearches';
+import { Highlight } from '../components/common/Highlight';
+import { DidYouMean, SearchHints, type SearchHint } from '../components/common/SearchHints';
+import { AR, countLabel } from '../shared/arabicPlural';
 import { SortTh, sortList, usePersistentSort } from '../components/common/SortHeader';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsListDoc } from '../services/documents/builders';
@@ -20,30 +25,7 @@ import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
 import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Plus,
-  Search,
-  Filter,
-  Flame,
-  CheckCircle,
-  Clock,
-  Eye,
-  Edit2,
-  Trash2,
-  ChevronDown,
-  Archive,
-  Send,
-  CheckSquare,
-  Square,
-  Radio,
-  FileText,
-  AlertCircle,
-  ExternalLink,
-  X,
-  Lock,
-  RotateCcw,
-  Undo2,
-} from 'lucide-react';
+import { Plus, Search, Filter, Flame, CheckCircle, Clock, Eye, Edit2, Trash2, Archive, Send, CheckSquare, Square, Radio, X, Lock, RotateCcw, Undo2, BookOpen } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
 import { Badge } from '../components/common/Badge';
 import { FilterTabs } from '../components/common/FilterTabs';
@@ -52,7 +34,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { dataStore } from '../services/dataStore';
-import { transitionDenial, isBreakingLive } from '../shared/newsWorkflow';
+import { transitionDenial, isBreakingLive, isQualityPassed, activeReviewClaim } from '../shared/newsWorkflow';
 import { isLockActive, EditLock } from '../shared/collections';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
@@ -81,12 +63,17 @@ const STATUS_RANK: Record<string, number> = { DRAFT: 0, IN_PROGRESS: 1, NEEDS_RE
 const newsSortValue = (n: NewsItem, key: NewsSortKey): unknown =>
   key === 'title' ? n.title : key === 'category' ? n.categoryName : key === 'priority' ? PRIORITY_RANK[n.priority] ?? 1 : key === 'author' ? n.authorName : key === 'status' ? STATUS_RANK[n.status] ?? 0 : n.updatedAt;
 
+const findNewsRow = (scroller: HTMLElement, id: string) =>
+  scroller.querySelector<HTMLElement>(`[data-news-id="${CSS.escape(id)}"]`);
+
+const RESULT_FORMS = { one: 'نتيجة واحدة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجة' };
 
 export const NewsListView: React.FC<NewsListViewProps> = (props) => <NewsListContent key={`${props.currentUser.id}:${props.initialTab || 'ALL'}`} {...props} />;
 
 const NewsListContent: React.FC<NewsListViewProps> = ({
   newsList = [],
   categories = [],
+  sources = [],
   currentUser,
   onEditNews: openNews,
   onCreateNews: createNews,
@@ -112,7 +99,16 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
   const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
   const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
-  const [selectedCategory, setSelectedCategory] = useState(() => textValue('selectedCategory', 'ALL'));
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(currentUser.id, 'news'));
+  // Categories are filtered by id; a name saved by an earlier version is mapped to its id.
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    const saved = textValue('selectedCategory', 'ALL');
+    return saved === 'ALL' || categories.some((c) => c.id === saved) ? saved : categories.find((c) => c.nameAr === saved)?.id || saved;
+  });
+  const [selectedSource, setSelectedSource] = useState(() => textValue('selectedSource', 'ALL'));
   const [selectedPriority, setSelectedPriority] = useState(() => textValue('selectedPriority', 'ALL'));
   const [onlyMine, setOnlyMine] = useState(savedContext.definition.onlyMine === true);
   const [authorId, setAuthorId] = useState(() => textValue('authorId', 'ALL'));
@@ -149,6 +145,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
   const allowed = (item: NewsItem, to: NewsStatus) => transitionDenial(can, currentUser.id, item, to) === null;
   const canPublish = can('news.publish');
+  const canReview = can('news.review') || can('news.approve');
   const canApprove = can('news.approve');
   const canDelete = can('news.delete');
   const canManageBreaking = can('news.breaking_push');
@@ -178,7 +175,8 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     if (activeTab === 'BREAKING') {
       if (!isBreakingLive(item)) return false;
     } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
-    if (selectedCategory !== 'ALL' && item.categoryName !== selectedCategory) return false;
+    if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) return false;
+    if (selectedSource !== 'ALL' && item.sourceId !== selectedSource) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (onlyMine && item.authorId !== currentUser.id) return false;
     if (authorId !== 'ALL' && item.authorId !== authorId) return false;
@@ -191,12 +189,48 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     return true;
   }), sort, newsSortValue);
 
-  const pageCount = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
+  const reviewMode = activeTab === 'UNDER_REVIEW' && canReview;
+  const reviewNews = reviewMode ? filteredNews.filter(news => canApprove || !isQualityPassed(news)) : [];
+  const reviewNow = Date.now();
+  const reviewAccess = reviewBroadcastVisibility(can);
+  const deadlines = selectReviewDeadlines(reviewNews, reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? apiService.getEpisodes() : [], apiService.getSettings().defaultTimezone, reviewNow);
+  const deadlineById = new Map(deadlines.map(row => [row.newsId, row]));
+  const reviewById = new Map(reviewNews.map(news => [news.id, news]));
+  const reviewQueue = deadlines.map(row => reviewById.get(row.newsId)!);
+  const listRows = reviewMode ? reviewQueue : filteredNews;
+  const pageCount = Math.max(1, Math.ceil(listRows.length / PAGE_SIZE));
   const restoredPosition = useRef(false);
   const anchorRef = useRef(savedContext.anchorId);
-  const currentPage = !restoredPosition.current ? workContextPage(savedContext, filteredNews.map(item => item.id), PAGE_SIZE) : Math.min(page, pageCount - 1);
+  const offsetRef = useRef(savedContext.anchorOffset);
+  const currentPage = !restoredPosition.current ? workContextPage(savedContext, listRows.map(item => item.id), PAGE_SIZE) : Math.min(page, pageCount - 1);
   const pagedNews = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
+  // The newsroom's own words, for suggestions and «هل تقصد» (built only once the search is used).
+  const wantsVocabulary = searchFocused || !!searchQuery.trim();
+  const vocabulary = useMemo(
+    () => (wantsVocabulary ? buildVocabulary(sourceList.flatMap((n) => [n.title, n.shortTitle, n.summary, n.authorName, n.categoryName, n.sourceName, n.locationName, ...(n.keywords || [])])) : null),
+    [wantsVocabulary, sourceList]
+  );
+  const searchFields = (item: NewsItem) => [item.title, item.shortTitle, item.summary, item.authorName, item.categoryName, item.sourceName, item.locationName, item.keywords || []];
+  const correction = useMemo(() => {
+    if (!vocabulary || !searchQuery.trim() || filteredNews.length > FEW_RESULTS) return null;
+    const fixed = didYouMean(searchQuery, vocabulary);
+    if (!fixed) return null;
+    const more = sourceList.filter((item) => matchesQuery(fixed, ...searchFields(item))).length;
+    return more > filteredNews.length ? fixed : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vocabulary, searchQuery, filteredNews.length, sourceList]);
+  const searchHints: SearchHint[] = useMemo(() => {
+    if (!searchFocused) return [];
+    const past = matchingRecentSearches(recentSearches, searchQuery, searchQuery.trim() ? 2 : 5).map((q): SearchHint => ({ query: q, kind: 'recent' }));
+    const next = vocabulary ? completeQuery(searchQuery, vocabulary, 5).map((c): SearchHint => ({ query: c.query, label: c.word, kind: 'completion' })) : [];
+    return [...next.filter((c) => !past.some((h) => h.query === c.query)), ...past];
+  }, [searchFocused, recentSearches, searchQuery, vocabulary]);
+  const applySearch = (q: string) => {
+    setSearchQuery(q);
+    setRecentSearches(rememberSearch(currentUser.id, 'news', q));
+    searchInputRef.current?.focus();
+  };
   // Selection never includes rows hidden by a filter or tab change.
   const initialFilters = useRef(true);
   useEffect(() => {
@@ -204,14 +238,18 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     setSelectedIds([]);
     setPage(0);
     anchorRef.current = undefined;
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate]);
+  }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate]);
 
   const contextRef = useRef<WorkContext>(savedContext);
   const leavingRef = useRef(false);
-  contextRef.current = { schemaVersion: 1, definition: { activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate }, page: currentPage, anchorId: anchorRef.current };
+  contextRef.current = { schemaVersion: 1, definition: { activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }, page: currentPage, anchorId: anchorRef.current, anchorOffset: offsetRef.current };
   const rememberPosition = (id?: string) => {
     anchorRef.current = id;
-    saveContext({ ...contextRef.current, anchorId: id });
+    const scroller = document.getElementById('app-main')?.parentElement;
+    const row = id && scroller ? findNewsRow(scroller, id) : null;
+    offsetRef.current = row && scroller ? Math.round(row.getBoundingClientRect().top - scroller.getBoundingClientRect().top) : undefined;
+    saveContext({ ...contextRef.current, anchorId: id, anchorOffset: offsetRef.current });
+    if (searchQuery.trim()) setRecentSearches(rememberSearch(currentUser.id, 'news', searchQuery));
     leavingRef.current = true;
   };
   const onEditNews = (id: string) => { rememberPosition(id); openNews(id); };
@@ -224,22 +262,17 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     const scroller = document.getElementById('app-main')?.parentElement;
     if (!scroller) return;
     const frame = requestAnimationFrame(() => {
-      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-news-id]')).find(row => row.dataset.newsId === savedContext.anchorId);
-      if (target) target.scrollIntoView({ block: 'center', inline: 'nearest' });
-      else scroller.scrollTop = 0;
+      const target = savedContext.anchorId ? findNewsRow(scroller, savedContext.anchorId) : null;
+      if (!target) scroller.scrollTop = 0;
+      else if (savedContext.anchorOffset === undefined) target.scrollIntoView({ block: 'center', inline: 'nearest' });
+      else scroller.scrollTop += target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - savedContext.anchorOffset;
     });
     return () => cancelAnimationFrame(frame);
   }, [currentPage, savedContext, newsList]);
   useEffect(() => {
     if (!leavingRef.current) saveContext(contextRef.current);
-  }, [activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
+  }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
 
-  const reviewNow = Date.now();
-  const reviewAccess = reviewBroadcastVisibility(code => RbacService.hasPermission(currentUser, code));
-  const deadlines = selectReviewDeadlines(filteredNews, reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? apiService.getEpisodes() : [], apiService.getSettings().defaultTimezone, reviewNow);
-  const newsById = new Map(filteredNews.map(n => [n.id, n]));
-  const reviewQueue = deadlines.map(row => newsById.get(row.newsId)!);
-  const deadlineById = new Map(deadlines.map(row => [row.newsId, row]));
 
   const handleRestore = (id: string) => {
     try {
@@ -250,12 +283,19 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     }
   };
 
-  const categoryOptions = Array.from(
-    new Set([
-      ...(categories || []).map((c) => c.nameAr),
-      ...(newsList || []).map((n) => n.categoryName),
-    ])
-  ).filter(Boolean);
+  // Narrowing filters beyond search and «أخباري فقط»; their count shows on the «الفلاتر» button.
+  const activeFilterCount = [authorId !== 'ALL', !!fromDate, !!toDate, selectedCategory !== 'ALL', selectedSource !== 'ALL', selectedPriority !== 'ALL'].filter(Boolean).length;
+  const anyFilter = !!searchQuery || onlyMine || activeFilterCount > 0;
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('ALL');
+    setSelectedSource('ALL');
+    setSelectedPriority('ALL');
+    setOnlyMine(false);
+    setAuthorId('ALL');
+    setFromDate('');
+    setToDate('');
+  };
 
   const handleSelectAll = () => {
     if (selectedIds.length === pagedNews.length && pagedNews.length > 0) {
@@ -296,7 +336,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     DRAFT: { label: 'مسودة', variant: 'default' },
     IN_PROGRESS: { label: 'قيد التحرير', variant: 'info' },
     UNDER_REVIEW: { label: 'قيد المراجعة', variant: 'warning' },
-    NEEDS_REVISION: { label: 'يحتاج تعديلات', variant: 'danger' },
+    NEEDS_REVISION: { label: NEWS_STATUS_LABELS.NEEDS_REVISION, variant: 'danger' },
     APPROVED: { label: 'معتمد للنشر', variant: 'purple' },
     SCHEDULED: { label: 'مجدول للبث', variant: 'info' },
     PUBLISHED: { label: 'منشور', variant: 'success' },
@@ -319,7 +359,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             {initialTab === 'BREAKING' ? 'العاجل' : 'الأخبار'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -333,15 +373,16 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           <button
             type="button"
             onClick={() => setIsArchiveOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all whitespace-nowrap"
           >
             <Archive className="w-4 h-4" />
             الأرشيف القديم
           </button>
           {can('news.create') && <button
             type="button"
+            data-tour="news-create"
             onClick={onCreateNews}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             إنشاء خبر جديد
@@ -349,17 +390,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         </div>
       </div>
 
-      <details className="border-b border-slate-200 pb-2">
-        <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-slate-700">تخصيص قائمة الأخبار</summary>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
-          <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
-          <select id="news-page-size" value={PAGE_SIZE} onChange={e => { anchorRef.current = undefined; saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
-          <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
-            {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
-          </fieldset>
-          <button type="button" onClick={() => { anchorRef.current = undefined; saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
-        </div>
-      </details>
       <NewsArchiveModal
         isOpen={isArchiveOpen}
         onClose={() => setIsArchiveOpen(false)}
@@ -395,22 +425,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         ]}
       />
 
-      {activeTab === 'UNDER_REVIEW' && canApprove && (
-        <section aria-label="طابور مراجعة الأخبار" className="border-y border-amber-200 py-3 space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">طابور المراجعة ({reviewQueue.length})</h2>
-          {reviewQueue.length === 0 ? <p className="text-sm text-slate-600">لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.</p> : reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => {
-            const submitted = submittedForReview(item);
-            const minutes = Math.max(0, Math.floor((reviewNow - Date.parse(submitted)) / 60000)) || 0;
-            return <div key={item.id} className="flex flex-wrap items-center gap-2 border-b border-slate-100 py-2">
-              <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map(n => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-0 break-words">{item.title}</button>
-              <span className="text-xs text-slate-600">{item.authorName}</span>
-              <span className={`text-xs break-words ${deadlineById.get(item.id)?.overdue ? 'text-red-700' : 'text-slate-600'}`}>{reviewDeadlineLabel(deadlineById.get(item.id)!, reviewNow)}{deadlineById.get(item.id)?.destination ? ` · ${deadlineById.get(item.id)!.destination!.title}` : ''}</span>
-              <Badge variant={item.priority === 'HIGH' || item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'danger' : 'default'} size="sm">{item.priority === 'HIGH' ? 'عالية' : item.priority === 'URGENT' || item.priority === 'CRITICAL' ? 'عاجلة' : 'عادية'}</Badge>
-              <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>بانتظار المراجعة: {minutes < 60 ? `${minutes} دقيقة` : `${Math.floor(minutes / 60)} ساعة`}</span>
-            </div>;
-          })}
-        </section>
-      )}
+
 
       {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
@@ -419,38 +434,62 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       )}
 
       <SavedNewsFilters key={currentUser.id} userId={currentUser.id}
-        definition={{ activeTab, searchQuery, selectedCategory, selectedPriority, onlyMine, authorId, fromDate, toDate }}
+        definition={{ activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }}
         onApply={filter => {
           setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
-          setSelectedCategory(filter.selectedCategory); setSelectedPriority(filter.selectedPriority);
+          setSelectedCategory(categories.find(category => category.nameAr === filter.selectedCategory)?.id || filter.selectedCategory);
+          setSelectedSource(filter.selectedSource || 'ALL'); setSelectedPriority(filter.selectedPriority);
           setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
           setFromDate(filter.fromDate); setToDate(filter.toDate);
           setPage(0); setSelectedIds([]); anchorRef.current = undefined;
         }} />
       {/* Filter Toolbar */}
-      <div className="py-3 border-y border-slate-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+      <div className="py-3 border-y border-slate-200 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            id="news-list-search-input"
-            type="search"
-            aria-label="البحث في الأخبار"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
-            className="min-h-11 w-full pr-9 pl-12 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+        <div
+          ref={searchBoxRef}
+          className="flex-1 min-w-[min(100%,18rem)] space-y-2"
+          onFocus={() => setSearchFocused(true)}
+          onBlur={(e) => { if (!searchBoxRef.current?.contains(e.relatedTarget as Node | null)) setSearchFocused(false); }}
+        >
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              id="news-list-search-input"
+              type="search"
+              aria-label="البحث في الأخبار"
+              aria-describedby="news-search-help"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) setRecentSearches(rememberSearch(currentUser.id, 'news', searchQuery));
+                else if (e.key === 'ArrowDown' && searchHints.length) {
+                  e.preventDefault();
+                  searchBoxRef.current?.querySelector<HTMLButtonElement>('button[data-hint]')?.focus();
+                }
+              }}
+              placeholder="بحث بالعنوان، الملخص، أو اسم المحرر..."
+              className="min-h-11 w-full pr-9 pl-12 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-cancel-button]:hidden"
+            />
+            <span id="news-search-help" className="sr-only">اكتب كلمات البحث؛ ضع العبارة بين علامتي تنصيص للبحث عنها كما هي، وضع «-» قبل كلمة لاستبعادها. السهم للأسفل يفتح الاقتراحات.</span>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-600"
+                aria-label="مسح البحث"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <SearchHints
+            hints={searchHints}
+            onPick={applySearch}
+            inputRef={searchInputRef}
+            onClearRecent={!searchQuery.trim() ? () => { clearRecentSearches(currentUser.id, 'news'); setRecentSearches([]); searchInputRef.current?.focus(); } : undefined}
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => { setSearchQuery(''); document.getElementById('news-list-search-input')?.focus(); }}
-              className="absolute left-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-600"
-              aria-label="مسح البحث"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
 
         {/* Dropdowns & Reset */}
@@ -459,8 +498,8 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
             <input type="checkbox" checked={onlyMine} onChange={e => setOnlyMine(e.target.checked)} className="w-4 h-4 accent-blue-600" />
             أخباري فقط
           </label>
-          <button type="button" aria-expanded={filtersExpanded} aria-controls="news-advanced-filters" onClick={() => setFiltersExpanded(v => !v)} className="sm:hidden min-h-11 px-3 inline-flex items-center gap-2 border border-slate-300 rounded-lg text-sm"><Filter className="w-4 h-4" />الفلاتر{authorId !== 'ALL' || fromDate || toDate || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' ? ' (مفعلة)' : ''}</button>
-          <div id="news-advanced-filters" className={`${filtersExpanded ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2.5 w-full sm:w-auto`}>
+          <button type="button" aria-expanded={filtersExpanded} aria-controls="news-advanced-filters" onClick={() => setFiltersExpanded(v => !v)} className={`min-h-11 px-3 inline-flex items-center gap-2 border rounded-lg text-sm font-semibold ${filtersExpanded || activeFilterCount ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-300 bg-white text-slate-700'}`}><Filter className="w-4 h-4" aria-hidden="true" />الفلاتر{activeFilterCount ? <span className="min-w-5 px-1.5 rounded-full bg-blue-600 text-white text-2xs font-bold tabular-nums leading-5">{activeFilterCount}</span> : null}</button>
+          <div id="news-advanced-filters" className={`${filtersExpanded ? 'flex' : 'hidden'} order-last basis-full flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50`}>
           <label className="min-h-11 flex items-center gap-2 text-xs text-slate-700">الكاتب:
             <select aria-label="الكاتب:" value={authorId} onChange={e => setAuthorId(e.target.value)} className="min-h-11 max-w-44 px-2 border border-slate-300 rounded-lg bg-white">
               <option value="ALL">جميع الكتّاب</option>
@@ -483,13 +522,25 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               className="min-h-11 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأقسام</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nameAr}
                 </option>
               ))}
             </select>
           </div>
+
+          {sources.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <label htmlFor="news-list-source-select">المصدر:</label>
+              <select id="news-list-source-select" value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="min-h-11 max-w-48 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800">
+                <option value="ALL">جميع المصادر</option>
+                {sources.map((src) => (
+                  <option key={src.id} value={src.id}>{src.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <label htmlFor="news-list-priority-select">الأولوية:</label>
@@ -508,34 +559,38 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               <option value="LOW">منخفض</option>
             </select>
           </div>
+
+          <details className="basis-full border-t border-slate-200 pt-2">
+            <summary className="min-h-11 flex items-center cursor-pointer text-xs font-semibold text-slate-700">عرض القائمة: عدد النتائج والأعمدة</summary>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
+              <label htmlFor="news-page-size" className="text-sm">نتائج الصفحة</label>
+              <select id="news-page-size" value={PAGE_SIZE} onChange={e => { anchorRef.current = undefined; saveListPreferences({ ...listPreferences, pageSize: Number(e.target.value) }); setPage(0); }} className="min-h-11 px-3 border border-slate-300 rounded-lg">{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select>
+              <fieldset aria-label="أعمدة الأخبار الاختيارية" className="flex flex-wrap gap-x-4 gap-y-2">
+                {NEWS_COLUMNS.map(key => <label key={key} className="inline-flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={showColumn(key)} onChange={e => saveListPreferences({ ...listPreferences, columns: e.target.checked ? [...listPreferences.columns, key] : listPreferences.columns.filter(column => column !== key) })} />{columnLabels[key]}</label>)}
+              </fieldset>
+              <button type="button" onClick={() => { anchorRef.current = undefined; saveListPreferences(sanitizeNewsListPreferences(null)); setPage(0); }} className="w-11 h-11 flex items-center justify-center text-slate-700" title="استعادة عرض القائمة الافتراضي" aria-label="استعادة عرض القائمة الافتراضي"><RotateCcw className="w-4 h-4" /></button>
+            </div>
+          </details>
           </div>
-          {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL' || onlyMine || authorId !== 'ALL' || fromDate || toDate) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('ALL');
-                setSelectedPriority('ALL');
-                setOnlyMine(false);
-                setAuthorId('ALL'); setFromDate(''); setToDate('');
-              }}
-              className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
-            >
+          {anyFilter && (
+            <button type="button" onClick={resetFilters} className="min-h-11 px-3 text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-lg transition-colors">
               إعادة تعيين الفلاتر
             </button>
           )}
 
           <div role="status" aria-live="polite" className="text-xs tabular-nums text-slate-600 px-2 py-1">
-            {filteredNews.length} نتيجة
+            {countLabel(filteredNews.length, RESULT_FORMS)}
           </div>
-          {selectedCategory !== 'ALL' && !categoryOptions.includes(selectedCategory) && <button type="button" aria-label="إزالة القسم غير المتاح" onClick={() => setSelectedCategory('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />القسم المحفوظ غير متاح</button>}
+          {selectedCategory !== 'ALL' && !categories.some(category => category.id === selectedCategory) && <button type="button" aria-label="إزالة القسم غير المتاح" onClick={() => setSelectedCategory('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />القسم المحفوظ غير متاح</button>}
+          {selectedSource !== 'ALL' && !sources.some(source => source.id === selectedSource) && <button type="button" aria-label="إزالة المصدر غير المتاح" onClick={() => setSelectedSource('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />المصدر المحفوظ غير متاح</button>}
           {authorId !== 'ALL' && !newsList.some(item => item.authorId === authorId) && <button type="button" aria-label="إزالة الكاتب غير المتاح" onClick={() => setAuthorId('ALL')} className="min-h-11 inline-flex items-center gap-2 px-3 border border-amber-300 rounded-lg text-xs text-amber-800"><X className="w-4 h-4" />الكاتب المحفوظ غير متاح</button>}
+          {correction && filteredNews.length > 0 && <DidYouMean suggestion={correction} onPick={applySearch} className="px-2" />}
           <ExportMenu
             items={[
               {
                 id: 'list',
                 label: 'قائمة الأخبار المعروضة',
-                hint: `${filteredNews.length} خبر حسب البحث والفلاتر الحالية`,
+                hint: `${countLabel(filteredNews.length, AR.news)} حسب البحث والفلاتر الحالية`,
                 build: () => newsListDoc(filteredNews, activeTab === 'ALL' ? 'كل الأخبار' : activeTab === 'BREAKING' ? 'العاجل' : activeTab === 'TRASH' ? 'سلة المحذوفات' : NEWS_STATUS_LABELS[activeTab as NewsStatus] || '', docContext()),
               },
             ]}
@@ -557,7 +612,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
-            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${selectedIds.length} خبر`}</span>
+            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${countLabel(selectedIds.length, AR.news)}`}</span>
             <button type="button" disabled={bulkSubmitting} onClick={() => setSelectedIds([])} aria-label="إلغاء تحديد الأخبار"
               title="إلغاء التحديد" className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-50"><X className="w-4 h-4" /></button>
           </div>
@@ -615,6 +670,52 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
 
       {/* News Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+        {reviewMode ? (
+          <section aria-label="طابور مراجعة الأخبار" className="p-3 sm:p-4 space-y-1">
+            <h2 className="text-sm font-bold text-slate-800">طابور المراجعة: {countLabel(reviewQueue.length, { ...AR.news, zero: 'لا أخبار' })}</h2>
+            <p className="text-xs text-slate-600">أقرب موعد للبث أولاً، ثم الأولوية ومدة الانتظار. افتح الخبر للمراجعة، وينتقل الاعتماد إلى الخبر التالي.</p>
+            {reviewQueue.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-600">
+                {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» في طابور المراجعة.` : 'لا توجد أخبار تنتظر المراجعة ضمن الفلاتر الحالية.'}
+                <DidYouMean suggestion={correction} onPick={applySearch} className="mt-2" />
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {reviewQueue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map((item) => {
+                  const submitted = submittedForReview(item);
+                  const minutes = Math.max(0, Math.floor((reviewNow - Date.parse(submitted)) / 60000)) || 0;
+                  const pInfo = priorityBadgeInfo[item.priority] || { label: item.priority, variant: 'default' as const };
+                  const lock = lockByNewsId.get(item.id);
+                  const deadline = deadlineById.get(item.id)!;
+                  return (
+                    <li key={item.id} data-news-id={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                      <button type="button" onClick={() => onReviewNews(item.id, reviewQueue.map((n) => n.id))} className="min-h-11 text-right font-semibold text-blue-700 hover:underline flex-1 min-w-[12rem] break-words">
+                        <Highlight text={item.title} query={searchQuery} />
+                      </button>
+                      <Badge variant={pInfo.variant} size="sm">{pInfo.label}</Badge>
+                      <span className={`text-xs break-words ${deadline.overdue ? 'text-red-700' : 'text-slate-600'}`}>
+                        {reviewDeadlineLabel(deadline, reviewNow)}{deadline.destination ? ` · ${deadline.destination.title}` : ''}
+                      </span>
+                      {item.authorName && <span className="text-xs text-slate-600">{item.authorName}</span>}
+                      {lock && <span className="text-2xs font-bold text-amber-700">يحرره الآن: {lock.userName}</span>}
+                      {isQualityPassed(item) && <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800">اجتازت التدقيق</span>}
+                      {(() => {
+                        const claim = activeReviewClaim(item);
+                        return claim && claim.userId !== currentUser.id ? <span className="text-2xs font-bold text-slate-700">يراجعها {claim.userName}</span> : null;
+                      })()}
+                      <span className="text-xs text-slate-600 tabular-nums" title={new Date(submitted).toLocaleString(appLocale(), zoneOptions())}>
+                        بانتظار المراجعة منذ {minutes < 60 ? countLabel(minutes, { ...AR.minute, zero: 'أقل من دقيقة' }) : countLabel(Math.floor(minutes / 60), AR.hour)}
+                      </span>
+                      <button type="button" onClick={() => setPreviewNews(item)} className="min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg" title="معاينة وسجل التدقيق" aria-label={`معاينة: ${item.title}`}>
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead>
@@ -628,29 +729,30 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                     aria-label="تحديد كل الأخبار المعروضة"
                     className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-800"
                   >
-                    {selectedIds.length === filteredNews.length && filteredNews.length > 0 ? (
+                    {selectedIds.length === pagedNews.length && pagedNews.length > 0 ? (
                       <CheckSquare className="w-4 h-4 text-blue-600" />
                     ) : (
                       <Square className="w-4 h-4" />
                     )}
                   </button>
                 </th>
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
-                {showColumn('category') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
-                {showColumn('priority') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                {showColumn('author') && <SortTh className="py-3.5 px-3 hidden lg:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
-                <SortTh className="py-3.5 px-3 hidden sm:table-cell" label="الحالة التحريرية" sortKey="status" sort={sort} onSort={toggleSort} />
-                {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-4 text-center w-28 sm:w-36">إجراءات تحريرية</th>
+                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem] xl:min-w-[16rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                {showColumn('category') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
+                {showColumn('priority') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                {showColumn('author') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
+                <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
+                {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 whitespace-nowrap text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
+                <th className="py-3.5 px-2 sm:px-3 text-center w-24 xl:w-auto sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredNews.length === 0 ? (
                 <tr>
                   <td colSpan={4 + listPreferences.columns.length} className="py-12 text-center text-slate-500">
-                    لا توجد أخبار مطابقة للتصنيف أو معايير البحث المحددة.
-                    {(searchQuery || selectedCategory !== 'ALL' || selectedPriority !== 'ALL') && (
-                      <button type="button" onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); setSelectedPriority('ALL'); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
+                    {searchQuery.trim() ? `لا نتائج لـ«${searchQuery.trim()}» ضمن الفلاتر الحالية.` : activeTab === 'BREAKING' && !anyFilter ? 'لا عاجل على الهواء الآن. يُطلق العاجل من خبر منشور بزر الشعلة في عمود الإجراءات.' : 'لا أخبار مطابقة للتصنيف أو الفلاتر المحددة.'}
+                    <DidYouMean suggestion={correction} onPick={applySearch} className="mt-2" />
+                    {anyFilter && (
+                      <button type="button" onClick={() => { resetFilters(); document.getElementById('news-list-search-input')?.focus(); }} className="block mx-auto mt-3 min-h-11 px-4 text-blue-600 font-semibold">
                         مسح البحث والفلاتر
                       </button>
                     )}
@@ -659,6 +761,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               ) : (
                 pagedNews.map((item) => {
                   const lock = lockByNewsId.get(item.id);
+                  const deadline = deadlineById.get(item.id)!;
                   const sInfo = statusBadgeInfo[item.status] || { label: item.status, variant: 'default' };
                   const pInfo = priorityBadgeInfo[item.priority] || { label: item.priority, variant: 'default' };
                   const isSelected = selectedIds.includes(item.id);
@@ -693,7 +796,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       <td className="py-3.5 px-3 sm:px-4">
                         <div className="flex items-start gap-2">
                           {isUnderEmbargo(item) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
+                            <span className="inline-flex items-center gap-1 text-2xs font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
                               محظور حتى {embargoLabel(item.embargoUntil)}
                             </span>
                           )}
@@ -707,13 +810,13 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                               onClick={() => setPreviewNews(item)}
                               className="font-bold text-slate-800 hover:text-blue-600 block leading-snug text-right break-words"
                             >
-                              {item.title}
+                              <Highlight text={item.title} query={searchQuery} />
                             </button>
-                            <span className="text-[11px] text-slate-500 block line-clamp-1 mt-0.5">
-                              {item.summary}
+                            <span className="text-2xs text-slate-500 line-clamp-1 mt-0.5">
+                              <Highlight text={item.summary} query={searchQuery} />
                             </span>
-                            {/* Below 1024px the category, priority, author and time columns fold in here. */}
-                            <span className="lg:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-slate-500">
+                            {/* Below 1280px (tablets, laptops with the sidebar) the category, priority, author and time columns fold in here. */}
+                            <span className="xl:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-2xs text-slate-500">
                               <span className="sm:hidden">
                                 <Badge variant={sInfo.variant} size="sm">
                                   {sInfo.label}
@@ -731,13 +834,13 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                               )}
                             </span>
                             {item.status === 'SCHEDULED' && item.scheduledDate && (
-                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 ml-1 text-2xs font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
                                 <Clock className="w-3 h-3" />
                                 ينشر في {new Date(item.scheduledDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}
                               </span>
                             )}
                             {lock && (
-                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 mt-1 text-2xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                                 <Lock className="w-3 h-3" />
                                 يحرره الآن: {lock.userName}
                               </span>
@@ -747,7 +850,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Category */}
-                      {showColumn('category') && <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('category') && <td className="py-3.5 px-3 hidden xl:table-cell">
                         {(() => {
                           const catObj = (categories || []).find(
                             (c) => c.nameAr === item.categoryName || c.id === item.categoryId
@@ -755,7 +858,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                           const color = catObj?.colorCode || catObj?.color || '#2563eb';
                           return (
                             <span
-                              className="px-2 py-0.5 rounded-md text-[11px] font-bold border inline-flex items-center gap-1.5"
+                              className="px-2 py-0.5 rounded-md text-2xs font-bold border inline-flex items-center gap-1.5"
                               style={{
                                 backgroundColor: 'var(--color-slate-50)',
                                 color: 'var(--color-slate-800)',
@@ -773,15 +876,15 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       </td>}
 
                       {/* Priority */}
-                      {showColumn('priority') && <td className="py-3.5 px-3 hidden lg:table-cell">
+                      {showColumn('priority') && <td className="py-3.5 px-3 hidden xl:table-cell">
                         <Badge variant={pInfo.variant} size="sm">
                           {pInfo.label}
                         </Badge>
                       </td>}
 
                       {/* Source / Author */}
-                      {showColumn('author') && <td className="py-3.5 px-3 hidden lg:table-cell">
-                        <div className="text-[11px]">
+                      {showColumn('author') && <td className="py-3.5 px-3 hidden xl:table-cell">
+                        <div className="text-2xs">
                           <span className="text-slate-800 font-semibold block">{item.sourceName}</span>
                           <span className="text-slate-500 block">{item.authorName}</span>
                         </div>
@@ -795,18 +898,18 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Last update */}
-                      {showColumn('updatedAt') && <td className="py-3.5 px-3 text-center text-[11px] text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
+                      {showColumn('updatedAt') && <td className="py-3.5 px-3 text-center text-2xs text-slate-500 whitespace-nowrap tabular-nums hidden md:table-cell" title={item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), zoneOptions()) : ''}>
                         {item.updatedAt ? new Date(item.updatedAt).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>}
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-2 sm:px-4 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-1">
-                          {/* Quick Preview */}
+                      {/* Actions stay in view (sticky) while a narrow table scrolls. */}
+                      <td className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
+                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5 min-w-[4.75rem] xl:min-w-0">
+                          {/* Quick Preview (on phones the title itself opens it) */}
                           <button
                             type="button"
                             onClick={() => setPreviewNews(item)}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 hidden sm:inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                             title="معاينة وسجل التدقيق"
                           >
                             <Eye className="w-4 h-4" />
@@ -816,7 +919,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRestore(item.id)}
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-blue-700 hover:bg-blue-50"
                               title="استعادة الخبر من سلة المحذوفات"
                             >
                               <RotateCcw className="w-4 h-4" />
@@ -827,10 +930,10 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onEditNews(item.id)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-blue-700 hover:bg-blue-50"
                             title={lock ? `يحرره الآن ${lock.userName} (فتح للقراءة)` : canEditNewsContent(can, currentUser.id, item) ? 'تحرير الخبر' : 'فتح الخبر للقراءة'}
                           >
-                            {canEditNewsContent(can, currentUser.id, item) && !lock ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            {canEditNewsContent(can, currentUser.id, item) && !lock ? <Edit2 className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
                           </button>
 
                           {/* Workflow actions offered only when the server will accept them */}
@@ -838,7 +941,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'UNDER_REVIEW')}
-                              className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="إرسال للمراجعة"
                             >
                               <Send className="w-4 h-4" />
@@ -849,7 +952,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'APPROVED')}
-                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="اعتماد الخبر"
                             >
                               <CheckCircle className="w-4 h-4" />
@@ -860,7 +963,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'NEEDS_REVISION')}
-                              className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="إعادة للكاتب مع ملاحظات"
                             >
                               <Undo2 className="w-4 h-4" />
@@ -871,7 +974,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleOpenStatusModal(item, 'PUBLISHED')}
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-blue-700 hover:bg-blue-50"
                               title="نشر رسمي الآن"
                             >
                               <Radio className="w-4 h-4" />
@@ -883,10 +986,10 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => onToggleBreaking(item)}
-                              className={`p-1.5 rounded-lg transition-colors ${
+                              className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors ${
                                 isBreakingLive(item)
-                                  ? 'text-red-600 bg-red-50 hover:bg-red-100'
-                                  : 'text-slate-500 hover:text-red-600 hover:bg-red-50'
+                                  ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                                  : 'text-slate-600 hover:text-red-700 hover:bg-red-50'
                               }`}
                               title={isBreakingLive(item) ? 'إيقاف من شريط العاجل' : 'إطلاق على شريط العاجل (4 ساعات)'}
                             >
@@ -899,7 +1002,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(item.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-slate-600 hover:text-red-700 hover:bg-red-50"
                               title="نقل إلى سلة المحذوفات"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -916,28 +1019,29 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
             </tbody>
           </table>
         </div>
+        )}
         {pageCount > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs">
             <span className="text-slate-500">
-              {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filteredNews.length)} من {filteredNews.length}
+              {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, listRows.length)} من {listRows.length}
             </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => { anchorRef.current = undefined; setPage(currentPage - 1); }}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+                className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 السابق
               </button>
               <span className="px-2 font-mono">
-                {currentPage + 1} / {pageCount}
+                {currentPage + 1} من {pageCount}
               </span>
               <button
                 type="button"
                 disabled={currentPage >= pageCount - 1}
                 onClick={() => { anchorRef.current = undefined; setPage(currentPage + 1); }}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
+                className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 التالي
               </button>
@@ -1014,14 +1118,14 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2 font-bold text-slate-800">
                         <span>{log.changedBy.name}</span>
-                        <span className="text-[10px] text-blue-600">({log.changedBy.role})</span>
-                        <span className="text-slate-500 text-[10px]">
-                          نقل من [{log.fromStatus}] إلى [{log.toStatus}]
+                        <span className="text-2xs text-blue-600">({RbacService.getRoleBadge(log.changedBy.role).labelAr || log.changedBy.role})</span>
+                        <span className="text-slate-500 text-2xs">
+                          {log.fromStatus ? `من «${NEWS_STATUS_LABELS[log.fromStatus as NewsStatus] || log.fromStatus}» إلى «${NEWS_STATUS_LABELS[log.toStatus as NewsStatus] || log.toStatus}»` : `إلى «${NEWS_STATUS_LABELS[log.toStatus as NewsStatus] || log.toStatus}»`}
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">{log.comment}</p>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-2xs text-slate-500 font-mono">
                       {new Date(log.timestamp).toLocaleString(appLocale(), zoneOptions())}
                     </span>
                   </div>
@@ -1059,7 +1163,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusComment('')}
-                  className="text-[10px] text-slate-500 hover:text-slate-600"
+                  className="text-2xs text-slate-500 hover:text-slate-600"
                 >
                   مسح الملاحظة
                 </button>
@@ -1086,7 +1190,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                   key={template}
                   type="button"
                   onClick={() => setStatusComment(template)}
-                  className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
+                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
                 >
                   +{template}
                 </button>

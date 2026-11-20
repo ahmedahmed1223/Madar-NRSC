@@ -1,9 +1,9 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { awaitsMyReview } from '../../shared/newsWorkflow';
 import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import { useWorkSections } from '../../hooks/useWorkSections';
 import { orderWorkSections, stationWorkDay } from '../../shared/myWork';
-import { addDaysIso } from '../../shared/dates';
 import type { WorkSectionKey } from '../../shared/workContext';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { apiService } from '../../services/api';
@@ -16,6 +16,10 @@ import { commentLink } from '../../shared/comments';
 import { isApprover } from '../../shared/bulletins';
 import { selectReviewDeadlines, reviewDeadlineLabel, reviewBroadcastVisibility } from '../../shared/reviewDeadlines';
 import { IncomingHandovers } from '../roster/ShiftHandovers';
+import { addDaysIso, arabicDate } from '../../shared/dates';
+import { isStepOwnLate, isStepOpen, stepTypeName, stepTypesOf } from '../../shared/productionCards';
+import { isManagerRole, reviewableNews } from '../../shared/managerToday';
+import { stationName, stationsOf } from '../../shared/stations';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -47,53 +51,79 @@ const TONES: Record<NonNullable<Row['tone']>, string> = {
   emerald: 'bg-emerald-50 text-emerald-700',
 };
 
-const Card: React.FC<{ icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }> = ({ icon: Icon, title, rows, empty, more, testId }) => (
-  <section data-testid={testId} className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col min-w-0">
+interface CardProps { icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }
+
+const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, more, testId }) => (
+  <section data-testid={testId} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col min-w-0">
     <div className="flex items-center justify-between gap-2 mb-2">
       <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
         <Icon className="w-4 h-4 text-blue-600" />
         {title}
-        <span className="text-[10px] font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
+        <span className="text-2xs font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
       </h3>
       {more && (
-        <button type="button" onClick={more} className="text-[11px] font-bold text-blue-600 hover:underline">
+        <button type="button" onClick={more} className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs font-bold text-blue-600 hover:bg-blue-50 hover:underline">
           عرض الكل
         </button>
       )}
     </div>
-    {rows.length === 0 ? (
-      <p className="text-[11px] text-slate-500 py-3 text-center">{empty}</p>
-    ) : (
-      <ul className="space-y-1.5">
-        {rows.slice(0, 5).map((r) => (
-          <li key={r.id}>
-            <button
-              type="button"
-              onClick={r.onClick}
-              className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
-            >
-              <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
-              {r.meta && <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
+    <ul className="space-y-1.5">
+      {rows.slice(0, 5).map((r) => (
+        <li key={r.id}>
+          <button
+            type="button"
+            onClick={r.onClick}
+            className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
+          >
+            <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
+            {r.meta && <span className={`text-2xs font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
   </section>
+);
+
+/** Queues with nothing waiting: one quiet line of names (each opens its screen), so work leads. */
+const NothingWaiting: React.FC<{ cards: CardProps[]; after: boolean }> = ({ cards, after }) => (
+  <div className="flex flex-wrap items-center gap-1.5 text-2xs text-slate-500">
+    <span className="font-semibold">{after ? 'ولا شيء ينتظرك في:' : 'لا شيء ينتظرك الآن في:'}</span>
+    {cards.map(({ icon: Icon, title, empty, more, testId }) => {
+      const look = 'inline-flex items-center gap-1.5 min-h-8 px-2.5 rounded-lg border border-slate-200 bg-white/70 text-xs font-semibold text-slate-600';
+      const body = (
+        <>
+          <Icon className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
+          {title}
+        </>
+      );
+      return more ? (
+        <button key={testId} type="button" data-testid={testId} onClick={more} title={empty} className={`${look} hover:bg-white hover:text-slate-900`}>
+          {body}
+        </button>
+      ) : (
+        <span key={testId} data-testid={testId} title={empty} className={look}>
+          {body}
+        </span>
+      );
+    })}
+  </div>
 );
 
 /** Personal work queue: what needs me now, by role and department. */
 export const MyWorkPanel: React.FC<MyWorkPanelProps> = (props) => <MyWorkPanelContent key={props.currentUser.id} {...props} />;
 
 const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin, referenceTime }) => {
-  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'settings'], 60_000);
+  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'settings', 'productionCards', 'users'], 60_000);
   const [preferences, savePreferences] = useWorkSections(currentUser.id);
   const [customizing, setCustomizing] = useState(false);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
-  const canReview = RbacService.hasPermission(currentUser, 'news.review');
+  const canReview = RbacService.hasPermission(currentUser, 'news.review') || RbacService.hasPermission(currentUser, 'news.approve');
   const now = referenceTime ?? Date.now();
   const reviewAccess = reviewBroadcastVisibility(code => RbacService.hasPermission(currentUser, code));
+  const isManager = isManagerRole(currentUser.role);
+  const stations = stationsOf(apiService.getSettings());
+  const stationOfUser = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
 
   const myNews: Row[] = newsList
     .filter((n) => n.authorId === me && ['DRAFT', 'IN_PROGRESS', 'NEEDS_REVISION', 'REJECTED'].includes(n.status))
@@ -106,9 +136,13 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       onClick: () => onOpenNews(n.id),
     }));
 
+  // Only stories this person can act on; a branch manager sees their stations' writers.
+  const reviewCandidates = reviewableNews(newsList, currentUser, { canReview, stations, stationOf: id => stationOfUser.get(id) })
+    .filter(news => awaitsMyReview(permission => RbacService.hasPermission(currentUser, permission), me, news, now));
+  const reviewById = new Map(reviewCandidates.map(news => [news.id, news]));
   const toReview: Row[] = canReview
-    ? selectReviewDeadlines(newsList.filter(n => n.authorId !== me), reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? episodes : [], apiService.getSettings().defaultTimezone, now)
-        .map((row) => { const n = newsList.find(n => n.id === row.newsId)!; return { id: n.id, title: n.title, meta: `${reviewDeadlineLabel(row, now)}${row.destination ? ` · ${row.destination.title}` : ''}`, tone: row.overdue ? 'red' as const : 'amber' as const, onClick: () => onOpenNews(n.id) }; })
+    ? selectReviewDeadlines(reviewCandidates, reviewAccess.bulletins ? apiService.getBulletins() : [], reviewAccess.bulletins ? apiService.getBulletinStories() : [], reviewAccess.episodes ? episodes : [], apiService.getSettings().defaultTimezone, now)
+        .map((row) => { const n = reviewById.get(row.newsId)!; return { id: n.id, title: n.title, meta: `${reviewDeadlineLabel(row, now)}${row.destination ? ` · ${row.destination.title}` : ''}`, tone: row.overdue ? 'red' as const : 'amber' as const, onClick: () => onOpenNews(n.id) }; })
     : [];
 
   const requests = apiService.getRequests();
@@ -212,7 +246,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       .map((e) => ({
         id: e.id,
         title: e.title,
-        meta: `${e.date === today ? 'اليوم' : e.date}${e.startTime ? ` ${e.startTime}` : ''}`,
+        meta: `${e.date === today ? 'اليوم' : e.date === addDaysIso(today, 1) ? 'غداً' : arabicDate(e.date)}${e.startTime ? ` ${e.startTime}` : ''}`,
         tone: (e.priority === 'HIGH' ? 'red' : e.date === today ? 'amber' : 'slate') as Row['tone'],
         onClick: () => onNavigate(`/diary/${encodeURIComponent(e.id)}`),
       })),
@@ -229,20 +263,40 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       })),
   ];
 
+  // My open steps on production cards: stuck and late first.
+  const stepTypes = stepTypesOf(apiService.getSettings());
+  const cardRows: Row[] = apiService
+    .getCards()
+    .filter((c) => c.status === 'OPEN')
+    .flatMap((c) => c.steps.filter((s) => s.assigneeId === me && isStepOpen(s)).map((s) => ({ card: c, step: s })))
+    .sort((a, b) => Number(!!b.step.returnedReason) - Number(!!a.step.returnedReason) || Number(isStepOwnLate(b.card, b.step, now)) - Number(isStepOwnLate(a.card, a.step, now)) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'))
+    .map(({ card, step }) => ({
+      id: `${card.id}:${step.id}`,
+      title: `${stepTypeName(stepTypes, step.type)}: ${card.title}`,
+      meta: step.status === 'BLOCKED' ? 'متعطلة' : step.returnedReason ? 'معادة للتعديل' : isStepOwnLate(card, step, now) ? 'متأخرة' : card.priority === 'URGENT' ? 'عاجل' : step.dueAt ? new Date(step.dueAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }) : undefined,
+      tone: (step.status === 'BLOCKED' || !!step.returnedReason || isStepOwnLate(card, step, now) || card.priority === 'URGENT' ? 'red' : 'slate') as Row['tone'],
+      onClick: () => onNavigate(`cards/${card.id}`),
+    }));
+
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
   const sections: { key: WorkSectionKey; title: string; icon: any; rows: Row[]; empty: string; more?: () => void; enabled: boolean; mandatory?: boolean }[] = [
     { key: 'my-news', title: 'أخباري قيد العمل', icon: FileEdit, rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news'), enabled: RbacService.hasPermission(currentUser, 'news.create') },
     { key: 'my-review', title: 'بانتظار مراجعتي', icon: FileSearch, rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news'), enabled: canReview },
     { key: 'my-tasks', title: 'مهامي', icon: CheckSquare, rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks'), enabled: true },
-    { key: 'my-dept-requests', title: `طلبات واردة لقسم ${departmentName(myDept)}`, icon: Inbox, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests'), enabled: true, mandatory: deptInbox.some(r => r.tone === 'red') },
+    { key: 'my-dept-requests', title: `طلبات واردة لقسم ${departmentName(myDept)}`, icon: Inbox, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests'), enabled: !isManager || deptInbox.length > 0, mandatory: deptInbox.some(r => r.tone === 'red') },
     { key: 'my-episodes', title: 'الحلقات القادمة وجاهزيتها', icon: Tv, rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes'), enabled: true, mandatory: todayEpisodes.some(r => r.tone === 'red' || r.tone === 'amber') },
     { key: 'my-bulletins', title: 'قصص النشرات', icon: Radio, rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins'), enabled: bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0 },
     { key: 'my-sent-requests', title: 'طلباتي المرسلة', icon: Send, rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests'), enabled: true },
     { key: 'my-plan', title: 'تغطياتي وحجوزاتي', icon: CalendarDays, rows: planRows, empty: 'لا تغطيات أو حجوزات مسندة إليك', more: () => onNavigate('diary'), enabled: planRows.length > 0 },
+    { key: 'my-card-steps', title: 'مهامي في التكليفات', icon: ClipboardList, rows: cardRows, empty: 'لا مهام مفتوحة باسمك في البطاقات', more: () => onNavigate('cards'), enabled: RbacService.hasPermission(currentUser, 'cards.view'), mandatory: cardRows.some(row => row.tone === 'red') },
     { key: 'my-mentions', title: 'إشارات إليّ (7 أيام)', icon: AtSign, rows: mentions, empty: 'لم يُشر إليك أحد مؤخراً', enabled: true },
   ];
   const ordered = orderWorkSections(sections.filter(section => section.enabled).map(section => section.key), preferences).map(key => sections.find(section => section.key === key)!);
+  const visibleCards = ordered.filter(section => section.mandatory || !preferences.hidden.includes(section.key))
+    .map(section => ({ ...section, testId: section.key }));
+  const busy = visibleCards.filter(card => card.rows.length > 0);
+  const idle = visibleCards.filter(card => card.rows.length === 0);
   const move = (key: WorkSectionKey, direction: -1 | 1) => {
     const order = [...preferences.order];
     const index = order.indexOf(key);
@@ -258,13 +312,15 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     <div data-testid="my-work" className="space-y-3">
       <IncomingHandovers currentUser={currentUser} onNavigate={onNavigate} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-blue-600" />
           عملي
-          <span className="text-[11px] font-semibold text-slate-500">— قسم {departmentName(myDept)}</span>
+          <span className="text-2xs font-semibold text-slate-500">
+            — {isManager ? (currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : 'الإدارة') : `قسم ${departmentName(myDept)}`}
+          </span>
         </h2>
         <span
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+          className={`text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
         >
           <UserCheck className="w-3.5 h-3.5" />
           {myDuty ? `مناوب الآن — ${shiftName(myDuty.shift)}${myDuty.isLead ? ' (رئيس المناوبة)' : ''}` : 'لست ضمن المناوبة الحالية'}
@@ -281,9 +337,12 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
           </div>
         </div>)}
       </div>}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {ordered.filter(section => section.mandatory || !preferences.hidden.includes(section.key)).map(section => <Card key={section.key} testId={section.key} icon={section.icon} title={section.title} rows={section.rows} empty={section.empty} more={section.more} />)}
-      </div>
+      {busy.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {busy.map(card => <Card key={card.key} {...card} />)}
+        </div>
+      )}
+      {idle.length > 0 && <NothingWaiting cards={idle} after={busy.length > 0} />}
     </div>
   );
 };

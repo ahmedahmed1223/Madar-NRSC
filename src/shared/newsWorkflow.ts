@@ -130,6 +130,11 @@ export function transitionDenial(can: Can, userId: string, item: Partial<NewsIte
   if (!canTransition(from, to)) {
     return `لا يمكن نقل الخبر من «${from ? NEWS_STATUS_LABELS[from] : 'جديد'}» إلى «${NEWS_STATUS_LABELS[to]}» مباشرة`;
   }
+  // A reviewer who claimed the story («أراجعها الآن») decides it; others wait or take it over.
+  if (from === 'UNDER_REVIEW' && REVIEW_DECISIONS.includes(to)) {
+    const claim = reviewClaimedByOther(item, userId);
+    if (claim) return `يراجع ${claim.userName} هذا الخبر الآن؛ انتظر حتى ينهي أو تولَّ المراجعة`;
+  }
   switch (to) {
     case 'APPROVED':
       return can('news.approve') ? null : 'صلاحياتك لا تسمح باعتماد الأخبار';
@@ -179,4 +184,188 @@ export function makeNewsSlug(title: string, id: string): string {
     .slice(0, 80);
   const suffix = id.split('-').pop() || id;
   return base ? `${base}-${suffix}` : `news-${suffix}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Review bookkeeping: quality pass, claiming a review, breaking requests from the field.
+// Shared by the editor (what to offer) and the server policy (what to accept).
+// ---------------------------------------------------------------------------------------------
+
+/** «اجتازت التدقيق»: who passed which text and when. Valid while the text stays the same. */
+export interface NewsQualityCheck {
+  byId: string;
+  byName: string;
+  at: string;
+  /** contentSignature() of the text that was checked. */
+  signature: string;
+  note?: string;
+}
+
+/** «أراجعها الآن»: one reviewer at a time. */
+export interface NewsReviewClaim {
+  userId: string;
+  userName: string;
+  at: string;
+}
+
+/** A breaking alert sent from the field; whether it goes on air stays with the editors. */
+export interface NewsBreakingRequest {
+  byId: string;
+  byName: string;
+  at: string;
+}
+
+/** Decisions on a story under review that a claim reserves for its reviewer. */
+export const REVIEW_DECISIONS: NewsStatus[] = ['APPROVED', 'NEEDS_REVISION', 'REJECTED'];
+/** A claim lapses on its own, so a reviewer who walks away does not hold the story. */
+export const REVIEW_CLAIM_TTL_MS = 30 * 60_000;
+/** Client clocks may differ from the server's by this much when stamping a claim or a pass. */
+export const REVIEW_CLOCK_SKEW_MS = 5 * 60_000;
+
+export const canReviewNews = (can: Can) => can('news.review') || can('news.approve');
+export const canRequestBreaking = (can: Can) => can('news.breaking_request') || can('news.breaking_push');
+
+/** Short stable fingerprint of the reviewed text (headline, lead and body). */
+export function contentSignature(item: Partial<Pick<NewsItem, 'title' | 'summary' | 'content'>> | null | undefined): string {
+  const text = `${String(item?.title || '').trim()}\u0001${String(item?.summary || '').trim()}\u0001${plainText(item?.content)}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
+  }
+  return `${h1.toString(36)}${h2.toString(36)}-${text.length.toString(36)}`;
+}
+
+const isBookkeeping = (log: { fromStatus?: string; toStatus?: string; action?: string }) => !!log.action || log.fromStatus === log.toStatus;
+
+/** When the story last entered review (its latest submission), if known. */
+export function lastSubmittedAt(item: Partial<NewsItem> | null | undefined): string | undefined {
+  const logs = item?.workflowLogs || [];
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i];
+    // The first entry records the creation; a story may be created straight into review.
+    if (log.toStatus === 'UNDER_REVIEW' && !log.action && (i === 0 || !isBookkeeping(log))) return log.timestamp;
+  }
+  return undefined;
+}
+
+const notBefore = (at: string | undefined, since: string | undefined) => !since || (!!at && Date.parse(at) >= Date.parse(since));
+
+/** The live claim on a story under review (expired claims and claims from an earlier round do not count). */
+export function activeReviewClaim(item: Partial<NewsItem> | null | undefined, now = Date.now()): NewsReviewClaim | null {
+  const claim = item?.reviewClaim;
+  if (!claim || item?.status !== 'UNDER_REVIEW' || item.deletedAt) return null;
+  const at = Date.parse(claim.at);
+  if (!Number.isFinite(at) || now - at > REVIEW_CLAIM_TTL_MS) return null;
+  return notBefore(claim.at, lastSubmittedAt(item)) ? claim : null;
+}
+
+export function reviewClaimedByOther(item: Partial<NewsItem> | null | undefined, userId: string, now = Date.now()): NewsReviewClaim | null {
+  const claim = activeReviewClaim(item, now);
+  return claim && claim.userId !== userId ? claim : null;
+}
+
+/** Has quality passed the text as it is now (in this round of review)? */
+export function isQualityPassed(item: Partial<NewsItem> | null | undefined): boolean {
+  const check = item?.qualityCheck;
+  if (!check || !item) return false;
+  return check.signature === contentSignature(item) && notBefore(check.at, lastSubmittedAt(item));
+}
+
+/** Reason the user may not claim this story for review, or null. */
+export function claimDenial(can: Can, userId: string, item: Partial<NewsItem> | null | undefined, now = Date.now()): string | null {
+  if (!item?.id || item.status !== 'UNDER_REVIEW' || item.deletedAt) return 'يُستلم للمراجعة الخبر الذي ينتظر المراجعة فقط';
+  if (!canReviewNews(can)) return 'صلاحياتك لا تسمح بمراجعة الأخبار';
+  if (item.authorId === userId) return 'لا تراجع خبرك بنفسك';
+  const other = reviewClaimedByOther(item, userId, now);
+  if (other && !can('news.approve')) return `يراجع ${other.userName} هذا الخبر الآن`;
+  return null;
+}
+
+/** Reason the user may not mark the story «اجتازت التدقيق», or null. */
+export function qualityPassDenial(can: Can, userId: string, item: Partial<NewsItem> | null | undefined, now = Date.now()): string | null {
+  if (!item?.id || item.status !== 'UNDER_REVIEW' || item.deletedAt) return 'يُجاز في التدقيق الخبر الذي ينتظر المراجعة فقط';
+  if (!can('news.review')) return 'تسجيل اجتياز التدقيق لمن يملك صلاحية المراجعة';
+  if (item.authorId === userId) return 'لا يُجيز الكاتب خبره بنفسه';
+  const other = reviewClaimedByOther(item, userId, now);
+  if (other) return `يراجع ${other.userName} هذا الخبر الآن`;
+  if (isQualityPassed(item)) return 'اجتاز هذا النص التدقيق من قبل';
+  return null;
+}
+
+/**
+ * Is this story waiting on this user's review? Approvers see everything under review; a quality
+ * reviewer (news.review without news.approve) stops seeing a text once it passed quality.
+ * Stories a colleague is reviewing right now, and one's own stories, are left out.
+ */
+export function awaitsMyReview(can: Can, userId: string, item: Partial<NewsItem>, now = Date.now()): boolean {
+  if (item.status !== 'UNDER_REVIEW' || item.deletedAt || item.authorId === userId || !canReviewNews(can)) return false;
+  if (reviewClaimedByOther(item, userId, now)) return false;
+  return can('news.approve') || !isQualityPassed(item);
+}
+
+const sameStamp = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const freshStamp = (at: unknown, now: number) => typeof at === 'string' && Number.isFinite(Date.parse(at)) && Math.abs(Date.parse(at) - now) <= REVIEW_CLOCK_SKEW_MS;
+const lastNewLog = (before: Partial<NewsItem> | null | undefined, after: Partial<NewsItem>) => {
+  const prev = before?.workflowLogs?.length || 0;
+  const logs = after.workflowLogs || [];
+  return logs.length > prev ? logs[logs.length - 1] : undefined;
+};
+
+/**
+ * Server rule for the review fields (qualityCheck, reviewClaim, breakingRequest) on a story write.
+ * These fields are workflow bookkeeping: they need review rights, not edit rights.
+ */
+export function reviewBookkeepingDenial(
+  can: Can,
+  user: { id: string; name: string },
+  before: Partial<NewsItem> | null | undefined,
+  after: Partial<NewsItem>,
+  now = Date.now()
+): string | null {
+  // Quality pass.
+  if (!sameStamp(before?.qualityCheck, after.qualityCheck)) {
+    const check = after.qualityCheck;
+    if (check) {
+      if (!before) return 'يُسجَّل اجتياز التدقيق على خبر محفوظ';
+      const denial = qualityPassDenial(can, user.id, before, now);
+      if (denial) return denial;
+      if (after.status !== 'UNDER_REVIEW') return 'اجتياز التدقيق لا يغيّر حالة الخبر';
+      if (check.byId !== user.id || check.byName !== user.name || !freshStamp(check.at, now)) return 'بيانات اجتياز التدقيق غير صالحة';
+      if (check.signature !== contentSignature(after) || check.signature !== contentSignature(before)) return 'تغيّر النص؛ راجع النسخة المحفوظة ثم سجّل اجتيازه';
+      if (check.note !== undefined && (typeof check.note !== 'string' || check.note.length > 500)) return 'ملاحظة التدقيق أطول من المسموح';
+      const log = lastNewLog(before, after);
+      if (!log || log.action !== 'QUALITY_PASSED' || log.changedBy?.id !== user.id) return 'يُسجَّل اجتياز التدقيق في سجل سير العمل';
+    } else if (before?.status === after.status && !canReviewNews(can) && !can('news.edit_any')) {
+      return 'إلغاء اجتياز التدقيق للمراجعين';
+    }
+  }
+  // Claim / release.
+  if (!sameStamp(before?.reviewClaim, after.reviewClaim)) {
+    const claim = after.reviewClaim;
+    const held = activeReviewClaim(before, now);
+    if (claim) {
+      if (!before) return 'يُستلم للمراجعة خبر محفوظ';
+      if (claim.userId !== user.id || claim.userName !== user.name || !freshStamp(claim.at, now)) return 'بيانات استلام المراجعة غير صالحة';
+      const denial = claimDenial(can, user.id, before, now);
+      if (denial) return denial;
+      if (after.status !== 'UNDER_REVIEW') return 'استلام المراجعة لا يغيّر حالة الخبر';
+    } else if (held && held.userId !== user.id && before?.status === after.status && !can('news.approve')) {
+      return `يراجع ${held.userName} هذا الخبر الآن`;
+    }
+  }
+  // Breaking request from the field.
+  if (!sameStamp(before?.breakingRequest, after.breakingRequest)) {
+    const req = after.breakingRequest;
+    if (req) {
+      if (!canRequestBreaking(can)) return 'صلاحياتك لا تسمح بإرسال عاجل للمراجعة';
+      if (before && before.authorId !== user.id) return 'يرسل العاجل كاتب الخبر';
+      if (req.byId !== user.id || req.byName !== user.name || !freshStamp(req.at, now)) return 'بيانات طلب العاجل غير صالحة';
+    } else if (!(can('news.breaking_push') || can('news.approve') || before?.authorId === user.id)) {
+      return 'إغلاق طلب العاجل لرئيس التحرير';
+    }
+  }
+  return null;
 }

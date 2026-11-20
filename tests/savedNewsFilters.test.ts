@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { DEFAULT_NEWS_FILTER, savedNewsFilterError } from '../src/shared/savedNewsFilters';
+import { DEFAULT_NEWS_FILTER, sanitizeNewsFilterDefinition, savedNewsFilterError } from '../src/shared/savedNewsFilters';
 
 const filter = (overrides = {}) => ({ schemaVersion: 1, name: 'My news', pinned: false, definition: { ...DEFAULT_NEWS_FILTER }, ...overrides });
 
@@ -9,6 +9,13 @@ it('accepts supported filters with boundary-length names and search', () => {
 });
 it('preserves the existing Arabic category-name filter without silently resetting it', () => {
   expect(savedNewsFilterError(filter({ definition: { ...DEFAULT_NEWS_FILTER, selectedCategory: 'السياسة' } }))).toBeNull();
+});
+it('accepts older filters and preserves a valid source in newer ones', () => {
+  expect(sanitizeNewsFilterDefinition(DEFAULT_NEWS_FILTER)).toEqual(DEFAULT_NEWS_FILTER);
+  const definition = { ...DEFAULT_NEWS_FILTER, selectedSource: 'source-1' };
+  expect(savedNewsFilterError(filter({ definition }))).toBeNull();
+  expect(sanitizeNewsFilterDefinition(definition)).toEqual(definition);
+  expect(savedNewsFilterError(filter({ definition: { ...definition, selectedSource: '../source' } }))).not.toBeNull();
 });
 it('rejects unknown fields and oversized names without accepting executable queries', () => {
   for (const value of [filter({ name: '' }), filter({ name: '   ' }), filter({ name: 'n'.repeat(81) }), filter({ query: 'SELECT *' }), filter({ schemaVersion: 2 })]) {

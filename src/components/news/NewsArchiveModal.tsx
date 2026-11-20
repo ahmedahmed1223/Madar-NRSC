@@ -5,6 +5,9 @@ import { Modal } from '../common/Modal';
 import { apiService, NewsArchivePage } from '../../services/api';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import type { NewsItem } from '../../types';
+import { Highlight } from '../common/Highlight';
+import { DidYouMean } from '../common/SearchHints';
+import { AR, countLabel } from '../../shared/arabicPlural';
 
 interface NewsArchiveModalProps {
   isOpen: boolean;
@@ -75,6 +78,11 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
     }
   };
 
+  const pickSuggestion = (q: string) => {
+    setQuery(q);
+    setPage(1);
+    setSubmitted(q);
+  };
   const totalPages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
 
   return (
@@ -131,10 +139,10 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="ابحث في العناوين والملخصات والنصوص..."
                 aria-label="بحث في أرشيف الأخبار"
-                className="w-full pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                className="w-full min-h-11 pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold">
+            <button type="submit" className="min-h-11 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold">
               بحث
             </button>
           </form>
@@ -146,13 +154,15 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
               <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
             </div>
           ) : result && result.items.length === 0 ? (
-            <p className="py-10 text-center text-xs text-slate-500">
-              {submitted ? 'لا توجد نتائج مطابقة في الأرشيف.' : 'لا توجد أخبار مؤرشفة بعد؛ كل الأخبار ما زالت ضمن غرفة الأخبار.'}
-            </p>
+            <div className="py-10 text-center text-xs text-slate-500" role="status">
+              {submitted ? `لا نتائج لـ«${submitted}» في الأرشيف.` : 'لا توجد أخبار مؤرشفة بعد؛ كل الأخبار ما زالت ضمن غرفة الأخبار.'}
+              <DidYouMean suggestion={result.suggestion} onPick={pickSuggestion} className="mt-2" />
+            </div>
           ) : (
             result && (
               <>
-                <p className="text-[11px] text-slate-500">{result.total} خبراً</p>
+                <p className="text-2xs text-slate-500">{countLabel(result.total, AR.news)}</p>
+                <DidYouMean suggestion={result.suggestion} onPick={pickSuggestion} />
                 <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl">
                   {result.items.map((item) => (
                     <li key={item.id}>
@@ -162,9 +172,9 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                         onClick={() => openPreview(item.id)}
                         className="w-full text-right p-3 hover:bg-slate-50 space-y-1 block"
                       >
-                        <span className="text-sm font-bold text-slate-800 block">{item.title}</span>
-                        {item.summary && <span className="text-xs text-slate-500 line-clamp-2 block">{item.summary}</span>}
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-sm font-bold text-slate-800 block"><Highlight text={item.title} query={submitted} /></span>
+                        {item.summary && <span className="text-xs text-slate-500 line-clamp-2"><Highlight text={item.summary} query={submitted} /></span>}
+                        <span className="text-2xs text-slate-500 block">
                           {STATUS_LABELS[item.status] || item.status} · {item.categoryName || '—'} · نُشر {fmt(item.publishDate)} · آخر تعديل {fmt(item.updatedAt)}
                         </span>
                       </button>
@@ -173,7 +183,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                 </ul>
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between text-xs">
-                    <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 rounded-lg border disabled:opacity-40">
+                    <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="min-h-11 sm:min-h-9 px-3 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold disabled:opacity-40">
                       السابق
                     </button>
                     <span>
@@ -183,7 +193,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
                       type="button"
                       disabled={page >= totalPages}
                       onClick={() => setPage((p) => p + 1)}
-                      className="px-3 py-1.5 rounded-lg border disabled:opacity-40"
+                      className="min-h-11 sm:min-h-9 px-3 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold disabled:opacity-40"
                     >
                       التالي
                     </button>

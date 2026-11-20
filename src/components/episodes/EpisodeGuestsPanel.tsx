@@ -1,4 +1,6 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { countLabel } from '../../shared/arabicPlural';
+import { EP_NOUNS } from '../../shared/episodeNouns';
 import { confirmDialog } from '../../services/dialogs';
 import { notify } from '../../services/notify';
 import { GuestFollowUp } from './GuestFollowUp';
@@ -108,7 +110,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
 
   const removeGuest = async (key: string, name: string) => {
     const inSegments = guestSegments(episode, key).length;
-    if (!(await confirmDialog(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments} فقرة؟` : `إزالة ${name} من الحلقة؟`))) return;
+    if (!(await confirmDialog(inSegments ? `إزالة ${name} من الحلقة ومن ${inSegments === 1 ? 'فقرة واحدة' : inSegments === 2 ? 'فقرتين' : countLabel(inSegments, EP_NOUNS.segment)}؟` : `إزالة ${name} من الحلقة؟`))) return;
     if (inSegments) onUpdateRundown(rundown.map((s) => (segmentGuests(s).some((g) => g.guestId === key) ? withSegmentGuests(s, segmentGuests(s).filter((g) => g.guestId !== key)) : s)));
     saveList(list.filter((g) => guestKey(g) !== key));
   };
@@ -177,7 +179,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
           <h3 className="text-sm font-bold text-slate-800">ضيوف الحلقة وحجزهم</h3>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {counts.map((c) => (
-              <span key={c.id} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${TONE[c.id]}`}>
+              <span key={c.id} className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${TONE[c.id]}`}>
                 {c.name}: {c.n}
               </span>
             ))}
@@ -224,9 +226,9 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                   <Avatar src={g.guestAvatar || bank?.avatarUrl} name={g.guestName} className="w-11 h-11 rounded-xl ring-1 ring-slate-200" />
                   <div className="min-w-0">
                     <h4 className="text-sm font-bold text-slate-800">{g.guestName}</h4>
-                    <p className="text-[11px] text-slate-500 truncate">{[bank?.jobTitle || g.jobTitle, bank?.organization || g.organization].filter(Boolean).join(' — ')}</p>
+                    <p className="text-2xs text-slate-500 truncate">{[bank?.jobTitle || g.jobTitle, bank?.organization || g.organization].filter(Boolean).join(' — ')}</p>
                     {bank?.phone && (
-                      <a href={`tel:${bank.phone}`} className="text-[11px] text-blue-700 flex items-center gap-1" dir="ltr">
+                      <a href={`tel:${bank.phone}`} className="text-2xs text-blue-700 flex items-center gap-1" dir="ltr">
                         <Phone className="w-3 h-3" /> {bank.phone}
                       </a>
                     )}
@@ -240,14 +242,14 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               </div>
 
               {clashes.length > 0 && (
-                <p className="flex items-start gap-1.5 text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                <p className="flex items-start gap-1.5 text-2xs font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   محجوز في نفس التوقيت: {clashes.map((e) => `${e.programName || ''} (${e.startTime})`).join('، ')}
                 </p>
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] font-bold text-slate-600">
+                <label className="text-2xs font-bold text-slate-600">
                   حالة الحجز
                   <select
                     value={status}
@@ -262,7 +264,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                     ))}
                   </select>
                 </label>
-                <label className="text-[11px] font-bold text-slate-600">
+                <label className="text-2xs font-bold text-slate-600">
                   وسيلة المشاركة
                   <select
                     value={g.connectionType || 'STUDIO'}
@@ -288,7 +290,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                 ) : (
                   <ul className="flex flex-wrap gap-1 mt-1">
                     {segs.map((s: any) => (
-                      <li key={s.id} className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px]">
+                      <li key={s.id} className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-2xs">
                         {s.title} · {guestRoleName(segmentGuests(s).find((x) => x.guestId === key)?.role)}
                       </li>
                     ))}
@@ -302,7 +304,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
                       const [segId, role] = e.target.value.split('|');
                       if (segId) addToSegment(key, g.guestName, segId, role as GuestRole);
                     }}
-                    className="mt-1 w-full px-2 py-1.5 rounded-lg border border-dashed border-slate-300 text-[11px] bg-white"
+                    className="mt-1 w-full px-2 py-1.5 rounded-lg border border-dashed border-slate-300 text-2xs bg-white"
                   >
                     <option value="">+ إضافته إلى فقرة…</option>
                     {talkSegments.map((s) =>
@@ -317,7 +319,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <label className="text-[11px] font-bold text-slate-600">
+                <label className="text-2xs font-bold text-slate-600">
                   الضيف البديل
                   <select
                     value={g.backupGuestId || ''}
@@ -343,20 +345,20 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                <div className="text-[11px] font-bold text-slate-700">شارة الاسم</div>
+                <div className="text-2xs font-bold text-slate-700">شارة الاسم</div>
                 <input aria-label={`سطر الاسم لـ ${g.guestName}`} value={cgName} readOnly={!canEditEpisode} onChange={(e) => setDraft({ cgName: e.target.value })} className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white" />
                 <input aria-label={`سطر الصفة لـ ${g.guestName}`} value={cgTitle} readOnly={!canEditEpisode} onChange={(e) => setDraft({ cgTitle: e.target.value })} className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white" />
                 {canRequest &&
                   (cgSent ? (
-                    <p className="text-[11px] font-bold text-emerald-700">أُرسلت الشارة للجرافيك</p>
+                    <p className="text-2xs font-bold text-emerald-700">أُرسلت الشارة للجرافيك</p>
                   ) : (
-                    <button type="button" onClick={() => sendLowerThird(g, [cgName, cgTitle].filter(Boolean))} className="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline">
+                    <button type="button" onClick={() => sendLowerThird(g, [cgName, cgTitle].filter(Boolean))} className="flex items-center gap-1 text-2xs font-bold text-blue-700 hover:underline">
                       <Send className="w-3 h-3" /> إرسال الشارة لقسم الجرافيك
                     </button>
                   ))}
               </div>
 
-              <label className="block text-[11px] font-bold text-slate-600">
+              <label className="block text-2xs font-bold text-slate-600">
                 ما نريده من الضيف (نقاط التحضير)
                 <textarea rows={2} value={briefPoints} readOnly={!canEditEpisode} onChange={(e) => setDraft({ briefPoints: e.target.value })} className="mt-1 w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white" />
               </label>
@@ -377,12 +379,12 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               )}
 
               <div className="space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-600">سجل التواصل ({(g.contactLog || []).length})</div>
+                <div className="text-2xs font-bold text-slate-600">سجل التواصل ({(g.contactLog || []).length})</div>
                 {(g.contactLog || [])
                   .slice(-3)
                   .reverse()
                   .map((c: any, i: number) => (
-                    <p key={i} className="text-[11px] text-slate-600">
+                    <p key={i} className="text-2xs text-slate-600">
                       <span className="text-slate-500">{new Date(c.at).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })} · {c.byName}:</span> {c.note}
                     </p>
                   ))}
@@ -437,7 +439,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
               ))}
             </select>
           </label>
-          <p className="text-[11px] text-slate-500">بعد الترشيح أضفه إلى فقرة من بطاقته أو من «تحضير الحلقة».</p>
+          <p className="text-2xs text-slate-500">بعد الترشيح أضفه إلى فقرة من بطاقته أو من «تحضير الحلقة».</p>
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button type="button" onClick={() => setAdding(false)} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
               إلغاء

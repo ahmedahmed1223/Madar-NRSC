@@ -1,14 +1,14 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { authClient, SessionInfo } from './services/authClient';
 import { dataStore } from './services/dataStore';
-import { setUnauthorizedHandler } from './services/http';
+import { setPasswordChangeHandler, setUnauthorizedHandler } from './services/http';
 import { LoginView } from './components/auth/LoginView';
 import { ChangePasswordView } from './components/auth/ChangePasswordView';
 
 const App = lazy(() => import('./App'));
 
-type Phase = 'checking' | 'login' | 'change-password' | 'loading-data' | 'ready' | 'error';
+type Phase = 'checking' | 'login' | 'change-password' | 'loading-data' | 'ready' | 'error' | 'offline';
 
 const FullScreenMessage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-white" dir="rtl">
@@ -22,6 +22,8 @@ const FullScreenMessage: React.FC<{ children: React.ReactNode }> = ({ children }
  */
 export default function AppShell() {
   const [phase, setPhase] = useState<Phase>('checking');
+  const phaseRef = useRef<Phase>('checking');
+  phaseRef.current = phase;
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -50,8 +52,29 @@ export default function AppShell() {
       if (hadSession) setNotice('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً');
       setPhase('login');
     });
-    authClient.fetchSession().then((session) => (session ? enter(session) : setPhase('login')));
-    return () => setUnauthorizedHandler(null);
+    // The server holds every request back until a temporary password is replaced: show that screen.
+    setPasswordChangeHandler(() => {
+      if (!authClient.getSession()) return;
+      authClient.requirePasswordChange();
+      dataStore.stop();
+      setPhase('change-password');
+    });
+    // Opened without a connection (the app itself comes from the offline cache): wait for it.
+    const boot = () => {
+      if (navigator.onLine === false) return setPhase('offline');
+      setPhase('checking');
+      authClient.fetchSession().then((session) => (session ? enter(session) : setPhase('login')));
+    };
+    const onOnline = () => {
+      if (phaseRef.current === 'offline') boot();
+    };
+    window.addEventListener('online', onOnline);
+    boot();
+    return () => {
+      setUnauthorizedHandler(null);
+      setPasswordChangeHandler(null);
+      window.removeEventListener('online', onOnline);
+    };
   }, [enter]);
 
   const handleLogin = async (email: string, password: string, totp?: string) => {
@@ -92,6 +115,15 @@ export default function AppShell() {
       <FullScreenMessage>
         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
         <span>{phase === 'checking' ? 'جارٍ التحقق من الجلسة...' : 'جارٍ تحميل بيانات غرفة الأخبار...'}</span>
+      </FullScreenMessage>
+    );
+  }
+
+  if (phase === 'offline') {
+    return (
+      <FullScreenMessage>
+        <AlertTriangle className="w-8 h-8 text-amber-400" />
+        <span>غير متصل — سيفتح «مدار» تلقائياً عند عودة الاتصال. ما حفظته على هذا الجهاز باقٍ.</span>
       </FullScreenMessage>
     );
   }

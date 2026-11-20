@@ -91,3 +91,49 @@ export function setReducedMotion(on: boolean) {
   }
   document.documentElement.classList.toggle('reduce-motion', on);
 }
+
+// --- Text size ----------------------------------------------------------------
+
+const TEXT_KEY = 'nrcs-text-scale';
+
+/** Interface text sizes a colleague may choose on their device; everything scales with the text. */
+export const TEXT_SCALES = [
+  { id: 'compact', name: 'مضغوط', hint: 'أصغر، لعرض أكثر على الشاشة' },
+  { id: 'normal', name: 'عادي', hint: 'الحجم الأساسي' },
+  { id: 'large', name: 'كبير', hint: 'أوضح للقراءة الطويلة' },
+  { id: 'larger', name: 'أكبر', hint: 'لضعف النظر أو الشاشات البعيدة' },
+] as const;
+export type TextScale = (typeof TEXT_SCALES)[number]['id'];
+
+export function textScale(): TextScale {
+  try {
+    const saved = localStorage.getItem(TEXT_KEY);
+    return TEXT_SCALES.some((s) => s.id === saved) ? (saved as TextScale) : 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function setTextScale(scale: TextScale) {
+  try {
+    if (scale === 'normal') localStorage.removeItem(TEXT_KEY);
+    else localStorage.setItem(TEXT_KEY, scale);
+  } catch {
+    // storage unavailable: lasts for this page only
+  }
+  if (scale === 'normal') delete document.documentElement.dataset.textScale;
+  else document.documentElement.dataset.textScale = scale;
+}
+
+// Paper is always printed in the day palette: the night theme would print light text on white.
+if (typeof window !== 'undefined') {
+  let wasDark = false;
+  window.addEventListener('beforeprint', () => {
+    wasDark = document.documentElement.classList.contains('dark');
+    if (wasDark) document.documentElement.classList.remove('dark');
+  });
+  window.addEventListener('afterprint', () => {
+    if (wasDark) document.documentElement.classList.add('dark');
+    wasDark = false;
+  });
+}

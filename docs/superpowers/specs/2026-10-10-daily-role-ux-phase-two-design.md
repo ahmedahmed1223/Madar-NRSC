@@ -1,7 +1,7 @@
 # Daily Role UX Phase Two: Review Deadlines and Shift Handover
 
 Date: 2026-10-10
-Status: Approved by the user on 2026-10-11; implementation plan awaiting review
+Status: Implemented and verified locally on 2026-11-20
 Prerequisite: Phase-one implementation and independent review fixes
 
 ## Intent and Selected Approach
@@ -109,7 +109,7 @@ changes or generic sync writes. Use narrow authenticated, versioned endpoints
 with confirmed transactions and no optimistic mutation journal. Endpoint list and
 conflict responses project references against current target canRead checks:
 inaccessible targets disclose neither ID, title, note nor collection details, only
-a neutral unavailable item. The general department note remains visible to the
+a neutral unavailable item. An assigned outgoing author can confirm whether their own publication committed without receiving the published row. The general department note remains visible to the
 handover's authorized audience; the UI clearly identifies that audience before
 publication. Never auto-copy hidden content into those notes.
 

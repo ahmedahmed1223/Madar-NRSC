@@ -51,8 +51,8 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
           </button>
         )}
       </div>
-      {error && <p className="text-[11px] text-rose-600 font-bold">{error}</p>}
-      {attached.length === 0 && <p className="text-[11px] text-slate-500">لا توجد مرفقات.</p>}
+      {error && <p className="text-2xs text-rose-600 font-bold">{error}</p>}
+      {attached.length === 0 && <p className="text-2xs text-slate-500">لا توجد مرفقات.</p>}
       <ul className="space-y-1.5">
         {attached.map((m) => {
           const Icon = mediaIcon(m.mediaType);
@@ -65,7 +65,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
                   {m.title || m.fileName}
                 </a>
                 {isVideo && (
-                  <span className={`text-[10px] font-bold ${isVideoReady(m.videoStatus) ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  <span className={`text-2xs font-bold ${isVideoReady(m.videoStatus) ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {videoStatusName(m.videoStatus)}
                     {m.editorName ? ` · ${m.editorName}` : ''}
                   </span>
@@ -76,7 +76,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
                   value={m.videoStatus || 'RAW'}
                   onChange={(e) => setStatus(m, e.target.value)}
                   aria-label={`حالة الفيديو ${m.title || m.fileName}`}
-                  className="text-[11px] px-1.5 py-1 border border-slate-300 rounded-lg bg-white"
+                  className="text-2xs px-1.5 py-1 border border-slate-300 rounded-lg bg-white"
                 >
                   {VIDEO_STATUSES.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -99,7 +99,7 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
           );
         })}
       </ul>
-      {missing > 0 && <p className="text-[11px] text-amber-700">{missing} مرفق لم يعد موجوداً في المكتبة.</p>}
+      {missing > 0 && <p className="text-2xs text-amber-700">{missing} مرفق لم يعد موجوداً في المكتبة.</p>}
       {open && <MediaPicker isOpen={open} onClose={() => setOpen(false)} selectedIds={mediaIds} onPick={onChange} canUpload={canUpload} />}
     </div>
   );

@@ -1,32 +1,32 @@
 import { arabicDate } from '../shared/dates';
+import { minutesGap, minutesLabel, minutesOf } from '../shared/durations';
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
-import { notify } from '../services/notify';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { episodeReadiness } from '../shared/production';
 import { departmentName } from '../shared/departments';
-import { FormPage } from '../components/common/FormPage';
 import { BookingForm } from '../components/planning/BookingForm';
 import { LongTextField } from '../components/common/TextSizeControls';
 import type { Booking } from '../shared/planning';
-import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useRef, useEffect} from 'react';
-import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers } from 'lucide-react';
+import { CalendarPlus, ArrowRight, ListOrdered, HelpCircle, Users, FileText, Clock, Tv, Save, X, Copy, Check, Lock, MessageSquareText, Layers, Edit2 } from 'lucide-react';
 import { EpisodePlanner } from '../components/episodes/EpisodePlanner';
 import { EpisodeGuestsPanel } from '../components/episodes/EpisodeGuestsPanel';
 import { EpisodeQuestionsPanel } from '../components/episodes/EpisodeQuestionsPanel';
+import { EpisodeDetailsEditor } from '../components/episodes/EpisodeDetailsEditor';
+import { EPISODE_STATUS_INFO, episodeStatusInfo } from '../components/episodes/episodeDetails';
 import { episodeGuestList, segmentGuests } from '../shared/episodePlan';
 import { Episode, RundownSegment, Guest, NewsItem, User, EpisodeStatus } from '../types';
 import { useEditLock } from '../hooks/useNewsEditLock';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { DraftStatus } from '../components/common/DraftStatus';
 import { RundownTable } from '../components/rundown/RundownTable';
-import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
 import { matchingPronunciations } from '../shared/pronunciation';
@@ -88,6 +88,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode.introScript]);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const statusInfo = episodeStatusInfo(episode.status);
 
   const handleCopyScript = () => {
     if (!introScript) return;
@@ -103,7 +105,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const plannedSeconds = (episode.rundown || []).reduce((sum, seg: any) => sum + (Number(seg.durationSeconds) || 0), 0);
   const timingGap = plannedSeconds - slotSeconds; // negative = under, positive = over
   const timingOk = slotSeconds === 0 || Math.abs(timingGap) <= Math.max(60, slotSeconds * 0.05);
-  const mmssOf = (sec: number) => `${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, '0')}`;
+  const gap = minutesGap(plannedSeconds, slotSeconds);
   const [showBlockers, setShowBlockers] = useState(false);
   const [focusSegment, setFocusSegment] = useState<{ id: string; key: string; sequence: number } | undefined>();
   const resolveBlocker = (blocker: typeof readiness.blockers[number]) => {
@@ -143,7 +145,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       void alertDialog({ title: 'الحلقة غير جاهزة للبث', message:
         readiness.total === 0
           ? 'لا يمكن اعتماد حلقة بلا فقرات للبث.'
-          : `لا يمكن اعتماد الحلقة للبث بعد: ${readiness.blockers.length} عنصر غير جاهز.\n\n` +
+          : `لا يمكن اعتماد الحلقة للبث بعد. النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}.\n\n` +
               readiness.blockers.slice(0, 6).map((b) => `• ${b.segmentTitle}: ${b.detail} (${departmentName(b.departmentId)})`).join('\n')
        });
       return;
@@ -151,8 +153,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
     if (newStatus === 'READY_FOR_BROADCAST' && episode.status !== 'READY_FOR_BROADCAST' && !timingOk) {
       const msg =
         timingGap < 0
-          ? `الرانداون أقصر من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة (المخطط ${mmssOf(plannedSeconds)} من ${mmssOf(slotSeconds)}).`
-          : `الرانداون أطول من مدة الحلقة بـ ${mmssOf(timingGap)} دقيقة.`;
+          ? `الرانداون أقصر من مدة الحلقة بـ ${minutesLabel(timingGap)} (المخطط ${minutesOf(plannedSeconds, slotSeconds)}).`
+          : `الرانداون أطول من مدة الحلقة بـ ${minutesLabel(timingGap)} (المخطط ${minutesOf(plannedSeconds, slotSeconds)}).`;
       if (!(await confirmDialog(`${msg}\n\nاعتماد الحلقة للبث رغم ذلك؟`))) return;
     }
     onSaveEpisode({ id: episode.id, status: newStatus });
@@ -187,25 +189,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         items={[
           { label: 'دليل الحلقات', onClick: onBack },
           { label: episode.programName },
-          { label: `حلقة #${episode.episodeNumber}: ${episode.title}` },
+          { label: `حلقة ${episode.episodeNumber}` },
         ]}
         statusBadge={{
-          label:
-            episode.status === 'ON_AIR'
-              ? 'على الهواء الآن'
-              : episode.status === 'READY_FOR_BROADCAST'
-              ? 'جاهزة للبث'
-              : episode.status === 'IN_PREPARATION'
-              ? 'قيد الإعداد'
-              : 'مرحلة التخطيط',
-          variant:
-            episode.status === 'ON_AIR'
-              ? 'danger'
-              : episode.status === 'READY_FOR_BROADCAST'
-              ? 'success'
-              : episode.status === 'IN_PREPARATION'
-              ? 'warning'
-              : 'default',
+          label: statusInfo.label,
+          variant: statusInfo.variant === 'purple' || statusInfo.variant === 'info' ? 'primary' : statusInfo.variant,
         }}
         onBack={onBack}
         backLabel="العودة للحلقات"
@@ -218,7 +206,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <Lock className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
               <strong className="text-xs font-bold block">هذه الحلقة قيد التحرير الآن لدى {lock.holder.userName}</strong>
-              <span className="text-[11px] text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
+              <span className="text-2xs text-amber-700">يمكنك المتابعة للقراءة فقط، وستُتاح الكتابة تلقائياً عند إغلاقه لمساحة العمل.</span>
             </div>
           </div>
           {can('rundown.lock_override') && (
@@ -235,56 +223,6 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         </div>
       )}
 
-      {/* On-air readiness across departments */}
-      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready && timingOk ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-800">
-              جاهزية البث: {readiness.readySegments} من {readiness.total} فقرة جاهزة
-            </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {readiness.ready
-                ? 'كل الأقسام سلّمت المواد المطلوبة.'
-                : readiness.total === 0
-                ? 'أضف فقرات الرانداون أولاً.'
-                : `${readiness.blockers.length} عنصر ينتظر التحرير أو المونتاج أو الأقسام الأخرى.`}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-40 h-2 rounded-full bg-slate-200 overflow-hidden" aria-hidden>
-              <div className={`h-full ${readiness.ready ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${readiness.total ? (readiness.readySegments / readiness.total) * 100 : 0}%` }} />
-            </div>
-            {readiness.blockers.length > 0 && (
-              <button type="button" onClick={() => setShowBlockers((v) => !v)} aria-expanded={showBlockers} className="text-xs font-bold text-blue-700 hover:underline">
-                {showBlockers ? 'إخفاء النواقص' : 'عرض النواقص'}
-              </button>
-            )}
-          </div>
-        </div>
-        {slotSeconds > 0 && readiness.total > 0 && (
-          <p
-            role={timingOk ? undefined : 'status'}
-            className={`mt-2 text-[11px] font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
-          >
-            خطة الوقت: {mmssOf(plannedSeconds)} مخطط من {mmssOf(slotSeconds)}
-            {timingOk ? ' — مكتملة' : timingGap < 0 ? ` — ينقص ${mmssOf(timingGap)} دقيقة` : ` — يزيد ${mmssOf(timingGap)} دقيقة`}
-          </p>
-        )}
-        {readiness.warnings.length > 0 && <div className="mt-3 text-xs text-amber-800"><button type="button" onClick={() => setActiveTab('GUESTS')} className="min-h-11 text-blue-700 underline">متابعة الضيوف ({readiness.warnings.length})</button><ul>{readiness.warnings.map((w, i) => <li key={i}>{w.guestName}: {w.detail}</li>)}</ul></div>}
-        {showBlockers && readiness.blockers.length > 0 && (
-          <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
-            {readiness.blockers.map((b, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
-                <span className="font-bold text-slate-800 break-words min-w-0">{b.segmentTitle}</span>
-                <span className="text-amber-800">{b.detail}</span>
-                <span className="text-xs text-slate-600">المسؤول: {departmentName(b.departmentId)}{apiService.getRequests().filter(r => r.link?.segmentId === b.segmentId && r.departmentId === b.departmentId && ['OPEN', 'ACCEPTED'].includes(r.status)).map(r => r.assigneeName || r.addressedToName).filter(Boolean).filter((name, i, all) => all.indexOf(name) === i).map(name => `، ${name}`).join('')}</span>
-                <button type="button" aria-label={`معالجة النقص: ${b.segmentTitle} - ${b.label}`} onClick={() => resolveBlocker(b)} className="min-h-11 mr-auto px-3 text-blue-700 font-semibold hover:underline">معالجة النقص</button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
       {/* Top Episode Banner */}
       <div className="border-b border-slate-200 pb-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -292,18 +230,19 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <button
               type="button"
               onClick={onBack}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+              className="sm:hidden min-h-11 min-w-11 inline-flex items-center justify-center shrink-0 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+              aria-label="العودة للحلقات"
               title="العودة للحلقات"
             >
-              <ArrowRight className="w-5 h-5" />
+              <ArrowRight className="w-5 h-5" aria-hidden />
             </button>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
                   {episode.programName}
                 </span>
-                <span className="text-xs text-slate-500 font-mono">
-                  حلقة #{episode.episodeNumber} (الموسم {episode.seasonNumber})
+                <span className="text-xs text-slate-500 tabular-nums">
+                  حلقة {episode.episodeNumber} · الموسم {episode.seasonNumber}
                 </span>
               </div>
               <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1 break-words">
@@ -314,12 +253,24 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Episode Live Status Controller */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+            {mayEditEpisode && (
+              <button
+                type="button"
+                onClick={() => setEditingDetails(true)}
+                disabled={!canEditEpisode || lock.status === 'acquiring'}
+                title={lockedByOther ? `الحلقة قيد التحرير لدى ${lock.holder?.userName || 'زميل آخر'}` : 'تعديل العنوان والرقم وموعد البث والطاقم'}
+                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 disabled:opacity-50"
+              >
+                <Edit2 className="w-4 h-4" />
+                تعديل بيانات الحلقة
+              </button>
+            )}
             {canBook && (
               <button
                 type="button"
                 onClick={bookStudio}
                 title={episodeBookings.length ? episodeBookings.map((b) => `${apiService.getResources().find((r) => r.id === b.resourceId)?.name || ''} ${new Date(b.start).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}`).join('، ') : 'حجز استوديو أو معدات للحلقة'}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
+                className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
               >
                 <CalendarPlus className="w-4 h-4" />
                 {episodeBookings.length ? `محجوز (${episodeBookings.length})` : 'حجز استوديو'}
@@ -340,19 +291,28 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 value={episode.status}
                 onChange={(e) => handleUpdateStatus(e.target.value as EpisodeStatus)}
                 disabled={!canEditEpisode}
-                className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
+                className="min-h-11 px-3 border border-slate-300 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
               >
-                <option value="PLANNING">مرحلة التخطيط</option>
-                <option value="IN_PREPARATION">قيد الإعداد والتحرير</option>
-                <option value="READY_FOR_BROADCAST">جاهز للبث المباشر</option>
-                <option value="ON_AIR">على الهواء الآن</option>
-                <option value="BROADCASTED">تم البث</option>
-                <option value="ARCHIVED">مؤرشفة</option>
+                {EPISODE_STATUS_INFO.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
         </div>
 
+        {editingDetails && (
+          <EpisodeDetailsEditor
+            episode={episode}
+            episodes={apiService.getEpisodes()}
+            currentUser={currentUser}
+            onClose={() => setEditingDetails(false)}
+            onSaveEpisode={onSaveEpisode}
+            lock={{ status: lock.status, holderName: lock.holder?.userName }}
+          />
+        )}
         {booking && <BookingForm isOpen onClose={() => setBooking(null)} currentUser={currentUser} users={apiService.getUsers()} booking={booking} />}
 
         {/* Episode Info Bar */}
@@ -380,39 +340,89 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         </div>
       </div>
 
+      {/* On-air readiness across departments */}
+      <section aria-label="جاهزية الحلقة للبث" className={`p-4 rounded-2xl border ${readiness.ready && timingOk ? 'bg-emerald-50/60 border-emerald-200' : 'bg-white border-slate-200'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-800">
+              جاهزية البث: {readiness.readySegments} من {countLabel(readiness.total, EP_NOUNS.segment)} جاهزة
+            </h2>
+            <p className="text-2xs text-slate-500 mt-0.5">
+              {readiness.ready
+                ? 'كل الأقسام سلّمت المواد المطلوبة.'
+                : readiness.total === 0
+                ? 'أضف فقرات الرانداون أولاً.'
+                : `بانتظار التحرير أو المونتاج أو الأقسام الأخرى: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-40 h-2 rounded-full bg-slate-200 overflow-hidden" aria-hidden>
+              <div className={`h-full ${readiness.ready ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${readiness.total ? (readiness.readySegments / readiness.total) * 100 : 0}%` }} />
+            </div>
+            {readiness.blockers.length > 0 && (
+              <button type="button" onClick={() => setShowBlockers((v) => !v)} aria-expanded={showBlockers} className="text-xs font-bold text-blue-700 hover:underline">
+                {showBlockers ? 'إخفاء النواقص' : 'عرض النواقص'}
+              </button>
+            )}
+          </div>
+        </div>
+        {slotSeconds > 0 && readiness.total > 0 && (
+          <p
+            role={timingOk ? undefined : 'status'}
+            className={`mt-2 text-2xs font-bold ${timingOk ? 'text-emerald-700' : 'text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block'}`}
+          >
+            خطة الوقت: {minutesOf(plannedSeconds, slotSeconds)}
+            {timingOk ? ' — مكتملة' : ` — ${gap.text}`}
+          </p>
+        )}
+        {readiness.warnings.length > 0 && <div className="mt-3 text-xs text-amber-800"><button type="button" onClick={() => setActiveTab('GUESTS')} className="min-h-11 text-blue-700 underline">متابعة الضيوف ({readiness.warnings.length})</button><ul>{readiness.warnings.map((w, i) => <li key={i}>{w.guestName}: {w.detail}</li>)}</ul></div>}
+        {showBlockers && readiness.blockers.length > 0 && (
+          <ul className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
+            {readiness.blockers.map((b, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-amber-50/70 border border-amber-200">
+                <span className="font-bold text-slate-800 break-words min-w-0">{b.segmentTitle}</span>
+                <span className="text-amber-800">{b.detail}</span>
+                <span className="text-xs text-slate-600">المسؤول: {departmentName(b.departmentId)}{apiService.getRequests().filter(r => r.link?.segmentId === b.segmentId && r.departmentId === b.departmentId && ['OPEN', 'ACCEPTED'].includes(r.status)).map(r => r.assigneeName || r.addressedToName).filter(Boolean).filter((name, i, all) => all.indexOf(name) === i).map(name => `، ${name}`).join('')}</span>
+                <button type="button" aria-label={`معالجة النقص: ${b.segmentTitle} - ${b.label}`} onClick={() => resolveBlocker(b)} className="min-h-11 mr-auto px-3 text-blue-700 font-semibold hover:underline">معالجة النقص</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {/* Tabs */}
       <nav aria-label="خطوات إعداد الحلقة" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 border-b border-slate-200 pb-3 text-xs font-bold">
         <button
           type="button"
           onClick={() => setActiveTab('PLAN')}
           aria-pressed={activeTab === 'PLAN'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'PLAN' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>تحضير الحلقة ({(episode.topics || []).length} محور)</span>
+          <span>تحضير الحلقة ({countLabel((episode.topics || []).length, EP_NOUNS.topic)})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('RUNDOWN')}
           aria-pressed={activeTab === 'RUNDOWN'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'RUNDOWN'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <ListOrdered className="w-4 h-4" />
-          <span>مخطط الرانداون التلفزيوني ({episode.rundown?.length || 0})</span>
+          <span>الرانداون ({episode.rundown?.length || 0})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('QUESTIONS')}
           aria-pressed={activeTab === 'QUESTIONS'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'QUESTIONS'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -426,7 +436,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('GUESTS')}
           aria-pressed={activeTab === 'GUESTS'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'GUESTS'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -440,7 +450,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('SCRIPT')}
           aria-pressed={activeTab === 'SCRIPT'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'SCRIPT'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -454,7 +464,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
           type="button"
           onClick={() => setActiveTab('NOTES')}
           aria-pressed={activeTab === 'NOTES'}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
+          className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'NOTES' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -586,7 +596,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
 
           {/* Quick Script Presets */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 ml-1">قوالب جاهزة:</span>
+            <span className="text-2xs font-bold text-slate-500 ml-1">قوالب جاهزة:</span>
             {[
               {
                 label: 'نشرة الأخبار الرئيسية',
@@ -607,7 +617,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 disabled={!canEditEpisode || savingScript}
                 onClick={() => changeScript(introScript ? `${introScript}\n\n${preset.text}` : preset.text)}
                 title={`إضافة ${preset.label} إلى النص`}
-                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
               >
                 +{preset.label}
               </button>

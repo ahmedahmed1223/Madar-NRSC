@@ -1,9 +1,12 @@
 import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import React, { useMemo, useState } from 'react';
-import { Save, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
+import { Save, ChevronDown, ChevronUp, Edit2, Film, Layers, Lightbulb, Mic, Newspaper, Plus, Sparkles, Trash2, Tv, Users, Clock, Volume2 } from 'lucide-react';
 import type { Episode, Guest, NewsItem, RundownSegment, RundownSegmentType, User } from '../../types';
-import { apiService, formatSecondsToTime } from '../../services/api';
+import { apiService } from '../../services/api';
+import { minutesLabel, minutesOf, segmentClock } from '../../shared/durations';
+import { countLabel } from '../../shared/arabicPlural';
+import { EP_NOUNS } from '../../shared/episodeNouns';
 import { newId } from '../../shared/ids';
 import { recalculateRundown } from '../../shared/rundown';
 import { segmentReadiness, requestStatusName } from '../../shared/production';
@@ -266,17 +269,17 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
           </span>
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-500">{meta.label}</span>
+              <span className="text-2xs font-bold text-slate-500">{meta.label}</span>
               <span className="text-sm font-bold text-slate-800">{seg.title}</span>
-              <span className="text-[11px] font-mono text-slate-500" dir="ltr">
-                {formatSecondsToTime(seg.durationSeconds || 0).slice(3)}
+              <span className="text-2xs font-bold tabular-nums text-slate-500" title="مدة الفقرة">
+                {segmentClock(seg.durationSeconds || 0)}
               </span>
               {seg.segmentType !== 'BREAK' && (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
+                  className={`text-2xs font-bold px-1.5 py-0.5 rounded ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}
                   title={items.map((i) => `${i.label}: ${i.detail}`).join('\n')}
                 >
-                  {ready ? 'جاهزة' : `${items.filter((i) => i.state !== 'ready').length} نواقص`}
+                  {ready ? 'جاهزة' : countLabel(items.filter((i) => i.state !== 'ready').length, EP_NOUNS.gap)}
                 </span>
               )}
             </div>
@@ -285,21 +288,21 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                 {guests.map((g) => {
                   const st = bookingOf(g.guestId);
                   return (
-                    <span key={g.guestId} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
+                    <span key={g.guestId} className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${BOOKING_TONE[st]}`}>
                       {g.guestName} · {g.role === 'MAIN' ? 'رئيسي' : g.role === 'CALLER' ? 'مداخلة' : 'معقّب'} · {bookingStatusName(st)}
                     </span>
                   );
                 })}
                 {TALK_SEGMENT_TYPES.has(seg.segmentType) && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
-                    {qCount ? `${qCount} سؤال` : 'بلا أسئلة'}
+                  <span className={`text-2xs font-bold px-1.5 py-0.5 rounded ${qCount ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'}`}>
+                    {countLabel(qCount, EP_NOUNS.question)}
                   </span>
                 )}
               </div>
             )}
-            {report && <p className={`text-[11px] ${report.ready ? 'text-emerald-700' : 'text-slate-600'}`}>{report.text}</p>}
+            {report && <p className={`text-2xs ${report.ready ? 'text-emerald-700' : 'text-slate-600'}`}>{report.text}</p>}
             {seg.newsTitle && (
-              <button type="button" onClick={() => seg.newsId && onOpenNews?.(seg.newsId)} className="text-[11px] text-indigo-700 hover:underline flex items-center gap-1">
+              <button type="button" onClick={() => seg.newsId && onOpenNews?.(seg.newsId)} className="text-2xs text-blue-700 hover:underline flex items-center gap-1">
                 <Newspaper className="w-3 h-3" /> {seg.newsTitle}
               </button>
             )}
@@ -323,12 +326,12 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const saveTemplate = async () => {
     if (!program || savingTemplate) return;
     const template = templateFromEpisode(episode);
-    if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${program.template.segments.length} فقرة) ببنية هذه الحلقة؟`))) return;
+    if (program.template && !(await confirmDialog(`استبدال قالب «${program.name}» الحالي (${countLabel(program.template.segments.length, EP_NOUNS.segment)}) ببنية هذه الحلقة؟`))) return;
     try {
       setSavingTemplate(true); setNotice(null); setTemplateError(false);
       apiService.saveProgram({ id: program.id, template: { ...template, updatedAt: new Date().toISOString(), updatedByName: currentUser.fullName } });
       if (await confirmSaved('programs', program.id, 'تم حفظ قالب البرنامج')) {
-        setNotice(`حُفظت البنية (${template.topics.length} محور، ${template.segments.length} فقرة) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
+        setNotice(`حُفظت البنية (${countLabel(template.topics.length, EP_NOUNS.topic)}، ${countLabel(template.segments.length, EP_NOUNS.segment)}) قالباً لبرنامج «${program.name}»؛ ستُعرض كخيار عند إنشاء الحلقات الجديدة.`);
       } else { setTemplateError(true); setNotice('لم يؤكد الخادم حفظ قالب البرنامج. بقيت بنية الحلقة دون تغيير؛ أعد المحاولة.'); }
     } catch (err: any) {
       setTemplateError(true);
@@ -359,15 +362,15 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
         {[
-          { label: 'المدة المخططة', value: `${formatSecondsToTime(totalSeconds).slice(0, 5)} / ${formatSecondsToTime(plannedSeconds).slice(0, 5)}`, warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
+          { label: 'المدة المخططة', value: plannedSeconds > 0 ? minutesOf(totalSeconds, plannedSeconds) : minutesLabel(totalSeconds), warn: plannedSeconds > 0 && Math.abs(totalSeconds - plannedSeconds) > 60 },
           { label: 'المحاور', value: String(topics.length), warn: topics.length === 0 },
-          { label: 'الضيوف المؤكدون', value: `${bookedGuests} / ${guestsInShow.size}`, warn: bookedGuests < guestsInShow.size },
-          { label: 'حوارات لها أسئلة', value: `${talkWithQuestions} / ${talk.length}`, warn: talkWithQuestions < talk.length },
-          { label: 'التقارير الجاهزة', value: `${reportsReady} / ${reports.length}`, warn: reportsReady < reports.length },
+          { label: 'الضيوف المؤكدون', value: `${bookedGuests} من ${guestsInShow.size}`, warn: bookedGuests < guestsInShow.size },
+          { label: 'حوارات لها أسئلة', value: `${talkWithQuestions} من ${talk.length}`, warn: talkWithQuestions < talk.length },
+          { label: 'التقارير الجاهزة', value: `${reportsReady} من ${reports.length}`, warn: reportsReady < reports.length },
         ].map((c) => (
           <div key={c.label} className={`p-3 rounded-xl border ${c.warn ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
-            <div className="text-[11px] font-bold text-slate-500">{c.label}</div>
-            <div className="text-lg font-black text-slate-800 font-mono" dir="ltr" style={{ textAlign: 'right' }}>
+            <div className="text-2xs font-bold text-slate-500">{c.label}</div>
+            <div className="text-lg font-bold text-slate-800 tabular-nums">
               {c.value}
             </div>
           </div>
@@ -421,13 +424,13 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
       {/* Topics */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <Layers className="w-4 h-4 text-indigo-600" /> محاور الحلقة وفقراتها
+          <Layers className="w-4 h-4 text-slate-500" aria-hidden /> محاور الحلقة وفقراتها
         </h3>
         {canEditEpisode && (
           <button
             type="button"
             onClick={() => { setTopicDraftId('new'); setTopicForm({ id: newId('topic'), title: '', minutes: '' }); }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold"
+            className="min-h-10 flex items-center gap-1.5 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
           >
             <Plus className="w-4 h-4" /> محور جديد
           </button>
@@ -458,7 +461,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
             label={topic ? topic.title : 'خارج المحاور'}
             disabled={!topic || !canEditEpisode}
             aria-label={topic ? `المحور ${idx + 1}: ${topic.title}` : 'فقرات خارج المحاور'}
-            className={`rounded-2xl border p-4 space-y-3 ${topic ? 'bg-indigo-50/30 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}
+            className={`rounded-2xl border p-4 space-y-3 ${topic ? 'bg-slate-50 border-slate-200' : 'bg-slate-50 border-dashed border-slate-300'}`}
           >
             {({ handle }) => (
             <>
@@ -466,21 +469,21 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               <div className="min-w-0 flex items-start gap-1.5">
                 {topic && canEditEpisode && handle}
                 <div className="min-w-0">
-                <h4 className="text-sm font-black text-slate-800">
+                <h4 className="text-sm font-bold text-slate-800">
                   {topic ? `المحور ${idx + 1}: ${topic.title}` : 'خارج المحاور (المقدمة، الفواصل، الختام)'}
                 </h4>
                 {topic?.angle && <p className="text-xs text-slate-600 mt-0.5">الزاوية: {topic.angle}</p>}
-                <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px]">
-                  <span className={`font-mono font-bold ${over ? 'text-rose-700' : 'text-slate-600'}`} dir="ltr">
-                    {formatSecondsToTime(actual).slice(3)}
-                    {target ? ` / ${formatSecondsToTime(target).slice(3)}` : ''}
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-2xs">
+                  <span className={`tabular-nums font-bold ${over ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {segmentClock(actual)}
+                    {target ? ` من ${segmentClock(target)}` : ''}
                   </span>
                   {over && <span className="text-rose-700 font-bold">يتجاوز المدة المستهدفة</span>}
-                  <span className="text-slate-500">{segments.length} فقرة</span>
+                  <span className="text-slate-500">{countLabel(segments.length, EP_NOUNS.segment)}</span>
                 </div>
                 {target > 0 && (
                   <div className="w-48 h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden" aria-hidden>
-                    <div className={`h-full ${over ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, (actual / target) * 100)}%` }} />
+                    <div className={`h-full ${over ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(100, (actual / target) * 100)}%` }} />
                   </div>
                 )}
                 </div>
@@ -492,7 +495,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
                       key={q.type}
                       type="button"
                       onClick={() => setSegmentForm({ segment: null, topicId: topic?.id, type: q.type })}
-                      className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-700"
+                      className="text-2xs font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-700"
                     >
                       + {q.label}
                     </button>
@@ -517,14 +520,14 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
 
             {topic && (topic.notes || linked.length > 0) && (
               <div className="text-xs">
-                <button type="button" onClick={() => setOpenNotes({ ...openNotes, [topic.id]: !openNotes[topic.id] })} className="font-bold text-indigo-700 hover:underline">
+                <button type="button" onClick={() => setOpenNotes({ ...openNotes, [topic.id]: !openNotes[topic.id] })} aria-expanded={!!openNotes[topic.id]} className="font-bold text-blue-700 hover:underline">
                   {openNotes[topic.id] ? 'إخفاء' : 'عرض'} ملاحظات البحث والأخبار المرتبطة ({linked.length})
                 </button>
                 {openNotes[topic.id] && (
-                  <div className="mt-2 p-3 rounded-xl bg-white border border-indigo-100 space-y-2">
+                  <div className="mt-2 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                     {topic.notes && <p className="whitespace-pre-line text-slate-700 leading-relaxed">{topic.notes}</p>}
                     {linked.map((n) => (
-                      <button key={n.id} type="button" onClick={() => onOpenNews?.(n.id)} className="block text-right text-indigo-700 hover:underline">
+                      <button key={n.id} type="button" onClick={() => onOpenNews?.(n.id)} className="block text-right text-blue-700 hover:underline">
                         • {n.title}
                       </button>
                     ))}
@@ -535,7 +538,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
 
             <SortableList as="ul" id={`seg:${topic?.id || 'loose'}`} accept="segment" className="space-y-1.5 min-h-[2.5rem] rounded-xl">
               {segments.length === 0 ? (
-                <li className="text-[11px] text-slate-500 p-2 border border-dashed border-slate-300 rounded-xl">
+                <li className="text-2xs text-slate-500 p-2 border border-dashed border-slate-300 rounded-xl">
                   لا فقرات بعد — أضف تقريراً أو مقابلة أو نقاشاً، أو اسحب فقرة إلى هنا.
                 </li>
               ) : (
@@ -597,7 +600,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
               <button type="button" onClick={() => void topicDraft.close(() => setTopicForm(null))} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
                 إلغاء
               </button>
-              <button type="submit" disabled={savingTopic} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl">
+              <button type="submit" disabled={savingTopic} className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl">
                 {savingTopic ? 'جارٍ الحفظ…' : 'حفظ المحور'}
               </button>
             </div>

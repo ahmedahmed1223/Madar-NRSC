@@ -1,3 +1,4 @@
+import { countLabel } from '../../shared/arabicPlural';
 import { LongTextField } from '../common/TextSizeControls';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { dataStore } from '../../services/dataStore';
@@ -226,7 +227,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
           {!isNew && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <div className="flex flex-wrap items-center gap-2 text-2xs">
               <span className={`font-bold px-2 py-0.5 rounded-full ${STATUS_TONE[status]}`}>{storyStatusName(status)}</span>
               {story.writerName && <span className="text-slate-500">كتبها: {story.writerName}</span>}
               {story.approvedByName && <span className="text-emerald-700">اعتمدها: {story.approvedByName}</span>}
@@ -295,12 +296,12 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   title={t.hint}
                   className={`p-2 rounded-lg border text-right ${type === t.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                 >
-                  <span className="block text-[11px] font-black font-mono">{t.code}</span>
-                  <span className="block text-[10px]">{t.name}</span>
+                  <span className="block text-2xs font-bold font-mono">{t.code}</span>
+                  <span className="block text-2xs">{t.name}</span>
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">{meta.hint}</p>
+            <p className="text-2xs text-slate-500 mt-1">{meta.hint}</p>
           </div>
 
           {meta.read && (
@@ -310,8 +311,8 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               sizeKey="anchor-script"
               label={`نص المذيع ${meta.clip ? '(المقدمة / الربط)' : ''}`}
               aside={
-                <span className="text-[11px] font-mono text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
-                  {words} كلمة · قراءة {mmss(readSeconds(script))}
+                <span className="text-2xs tabular-nums text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                  {countLabel(words, { one: 'كلمة واحدة', two: 'كلمتان', few: 'كلمات', many: 'كلمة', zero: 'لا كلمات' })} · قراءة <span className="font-mono">{mmss(readSeconds(script))}</span>
                 </span>
               }
               rows={8}
@@ -345,7 +346,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                   )}
                 </p>
               ) : (
-                <p className="text-[11px] text-slate-500">لم تُختر لقطة بعد.</p>
+                <p className="text-2xs text-slate-500">لم تُختر لقطة بعد.</p>
               )}
               <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
                 مدة اللقطة (ثوانٍ)
@@ -365,7 +366,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             <span>READ {mmss(timing.read)}</span>
             {meta.clip && <span>CLIP {mmss(timing.clip)}</span>}
             {meta.manual && <span>EST {mmss(timing.manual)}</span>}
-            <span className="font-black text-emerald-700">TOTAL {mmss(timing.total)}</span>
+            <span className="font-bold text-emerald-700">TOTAL {mmss(timing.total)}</span>
           </div>
 
           <fieldset className="p-3 rounded-xl border border-slate-200 space-y-2">
@@ -408,7 +409,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 </button>
               )}
               {!isNew && graphics.some((g) => g.lines.some((l) => l.trim())) && RbacService.hasPermission(currentUser, 'requests.create') && (
-                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-purple-700 hover:underline">
+                <button type="button" onClick={sendGraphics} className="flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline">
                   <Send className="w-3.5 h-3.5" /> إرسال لقسم الجرافيك
                 </button>
               )}
@@ -430,7 +431,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </p>
           )}
 
-          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
+          {story.id && <ReviewThreads collection="bulletinStories" entityId={story.id} title={story.slug} text={script} version={story.updatedAt || 'legacy'} canPost={canEdit && !saving} />}
           <div className="sticky bottom-0 bg-white flex flex-wrap items-center justify-between gap-2 py-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && status === 'DRAFT' && (
@@ -445,7 +446,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 </button>
               )}
               {progress && progress.total > 1 && status !== 'DRAFT' && (
-                <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1" aria-label="تقدم الاعتماد">
+                <span className="text-2xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1" aria-label="تقدم الاعتماد">
                   الاعتماد {progress.done}/{progress.total}
                   {progress.next ? ` — بانتظار: ${progress.nextName}` : ''}
                   {(story?.approvals || []).length > 0 && ` (${(story!.approvals || []).map((a) => a.byName).join('، ')})`}

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { apiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
-import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, lockIdFor } from '../shared/collections';
+import { forgetHeldLock, rememberHeldLock } from '../services/heldLocks';
+import { EDIT_LOCK_TTL_MS, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
 type LockTarget = 'news' | 'episodes' | 'bulletinStories';
 
@@ -15,8 +16,10 @@ const HEARTBEAT_MS = Math.floor(EDIT_LOCK_TTL_MS / 3);
  * the work in progress. Renews it periodically, releases it on close, and reports when
  * someone else holds (or takes over) the story.
  */
-export function useNewsEditLock(newsId: string | undefined) {
-  return useEditLock('news', newsId);
+export function useNewsEditLock(newsId: string | undefined, canEdit = true) {
+  // Reading a story one may not edit never asks for its lock (the server would refuse it, and a
+  // reader must not block the writer); colleagues' locks are still shown.
+  return useEditLock('news', newsId, canEdit);
 }
 
 /** Generic edit lock for lockable collections (stories and programme episodes). */
@@ -25,11 +28,38 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
   const [status, setStatus] = useState<EditLockStatus>('none');
   const [holder, setHolder] = useState<EditLock | null>(null);
   const me = authClient.getSession()?.user.id;
+  // Read-only: report a colleague's live lock (so the screen can say who is writing) without taking one.
+  const [watched, setWatched] = useState<EditLock | null>(null);
+  useEffect(() => {
+    if (enabled || !entityId) {
+      setWatched(null);
+      return;
+    }
+    const look = () => {
+      const lock = apiService.getEditLocks().find((l) => l.id === lockIdFor(collection, entityId));
+      setWatched(lock && isLockActive(lock) && lock.userId !== me ? lock : null);
+    };
+    look();
+    const off = dataStore.subscribe((evt) => {
+      if (evt.type === 'data-changed' && evt.collections.includes('editLocks')) look();
+    });
+    const timer = setInterval(look, 30_000);
+    return () => {
+      off();
+      clearInterval(timer);
+    };
+  }, [collection, entityId, enabled, me]);
   const acquireRef = useRef<() => Promise<void>>(async () => undefined);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     let held = false;
+    const lockId = newsId ? lockIdFor(collection, newsId) : '';
+    // Remembered per tab so the next load can release it if this page goes away without cleanup.
+    const markHeld = (value: boolean) => {
+      held = value;
+      if (value) rememberHeldLock(lockId);
+    };
     let acquiring = false;
     let disposed = false;
     setHolder(null);
@@ -46,16 +76,19 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
         await previous;
         if (disposed) return;
         setStatus('acquiring');
+        rememberHeldLock(lockId); // the server may grant it after this page is gone
         try {
           const lock = await apiService.acquireEditLock(collection, newsId);
           if (disposed) {
-            if (lock?.userId === me) {
+            // The screen closed while we waited; the answer may still be unconfirmed (no owner yet).
+            if (isOwnLock(lock, me)) {
               apiService.releaseEditLock(collection, newsId);
               await dataStore.settle();
             }
             return;
           }
-          held = !!lock && lock.userId === me && isLockActive(lock);
+          markHeld(!!lock && lock.userId === me && isLockActive(lock));
+          if (!held) forgetHeldLock(lockId);
           setHolder(held ? null : lock);
           setStatus(held ? 'held' : lock && isLockActive(lock) ? 'locked' : 'none');
         } catch {
@@ -72,7 +105,7 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       if (disposed || acquiring) return;
       const lock = apiService.getEditLocks().find(l => l.id === lockIdFor(collection, newsId));
       if (lock && isLockActive(lock)) {
-        held = lock.userId === me;
+        markHeld(lock.userId === me);
         setHolder(held ? null : lock);
         setStatus(held ? 'held' : 'locked');
       } else {
@@ -104,18 +137,10 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       disposed = true;
       clearInterval(heartbeat);
       unsubscribe();
-      if (!held) return;
-      try {
-        fetch('/api/v1/data/sync', {
-          method: 'POST',
-          keepalive: true,
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
-          body: JSON.stringify({ ops: [{ c: 'editLocks', op: 'delete', id: lockIdFor(collection, newsId) }] }),
-        });
-      } catch {
-        // ignore
-      }
+      // A request still in flight may be granted after the page is gone, so release then too;
+      // this endpoint only removes a lock the server shows as ours.
+      if (!held && !acquiring) return;
+      apiService.releaseEditLockOnServer(collection, newsId);
     };
     // pagehide runs only after navigation is accepted, unlike a cancellable beforeunload.
     const onRestore = (event: PageTransitionEvent) => {
@@ -134,7 +159,9 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       unsubscribe();
       window.removeEventListener('pagehide', onUnload);
       window.removeEventListener('pageshow', onRestore);
-      if (held) apiService.releaseEditLock(collection, newsId);
+      // Also covers a request still in flight: releaseEditLock only removes our own lock or request.
+      apiService.releaseEditLock(collection, newsId);
+      forgetHeldLock(lockId);
       held = false;
     };
   }, [collection, newsId, me]);
@@ -142,6 +169,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
   return {
     status,
     holder,
+    /** A colleague holding the lock while this screen only reads (no lock requested). */
+    readerSees: watched,
     /** Editors (news.edit_any) may take a story over from a colleague. */
     takeOver: () => acquireRef.current(),
   };

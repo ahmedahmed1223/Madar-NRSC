@@ -177,3 +177,21 @@ describe('scheduled publishing', () => {
     expect(history.body.data[0].data.status).toBe('SCHEDULED');
   });
 });
+
+describe('releasing edit locks on page unload', () => {
+  it('releases only the caller’s own lock', async () => {
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const release = (agent: request.Agent, id: string) => agent.post('/api/v1/data/locks/release').set(H).send({ id });
+
+    expect((await sync(journalist, [lockOp('nws-1')])).body.results[0].ok).toBe(true);
+    // An editor could take the lock over through /data/sync, but an unload release never clears it.
+    expect((await release(editor, 'news:nws-1')).body.released).toBe(false);
+    expect((await row(journalist, 'editLocks', 'news:nws-1'))?.deleted).toBeFalsy();
+
+    expect((await release(journalist, 'news:nws-1')).body.released).toBe(true);
+    expect((await row(journalist, 'editLocks', 'news:nws-1'))?.deleted ?? true).toBe(true);
+    expect((await release(journalist, 'news:nws-1')).body.released).toBe(false);
+    expect((await release(journalist, 'not-a-lock')).status).toBe(400);
+  });
+});

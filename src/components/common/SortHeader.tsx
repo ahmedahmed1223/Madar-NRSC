@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowDownNarrowWide, ArrowUpNarrowWide, ArrowUpDown } from 'lucide-react';
 
 export type SortDir = 'asc' | 'desc';
@@ -71,7 +71,7 @@ export function SortTh<K extends string>({
       <button
         type="button"
         onClick={() => onSort(sortKey, defaultDir)}
-        className={`inline-flex items-center gap-1 hover:text-blue-700 ${active ? 'text-blue-700' : ''}`}
+        className={`inline-flex items-center gap-1 min-h-6 hover:text-blue-700 ${active ? 'text-blue-700' : ''}`}
         title={`ترتيب حسب ${label}`}
       >
         {label}

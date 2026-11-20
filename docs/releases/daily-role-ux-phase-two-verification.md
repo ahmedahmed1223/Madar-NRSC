@@ -1,8 +1,6 @@
 # Daily Role UX Phase Two Verification
 
-Date: 2026-10-11
-Branch: codex/daily-role-ux
-Status: Final browser verification in progress; not a release
+Verified on 2026-11-20 on `codex/daily-role-ux`, with `origin/main` at `2f310ee` as an integration parent.
 
 ## Delivered Scope
 
@@ -28,21 +26,22 @@ Status: Final browser verification in progress; not a release
 
 ## Verification Evidence
 
-- Final `npm run check`: 79 test files / 361 unit and server tests passed;
-  TypeScript and production build passed. The first attempt could not find
-  OpenSSL for an existing delivery test. Adding the already installed Git OpenSSL
-  directory to this process's PATH resolved it; no dependency was installed.
-- Focused post-fix browser run: 3/3 passed for the lost-save/later-edit case,
-  help content and deterministic stalled-delete/lost-acknowledgement simulation.
-- The first broad browser run passed 67/69. A stale hardcoded help article count
-  and a held Playwright route released by unrouteAll caused the two failures.
-  Help now checks the actual article set and the new guide; the cancellation
-  fixture aborts its held route and verifies no deletion reached the server.
-- Final serial browser run and clean preview checks: pending at this writing.
+- `npm run check` passed TypeScript, 690 unit and server tests across 110 files,
+  and the production build, using the 4.0.0 dependency lockfile.
+- The serial Chromium regression set passed 61 tests for daily work, saved
+  filters, handovers, news and episode navigation, help, corrections, guest
+  follow-up, and pronunciation. After adding the source-only publication
+  confirmation, all 18 handover browser tests passed again.
+- The handover tests covered 390 and 1440 pixels, light and dark RTL, keyboard
+  entry and focus return, native shift selection, 44-pixel controls, overflow,
+  and axe WCAG A/AA checks. Mobile error-state screenshots were inspected.
+- The rebuilt preview reported 4.0.0, healthy, and ready on an isolated database
+  with demo data disabled. The build excluded the browser-only storage helper.
+- Remote `main` was verified at `2f310ee`. No live database was exercised.
 
 ## Hardening Findings Addressed
 
-- Keyboard focus returns to the actual opener after modal replacement/closure.
+- The dialogue focuses the handover title and returns focus to its opener on close.
 - Mobile error feedback scrolls into view without moving input focus offscreen.
 - A refreshed uncertain create is reconciled by stable ID rather than repeated.
 - A second confirmed save updates the recovery baseline before publication.
@@ -52,6 +51,8 @@ Status: Final browser verification in progress; not a release
   server-version review; the user confirms replacement.
 - Review source arrays require explicit collection permissions before selectors
   consume them, rather than relying on permissive generic policy defaults.
+- Outgoing roster members can confirm whether their own write published after a lost response. The confirmation returns only the publication state.
+- The news desk uses one review queue and retains quality checks and claim indicators. Source filters and bounded item-relative list restoration work with the current filter panel.
 
 ## Decisions and Costs
 
@@ -78,8 +79,8 @@ Status: Final browser verification in progress; not a release
 Stages three through five still require their specifications/plans and execution:
 producer readiness/media delivery/crew acknowledgement; reporter/presenter tools;
 grouped notifications, private snooze and authorized operational summaries.
-The independent whole-branch review, verified main integration, version bump,
-push and release remain pending until all stages are complete.
+The independent whole-roadmap review, merge into `main`, version bump, push and
+release remain pending. This verification covers the existing first two stages.
 
 Incoming personal-work summaries currently refresh on mounting/account change;
 the handover list has explicit refresh and confirmed detail reads. Local recovery

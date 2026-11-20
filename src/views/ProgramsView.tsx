@@ -1,32 +1,15 @@
+import { minutesLabel } from '../shared/durations';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
-import {
-  Plus,
-  Tv,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  Video,
-  Edit2,
-  Trash2,
-  Search,
-  Users,
-  CheckCircle2,
-  Star,
-  Eye,
-  X,
-  Sparkles,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { Plus, Video, Edit2, Trash2, Search, Eye, X } from 'lucide-react';
 import { Program, ProgramType, User } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
-import { apiService } from '../services/api';
 import { ProductionNameField } from '../components/common/ProductionNameField';
+import { ProgramTeamField } from '../components/programs/ProgramTeamField';
 
 interface ProgramsViewProps {
   programs: Program[];
@@ -75,15 +58,17 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const [channelName, setChannelName] = useState('');
   const [studioName, setStudioName] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const draft = useFormDraft(`program:${currentUser.id}:${editingProgram?.id || 'new'}`, isModalOpen,
     { name, shortName, description, typeId, presenterName, producerName, broadcastDays,
-      broadcastTime, durationMinutes, channelName, studioName, coverImageUrl }, value => {
+      broadcastTime, durationMinutes, channelName, studioName, coverImageUrl, teamMembers }, value => {
       setName(value.name); setShortName(value.shortName); setDescription(value.description);
       setTypeId(value.typeId); setPresenterName(value.presenterName); setProducerName(value.producerName);
       setBroadcastDays(value.broadcastDays); setBroadcastTime(value.broadcastTime);
       setDurationMinutes(value.durationMinutes); setChannelName(value.channelName);
       setStudioName(value.studioName); setCoverImageUrl(value.coverImageUrl);
+      setTeamMembers(Array.isArray(value.teamMembers) ? value.teamMembers : []);
     });
 
   const daysOfWeek = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
@@ -102,6 +87,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setChannelName('القناة الإخبارية الأولى');
     setStudioName('استوديو الأخبار الرئيسي (A1)');
     setCoverImageUrl('');
+    setTeamMembers([currentUser.fullName]);
     setIsModalOpen(true);
   };
 
@@ -119,6 +105,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setChannelName(prog.channelName);
     setStudioName(prog.studioName);
     setCoverImageUrl(prog.coverImageUrl || '');
+    setTeamMembers(prog.teamMembers || []);
     setIsModalOpen(true);
   };
 
@@ -162,6 +149,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       channelName,
       studioName,
       coverImageUrl: coverImageUrl || '',
+      teamMembers,
     });
 
     if (saved) { draft.clearDraft(); setIsModalOpen(false); }
@@ -181,7 +169,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             البرامج
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -255,14 +243,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             >
               {/* Cover image & badges */}
               <div
-                className="relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
+                className="theme-fixed relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
                 onClick={() => onSelectProgram && onSelectProgram(prog.id)}
                 title="فتح ملف البرنامج"
               >
                 <img
                   src={prog.coverImageUrl}
-                  alt={prog.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  alt=""
+                  className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
                 <div className="absolute top-3 right-3 flex items-center gap-2">
@@ -271,11 +259,11 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   </Badge>
                 </div>
                 <div className="absolute bottom-3 right-3 left-3 text-white">
-                  <h3 className="text-lg font-bold leading-tight hover:text-blue-300 transition-colors">
+                  <h3 className="text-lg font-bold leading-tight">
                     {prog.name}
                   </h3>
                   <span className="text-xs text-slate-300 font-mono">
-                    {prog.broadcastTime} | {prog.durationMinutes} دقيقة
+                    {prog.broadcastTime} | {minutesLabel((prog.durationMinutes || 0) * 60)}
                   </span>
                 </div>
               </div>
@@ -310,7 +298,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectProgram ? onSelectProgram(prog.id) : onSelectProgramEpisodes(prog.id)}
-                    className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs"
+                    className="w-full min-h-10 px-3 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                   >
                     <Eye className="w-4 h-4" />
                     <span>ملف البرنامج</span>
@@ -330,7 +318,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenEditModal(prog)}
-                      className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                      className="min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                      aria-label={`تعديل بيانات البرنامج: ${prog.name}`}
                       title="تعديل بيانات البرنامج"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -345,7 +334,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                             onDeleteProgram(prog.id);
                           }
                         }}
-                        className="p-2 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
+                        className="min-h-10 min-w-10 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
+                        aria-label={`حذف البرنامج: ${prog.name}`}
                         title="حذف البرنامج"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -377,7 +367,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setName('')}
-                    className="text-[10px] text-slate-500 hover:text-rose-500"
+                    className="text-2xs text-slate-500 hover:text-rose-500"
                   >
                     مسح
                   </button>
@@ -417,7 +407,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDescription('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -464,21 +454,21 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setBroadcastDays([...daysOfWeek])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   يومياً
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   أيام العمل
                 </button>
                 <button
                   type="button"
                   onClick={() => setBroadcastDays(['الجمعة', 'السبت'])}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+                  className="text-2xs px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
                 >
                   عطلة الأسبوع
                 </button>
@@ -534,7 +524,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     key={d}
                     type="button"
                     onClick={() => setDurationMinutes(d)}
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-2xs px-1.5 py-0.5 rounded font-mono ${
                       durationMinutes === d
                         ? 'bg-blue-600 text-white font-bold'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -557,6 +547,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             </div>
           </div>
 
+          <ProgramTeamField value={teamMembers} onChange={setTeamMembers} />
+
           <div>
             <div className="flex items-center justify-between mb-1">
               <label htmlFor="program-cover-input" className="block text-xs font-bold text-slate-700">رابط صورة الغلاف أو الشارة (URL)</label>
@@ -564,7 +556,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setCoverImageUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

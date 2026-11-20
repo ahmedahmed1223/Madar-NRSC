@@ -49,7 +49,7 @@ function Choice<K extends keyof DateTimeSettings>({
               }`}
             >
               <span className="block">{o.label}</span>
-              {o.hint && <span className="block text-[10px] font-normal text-slate-500 tabular-nums">{o.hint}</span>}
+              {o.hint && <span className="block text-2xs font-normal text-slate-500 tabular-nums">{o.hint}</span>}
             </button>
           );
         })}
@@ -103,8 +103,8 @@ export const StationDateTimeSettings: React.FC<{ canEdit: boolean }> = ({ canEdi
   return (
     <div className="space-y-4">
       <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200" aria-live="polite">
-        <p className="text-[11px] font-bold text-slate-500 mb-1">معاينة كما سيراها الجميع</p>
-        <p className="text-lg font-black text-slate-900 tabular-nums">{time(draft)}</p>
+        <p className="text-2xs font-bold text-slate-500 mb-1">معاينة كما سيراها الجميع</p>
+        <p className="text-lg font-bold text-slate-900 tabular-nums">{time(draft)}</p>
         <p className="text-sm font-bold text-slate-700">{day(draft)}</p>
         <p className="text-xs text-slate-500 tabular-nums mt-0.5">
           آخر تحديث: {now.toLocaleString(appLocale(draft), { ...(draft.timeBasis === 'station' && zone ? { timeZone: zone } : {}), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -179,7 +179,7 @@ export const StationDateTimeSettings: React.FC<{ canEdit: boolean }> = ({ canEdi
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <p className="text-[11px] text-slate-500 leading-relaxed max-w-xl">
+        <p className="text-2xs text-slate-500 leading-relaxed max-w-xl">
           إعداد مركزي للمحطة: يُطبَّق على كل الزملاء والشاشات والطباعة. المنطقة الزمنية للمحطة تُضبط في «المؤسسة والفريق».
           {!canEdit && ' يعدّله مدير النظام فقط.'}
         </p>

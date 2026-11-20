@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseErrorsPanel } from '../components/database/DatabaseErrorsPanel';
-import { DatabaseOperationConfirmation } from '../components/database/DatabaseOperationConfirmation';
+import { DatabaseOperationConfirmation, type DatabaseOperation } from '../components/database/DatabaseOperationConfirmation';
 import type { BackupStatus, BackupRehearsal } from '../shared/databaseDiagnostics';
 import {
   Database,
@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Table as TableIcon,
-  HardDrive,
   FileCode,
   Clock,
   Sparkles,
@@ -21,11 +20,11 @@ import {
   ShieldCheck,
   Archive,
   RefreshCw,
-  Copy,
   X,
 } from 'lucide-react';
 import { DbStats, SqlQueryResult, DbBackupFileInfo } from '../types';
 import { apiService } from '../services/api';
+import { countLabel } from '../shared/arabicPlural';
 
 // Data is stored as JSON documents per collection in the `entities` table.
 const QUERY_PRESETS = [
@@ -58,12 +57,12 @@ const QUERY_PRESETS = [
 
 export const DatabaseManagerView: React.FC = () => {
   const [stats, setStats] = useState<(DbStats & { sqlConsoleEnabled?: boolean; resetEnabled?: boolean; confirmationTotpRequired?: boolean }) | null>(null);
-  const [operation, setOperation] = useState<{ action: 'restore' | 'reset'; fileName?: string } | null>(null);
+  const [operation, setOperation] = useState<{ action: DatabaseOperation; fileName?: string } | null>(null);
   const [rehearsal, setRehearsal] = useState<BackupRehearsal | null>(null);
   const [rehearsing, setRehearsing] = useState<string | null>(null);
   const rehearsalGuard = useRef(false);
   const [backups, setBackups] = useState<DbBackupFileInfo[]>([]);
-  const [activeTab, setActiveTab] = useState<'console' | 'backups' | 'schema' | 'errors'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'backups' | 'schema' | 'errors'>('backups');
   const [backupHealth, setBackupHealth] = useState<BackupStatus | null>(null);
   const [actionError, setActionError] = useState('');
   const [listError, setListError] = useState('');
@@ -134,9 +133,19 @@ export const DatabaseManagerView: React.FC = () => {
     }
   };
 
+  // Busy while the current state is checked; the confirmation dialog then holds the screen.
+  const endOperation = () => {
+    setOperation(null);
+    setIsResetting(false);
+    setIsRestoringBackup(false);
+  };
+
   const handleReset = async () => {
-    if (operation) return;
+    if (operation || isResetting || isRestoringBackup) return;
+    setIsResetting(true);
     const current = await loadStats();
+    // The dialog is modal; the opener stays enabled underneath so focus can return to it.
+    setIsResetting(false);
     if (current?.resetEnabled) setOperation({ action: 'reset' });
   };
 
@@ -148,7 +157,7 @@ export const DatabaseManagerView: React.FC = () => {
       const created = await apiService.createBackup();
       if (!created) throw new Error('لم يؤكد الخادم إنشاء النسخة');
       if (created) {
-        setFeedbackMessage(`تم إنشاء النسخة الاحتياطية بنجاح: ${created.fileName}`);
+        setFeedbackMessage(`تم إنشاء النسخة الاحتياطية الكاملة (القاعدة والملفات المرفوعة): ${created.fileName}`);
         setTimeout(() => setFeedbackMessage(null), 5000);
         await loadBackups();
       }
@@ -172,8 +181,11 @@ export const DatabaseManagerView: React.FC = () => {
   };
 
   const handleRestoreBackup = async (fileName: string) => {
-    if (operation) return;
-    if (await loadStats()) setOperation({ action: 'restore', fileName });
+    if (operation || isResetting || isRestoringBackup) return;
+    setIsRestoringBackup(true);
+    const ok = await loadStats();
+    setIsRestoringBackup(false);
+    if (ok) setOperation({ action: 'restore', fileName });
   };
   const handleRehearse = async (fileName: string) => {
     if (rehearsalGuard.current) return;
@@ -195,16 +207,66 @@ export const DatabaseManagerView: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12 font-sans" dir="rtl">
-      {operation && <DatabaseOperationConfirmation action={operation.action} fileName={operation.fileName} totpRequired={stats?.confirmationTotpRequired === true} onClose={() => setOperation(null)} onComplete={updated => {
-        setStats(current => ({ ...current, ...updated }));
+      {operation && <DatabaseOperationConfirmation action={operation.action} fileName={operation.fileName} totpRequired={stats?.confirmationTotpRequired === true} onClose={endOperation} onComplete={updated => {
+        if (operation.action === 'download' || operation.action === 'export') {
+          setFeedbackMessage(operation.action === 'download' ? `بدأ تنزيل ${operation.fileName}؛ سُجّل في سجل التدقيق.` : 'بدأ تنزيل ملف قاعدة البيانات؛ سُجّل في سجل التدقيق.');
+          endOperation();
+          return;
+        }
+        setStats(current => (current && updated ? { ...current, ...updated } : current));
         setFeedbackMessage(operation.action === 'restore' ? 'تمت استعادة قاعدة البيانات بنجاح' : 'تمت إعادة تهيئة قاعدة البيانات بنجاح');
-        setOperation(null); void loadBackups();
+        endOperation(); void loadBackups();
         if (consoleEnabled) void handleRunQuery(QUERY_PRESETS[0].sql);
       }}/>
       }
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-slate-600">آخر نسخة: {backupHealth?.lastSnapshotAt ? new Date(backupHealth.lastSnapshotAt).toLocaleString(appLocale(), zoneOptions()) : 'لا توجد نسخة مسجلة'}{backupHealth?.intervalHours === 0 && ' · النسخ التلقائي معطل'}</div>
-        <button type="button" disabled={isCreatingBackup || isRestoringBackup} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-emerald-700 text-white rounded-md text-sm disabled:opacity-50"><ShieldCheck size={18}/>{isCreatingBackup ? 'جار إنشاء النسخة...' : 'إنشاء نسخة احتياطية الآن'}</button>
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-slate-900">
+            <Database className="w-5 h-5" aria-hidden="true" />
+            النسخ الاحتياطي وقاعدة البيانات
+          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+            {stats ? (
+              stats.isHealthy ? (
+                <span role="status" className="inline-flex items-center gap-1.5 font-bold text-emerald-800">
+                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  القاعدة سليمة ومتصلة
+                </span>
+              ) : (
+                <span role="status" className="inline-flex items-center gap-1.5 font-bold text-rose-800">
+                  <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  فحص السلامة لم ينجح
+                </span>
+              )
+            ) : (
+              <span role="status">{isLoading ? 'جارٍ فحص الحالة...' : 'الحالة غير معروفة'}</span>
+            )}
+            <span>آخر نسخة: {backupHealth?.lastSnapshotAt ? new Date(backupHealth.lastSnapshotAt).toLocaleString(appLocale(), zoneOptions()) : 'لا توجد نسخة مسجلة'}{backupHealth?.intervalHours === 0 && ' · النسخ التلقائي معطل'}</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={isCreatingBackup || isRestoringBackup} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"><ShieldCheck size={18} aria-hidden="true" />{isCreatingBackup ? 'جارٍ إنشاء النسخة الكاملة…' : 'نسخة احتياطية كاملة الآن'}</button>
+          <button
+            type="button"
+            onClick={() => !operation && setOperation({ action: 'export' })}
+            className="inline-flex items-center gap-2 px-4 min-h-11 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-bold"
+            title="ملف القاعدة وحده (بلا الملفات المرفوعة)؛ يطلب تأكيد هويتك"
+          >
+            <Download className="w-4 h-4" aria-hidden="true" />
+            تنزيل ملف القاعدة (.sqlite)
+          </button>
+          {stats?.resetEnabled && (
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={isResetting || isRestoringBackup || isCreatingBackup}
+              className="inline-flex items-center gap-2 px-4 min-h-11 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-800 text-sm font-bold disabled:opacity-50"
+            >
+              <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} aria-hidden="true" />
+              إعادة تهيئة وتعبئة
+            </button>
+          )}
+        </div>
       </div>
       {backupHealth && (backupHealth.overdue || !backupHealth.count || backupHealth.lastAttempt?.status === 'failed' || backupHealth.lastDelivery?.status === 'failed') && <div role="alert" className="border border-amber-300 bg-amber-50 text-amber-900 p-3 rounded-md text-sm space-y-1">
         {!backupHealth.count && <p>لا توجد نسخة احتياطية محفوظة؛ أنشئ نسخة قبل العمليات الحساسة.</p>}
@@ -215,85 +277,19 @@ export const DatabaseManagerView: React.FC = () => {
       {actionError && <p role="alert" className="text-sm text-red-700">{actionError}</p>}
       {listError && <p role="alert" className="text-sm text-red-700">{listError}</p>}
       {backupHealth?.incidents?.filter(incident => !incident.active && incident.recoveredAt).map(incident => <p key={incident.id} className="text-xs text-emerald-800">تمت معالجة تنبيه {incident.id === 'delivery-failure' ? 'الحزمة الكاملة' : incident.id === 'overdue' ? 'تأخر النسخ' : 'إنشاء النسخة'}: {new Date(incident.recoveredAt!).toLocaleString(appLocale(), zoneOptions())}</p>)}
-      {/* Top Banner - Stitch Aesthetic */}
-      <div className="bg-white rounded-2xl p-6 text-slate-900 shadow-2xs border border-slate-200 relative overflow-hidden">
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-200">
-                <Database className="w-3.5 h-3.5 text-indigo-600" />
-                محرك SQLite 3 الأصلي
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                متصل ونشط على القرص
-              </span>
-            </div>
-            
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              النسخ الاحتياطي وقاعدة البيانات
-            </h1>
-            <p className="text-sm text-slate-500 max-w-2xl leading-relaxed">
-              إدارة متكاملة لقاعدة بيانات المحطة الإخبارية؛ تدعم التخزين الدائم على ملف القرص الصلب، تنفيذ استعلامات SQL الفورية، ومزامنة الجداول والرانداون.
-            </p>
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden border border-slate-200 bg-slate-200 text-xs">
+        {([
+          ['مسار ملف التخزين', stats?.filePath || '—', true],
+          ['حجم قاعدة البيانات', stats?.fileSizeFormatted || '—', true],
+          ['الجداول', stats ? countLabel(stats.totalTables ?? 0, { one: 'جدول واحد', two: 'جدولان', few: 'جداول', many: 'جدولاً' }) : '—', false],
+          ['السجلات المخزنة', stats ? countLabel(stats.totalRows || 0, { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' }) : '—', false],
+        ] as [string, string, boolean][]).map(([label, value, ltr]) => (
+          <div key={label} className="bg-white p-3 min-w-0">
+            <dt className="text-2xs text-slate-500 mb-0.5">{label}</dt>
+            <dd className={`font-bold text-slate-900 truncate tabular-nums ${ltr ? 'font-mono text-left' : ''}`} dir={ltr ? 'ltr' : undefined} title={value}>{value}</dd>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <a
-              href="/api/v1/db/export"
-              download
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
-            >
-              <Download className="w-4 h-4" />
-              تحميل ملف SQLite (.sqlite)
-            </a>
-
-            {stats?.resetEnabled && (
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={isResetting}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all border border-slate-300 disabled:opacity-50 active:scale-95"
-            >
-              <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
-              إعادة تهيئة وتعبئة
-            </button>
-            )}
-          </div>
-        </div>
-
-        {/* Database Metric Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-100">
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">مسار ملف التخزين</span>
-            <span className="text-xs font-mono font-bold text-indigo-700 truncate block dir-ltr text-right">
-              {stats?.filePath || '—'}
-            </span>
-          </div>
-
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">حجم قاعدة البيانات</span>
-            <span className="text-xs font-mono font-bold text-slate-800">
-              {stats?.fileSizeFormatted || '—'}
-            </span>
-          </div>
-
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">عدد الجداول العلائقية</span>
-            <span className="text-xs font-mono font-bold text-slate-800">
-              {stats?.totalTables ?? 0} جداول
-            </span>
-          </div>
-
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <span className="text-[11px] text-slate-500 block mb-1">إجمالي السجلات المخزنة</span>
-            <span className="text-xs font-mono font-bold text-emerald-700">
-              {stats?.totalRows || 0} سجل
-            </span>
-          </div>
-        </div>
-      </div>
+        ))}
+      </dl>
 
       {feedbackMessage && (
         <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs flex items-center gap-2 min-w-0 break-all">
@@ -303,55 +299,36 @@ export const DatabaseManagerView: React.FC = () => {
       )}
 
       {/* Sub-Navigation Tabs */}
-      <div role="tablist" aria-label="أدوات قاعدة البيانات" className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-1" onKeyDown={event => {
+      <div role="tablist" aria-label="أدوات قاعدة البيانات" className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto" onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
         const index = tabs.indexOf(event.target as HTMLButtonElement); if (index < 0) return;
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowLeft' ? 1 : -1) + tabs.length) % tabs.length;
         event.preventDefault(); tabs[next].focus(); tabs[next].click();
       }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('console')}
-          role="tab" id="database-tab-console" aria-controls="database-console" aria-selected={activeTab === 'console'} tabIndex={activeTab === 'console' ? 0 : -1}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'console'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <FileCode className="w-4 h-4" />
-          <span>استعلامات SQL</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('backups')}
-          role="tab" id="database-tab-backups" aria-controls="database-backups" aria-selected={activeTab === 'backups'} tabIndex={activeTab === 'backups' ? 0 : -1}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'backups'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Archive className="w-4 h-4" />
-          <span>النسخ الاحتياطي ({backups.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('schema')}
-          role="tab" id="database-tab-schema" aria-controls="database-schema" aria-selected={activeTab === 'schema'} tabIndex={activeTab === 'schema' ? 0 : -1}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'schema'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>هيكل قاعدة البيانات</span>
-        </button>
-        <button type="button" role="tab" id="database-tab-errors" aria-controls="database-errors" aria-selected={activeTab === 'errors'} tabIndex={activeTab === 'errors' ? 0 : -1} onClick={() => setActiveTab('errors')} className={`flex items-center gap-2 px-4 min-h-11 rounded-md text-xs font-bold ${activeTab === 'errors' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><AlertCircle size={16}/>آخر أخطاء الخادم</button>
+        {([
+          { id: 'backups', label: `النسخ الاحتياطي (${backups.length})`, icon: Archive },
+          { id: 'console', label: 'استعلامات SQL', icon: FileCode },
+          { id: 'schema', label: 'هيكل قاعدة البيانات', icon: Layers },
+          { id: 'errors', label: 'آخر أخطاء الخادم', icon: AlertCircle },
+        ] as const).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`database-tab-${t.id}`}
+            aria-controls={`database-${t.id}`}
+            aria-selected={activeTab === t.id}
+            tabIndex={activeTab === t.id ? 0 : -1}
+            onClick={() => setActiveTab(t.id)}
+            className={`-mb-px flex items-center gap-2 px-4 min-h-11 border-b-2 text-sm font-bold whitespace-nowrap transition-colors ${
+              activeTab === t.id ? 'border-blue-600 text-slate-900' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <t.icon className="w-4 h-4" aria-hidden="true" />
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
       {activeTab === 'errors' && <DatabaseErrorsPanel/>}
 
@@ -366,7 +343,7 @@ export const DatabaseManagerView: React.FC = () => {
                   <TableIcon className="w-4 h-4 text-slate-700" />
                   <h2 className="text-sm font-bold text-slate-900">جداول المنظومة ({filteredTables.length})</h2>
                 </div>
-                <span className="text-[11px] text-slate-500">انقر للفحص الفوري</span>
+                <span className="text-2xs text-slate-500">انقر للفحص الفوري</span>
               </div>
 
               <div className="relative mb-3">
@@ -380,7 +357,7 @@ export const DatabaseManagerView: React.FC = () => {
                   placeholder="ابحث عن جدول..."
                   autoComplete="off"
                   spellCheck="false"
-                  className="w-full pr-9 pl-8 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                  className="w-full pr-9 pl-8 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
                 {tableSearch && (
                   <button
@@ -399,23 +376,23 @@ export const DatabaseManagerView: React.FC = () => {
                   <div
                     key={table.name}
                     onClick={() => handleInspectTable(table.name)}
-                    className="p-3 rounded-xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-indigo-50/40 cursor-pointer transition-all flex items-center justify-between group"
+                    className="p-3 rounded-xl border border-slate-100 hover:border-blue-200 bg-slate-50/50 hover:bg-blue-50/40 cursor-pointer transition-all flex items-center justify-between group"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-slate-800 group-hover:text-indigo-700 truncate">
+                        <span className="font-mono text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
                           {table.name}
                         </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
+                        <span className="text-2xs px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
                           {table.rowCount} صف
                         </span>
                       </div>
-                      <div className="text-[10px] text-slate-500 truncate mt-1">
+                      <div className="text-2xs text-slate-500 truncate mt-1">
                         {table.columns.slice(0, 4).join(', ')}
                         {table.columns.length > 4 && ` +${table.columns.length - 4}`}
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-600 transition-transform group-hover:-translate-x-0.5 shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-600 transition-transform group-hover:-translate-x-0.5 shrink-0" />
                   </div>
                 ))}
               </div>
@@ -424,7 +401,7 @@ export const DatabaseManagerView: React.FC = () => {
             {/* Quick Query Presets */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
               <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <Sparkles className="w-4 h-4 text-blue-600" />
                 <h2 className="text-sm font-bold text-slate-900">استعلامات جاهزة وموصى بها</h2>
               </div>
               <div className="space-y-2">
@@ -436,12 +413,12 @@ export const DatabaseManagerView: React.FC = () => {
                       setActiveQuery(preset.sql);
                       handleRunQuery(preset.sql);
                     }}
-                    className="w-full text-right p-2.5 rounded-xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-indigo-50/40 transition-all block"
+                    className="w-full text-right p-2.5 rounded-xl border border-slate-100 hover:border-blue-200 bg-slate-50/50 hover:bg-blue-50/40 transition-all block"
                   >
                     <span className="text-xs font-bold text-slate-800 block mb-0.5">
                       {preset.title}
                     </span>
-                    <span className="text-[11px] text-slate-500 block truncate leading-tight">
+                    <span className="text-2xs text-slate-500 block truncate leading-tight">
                       {preset.desc}
                     </span>
                   </button>
@@ -455,10 +432,10 @@ export const DatabaseManagerView: React.FC = () => {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <FileCode className="w-4 h-4 text-indigo-600" />
+                  <FileCode className="w-4 h-4 text-blue-600" />
                   <h2 className="text-sm font-bold text-slate-900">محرر استعلامات SQL الحي</h2>
                 </div>
-                <span className="text-[11px] text-slate-500 font-mono">
+                <span className="text-2xs text-slate-500 font-mono">
                   اختصار التنفيذ: <kbd className="px-1.5 py-0.5 bg-slate-100 rounded-md border border-slate-300">Ctrl + Enter</kbd>
                 </span>
               </div>
@@ -487,7 +464,7 @@ export const DatabaseManagerView: React.FC = () => {
                   }}
                   rows={5}
                   dir="ltr"
-                  className="w-full font-mono text-xs sm:text-sm bg-slate-950 text-emerald-400 p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 resize-y leading-relaxed shadow-inner"
+                  className="w-full font-mono text-xs sm:text-sm bg-slate-950 text-emerald-400 p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-y leading-relaxed shadow-inner"
                   placeholder="اكتب استعلام SQL هنا (مثال: SELECT * FROM entities LIMIT 5;)..."
                 />
               </div>
@@ -499,7 +476,7 @@ export const DatabaseManagerView: React.FC = () => {
                     type="button"
                     onClick={() => handleRunQuery()}
                     disabled={isExecuting || !consoleEnabled}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 active:scale-95"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 active:scale-95"
                   >
                     <Play className={`w-3.5 h-3.5 ${isExecuting ? 'animate-spin' : 'fill-current'}`} />
                     <span>{isExecuting ? 'جارِ التنفيذ...' : 'تشغيل الاستعلام'}</span>
@@ -536,12 +513,12 @@ export const DatabaseManagerView: React.FC = () => {
               <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <h3 className="text-xs font-bold text-slate-700">نتائج الاستعلام</h3>
                 {queryResult?.error ? (
-                  <span className="text-[11px] text-red-600 font-medium flex items-center gap-1">
+                  <span className="text-2xs text-red-600 font-medium flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     خطأ في الاستعلام
                   </span>
                 ) : (
-                  <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                  <span className="text-2xs text-emerald-700 font-medium flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الاسترجاع بنجاح
                   </span>
@@ -572,7 +549,7 @@ export const DatabaseManagerView: React.FC = () => {
                       {queryResult.values.map((row, rIdx) => (
                         <tr
                           key={rIdx}
-                          className="hover:bg-indigo-50/30 transition-colors odd:bg-white even:bg-slate-50/40"
+                          className="hover:bg-blue-50/30 transition-colors odd:bg-white even:bg-slate-50/40"
                         >
                           {row.map((cell, cIdx) => (
                             <td
@@ -612,38 +589,26 @@ export const DatabaseManagerView: React.FC = () => {
             <p dir="ltr" className="text-xs font-mono break-all">SHA-256: {rehearsal.sha256}</p>
             <dl className="flex flex-wrap gap-4">{Object.entries(rehearsal.counts).map(([name, count]) => <div key={name} className="flex gap-2"><dt dir="ltr">{name}</dt><dd>{count}</dd></div>)}</dl>
           </section>}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Archive className="w-5 h-5 text-indigo-600" />
-                  نقاط الاستعادة والنسخ الاحتياطي لقاعدة البيانات
+                  <Archive className="w-5 h-5 text-blue-600" />
+                  نقاط الاستعادة
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  إنشاء لقطات فورية لملف SQLite وحفظها في مجلد <code className="px-1.5 py-0.5 bg-slate-100 rounded text-indigo-700 font-mono">data/backups/</code> للاسترجاع السريع في حالات الطوارئ.
+                  «نسخة احتياطية كاملة الآن» تنشئ ما ينشئه النسخ الدوري تماماً: لقطة للقاعدة، وحزمة معها كل الملفات المرفوعة وملخص SHA-256، ونسخة إلى المجلد الخارجي أو التخزين السحابي إن كانا مضبوطين. تظهر هنا لقطات القاعدة للفحص والتجربة والاستعادة.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={loadBackups}
-                  className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
-                  title="تحديث القائمة"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCreateBackup}
-                  disabled={isCreatingBackup || isRestoringBackup}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 active:scale-95"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>{isCreatingBackup ? 'جارِ إنشاء النسخة...' : 'إنشاء نقطة استعادة فورية'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={loadBackups}
+                className="inline-flex items-center gap-2 min-h-11 px-3 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-lg transition-colors border border-slate-300 shrink-0"
+              >
+                <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                تحديث القائمة
+              </button>
             </div>
 
             {/* Backups Table */}
@@ -661,7 +626,7 @@ export const DatabaseManagerView: React.FC = () => {
                   {backups.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-10 text-center text-slate-500">
-                        لا توجد نقاط استعادة محفوظة بعد. انقر على "إنشاء نقطة استعادة فورية" لتسجيل نسخة جديدة.
+                        لا توجد نسخ محفوظة بعد. انقر على «نسخة احتياطية كاملة الآن» لإنشاء أول نسخة.
                       </td>
                     </tr>
                   ) : (
@@ -683,20 +648,21 @@ export const DatabaseManagerView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleRestoreBackup(b.fileName)}
-                              disabled={isRestoringBackup || isCreatingBackup || !!verifying}
-                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-[11px] font-bold transition-colors border border-amber-500/30"
+                              aria-busy={isRestoringBackup}
+                              disabled={isResetting || isCreatingBackup || !!verifying}
+                              className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30 disabled:opacity-50"
                             >
                               استعادة هذه النسخة
                             </button>
-                            <a
-                              href={`/api/v1/db/backups/download?fileName=${encodeURIComponent(b.fileName)}`}
-                              aria-label="تحميل النسخة"
-                              download
-                              className="p-3 min-h-11 min-w-11 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="تحميل"
+                            <button
+                              type="button"
+                              onClick={() => !operation && setOperation({ action: 'download', fileName: b.fileName })}
+                              aria-label="تنزيل النسخة"
+                              className="p-3 min-h-11 min-w-11 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="تنزيل (يطلب تأكيد هويتك)"
                             >
                               <Download className="w-4 h-4" />
-                            </a>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -706,13 +672,7 @@ export const DatabaseManagerView: React.FC = () => {
               </table>
             </div>
 
-            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>يتم حفظ جميع التعديلات تلقائياً في ملف <strong className="text-slate-800 font-mono">data/newsroom.sqlite</strong> مع كل عملية تحرير.</span>
-              </div>
-              <span className="font-mono text-slate-500">ACID Compliant SQLite Engine</span>
-            </div>
+            <p className="mt-3 text-xs text-slate-600">يُحفظ كل تعديل فور حدوثه في ملف <strong className="text-slate-800 font-mono" dir="ltr">{stats?.filePath || 'newsroom.sqlite'}</strong>؛ النسخ الاحتياطية لقطات منه في أوقات محددة.</p>
           </div>
         </div>
       )}
@@ -722,7 +682,7 @@ export const DatabaseManagerView: React.FC = () => {
         <div role="tabpanel" id="database-schema" aria-labelledby="database-tab-schema" className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-6">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Layers className="w-5 h-5 text-indigo-600" />
+              <Layers className="w-5 h-5 text-blue-600" />
               مخطط الجداول والعلاقات العلائقية
             </h2>
             <p className="text-xs text-slate-500 mt-1">
@@ -734,21 +694,21 @@ export const DatabaseManagerView: React.FC = () => {
             {(stats?.tables || []).map((tbl) => (
               <div key={tbl.name} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-200">
+                  <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-md border border-blue-200">
                     {tbl.name}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                  <span className="text-2xs text-slate-500 font-mono font-semibold">
                     {tbl.rowCount} سجل
                   </span>
                 </div>
 
                 <div className="space-y-1 text-xs">
-                  <span className="text-[11px] text-slate-500 block mb-1">الأعمدة ({tbl.columns.length}):</span>
+                  <span className="text-2xs text-slate-500 block mb-1">الأعمدة ({tbl.columns.length}):</span>
                   <div className="flex flex-wrap gap-1">
                     {tbl.columns.map((c) => (
                       <span
                         key={c}
-                        className="text-[10px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
+                        className="text-2xs font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-700"
                       >
                         {c}
                       </span>
@@ -762,7 +722,7 @@ export const DatabaseManagerView: React.FC = () => {
                     setActiveTab('console');
                     handleInspectTable(tbl.name);
                   }}
-                  className="w-full mt-2 py-1.5 text-center text-[11px] text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/60 rounded-lg font-bold transition-colors block border border-indigo-200/50"
+                  className="w-full mt-2 py-1.5 text-center text-2xs text-blue-600 hover:text-blue-700 hover:bg-blue-50/60 rounded-lg font-bold transition-colors block border border-blue-200/50"
                 >
                   استعلام بيانات الجدول &larr;
                 </button>

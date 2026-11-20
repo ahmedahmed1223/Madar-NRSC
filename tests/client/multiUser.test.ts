@@ -142,3 +142,19 @@ describe('several users working at the same time', () => {
     expect(b.store.get<any[]>(GUESTS, []).some((g) => g.id === 'gst-shared-1')).toBe(false);
   });
 });
+
+describe('edit locks', () => {
+  const LOCKS = COLLECTIONS.editLocks.storageKey;
+
+  it('releasing while the lock request is still in flight leaves no lock on the server', async () => {
+    const a = await connect('editor@akhbar.tv');
+    const id = 'episodes:ep-101';
+    a.store.set(LOCKS, [{ id, collection: 'episodes', entityId: 'ep-101', heartbeat: Date.now() }, ...a.store.get<any[]>(LOCKS, []).filter((l) => l.id !== id)]);
+    const acquiring = a.store.flush(); // the request is now in flight; the user leaves at once
+    a.store.set(LOCKS, a.store.get<any[]>(LOCKS, []).filter((l) => l.id !== id));
+    await acquiring;
+    expect(await a.store.settle()).toBe(true);
+    const row = server.db.getRow('editLocks', id);
+    expect(!row || row.deleted).toBe(true);
+  });
+});

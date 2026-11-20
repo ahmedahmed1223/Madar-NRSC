@@ -11,11 +11,42 @@ const KIND_TONE: Record<ProofIssue['kind'], string> = {
 };
 const KIND_NAME: Record<ProofIssue['kind'], string> = { spelling: 'إملاء', repeat: 'تكرار', spacing: 'مسافات', punctuation: 'ترقيم' };
 
+/** A proofreading finding offered to a reviewer as a review note (quote + note). */
+export interface ProofSuggestion {
+  issue: ProofIssue;
+  /** A few whole words of the text around the slip, to quote in the note. */
+  excerpt: string;
+  /** Ready-made note text: what is wrong and the suggested form. */
+  note: string;
+}
+
+/** Whole words around [start, end) of `source` (tags already blanked out). */
+export function excerptAround(raw: string, start: number, end: number, pad = 24): string {
+  const source = raw.replace(/\u0001/g, ' ');
+  const from = Math.max(0, start - pad);
+  const to = Math.min(source.length, end + pad);
+  let text = source.slice(from, to);
+  // Drop the cut words at both edges so the quote is made of whole words.
+  if (from > 0 && !/\s/.test(source[from - 1] || ' ')) text = text.replace(/^\S*\s+/, '');
+  if (to < source.length && !/\s/.test(source[to] || ' ')) text = text.replace(/\s+\S*$/, '');
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+export const suggestionNote = (i: ProofIssue) => `${KIND_NAME[i.kind]}: ${i.message}${i.suggestion && i.suggestion !== i.original ? ` — المقترح: «${i.suggestion.trim() || 'حذف'}»` : ''}`;
+
 /**
  * «تدقيق لغوي»: lists spelling, repetition, spacing and punctuation slips with one-click fixes.
  * Works on plain text (scripts) or HTML (story bodies, tags untouched).
  */
-export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (next: string) => void; disabled?: boolean }> = ({ value, html, onFix, disabled }) => {
+export const ProofreadButton: React.FC<{
+  value: string;
+  html?: boolean;
+  /** Applies fixes (editable text). Without it the list only suggests. */
+  onFix?: (next: string) => void;
+  /** Read-only reviewers: turns a finding into a review note. */
+  onSuggest?: (suggestion: ProofSuggestion) => void;
+  disabled?: boolean;
+}> = ({ value, html, onFix, onSuggest, disabled }) => {
   const [open, setOpen] = useState(false);
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
@@ -50,7 +81,7 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
         aria-haspopup="dialog"
         aria-expanded={open}
         title="تدقيق لغوي: الأخطاء الإملائية الشائعة والتكرار والمسافات والترقيم"
-        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold disabled:opacity-40 ${
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-2xs font-bold disabled:opacity-40 ${
           issues.length ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
         }`}
       >
@@ -61,14 +92,14 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
         <div role="dialog" aria-label="التدقيق اللغوي" className="absolute z-50 top-full mt-1 left-0 w-80 max-w-[90vw] bg-white border border-slate-200 rounded-2xl shadow-xl p-3 space-y-2 text-right">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-800">التدقيق اللغوي</p>
-            {issues.length > 0 && (
+            {issues.length > 0 && onFix && (
               <button
                 type="button"
                 onClick={() => {
                   onFix(html ? (result as ReturnType<typeof proofreadHtml>).fixAll() : applyFixes(value, issues));
                   setOpen(false);
                 }}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-2xs font-bold"
               >
                 <Wand2 className="w-3.5 h-3.5" /> إصلاح الكل ({issues.length})
               </button>
@@ -83,15 +114,29 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               {issues.map((i) => (
                 <li key={key(i)} className="p-2 rounded-xl border border-slate-100 text-xs space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
+                    <span className={`px-1.5 py-0.5 rounded border text-2xs font-bold ${KIND_TONE[i.kind]}`}>{KIND_NAME[i.kind]}</span>
                     <span className="text-slate-700 flex-1">{i.message}</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
+                  <p className="text-2xs text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
                   <div className="flex gap-1.5">
-                    <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[11px] font-bold">
-                      إصلاح
-                    </button>
-                    <button type="button" onClick={() => setIgnored(new Set([...ignored, key(i)]))} className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-600 text-[11px]">
+                    {onFix && (
+                      <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-2xs font-bold">
+                        إصلاح
+                      </button>
+                    )}
+                    {onSuggest && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSuggest({ issue: i, excerpt: excerptAround(source, i.start, i.end) || i.original.trim(), note: suggestionNote(i) });
+                          setOpen(false);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-blue-700 text-white text-2xs font-bold"
+                      >
+                        ملاحظة مراجعة
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setIgnored(new Set([...ignored, key(i)]))} className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-600 text-2xs">
                       تجاهل
                     </button>
                   </div>
@@ -99,7 +144,8 @@ export const ProofreadButton: React.FC<{ value: string; html?: boolean; onFix: (
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
+          {!onFix && <p className="text-2xs text-slate-600 font-semibold">اقتراحات للمراجعة: النص للقراءة فقط{onSuggest ? '؛ حوّل ما يلزم إلى ملاحظة للكاتب' : ''}.</p>}
+          <p className="text-2xs text-slate-500">يقترح الإصلاحات المؤكدة فقط؛ الكلمات التي يتغير رسمها بالمعنى (أن/إن، علي/على) لا تُغيَّر. المدقق الإملائي في المتصفح يعمل أيضاً (الخط الأحمر تحت الكلمة).</p>
         </div>
       )}
     </div>
@@ -166,7 +212,7 @@ export function useAutocomplete(ref: React.RefObject<HTMLTextAreaElement | HTMLI
 
 export const AutocompleteBar: React.FC<{ suggestions: string[]; onPick: (term: string) => void }> = ({ suggestions, onPick }) =>
   suggestions.length ? (
-    <div role="listbox" aria-label="اقتراحات الإكمال" className="flex flex-wrap items-center gap-1 mt-1 text-[11px]">
+    <div role="listbox" aria-label="اقتراحات الإكمال" className="flex flex-wrap items-center gap-1 mt-1 text-2xs">
       <span className="text-slate-500">إكمال (Tab):</span>
       {suggestions.map((t, i) => (
         <button

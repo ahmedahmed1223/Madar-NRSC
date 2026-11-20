@@ -4,8 +4,9 @@ import { confirmDialog } from '../services/dialogs';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { confirmSaved } from '../services/confirmSave';
+import { notify } from '../services/notify';
 import React, { useState } from 'react';
-import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, LayoutTemplate, Plus, Radio, Trash2, Edit2, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, Plus, Trash2, Edit2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { ProductionNameField } from '../components/common/ProductionNameField';
@@ -14,6 +15,8 @@ import { useLiveData } from '../hooks/useLiveData';
 import { FormPage } from '../components/common/FormPage';
 import { moveInArray, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { addDaysIso, localDateString } from '../shared/dates';
+import { timingDelta } from '../shared/bulletinReadiness';
+import { AR, countLabel } from '../shared/arabicPlural';
 import { departmentIdOf } from '../shared/departments';
 import {
   Bulletin,
@@ -194,18 +197,18 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
     <div className="space-y-5" data-testid="bulletins-view">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
             النشرات
           </h1>
           <p className="text-xs text-slate-500 mt-1">رانداون النشرة، قصصها وتوقيتها واعتمادها قبل الهواء.</p>
         </div>
         {canManage && tab === 'DAY' && (
-          <button type="button" onClick={openNew} className="flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">
+          <button type="button" onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs self-start sm:self-auto">
             <Plus className="w-4 h-4" /> نشرة جديدة
           </button>
         )}
         {canManage && tab === 'FORMATS' && (
-          <button type="button" onClick={() => editFormat()} className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold">
+          <button type="button" onClick={() => editFormat()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs self-start sm:self-auto">
             <Plus className="w-4 h-4" /> قالب جديد
           </button>
         )}
@@ -217,8 +220,8 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
         onChange={setTab}
         tabs={[
           { id: 'DAY', label: 'نشرات اليوم', tone: 'blue' },
-            { id: 'WORK', label: 'مساحة العمل', tone: 'blue' },
-          { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'violet' },
+          { id: 'WORK', label: 'مساحة العمل', tone: 'blue' },
+          { id: 'FORMATS', label: 'القوالب والجدولة', count: formats.length, tone: 'slate' },
         ]}
       />
 
@@ -232,16 +235,16 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
       {tab === 'DAY' && (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="اليوم السابق" className="p-2 rounded-lg border border-slate-200 bg-white">
+            <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="اليوم السابق" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronRight className="w-4 h-4" />
             </button>
             <span className="text-sm font-bold text-slate-800 min-w-[8rem] text-center">{dayLabel(date)}</span>
-            <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="اليوم التالي" className="p-2 rounded-lg border border-slate-200 bg-white">
+            <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="اليوم التالي" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white" />
+            <input type="date" aria-label="التاريخ" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="min-h-11 sm:min-h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white" />
             {date !== localDateString() && (
-              <button type="button" onClick={() => setDate(localDateString())} className="text-xs font-bold text-blue-700 hover:underline">
+              <button type="button" onClick={() => setDate(localDateString())} className="min-h-11 sm:min-h-9 px-2 text-xs font-bold text-blue-700 hover:underline">
                 العودة لليوم
               </button>
             )}
@@ -276,45 +279,42 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 const ready = live.filter((s) => s.status === 'READY').length;
                 const isLive = onAirIds.has(b.id);
                 const status = isLive ? 'ON_AIR' : b.status;
-                const off = Math.abs(timing.overUnder) > 30;
+                const delta = timingDelta(timing.overUnder);
                 return (
                   <button
                     key={b.id}
                     type="button"
                     onClick={() => onOpenBulletin(b.id)}
                     aria-label={`فتح ${b.title}`}
-                    className="text-right bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all space-y-3"
+                    className="print-text text-right bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-black font-mono text-slate-800" dir="ltr">
+                          <span className="text-lg font-bold font-mono text-slate-800" dir="ltr">
                             {b.startTime}
                           </span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
+                          <span className="text-2xs font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{bulletinKindName(b.kind)}</span>
                         </div>
                         <h3 className="text-sm font-bold text-slate-800 mt-1 line-clamp-2 leading-snug" title={b.title}>{b.title}</h3>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
+                      <span className={`text-2xs font-bold px-2 py-0.5 rounded-full shrink-0 ${STATUS_TONE[status]}`}>
                         {status === 'ON_AIR' ? 'على الهواء' : status === 'DONE' ? 'أُذيعت' : 'قيد الإعداد'}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500 space-y-0.5">
+                    <div className="text-2xs text-slate-500 space-y-0.5">
                       <p>المحرر: <strong className="text-slate-700">{b.editorName || '—'}</strong></p>
                       <p>التقديم: <strong className="text-slate-700">{b.anchors.join('، ') || '—'}</strong></p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                      <span className="font-bold text-slate-700">{live.length} قصة</span>
+                    <div className="flex flex-wrap items-center gap-2 text-2xs">
+                      <span className="font-bold text-slate-700">{countLabel(live.length, { ...AR.story, zero: 'لا قصص' })}</span>
                       <span className="text-emerald-700 font-bold">{approved} معتمدة</span>
                       {ready > 0 && <span className="text-amber-700 font-bold">{ready} بانتظار الاعتماد</span>}
                       <span
-                        className={`font-bold mr-auto ${off ? (timing.overUnder > 0 ? 'text-rose-700' : 'text-amber-700') : 'text-emerald-700'}`}
-                        title="الفرق بين زمن القصص المعتمدة والمخططة ومدة النشرة"
+                        className={`font-bold mr-auto ${delta.state === 'OVER' ? 'text-rose-700' : delta.state === 'SHORT' ? 'text-amber-700' : 'text-emerald-700'}`}
+                        title={`مجموع زمن القصص مقارنة بمدة النشرة المخططة (${mmss(timing.planned)})`}
                       >
-                        {off ? (timing.overUnder > 0 ? 'زيادة ' : 'نقص ') : 'في الوقت '}
-                        <span className="font-mono tabular-nums" dir="ltr">
-                          {off ? mmss(Math.abs(timing.overUnder)) : ''}
-                        </span>
+                        {delta.text}
                       </span>
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden>
@@ -340,20 +340,28 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">{f.name}</h3>
-                    <p className="text-[11px] text-slate-500">
-                      {bulletinKindName(f.kind)} · <span dir="ltr">{f.startTime}</span> · {Math.round(f.plannedSeconds / 60)} دقيقة · {f.stories.length} قصة
+                    <p className="text-2xs text-slate-500">
+                      {bulletinKindName(f.kind)} · <span dir="ltr">{f.startTime}</span> · {countLabel(Math.round(f.plannedSeconds / 60), AR.minute)} · {countLabel(f.stories.length, { ...AR.story, zero: 'لا قصص' })}
                     </p>
                   </div>
                   {canManage && (
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => editFormat(f)} aria-label={`تعديل ${f.name}`} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <button type="button" onClick={() => editFormat(f)} aria-label={`تعديل ${f.name}`} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg">
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
-                        onClick={async () => (await confirmDialog(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`)) && apiService.deleteBulletinFormat(f.id)}
+                        onClick={async () => {
+                          if (!(await confirmDialog(`حذف القالب «${f.name}»؟ لن تتأثر النشرات التي أُنشئت منه.`))) return;
+                          try {
+                            apiService.deleteBulletinFormat(f.id);
+                            await confirmSaved('bulletinFormats', f.id, `حُذف القالب «${f.name}»`);
+                          } catch (err: any) {
+                            notify({ type: 'error', title: 'تعذر حذف القالب', message: err?.message || 'حدث خطأ أثناء الحذف' });
+                          }
+                        }}
                         aria-label={`حذف ${f.name}`}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                        className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -362,15 +370,16 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {f.days.length === 0 ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
+                    <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">قالب فقط (غير مجدول)</span>
                   ) : (
-                    DAY_NAMES.map((d, i) => (
-                      <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded ${f.days.includes(i) ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    // Only the days it airs, in words (never colour alone); seven days read as one word.
+                    (f.days.length === 7 ? ['يومياً'] : DAY_NAMES.filter((_, i) => f.days.includes(i))).map((d) => (
+                      <span key={d} className="text-2xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800">
                         {d}
                       </span>
                     ))
                   )}
-                  {f.autoCreate && <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
+                  {f.autoCreate && <span className="text-2xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">إنشاء تلقائي</span>}
                 </div>
               </article>
             ))}
@@ -402,7 +411,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                     className={`p-2.5 rounded-xl border text-right disabled:opacity-50 ${form.start === o.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700'}`}
                   >
                     <span className="block text-xs font-bold">{o.name}</span>
-                    <span className={`block text-[10px] ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
+                    <span className={`block text-2xs ${form.start === o.id ? 'text-blue-100' : 'text-slate-500'}`}>{o.hint}</span>
                   </button>
                 ))}
               </div>
@@ -410,7 +419,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                 <select aria-label="القالب" value={form.formatId} onChange={(e) => pickFormatForForm(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
                   {formats.map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.name} ({f.stories.length} قصة)
+                      {f.name} ({countLabel(f.stories.length, { ...AR.story, zero: 'لا قصص' })})
                     </option>
                   ))}
                 </select>
@@ -563,7 +572,7 @@ export const BulletinsView: React.FC<Props> = ({ currentUser, onOpenBulletin }) 
                   {({ handle }) => (
                   <>
                   {handle}
-                  <span className="text-[11px] font-mono text-slate-500 w-5">{i + 1}</span>
+                  <span className="text-2xs font-mono text-slate-500 w-5">{i + 1}</span>
                   <input aria-label={`عنوان القصة ${i + 1}`} value={s.slug} onChange={(e) => setDraftStory(i, { slug: e.target.value })} className="flex-1 min-w-[8rem] px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
                   <select aria-label={`نوع القصة ${i + 1}`} value={s.type} onChange={(e) => setDraftStory(i, { type: e.target.value as StoryType })} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
                     {STORY_TYPES.map((t) => (

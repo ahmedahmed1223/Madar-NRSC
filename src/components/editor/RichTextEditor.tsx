@@ -1,24 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Bold,
-  Italic,
-  Heading2,
-  Heading3,
-  List,
-  ListOrdered,
-  Quote,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  Video,
-  Edit3,
-  Undo2,
-  Redo2,
-  Code,
-  Clock,
-} from 'lucide-react';
+import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Quote, Link as LinkIcon, Image as ImageIcon, Video, Edit3, Code, Clock } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { TextSizeControls, useFullscreenField, useTextSize } from '../common/TextSizeControls';
-import { ProofreadButton } from './WritingAids';
+import { ProofreadButton, type ProofSuggestion } from './WritingAids';
+import { countWords, spokenReadTime } from '../../shared/readTime';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 interface RichTextEditorProps {
@@ -28,6 +13,13 @@ interface RichTextEditorProps {
   minHeight?: string;
   /** Shows the text without allowing changes (e.g. while a colleague holds the story). */
   readOnly?: boolean;
+  /**
+   * The lead read on air before this body (a story's summary). The read time then covers both,
+   * the same figure the story editor shows (shared/readTime).
+   */
+  readTimeLead?: string;
+  /** Read-only reviewers: proofreading findings become review notes instead of fixes. */
+  onProofSuggestion?: (suggestion: ProofSuggestion) => void;
 }
 
 const BLOCKS = new Set(['UL', 'OL', 'H2', 'H3', 'BLOCKQUOTE', 'FIGURE', 'P', 'DIV']);
@@ -66,6 +58,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'اكتب نص المادة الصحفية هنا بصياغة مهنية ودقيقة...',
   minHeight = '320px',
   readOnly = false,
+  readTimeLead,
+  onProofSuggestion,
 }) => {
   const [isSource, setIsSource] = useState(false);
   const text = useTextSize('story-body');
@@ -191,16 +185,11 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     emit();
   };
 
-  // Word count & Char count calculation
-  // Tags become spaces so adjacent paragraphs are not counted as one word.
+  // Word & character count of the body; the read time is the shared broadcast figure.
   const cleanText = value.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-  const wordCount = cleanText ? cleanText.split(/\s+/).length : 0;
+  const wordCount = countWords(value);
   const charCount = cleanText.length;
-  // Standard Arabic broadcast reading speed is ~130 words per minute
-  const readingSeconds = Math.round((wordCount / 130) * 60);
-  const readMin = Math.floor(readingSeconds / 60);
-  const readSec = readingSeconds % 60;
-  const readingTimeStr = `${readMin > 0 ? `${readMin} دقيقة و ` : ''}${readSec} ثانية`;
+  const readTime = spokenReadTime(readTimeLead, value);
 
   return (
     <div
@@ -325,15 +314,20 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </button>
         </div>
 
-        {/* Reading size, full screen, and source toggle for advanced edits */}
-        <div className="flex items-center gap-2">
-          {!readOnly && <ProofreadButton value={value} html onFix={(next) => onChange(next)} />}
+        {/* Reading size, full screen, and source toggle for advanced edits.
+            Wraps onto another line on narrow phones instead of being clipped by the frame. */}
+        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+          {!readOnly ? (
+            <ProofreadButton value={value} html onFix={(next) => onChange(next)} />
+          ) : (
+            onProofSuggestion && <ProofreadButton value={value} html onSuggest={onProofSuggestion} />
+          )}
           <TextSizeControls label="نص الخبر" text={text} fullscreen={fs} />
           <button
             type="button"
             onClick={() => setIsSource(!isSource)}
             aria-pressed={isSource}
-            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
               isSource ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
             }`}
             title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'} aria-label={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}
@@ -403,14 +397,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       {/* Word & Char Footer */}
       <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <div className="flex flex-wrap items-center gap-4">
-          <span>الكلمات: <strong className="text-slate-700 font-bold">{wordCount}</strong></span>
+          <span>كلمات النص: <strong className="text-slate-700 font-bold">{wordCount}</strong></span>
           <span>الحروف: <strong className="text-slate-700 font-bold">{charCount}</strong></span>
           <span className="flex items-center gap-1.5 text-blue-700 font-semibold bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-100">
             <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-            زمن الإلقاء التقديري: {wordCount > 0 ? readingTimeStr : '0 ثانية'} (~130 ك/د)
+            زمن الإلقاء{readTimeLead !== undefined ? ' (المقدمة والنص)' : ''}: {readTime.label}
           </span>
         </div>
-        <span className="text-[11px] text-slate-500">محرر متوافق مع نظام النشر والأوتوكيو</span>
+        <span className="text-2xs text-slate-500">محرر متوافق مع نظام النشر والأوتوكيو</span>
       </div>
 
       {/* Link Modal */}

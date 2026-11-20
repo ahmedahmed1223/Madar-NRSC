@@ -3,15 +3,50 @@ services:
     build: .
     image: madar-nrcs:latest
     restart: unless-stopped
+    # Reachable from this machine only: put an HTTPS reverse proxy in front (example below) and
+    # set TRUST_PROXY=loopback. Publishing "3000:3000" on all interfaces without a proxy serves
+    # plain HTTP to the network, where secure cookies (COOKIE_SECURE=true) cannot work.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file: .env
     environment:
       NODE_ENV: production
       DATA_DIR: /data
+      # Full backup bundles go to their own volume (ideally another disk), not next to the database.
+      BACKUP_DIRECTORY: /backups
+      # The station's time zone for logs and scheduled jobs (override in .env).
+      TZ: ${TZ:-Asia/Riyadh}
     volumes:
       - nrcs-data:/data
+      - nrcs-backups:/backups
     stop_grace_period: 15s
+    # One JSON line per API request: keep the log files bounded.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # Example HTTPS reverse proxy in this compose project: uncomment, set your domain, set
+  # TRUST_PROXY=1 in .env and remove the «ports» of nrcs (Caddy reaches it as nrcs:3000).
+  # With a proxy installed on the host instead, keep the 127.0.0.1 port and use TRUST_PROXY=loopback.
+  # caddy:
+  #   image: caddy:2
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   command: caddy reverse-proxy --from newsroom.example.com --to nrcs:3000
+  #   volumes:
+  #     - caddy-data:/data
+  #   depends_on:
+  #     - nrcs
 
 volumes:
   nrcs-data:
+  # Bind it to another disk in production, e.g.:
+  # nrcs-backups:
+  #   driver: local
+  #   driver_opts: { type: none, o: bind, device: /mnt/backup-disk/madar }
+  nrcs-backups:
+  # caddy-data:

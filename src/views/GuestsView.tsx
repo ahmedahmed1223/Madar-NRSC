@@ -1,3 +1,4 @@
+import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { arabicDate } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
@@ -6,25 +7,9 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
 import React, { useState } from 'react';
-import {
-  Plus,
-  Users,
-  Search,
-  Phone,
-  Mail,
-  Building,
-  Edit2,
-  Calendar,
-  MessageSquare,
-  Award,
-  Trash2,
-  X,
-  Check,
-  Sparkles,
-} from 'lucide-react';
+import { Plus, Search, Phone, Mail, Edit2, Trash2 } from 'lucide-react';
 import { Guest, User } from '../types';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
 
 interface GuestsViewProps {
   guests: Guest[];
@@ -136,13 +121,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     }
     return true;
   });
+  const guestPage = useIncremental(filteredGuests, 48, `${searchQuery}|${selectedSpecialty}`);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             الضيوف
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -198,16 +184,16 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
       {/* Guests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredGuests.map((guest) => (
+        {guestPage.visible.map((guest) => (
           <div
             key={guest.id}
             className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 flex flex-col justify-between hover:shadow-md transition-all group"
           >
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 rounded-2xl ring-2 ring-slate-100" />
-                  <div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar src={guest.avatarUrl} name={guest.fullName} className="w-14 h-14 shrink-0 rounded-2xl ring-2 ring-slate-100" />
+                  <div className="min-w-0">
                     <h3 className="font-bold text-slate-800 text-sm">{guest.fullName}</h3>
                     <p className="text-xs text-slate-500">{guest.jobTitle}</p>
                     <p className="text-xs text-blue-700 font-semibold">{guest.organization}</p>
@@ -219,10 +205,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(guest)}
-                    className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="min-h-10 min-w-10 inline-flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    aria-label={`تعديل بيانات الضيف: ${guest.fullName}`}
                     title="تعديل بيانات الضيف"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-4 h-4" aria-hidden />
                   </button>
                   )}
 
@@ -234,10 +221,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                           onDeleteGuest(guest.id);
                         }
                       }}
-                      className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      className="min-h-10 min-w-10 inline-flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      aria-label={`حذف الضيف: ${guest.fullName}`}
                       title="حذف الضيف من الأرشيف"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden />
                     </button>
                   )}
                 </div>
@@ -250,7 +238,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                     {guest.specialty}
                   </Badge>
                 )}
-                <p className="text-[11px] text-slate-500">
+                <p className="text-2xs text-slate-500">
                   {guest.lastAppearanceDate ? `آخر ظهور: ${arabicDate(guest.lastAppearanceDate)}` : 'لم يظهر بعد'}
                 </p>
               </div>
@@ -259,18 +247,18 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                 {guest.phone && (
                   <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-mono text-left" dir="ltr">{guest.phone}</span>
+                    <Phone className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
+                    <a href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`} className="font-mono text-left hover:text-blue-700 hover:underline" dir="ltr" aria-label={`اتصال بـ ${guest.fullName}: ${guest.phone}`}>{guest.phone}</a>
                   </div>
                 )}
                 {guest.email && (
                   <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-mono text-left truncate" dir="ltr">{guest.email}</span>
+                    <Mail className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
+                    <a href={`mailto:${guest.email}`} className="min-w-0 text-left truncate hover:text-blue-700 hover:underline" dir="ltr" title={guest.email}>{guest.email}</a>
                   </div>
                 )}
                 {guest.notes && (
-                  <p className="text-[11px] text-slate-500 italic mt-1 line-clamp-2">
+                  <p className="text-2xs text-slate-500 mt-1 line-clamp-2">
                     {guest.notes}
                   </p>
                 )}
@@ -280,7 +268,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             <div className="pt-4 border-t border-slate-100 mt-4 space-y-1.5 text-xs text-slate-500">
               <span>عدد مرات الظهور: <strong className="text-slate-800 font-mono">{guest.totalAppearances}</strong></span>
               {(guest.appearanceHistory || []).slice(0, 3).map((a) => (
-                <div key={a.episodeId} className="flex items-center justify-between gap-2 text-[11px]">
+                <div key={a.episodeId} className="flex items-center justify-between gap-2 text-2xs">
                   <span className="truncate text-slate-700">{a.programName} — {a.episodeTitle}</span>
                   <span className="tabular-nums shrink-0">{arabicDate(a.date)}</span>
                 </div>
@@ -289,6 +277,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </div>
         ))}
       </div>
+      <ShowMore remaining={guestPage.remaining} onMore={guestPage.showMore} onAll={guestPage.showAll} noun="ضيف" />
 
       {/* Add/Edit Modal */}
       <FormPage
@@ -306,7 +295,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFullName('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -350,13 +339,13 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
           {/* Quick Organization Presets */}
           <div className="flex flex-wrap gap-1">
-            <span className="text-[10px] text-slate-500 font-bold">مقترحات جهات:</span>
+            <span className="text-2xs text-slate-500 font-bold">مقترحات جهات:</span>
             {ORG_PRESETS.map((org) => (
               <button
                 key={org}
                 type="button"
                 onClick={() => setOrganization(org)}
-                className="text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
               >
                 {org}
               </button>
@@ -380,7 +369,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   key={sp}
                   type="button"
                   onClick={() => setSpecialty(sp)}
-                  className={`text-[10px] px-2 py-0.5 rounded-full transition-all ${
+                  className={`text-2xs px-2 py-0.5 rounded-full transition-all ${
                     specialty === sp
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
@@ -430,7 +419,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setAvatarUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>

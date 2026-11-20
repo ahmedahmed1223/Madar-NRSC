@@ -1215,7 +1215,7 @@ export const INITIAL_SETTINGS: SystemSettings = {
   organizationName: 'شبكة الأخبار والإنتاج التلفزيوني الإقليمية',
   organizationNameEn: 'Regional News & Broadcast Network',
   logoUrl: '',
-  defaultTimezone: 'Asia/Riyadh (GMT+3)',
+  defaultTimezone: 'Asia/Riyadh',
   defaultLanguage: 'العربية (Arabic)',
   primaryChannelName: 'القناة الإخبارية الأولى HD',
   autoSaveIntervalSeconds: 30,

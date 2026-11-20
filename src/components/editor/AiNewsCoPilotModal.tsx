@@ -1,18 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Sparkles,
-  Bot,
-  CheckCircle2,
-  Copy,
-  ArrowRight,
-  RefreshCw,
-  Sliders,
-  AlignRight,
-  Tv,
-  Check,
-  AlertCircle,
-  FileText,
-} from 'lucide-react';
+import { Sparkles, Bot, CheckCircle2, Copy, RefreshCw, Tv, Check, AlertCircle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { apiFetch, ApiError } from '../../services/http';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
@@ -222,7 +209,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
               <strong className="text-xs text-slate-800 font-bold block">
                 تحليل وتوليد المحتوى الصحفي والتلفزيوني الذكي
               </strong>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-2xs text-slate-500">
                 يعتمد على معايير الدليل التحريري وأسلوب الإلقاء التلفزيوني السلس
               </span>
             </div>
@@ -306,21 +293,21 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-500 font-bold block">العنوان المقترح:</span>
+                  <span className="text-2xs text-slate-500 font-bold block">العنوان المقترح:</span>
                   <div className="text-xs font-bold text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1">
                     {generatedResult.title}
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-500 font-bold block">مقدمة المذيع / الملخص:</span>
+                  <span className="text-2xs text-slate-500 font-bold block">مقدمة المذيع / الملخص:</span>
                   <div className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 leading-relaxed">
                     {generatedResult.summary}
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-slate-500 font-bold block">متن التقرير التلفزيوني:</span>
+                  <span className="text-2xs text-slate-500 font-bold block">متن التقرير التلفزيوني:</span>
                   <div
                     className="rich-content text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(generatedResult.content) }}
@@ -342,12 +329,12 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-2xs font-bold rounded">
                             {hl.type}
                           </span>
                           <strong className="text-xs text-slate-800 font-bold">{hl.title}</strong>
                         </div>
-                        <p className="text-[11px] text-slate-500">{hl.strap}</p>
+                        <p className="text-2xs text-slate-500">{hl.strap}</p>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -388,7 +375,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
                 <div className="space-y-2">
                   <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-purple-700">الصيغة المباشرة:</span>
+                      <span className="text-2xs font-bold text-purple-700">الصيغة المباشرة:</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -405,7 +392,7 @@ export const AiNewsCoPilotModal: React.FC<AiNewsCoPilotModalProps> = ({
 
                   <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-blue-700">الصيغة التفاعلية:</span>
+                      <span className="text-2xs font-bold text-blue-700">الصيغة التفاعلية:</span>
                       <button
                         type="button"
                         onClick={() => {

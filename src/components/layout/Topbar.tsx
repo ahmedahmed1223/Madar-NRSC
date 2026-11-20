@@ -1,33 +1,35 @@
 import { longToday } from '../common/StationClock';
+import { canRequestBreaking } from '../../shared/newsWorkflow';
 import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../shared/dateFormat';
 import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
-import React, { useState, useEffect } from 'react';
-import { BellRing,
+import React, { useState, useEffect, useRef } from 'react';
+import { notify } from '../../services/notify';
+import {
+  BellRing,
   Search,
   Bell,
   Plus,
   Radio,
   Clock,
-  UserCheck,
   ChevronDown,
   FileText,
   Tv,
   Video,
   CheckSquare,
-  Shield,
-  Activity,
-  Database,
   Menu,
-  Globe,
   ShieldCheck,
   Lock,
   Keyboard,
   KeyRound,
   LogOut,
   MessageSquare,
+  ClipboardList,
+  Flame,
 } from 'lucide-react';
+import { findUserRole } from '../../shared/rbac';
+import { connectionFeedback } from '../../shared/saveFeedback';
 import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
 import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
@@ -79,6 +81,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [syncStatus, setSyncStatus] = useState({ pending: dataStore.pendingCount(), online: true });
   const [isTwoFactorOpen, setIsTwoFactorOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  /** Notifications already on screen when the app opened, or already announced. */
+  const announced = useRef(new Set(ApiService.getMyNotifications().map((n) => n.id)));
+  const navigateRef = useRef(onNavigate);
+  navigateRef.current = onNavigate;
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
 
   const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
@@ -109,12 +115,57 @@ export const Topbar: React.FC<TopbarProps> = ({
     () =>
       dataStore.subscribe((evt) => {
         if (evt.type === 'sync-status') setSyncStatus({ pending: evt.pending, online: evt.online });
-        if (evt.type === 'data-changed' && evt.collections.includes('notifications')) setNotifications(ApiService.getMyNotifications());
+        if (evt.type !== 'data-changed' || !evt.collections.includes('notifications')) return;
+        const mine = ApiService.getMyNotifications();
+        setNotifications(mine);
+        // Arrivals from the server while the app is open are announced once, with a way to open them.
+        const fresh = evt.remote ? mine.filter((n) => !n.isRead && !announced.current.has(n.id)) : [];
+        mine.forEach((n) => announced.current.add(n.id));
+        const here = decodeURIComponent(window.location.pathname);
+        const worth = fresh.filter((n) => !n.linkUrl || decodeURIComponent(n.linkUrl) !== here);
+        if (worth.length > 3) notify({ type: 'info', title: `${worth.length} إشعارات جديدة`, message: 'افتح الجرس لقراءتها.' });
+        else
+          worth.forEach((n) =>
+            notify({
+              type: n.urgent ? 'warning' : 'info',
+              title: n.title,
+              message: n.message,
+              duration: n.urgent ? 12000 : 7000,
+              action: n.linkUrl ? { label: 'فتح', run: () => (ApiService.markNotificationRead(n.id), navigateRef.current?.(n.linkUrl!)) } : undefined,
+            })
+          );
       }),
     []
   );
 
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
+  const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
+  // «إنشاء جديد» lists only what this colleague may create; with nothing to create it is not shown.
+  const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign', 'cards.manage'].some(can);
+  const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
+
+  /** Opens the production cards screen with its «تكليف من قالب» أو «تكليف حر» form. */
+  const createCard = () => {
+    onNavigate?.('/cards');
+    // The cards screen loads on demand; press its own «تكليف من قالب» أو «تكليف حر» once it is on screen.
+    let tries = 0;
+    const press = () => {
+      const button = document.querySelector<HTMLButtonElement>('[data-tour="card-create"]');
+      if (button) button.click();
+      else if (++tries < 60) window.setTimeout(press, 50);
+    };
+    window.setTimeout(press, 0);
+  };
+
+  /** A breaking-news alert: the new-story form, flagged so the editor opens in breaking mode. */
+  const createBreaking = () => {
+    try {
+      sessionStorage.setItem('madar-new-news-breaking', '1');
+    } catch {
+      // Storage blocked: the form opens as a normal story.
+    }
+    onNavigate?.('/news/new?breaking=1');
+  };
 
   // Floating menus close on Esc and whenever the screen changes.
   const [chat, setChat] = useState(intercomState.last || { open: false, unread: 0 });
@@ -141,26 +192,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, [isNotifOpen, isUserMenuOpen]);
 
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
+  // The bell's dot is red only while something urgent is unread; otherwise it is the signal colour.
+  const unreadUrgent = (notifications || []).some((n) => !n.isRead && n.urgent);
 
   const handleMarkAllRead = () => {
     ApiService.markAllNotificationsRead();
     setNotifications(ApiService.getMyNotifications());
   };
 
-  const roleLabels: Record<string, string> = {
-    SUPER_ADMIN: 'مدير النظام العام',
-    ADMIN: 'مدير قطاع الأخبار',
-    EDITOR: 'رئيس تحرير أول',
-    JOURNALIST: 'محرر صحفي',
-    PRODUCER: 'منتج برامج',
-    PRESENTER: 'مذيع ومقدم',
-    REPORTER: 'مراسل ميداني',
-    MEDIA: 'فني وسائط وأرشيف',
-    VIEWER: 'مطلع',
-  };
+  // The role's own name as defined in «المستخدمون والصلاحيات» (one name everywhere), else the job title.
+  const roleName = findUserRole(currentUser, RbacService.getRoleDefinitions())?.nameAr?.split(' (')[0] || currentUser.jobTitle;
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+    <header className="app-topbar no-print h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
       {/* Right side (RTL Start): Station Live Clock & Search */}
       <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
         {/* Mobile menu trigger */}
@@ -194,22 +238,22 @@ export const Topbar: React.FC<TopbarProps> = ({
             }
             aria-label={isLiveLockActive ? 'قفل البث المباشر مفعّل' : 'قفل البث المباشر غير مفعّل'}
             aria-pressed={isLiveLockActive}
-            className={`flex items-center gap-1.5 disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex items-center gap-1.5 min-h-6 px-1 rounded-md disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
           >
             {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className="font-bold text-[10px] tracking-wider hidden lg:inline">{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
+            <span className={`font-bold text-2xs tracking-wider hidden ${isLiveLockActive ? 'lg:inline' : '2xl:inline'}`}>{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
           </button>
-          <span className="text-slate-300 hidden lg:inline">|</span>
+          <span className="text-slate-300 hidden 2xl:inline">|</span>
           <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
             <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span className="tabular-nums">{timeStr || '00:00'}</span>
-            <span className="hidden lg:inline font-sans text-[11px] font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
-            {clockLabel && <span className="font-sans text-[10px] text-slate-500">{clockLabel}</span>}
+            <span className="hidden 2xl:inline font-sans text-2xs font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
+            {clockLabel && <span className="font-sans text-2xs text-slate-500">{clockLabel}</span>}
           </div>
           {zoneMismatch && (
             <span
               role="status"
-              className="hidden sm:inline font-sans text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
+              className="hidden xl:inline font-sans text-2xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
               title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
             >
               المحطة {stationTime}
@@ -219,7 +263,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Real synchronisation status with the server */}
         <div
-          className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap ${
+          className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-2xs font-bold border whitespace-nowrap max-w-[16rem] truncate ${
             !syncStatus.online
               ? 'bg-red-50 text-red-700 border-red-200'
               : syncStatus.pending > 0
@@ -230,15 +274,15 @@ export const Topbar: React.FC<TopbarProps> = ({
           role="status"
         >
           <span className={`w-2 h-2 rounded-full ${!syncStatus.online ? 'bg-red-500' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-          {!syncStatus.online ? 'غير متصل' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
+          {connectionFeedback(typeof navigator === 'undefined' || navigator.onLine, syncStatus.online, syncStatus.pending)}
         </div>
 
         {/* Compact sync indicator for narrower screens */}
         <span
           role="status"
-          title={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? `جارٍ المزامنة (${syncStatus.pending})` : 'متصل بالخادم'}
+          title={connectionFeedback(typeof navigator === 'undefined' || navigator.onLine, syncStatus.online, syncStatus.pending)}
           aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ المزامنة' : 'متصل بالخادم'}
-          className={`xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          className={`2xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
         />
 
         {/* Mobile Search Button */}
@@ -257,11 +301,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           onClick={handleSearchClick}
           aria-label="البحث السريع (Ctrl + K)"
-          className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
+          title="البحث السريع (Ctrl + K)"
+          className="hidden xl:flex shrink-0 items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />
+          <span className="2xl:hidden">بحث…</span>
           <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
-          <kbd className="bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-[10px] font-mono text-slate-500">
+          <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-2xs font-mono text-slate-500" dir="ltr">
             Ctrl + K
           </kbd>
         </button>
@@ -273,17 +319,18 @@ export const Topbar: React.FC<TopbarProps> = ({
         <PWAInstallButton />
 
         {/* Quick Create Dropdown */}
-        <div className="relative">
+        {canCreateAnything && <div className="relative">
           <button
             type="button"
             onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
             aria-label="إنشاء جديد"
             aria-haspopup="menu"
             aria-expanded={isCreateMenuOpen}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 px-3.5 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden xl:inline">إنشاء جديد</span>
+            <span className="hidden 2xl:inline">إنشاء جديد</span>
+            <span className="hidden xl:inline 2xl:hidden">جديد</span>
             <ChevronDown className="w-3 h-3 opacity-80 hidden sm:block" />
           </button>
 
@@ -291,7 +338,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsCreateMenuOpen(false)} />
               <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-right">
-                <button
+                {can('news.create') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -301,8 +348,30 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <FileText className="w-4 h-4 text-blue-600" />
                   خبر صحفي جديد
-                </button>
-                <button
+                </button>}
+                {canRequestBreaking(can) && <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false);
+                    createBreaking();
+                  }}
+                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
+                >
+                  <Flame className="w-4 h-4 text-red-600" />
+                  خبر عاجل
+                </button>}
+                {can('cards.manage') && canOpen('cards') && <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateMenuOpen(false);
+                    createCard();
+                  }}
+                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
+                >
+                  <ClipboardList className="w-4 h-4 text-blue-600" />
+                  تكليف
+                </button>}
+                {can('programs.manage') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -312,8 +381,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <Tv className="w-4 h-4 text-emerald-700" />
                   برنامج تلفزيوني جديد
-                </button>
-                <button
+                </button>}
+                {can('episodes.create') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -323,8 +392,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <Video className="w-4 h-4 text-purple-600" />
                   حلقة برنامج جديدة
-                </button>
-                <button
+                </button>}
+                {can('tasks.create_assign') && <button
                   type="button"
                   onClick={() => {
                     setIsCreateMenuOpen(false);
@@ -334,11 +403,11 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <CheckSquare className="w-4 h-4 text-amber-700" />
                   مهمة تحريرية جديدة
-                </button>
+                </button>}
               </div>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Team chat (was a floating button covering content) */}
         <button
@@ -350,11 +419,11 @@ export const Topbar: React.FC<TopbarProps> = ({
           aria-label={chat.unread > 0 ? `المحادثة الداخلية (${chat.unread} رسالة جديدة)` : 'المحادثة الداخلية'}
           aria-expanded={chat.open}
           title="المحادثة الداخلية بين الأقسام"
-          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
+          className={`p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
         >
           <MessageSquare className="w-5 h-5" />
           {chat.unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-600 text-white rounded-full text-[10px] leading-4 text-center font-bold">
+            <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-blue-600 text-white rounded-full text-3xs leading-4 text-center font-bold tabular-nums">
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
@@ -375,7 +444,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-600 rounded-full ring-2 ring-white" />
+              <span aria-hidden="true" className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white ${unreadUrgent ? 'bg-red-600' : 'bg-blue-600'}`} />
             )}
           </button>
 
@@ -399,8 +468,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onOpenShortcuts}
-            className="hidden xl:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
-            title="اختصارات لوحة المفاتيح والإنتاج السريع (?)"
+            className="hidden 2xl:flex p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+            title="اختصارات لوحة المفاتيح (?)"
+            aria-label="اختصارات لوحة المفاتيح"
           >
             <Keyboard className="w-5 h-5" />
           </button>
@@ -418,12 +488,12 @@ export const Topbar: React.FC<TopbarProps> = ({
             aria-expanded={isUserMenuOpen}
           >
             <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" />
-            <div className="text-right hidden xl:block max-w-[9rem] min-w-0">
+            <div className="text-right hidden 2xl:block max-w-[9rem] min-w-0">
               <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
                 {currentUser.fullName}
               </span>
-              <span className="text-[10px] text-blue-600 font-semibold block leading-tight truncate">
-                {roleLabels[currentUser.role] || currentUser.jobTitle}
+              <span className="text-2xs text-blue-600 font-semibold block leading-tight truncate">
+                {roleName}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
@@ -435,11 +505,11 @@ export const Topbar: React.FC<TopbarProps> = ({
               <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-right">
                 <div className="px-3 py-2 border-b border-slate-100">
                   <span className="text-xs font-bold text-slate-800 block">{currentUser.fullName}</span>
-                  <span className="text-[11px] text-slate-500 block" dir="ltr">
+                  <span className="text-2xs text-slate-500 block" dir="ltr">
                     {currentUser.email}
                   </span>
-                  <span className="text-[10px] text-blue-600 font-semibold block mt-0.5">
-                    {roleLabels[currentUser.role] || currentUser.jobTitle} - {currentUser.department}
+                  <span className="text-2xs text-blue-600 font-semibold block mt-0.5">
+                    {[roleName, currentUser.department].filter(Boolean).join(' · ')}
                   </span>
                 </div>
                 <div className="py-1 space-y-0.5">

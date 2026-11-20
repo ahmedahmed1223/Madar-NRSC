@@ -9,6 +9,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '6xl';
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '6xl' | string;
@@ -19,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
   onClose,
   title,
   subtitle,
+  initialFocusRef,
   children,
   maxWidth = '2xl',
   size,
@@ -34,7 +36,7 @@ export const Modal: React.FC<ModalProps> = ({
     const opener = document.activeElement as HTMLElement | null;
     if (openModals++ === 0) previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const first = dialog.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)');
+    const first = initialFocusRef?.current || dialog.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)');
     (first || dialog).focus({ preventScroll: true });
     return () => {
       if (--openModals === 0) document.body.style.overflow = previousOverflow;

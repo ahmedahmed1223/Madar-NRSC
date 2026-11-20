@@ -119,8 +119,11 @@ describe('bulletins', () => {
     server.db.writeRow('bulletinFormats', f.id, { ...f.d, autoCreate: true }, f.p, null);
     const created = createScheduledBulletins(server.db);
     const today = localDateString();
-    expect(created).toContain(scheduledBulletinId('fmt-main', today));
-    expect(server.db.listCollection('bulletinStories').filter((r) => r.d.bulletinId === scheduledBulletinId('fmt-main', today)).length).toBe(8);
+    const tomorrow = localDateString(new Date(Date.now() + 86400_000));
+    // Today already has this format's bulletin (the seeded bul-demo-main), so no second one is made.
+    expect(created).not.toContain(scheduledBulletinId('fmt-main', today));
+    expect(created).toContain(scheduledBulletinId('fmt-main', tomorrow));
+    expect(server.db.listCollection('bulletinStories').filter((r) => r.d.bulletinId === scheduledBulletinId('fmt-main', tomorrow)).length).toBe(8);
     expect(createScheduledBulletins(server.db)).toEqual([]);
   });
 });

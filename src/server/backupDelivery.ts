@@ -27,9 +27,14 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   await fs.copyFile(path.join(db.backupsDir, fileName), path.join(staging, 'newsroom.sqlite'));
   const snapshot = new Database(path.join(staging, 'newsroom.sqlite'), { readonly: true, fileMustExist: true });
   let uploads: { stored_name: string; size_bytes: number }[];
+  // Files kept only in Dropbox, Google Drive or the shared folder (nothing on this server's disk).
+  let elsewhere = 0;
   try {
     if (snapshot.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Backup database failed integrity check');
-    uploads = snapshot.prepare('SELECT stored_name, size_bytes FROM uploads').all() as typeof uploads;
+    const evictable = (snapshot.prepare('PRAGMA table_info(uploads)').all() as { name: string }[]).some((c) => c.name === 'local_evicted');
+    const all = snapshot.prepare(`SELECT stored_name, size_bytes${evictable ? ', local_evicted' : ''} FROM uploads`).all() as { stored_name: string; size_bytes: number; local_evicted?: number }[];
+    uploads = all.filter((u) => u.stored_name && !u.local_evicted);
+    elsewhere = all.length - uploads.length;
   } finally { snapshot.close(); }
   const files: { path: string; bytes: number; sha256: string }[] = [];
   for (const upload of uploads) {
@@ -42,7 +47,7 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   }
   const database = path.join(staging, 'newsroom.sqlite');
   files.push({ path: 'newsroom.sqlite', bytes: (await fs.stat(database)).size, sha256: await digest(database) });
-  await fs.writeFile(path.join(staging, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), files }, null, 2), { flag: 'wx' });
+  await fs.writeFile(path.join(staging, 'manifest.json'), JSON.stringify({ format: 1, createdAt: new Date().toISOString(), files, ...(elsewhere ? { filesKeptElsewhere: elsewhere } : {}) }, null, 2), { flag: 'wx' });
   await fs.rename(staging, bundle);
   if (options.directory) {
     const directory = path.resolve(options.directory);
@@ -65,4 +70,21 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
     await fs.rm(path.join(db.backupsDir, old), { recursive: true });
   }
   return { bundle, uploads: uploads.length };
+}
+
+/**
+ * The one full backup, used by the schedule and by «نسخة احتياطية كاملة الآن»: a database snapshot,
+ * then the bundle with every referenced upload and a SHA-256 manifest, copied to BACKUP_DIRECTORY
+ * and BACKUP_REMOTE when configured. The delivery outcome is recorded for the backup status.
+ */
+export async function createFullBackup(db: NewsroomDatabase, config: { backupRetention: number; backupDirectory?: string; backupRemote?: string }, kind?: 'auto') {
+  const file = await db.createBackup(kind, config.backupRetention);
+  try {
+    const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory, remote: config.backupRemote, retention: config.backupRetention });
+    db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+    return { file, ...result };
+  } catch (error) {
+    db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
+    throw error;
+  }
 }

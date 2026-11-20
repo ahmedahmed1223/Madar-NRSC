@@ -4,9 +4,12 @@ import {
   RoleDefinition,
   computeEffectivePermissions,
   evaluatePermission,
+  findUserRole,
 } from '../shared/rbac';
+import { canOpenScreen } from '../shared/screens';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
+import { roleInUseError } from './roleUsage';
 
 export * from '../shared/rbac';
 
@@ -26,12 +29,18 @@ export class RbacService {
   static saveRole(role: RoleDefinition): RoleDefinition[] {
     const roles = this.getRoleDefinitions();
     const existingIndex = roles.findIndex((r) => r.id === role.id);
-    if (existingIndex !== -1) {
-      const current = roles[existingIndex];
+    // The code is the role's identity: empty or shared codes are refused on create and on update (the server checks too).
+    const code = String(role.roleCode || '').trim();
+    const current = existingIndex !== -1 ? roles[existingIndex] : null;
+    if (!current || (!current.isSystemRole && current.roleCode !== code)) {
+      if (!code) throw new Error('رمز الدور مطلوب');
+      if (!/^[A-Z][A-Z0-9_]{1,39}$/.test(code)) throw new Error('رمز الدور: حروف إنجليزية كبيرة وأرقام وشرطة سفلية (_) فقط');
+      if (roles.some((r) => r.id !== role.id && r.roleCode === code) || DEFAULT_ROLE_DEFINITIONS.some((r) => r.roleCode === code)) throw new Error('يوجد دور بنفس الرمز مسبقاً');
+    }
+    if (current) {
       // A role's identity and system flag never change through an edit.
       roles[existingIndex] = { ...current, ...role, id: current.id, isSystemRole: current.isSystemRole, roleCode: current.isSystemRole ? current.roleCode : role.roleCode };
     } else {
-      if (roles.some((r) => r.roleCode === role.roleCode)) throw new Error('يوجد دور بنفس الرمز مسبقاً');
       roles.push({ ...role, isSystemRole: false });
     }
 
@@ -39,7 +48,8 @@ export class RbacService {
     return roles;
   }
 
-  static deleteRole(roleId: string): { success: boolean; error?: string; roles: RoleDefinition[] } {
+  /** Refuses while any (non-deleted) account still holds the role: pass the current user list. */
+  static deleteRole(roleId: string, users: Pick<User, 'role' | 'customRoleId' | 'deletedAt'>[] = []): { success: boolean; error?: string; roles: RoleDefinition[] } {
     const roles = this.getRoleDefinitions();
     const target = roles.find((r) => r.id === roleId);
 
@@ -50,6 +60,9 @@ export class RbacService {
     if (target.isSystemRole) {
       return { success: false, error: 'لا يمكن حذف الأدوار الأساسية للنظام', roles };
     }
+
+    const inUse = roleInUseError(target, users);
+    if (inUse) return { success: false, error: inUse, roles };
 
     const filtered = roles.filter((r) => r.id !== roleId);
     this.saveRoleDefinitions(filtered);
@@ -69,6 +82,13 @@ export class RbacService {
    */
   static hasPermission(user: User | undefined | null, permissionCode: string): boolean {
     return evaluatePermission(user, permissionCode, this.getRoleDefinitions());
+  }
+
+  /** Whether the user's role opens a screen (the sidebar, the search and the address bar all ask here). */
+  static canOpenScreen(user: User | undefined | null, nav: string): boolean {
+    if (!user) return false;
+    const roles = this.getRoleDefinitions();
+    return canOpenScreen(nav, findUserRole(user, roles), (permission) => evaluatePermission(user, permission, roles), user.role === 'SUPER_ADMIN');
   }
 
   /**

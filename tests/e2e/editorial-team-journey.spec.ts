@@ -37,10 +37,12 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     await reviews.getByLabel('مقتطف من النص', { exact: true }).fill('اكتمال الاستعدادات');
     await reviews.getByLabel('ملاحظة المراجعة', { exact: true }).fill('حدد مصدر التحقق من الاستعدادات');
     await reviews.getByRole('button', { name: 'إضافة الملاحظة', exact: true }).click();
+    // The note shows at once; the field clears only after the server confirms it.
+    await expect(reviews.getByLabel('ملاحظة المراجعة', { exact: true })).toHaveValue('');
     await expect(reviews.getByText('حدد مصدر التحقق من الاستعدادات', { exact: true })).toBeVisible();
-    await editor.page.getByRole('button', { name: 'إعادة للكاتب مع ملاحظات', exact: true }).click();
+    await editor.page.getByRole('button', { name: 'إعادة مع سبب', exact: true }).click();
     await editor.page.locator('#status-transition-comment').fill('استكمل توثيق المصدر');
-    await editor.page.getByRole('button', { name: 'تأكيد ونقل الحالة', exact: true }).click();
+    await editor.page.getByRole('button', { name: 'إعادة للكاتب', exact: true }).click();
     await leave(editor.page);
     await writer.page.goto(`/news/${newsId}`);
     const writerReviews = writer.page.getByRole('region', { name: 'ملاحظات مراجعة النص' });
@@ -72,7 +74,7 @@ test('team creates, reviews, prepares, approves and airs a bulletin story', asyn
     await manager.page.getByRole('button', { name: 'من غرفة الأخبار', exact: true }).click();
     await manager.page.locator('#form-page-root').getByRole('checkbox', { name: new RegExp(headline) }).check();
     await manager.page.locator('#form-page-root').getByRole('button', { name: /إضافة.*للنشرة/ }).click();
-    await expect(manager.page.getByText('أُضيفت 1 قصة كمسودات في آخر النشرة', { exact: true })).toBeVisible();
+    await expect(manager.page.getByText('أُضيفت قصة واحدة كمسودة في آخر النشرة', { exact: true })).toBeVisible();
     await manager.page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true }).click();
     const taskForm = manager.page.locator('#form-page-root');
     await taskForm.getByLabel('عنوان التكليف', { exact: true }).fill('تدقيق تجهيز القصة');

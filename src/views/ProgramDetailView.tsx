@@ -1,34 +1,13 @@
+import { minutesLabel, segmentClock } from '../shared/durations';
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 import { arabicDate } from '../shared/dates';
 import { RbacService } from '../services/rbacService';
 import { localDateString } from '../shared/dates';
-import { formatSecondsToTime } from '../shared/rundown';
-import React, { useState, useEffect } from 'react';
-import {
-  ArrowRight,
-  Tv,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  Video,
-  Plus,
-  Edit2,
-  CheckCircle2,
-  Sparkles,
-  Award,
-  Layers,
-  FileText,
-  Users,
-  MessageSquare,
-  TrendingUp,
-  AlertCircle,
-  ExternalLink,
-  Sliders,
-  Check,
-  Building,
-  Radio,
-  Share2,
-  ChevronLeft,
-} from 'lucide-react';
+import { programTemplateView } from '../components/programs/programTemplateView';
+import { episodeStatusInfo } from '../components/episodes/episodeDetails';
+import React, { useState } from 'react';
+import { Tv, Calendar, Clock, User as UserIcon, Video, Plus, Edit2, Layers, FileText, Users, Sliders, Building, Radio } from 'lucide-react';
 import { Program, Episode, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
@@ -68,32 +47,21 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
   const nextEpisode = [...programEpisodes]
     .filter((e) => (e.broadcastDate || '') >= today)
     .sort((a, b) => `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`))[0];
-  // The structure of the latest episode that has a rundown serves as the program's template.
-  const templateSource = [...programEpisodes]
-    .filter((e) => (e.rundown || []).length > 0)
-    .sort((a, b) => (b.broadcastDate || '').localeCompare(a.broadcastDate || ''))[0];
-  const templateSegments = (templateSource?.rundown || []).map((seg, i) => ({
-    index: i + 1,
-    title: seg.title,
-    type: seg.segmentType,
-    duration: formatSecondsToTime(seg.durationSeconds || 0).slice(3),
-    notes: seg.notes || '',
-  }));
+  // Without a scheduled episode the side card shows the latest one instead (and says so).
+  const latestEpisode = [...programEpisodes].sort((a, b) => `${b.broadcastDate} ${b.startTime}`.localeCompare(`${a.broadcastDate} ${a.startTime}`))[0];
+  const focusEpisode = nextEpisode || latestEpisode;
+  // The program's saved template (from «حفظ كقالب للبرنامج» in an episode); without one, the
+  // latest episode that has a rundown shows what the episodes look like in practice.
+  const templateView = programTemplateView(program, programEpisodes);
+  const canCreateEpisode = RbacService.hasPermission(currentUser, 'episodes.create');
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'READY_FOR_BROADCAST':
-        return <Badge variant="success" size="sm">جاهزة للبث</Badge>;
-      case 'ON_AIR':
-        return <Badge variant="danger" size="sm">على الهواء الآن</Badge>;
-      case 'BROADCASTED':
-        return <Badge variant="default" size="sm">أُذيعت</Badge>;
-      case 'PREPARING':
-      case 'IN_PREPARATION':
-        return <Badge variant="warning" size="sm">قيد الإعداد</Badge>;
-      default:
-        return <Badge variant="info" size="sm">مجدولة</Badge>;
-    }
+    const info = episodeStatusInfo(status);
+    return (
+      <Badge variant={info.variant} size="sm">
+        {info.label}
+      </Badge>
+    );
   };
 
   return (
@@ -115,7 +83,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {allPrograms.length > 0 && onSwitchProgram && (
               <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
                 <Tv className="w-3.5 h-3.5 text-blue-600" />
-                <label htmlFor="program-switcher-select" className="text-[11px] font-medium text-slate-500">
+                <label htmlFor="program-switcher-select" className="text-2xs font-medium text-slate-500">
                   تبديل:
                 </label>
                 <select
@@ -144,6 +112,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             </button>
             )}
 
+            {canCreateEpisode && (
             <button
               type="button"
               onClick={() => onCreateEpisodeForProgram(program.id)}
@@ -152,6 +121,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <Plus className="w-4 h-4" />
               <span>حلقة جديدة</span>
             </button>
+            )}
           </div>
         }
       />
@@ -185,7 +155,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             </div>
 
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
+              <h1 className="no-strap text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight">
                 {program.name}
               </h1>
               {program.shortName && program.shortName !== program.name && (
@@ -202,15 +172,15 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {/* Quick Metadata Badges */}
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 pt-2 border-t border-slate-800/80">
               <div className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-blue-400" />
-                <span>موعد العرض: <strong>{program.broadcastTime}</strong> ({program.durationMinutes} دقيقة)</span>
+                <Clock className="w-4 h-4 text-slate-400" aria-hidden />
+                <span>موعد العرض: <strong>{program.broadcastTime}</strong> ({minutesLabel((program.durationMinutes || 0) * 60)})</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-amber-400" />
+                <Calendar className="w-4 h-4 text-slate-400" aria-hidden />
                 <span>أيام البث: <strong>{program.broadcastDays.join('، ')}</strong></span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Building className="w-4 h-4 text-emerald-400" />
+                <Building className="w-4 h-4 text-slate-400" aria-hidden />
                 <span>{program.studioName}</span>
               </div>
             </div>
@@ -218,7 +188,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
           {/* Next episode at a glance */}
           <div className="bg-slate-900/90 backdrop-blur-md p-5 rounded-2xl border border-slate-700/80 flex flex-col gap-2 text-right shrink-0 w-full md:w-64 shadow-md">
-            <span className="text-[11px] font-bold text-slate-500">الحلقة القادمة</span>
+            <span className="text-2xs font-bold text-slate-300">الحلقة القادمة</span>
             {nextEpisode ? (
               <>
                 <strong className="text-sm text-white leading-snug line-clamp-2">{nextEpisode.title}</strong>
@@ -234,7 +204,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </button>
               </>
             ) : (
-              <span className="text-xs text-slate-500">لا توجد حلقة مجدولة بعد</span>
+              <span className="text-xs text-slate-300">لا توجد حلقة مجدولة بعد</span>
             )}
           </div>
         </div>
@@ -321,28 +291,28 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-100 text-center">
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <span className="block text-xl font-black text-slate-900 font-mono">
+                  <span className="block text-xl font-bold text-slate-900 tabular-nums">
                     {program.durationMinutes}
                   </span>
-                  <span className="text-[11px] text-slate-500">دقيقة / حلقة</span>
+                  <span className="text-2xs text-slate-500">دقيقة / حلقة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <span className="block text-xl font-black text-blue-600 font-mono">
+                  <span className="block text-xl font-bold text-slate-900 tabular-nums">
                     {programEpisodes.length || program.episodesCount || 0}
                   </span>
-                  <span className="text-[11px] text-slate-500">حلقات مسجلة</span>
+                  <span className="text-2xs text-slate-500">حلقات مسجلة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <span className="block text-xl font-black text-amber-500 font-mono">
+                  <span className="block text-xl font-bold text-slate-900 tabular-nums">
                     {programEpisodes.filter((e) => (e.broadcastDate || '') >= today).length}
                   </span>
-                  <span className="text-[11px] text-slate-500">حلقات قادمة</span>
+                  <span className="text-2xs text-slate-500">حلقات قادمة</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <span className="block text-xl font-black text-emerald-700 font-mono">
+                  <span className="block text-xl font-bold text-slate-900 tabular-nums">
                     {program.broadcastDays.length}
                   </span>
-                  <span className="text-[11px] text-slate-500">أيام أسبوعياً</span>
+                  <span className="text-2xs text-slate-500">أيام أسبوعياً</span>
                 </div>
               </div>
             </div>
@@ -350,7 +320,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {/* Production Specifications */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-indigo-600" />
+                <Sliders className="w-5 h-5 text-slate-500" aria-hidden />
                 <span>المواصفات الفنية ومحددات البث</span>
               </h2>
 
@@ -393,7 +363,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <UserIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="block text-[11px] text-slate-500 font-medium">مقدم البرنامج الرئيسي</span>
+                    <span className="block text-2xs text-slate-500 font-medium">مقدم البرنامج الرئيسي</span>
                     <strong className="text-xs text-slate-900">{program.presenterName}</strong>
                   </div>
                 </div>
@@ -403,7 +373,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                     <UserIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="block text-[11px] text-slate-500 font-medium">المنتج المنفذ</span>
+                    <span className="block text-2xs text-slate-500 font-medium">المنتج المنفذ</span>
                     <strong className="text-xs text-slate-900">{program.producerName}</strong>
                   </div>
                 </div>
@@ -413,36 +383,39 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
             {/* Quick Next Episode Widget */}
             <div className="theme-fixed bg-slate-900 p-6 rounded-2xl text-white shadow-md space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-200 flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-                  الحلقة القادمة
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-blue-300" aria-hidden />
+                  {nextEpisode ? 'الحلقة القادمة' : 'آخر حلقة'}
                 </span>
-                <span className="text-[10px] bg-blue-800/80 px-2 py-0.5 rounded text-blue-100 font-mono">
-                  {nextEpisode ? `${arabicDate(nextEpisode.broadcastDate)} ${nextEpisode.startTime || ''}` : 'لا توجد حلقة مجدولة'}
-                </span>
+                {focusEpisode && (
+                  <span className="text-2xs bg-slate-800 px-2 py-0.5 rounded text-slate-200 tabular-nums">
+                    {arabicDate(focusEpisode.broadcastDate)} {focusEpisode.startTime || ''}
+                  </span>
+                )}
               </div>
 
-              {programEpisodes.length > 0 ? (
+              {focusEpisode ? (
                 <div className="space-y-2">
                   <h4 className="text-sm font-bold leading-snug text-white">
-                    {programEpisodes[0].title}
+                    {focusEpisode.title}
                   </h4>
-                  <p className="text-xs text-blue-200 line-clamp-2">
-                    {programEpisodes[0].description}
+                  <p className="text-xs text-slate-300 line-clamp-2">
+                    {focusEpisode.description}
                   </p>
 
                   <button
                     type="button"
-                    onClick={() => onOpenWorkspace(programEpisodes[0])}
-                    className="w-full mt-3 py-2.5 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                    onClick={() => onOpenWorkspace(focusEpisode)}
+                    className="w-full mt-3 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                   >
-                    <Video className="w-4 h-4" />
-                    <span>فتح مساحة عمل الحلقة والرانداون</span>
+                    <Video className="w-4 h-4" aria-hidden />
+                    <span>فتح مساحة العمل</span>
                   </button>
                 </div>
               ) : (
                 <div className="text-center py-4 space-y-2">
-                  <p className="text-xs text-blue-200">لا توجد حلقات مسجلة بعد لهذا البرنامج</p>
+                  <p className="text-xs text-slate-300">لا توجد حلقات لهذا البرنامج بعد.</p>
+                  {canCreateEpisode && (
                   <button
                     type="button"
                     onClick={() => onCreateEpisodeForProgram(program.id)}
@@ -450,6 +423,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                   >
                     إنشاء الحلقة الأولى
                   </button>
+                  )}
                 </div>
               )}
             </div>
@@ -470,6 +444,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               </p>
             </div>
 
+            {canCreateEpisode && (
             <button
               type="button"
               onClick={() => onCreateEpisodeForProgram(program.id)}
@@ -478,12 +453,15 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               <Plus className="w-4 h-4" />
               <span>إضافة حلقة جديدة</span>
             </button>
+            )}
           </div>
 
           {programEpisodes.length === 0 ? (
             <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center space-y-3">
               <Video className="w-12 h-12 text-slate-300 mx-auto" />
               <h4 className="text-sm font-bold text-slate-700">لا توجد حلقات مسجلة لهذا البرنامج</h4>
+              {canCreateEpisode && (
+              <>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 ابدأ بإنشاء أول حلقة لإعداد الرانداون والمقدمة ودعوة الضيوف.
               </p>
@@ -494,6 +472,8 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
               >
                 إنشاء الحلقة الأولى الآن
               </button>
+              </>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -504,7 +484,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-mono text-slate-500 font-semibold">
+                      <span className="text-2xs font-mono text-slate-500 font-semibold">
                         الموسم {ep.seasonNumber || 1} • الحلقة {ep.episodeNumber || 1}
                       </span>
                       {getStatusBadge(ep.status)}
@@ -534,8 +514,8 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">فقرات الرانداون:</span>
-                      <span className="font-bold text-blue-600 font-mono">
-                        {ep.rundownSegments?.length || 0} فقرة
+                      <span className="font-bold text-blue-600 tabular-nums">
+                        {countLabel((ep.rundown || ep.rundownSegments || []).length, EP_NOUNS.segment)}
                       </span>
                     </div>
                   </div>
@@ -547,14 +527,15 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                       className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
                     >
                       <Video className="w-4 h-4" />
-                      <span>مساحة العمل والرانداون</span>
+                      <span>فتح مساحة العمل</span>
                     </button>
 
                     <a
                       href={apiService.getMosExportUrl(ep.id)}
                       download={`mos_${ep.id}.xml`}
-                      className="p-2.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl text-xs font-semibold transition-colors border border-indigo-200"
+                      className="min-h-10 inline-flex items-center px-3 text-slate-700 bg-white hover:bg-slate-50 rounded-xl text-xs font-semibold transition-colors border border-slate-200"
                       title="تصدير بروتوكول MOS XML للبث"
+                      aria-label={`تصدير MOS للحلقة: ${ep.title}`}
                     >
                       MOS
                     </a>
@@ -569,50 +550,72 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
       {/* TAB CONTENT: 4. RUNDOWN TEMPLATE SPEC */}
       {activeTab === 'template' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-slate-800">
                 هيكل القالب التحريري المعياري للبرنامج
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                التسلسل الزمني النموذجي وتوزيع الفقرات في كل حلقة من حلقات {program.name}
+                {templateView.source === 'TEMPLATE'
+                  ? `قالب البرنامج المحفوظ${templateView.updatedByName ? ` — حفظه ${templateView.updatedByName}` : ''}${templateView.updatedAt ? ` في ${arabicDate(templateView.updatedAt.slice(0, 10))}` : ''}. تبدأ منه الحلقات الجديدة عند اختيار «من قالب البرنامج».`
+                  : templateView.source === 'EPISODE'
+                  ? `لا يوجد قالب محفوظ لهذا البرنامج؛ المعروض بنية آخر حلقة لها رانداون: #${templateView.episode?.episodeNumber ?? ''} «${templateView.episode?.title}»${templateView.episode?.broadcastDate ? ` (${arabicDate(templateView.episode.broadcastDate)})` : ''}. احفظ قالباً من تبويب «تحضير الحلقة» في مساحة عمل الحلقة.`
+                  : 'لا يوجد قالب محفوظ ولا رانداون في حلقات هذا البرنامج بعد. يُحفظ القالب من تبويب «تحضير الحلقة» في مساحة عمل أي حلقة.'}
               </p>
             </div>
-            <Badge variant="primary" size="sm">
-              إجمالي المدة: {program.durationMinutes} دقيقة
-            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={templateView.source === 'TEMPLATE' ? 'success' : 'default'} size="sm">
+                {templateView.source === 'TEMPLATE' ? 'قالب محفوظ' : templateView.source === 'EPISODE' ? 'من آخر حلقة' : 'بلا قالب'}
+              </Badge>
+              <Badge variant="primary" size="sm">
+                {templateView.segments.length > 0 ? `${minutesLabel(templateView.totalSeconds)} من ` : ''}
+                {minutesLabel((program.durationMinutes || 0) * 60)}
+              </Badge>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {templateSegments.length === 0 && (
-              <p className="text-xs text-slate-500 py-6 text-center">لا يوجد رانداون محفوظ لحلقات هذا البرنامج بعد؛ سيظهر هيكل آخر حلقة هنا.</p>
-            )}
-            {templateSegments.map((seg) => (
-              <div
-                key={seg.index}
-                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center font-mono shrink-0">
-                    {seg.index}
-                  </span>
-                  <div>
-                    <strong className="text-xs sm:text-sm text-slate-800 block">
-                      {seg.title}
-                    </strong>
-                    <span className="text-[11px] text-slate-500">{seg.notes}</span>
+          {templateView.topics.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="font-bold text-slate-600">المحاور:</span>
+              {templateView.topics.map((t, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">{t}</span>
+              ))}
+            </div>
+          )}
+
+          {templateView.segments.length > 0 && (
+            <ol className="space-y-3" aria-label="فقرات القالب">
+              {templateView.segments.map((seg) => (
+                <li
+                  key={seg.index}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center font-mono shrink-0">
+                      {seg.index}
+                    </span>
+                    <div className="min-w-0">
+                      <strong className="text-xs sm:text-sm text-slate-800 block break-words">
+                        {seg.title}
+                      </strong>
+                      {(seg.topic || seg.notes) && (
+                        <span className="text-2xs text-slate-500">
+                          {[seg.topic && `المحور: ${seg.topic}`, seg.notes].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
-                  <Badge variant="info" size="sm">{seg.type}</Badge>
-                  <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200">
-                    {seg.duration}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
+                    <Badge variant="info" size="sm">{seg.typeName}</Badge>
+                    <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200">
+                      {segmentClock(seg.durationSeconds)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
 
@@ -634,10 +637,10 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 <UserIcon className="w-6 h-6" />
               </div>
               <div className="min-w-0">
-                <span className="text-[11px] font-bold text-blue-600 block uppercase">
+                <span className="text-2xs font-bold text-blue-600 block uppercase">
                   {member.role}
                 </span>
-                <h4 className="text-sm font-black text-slate-800 truncate">{member.name}</h4>
+                <h4 className="text-sm font-bold text-slate-800 truncate">{member.name}</h4>
                 <p className="text-xs text-slate-500 truncate">{member.dept}</p>
               </div>
             </div>

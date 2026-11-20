@@ -88,7 +88,7 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
           {items.map((item) => (
             <div key={item.id} className="p-2 rounded-lg hover:bg-slate-50">
               <div className="text-xs font-bold text-slate-800">{item.label}</div>
-              {item.hint && <div className="text-[10px] text-slate-500">{item.hint}</div>}
+              {item.hint && <div className="text-2xs text-slate-500">{item.hint}</div>}
               <div className="flex gap-1.5 mt-1.5">
                 {FORMATS.map((f) => {
                   const key = `${item.id}:${f.id}`;
@@ -101,7 +101,7 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
                       aria-label={`${item.label} — ${f.label}`}
                       disabled={!!busy}
                       onClick={() => void run(item, f.id)}
-                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-slate-200 text-2xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 disabled:opacity-50"
                     >
                       {busy === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <f.icon className="w-3.5 h-3.5" />}
                       {f.label}
@@ -112,11 +112,11 @@ export const ExportMenu: React.FC<Props> = ({ items, label = 'تصدير وطب�
             </div>
           ))}
           {error && (
-            <p role="alert" className="text-[11px] font-bold text-rose-700 p-1">
+            <p role="alert" className="text-2xs font-bold text-rose-700 p-1">
               {error}
             </p>
           )}
-          <p className="text-[10px] text-slate-500 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
+          <p className="text-2xs text-slate-500 px-1 pt-1 border-t border-slate-100">PDF: في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF».</p>
         </div>
       )}
     </div>

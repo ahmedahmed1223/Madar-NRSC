@@ -17,7 +17,8 @@ import {
   FlipHorizontal,
 } from 'lucide-react';
 import { RundownSegment } from '../../types';
-import { formatSecondsToTime } from '../../shared/rundown';
+import { segmentClock } from '../../shared/durations';
+import { segmentTypeName } from '../../shared/episodeNouns';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import { prompterScrollDelta, prompterShortcut } from '../../shared/prompterControls';
 
@@ -28,6 +29,8 @@ interface TeleprompterModalProps {
   episodeTitle?: string;
   /** While this episode is on air, the prompter follows the director's current segment. */
   episodeId?: string;
+  /** A bulletin's prompter says «النشرة» and «القصص»; detected from the segments when not given. */
+  kind?: 'episode' | 'bulletin';
 }
 
 export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
@@ -36,7 +39,11 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
   segments,
   episodeTitle = 'الرانداون المباشر',
   episodeId,
+  kind,
 }) => {
+  const isBulletin = kind
+    ? kind === 'bulletin'
+    : segments.some((s) => !!(s as any).storyType) || (!!episodeId && apiService.getBulletins().some((b) => b.id === episodeId));
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [followDirector, setFollowDirector] = useState(true);
   const liveVersion = useLiveData(['onAir', 'pronunciationTerms'], 0);
@@ -243,13 +250,13 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
       {/* Studio Prompter Top Bar */}
       <div className="p-3 bg-zinc-950 border-b border-zinc-700 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1 basis-full md:basis-auto">
-          <span className="px-2.5 py-1 bg-red-600 text-white font-mono text-xs font-bold rounded-md">
+          <span className="shrink-0 px-2.5 py-1 bg-zinc-800 border border-zinc-600 text-zinc-100 text-xs font-bold rounded-md">
             الملقّن
           </span>
           <div className="min-w-0 truncate">
             <h2 className="text-sm font-bold text-slate-100">{episodeTitle}</h2>
             <div className="text-xs text-zinc-300">
-              الفقرة {currentSegmentIndex + 1} من {segments.length}: {activeSegment?.title || 'فقرة مجهولة'}
+              {isBulletin ? 'القصة' : 'الفقرة'} {currentSegmentIndex + 1} من {segments.length}: {activeSegment?.title || (isBulletin ? 'قصة بلا عنوان' : 'فقرة بلا عنوان')}
             </div>
           </div>
         </div>
@@ -296,7 +303,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
 
           {/* Font Size Controls */}
           <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-            <Type className="w-3.5 h-3.5 text-slate-500" />
+            <Type className="w-3.5 h-3.5 text-slate-400" aria-hidden />
             <button
               type="button"
               onClick={() => setFontSize((f) => Math.max(22, f - 4))}
@@ -319,7 +326,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           </div>
 
           {/* Speed Controls */}
-          <label className="flex items-center gap-2 text-sm flex-1 min-w-48">سرعة التمرير<input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
+          <label className="flex items-center gap-2 text-sm flex-1 min-w-48"><span className="whitespace-nowrap">سرعة التمرير</span><input aria-label="سرعة التمرير" type="range" min="6" max="180" step="6" value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-full min-w-16 h-11 accent-amber-400"/><output className="w-9 shrink-0 tabular-nums">{scrollSpeed}</output></label>
           <button type="button" aria-label="ملء الشاشة (F)" title="ملء الشاشة (F)" className="p-2 bg-zinc-800 rounded-md" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
           {followId && <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={followDirector} onChange={e => setFollowDirector(e.target.checked)}/>متابعة المخرج</label>}
 
@@ -327,7 +334,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-500 hover:text-red-300 rounded-lg transition-colors"
+            className="p-2 bg-slate-900 hover:bg-red-900/50 text-slate-300 hover:text-red-300 rounded-lg transition-colors"
             title="خروج من شاشة الملقن (Esc)"
             aria-label="إغلاق الملقّن"
           >
@@ -342,7 +349,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
         {/* Segments Navigation Rail */}
         <div className="w-64 bg-slate-950 border-l border-slate-900 flex flex-col shrink-0 hidden md:flex">
           <div className="p-3 border-b border-slate-900 text-xs font-bold text-zinc-300">
-            تسلسل فقرات الحلقة ({segments.length})
+            {isBulletin ? 'تسلسل قصص النشرة' : 'تسلسل فقرات الحلقة'} ({segments.length})
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {segments.map((seg, idx) => {
@@ -361,7 +368,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-xs text-zinc-300">#{seg.orderIndex || idx + 1}</span>
-                    <span className="font-mono text-xs text-zinc-300">{formatSecondsToTime(seg.durationSeconds || 0)}</span>
+                    <span className="tabular-nums text-xs text-zinc-300">{segmentClock(seg.durationSeconds || 0)}</span>
                   </div>
                   <div className="truncate text-xs">{seg.title}</div>
                   {seg.presenterName && (
@@ -395,10 +402,10 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               <div className="max-w-4xl mx-auto space-y-8">
                 {/* Segment Meta Info Header */}
                 <div className="border-b border-slate-800 pb-4">
-                  <div className="text-amber-400/80 font-mono text-sm mb-1">
-                    الفقرة: {activeSegment.orderIndex || currentSegmentIndex + 1} • النوع: {activeSegment.segmentType} • المستهدف: {formatSecondsToTime(activeSegment.durationSeconds || 0)}
+                  <div className="text-amber-400/80 tabular-nums text-sm mb-1">
+                    {isBulletin ? 'القصة' : 'الفقرة'}: {activeSegment.orderIndex || currentSegmentIndex + 1} • النوع: {segmentTypeName(activeSegment as any)} • المدة: {segmentClock(activeSegment.durationSeconds || 0)}
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-extrabold text-white">
+                  <h1 className="text-2xl sm:text-4xl font-bold text-white">
                     {activeSegment.title}
                   </h1>
                   {activeSegment.presenterName && (
@@ -420,8 +427,8 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
                       }}
                     />
                   ) : (
-                    <div className="text-slate-600 text-center py-20 italic">
-                      [لا يوجد نص أوتوكيو مكتوب لهذه الفقرة - اعتمد على الملاحظات الإخراجية]
+                    <div className="text-zinc-400 text-center py-20">
+                      [لا يوجد نص أوتوكيو مكتوب {isBulletin ? 'لهذه القصة' : 'لهذه الفقرة'} - اعتمد على الملاحظات الإخراجية]
                     </div>
                   )}
                 </div>
@@ -436,7 +443,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-slate-600">
-                لا توجد فقرات للعرض في هذا الرانداون
+                {isBulletin ? 'لا توجد قصص للعرض في هذه النشرة' : 'لا توجد فقرات للعرض في هذا الرانداون'}
               </div>
             )}
           </div>
@@ -507,7 +514,7 @@ export const TeleprompterModal: React.FC<TeleprompterModalProps> = ({
             <div className="flex items-center gap-2 font-mono text-sm text-slate-300 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
               <Clock className="w-4 h-4 text-amber-400" />
               <span>{formatTimer(elapsedSeconds)}</span>
-              <span className="text-[10px] text-slate-500 font-sans">مدة الإلقاء</span>
+              <span className="text-2xs text-slate-500 font-sans">مدة الإلقاء</span>
             </div>
           </div>
         </div>

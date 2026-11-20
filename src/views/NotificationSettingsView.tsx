@@ -92,7 +92,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             تنبيهاتي
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            كل التنبيهات تظهر في الجرس دائماً؛ هنا تختار ما يصلك أيضاً على بريدك وعلى هاتفك أو حاسوبك، وأي برقيات تريد أن تُنبَّه لها.
+            كل التنبيهات تظهر في الجرس دائماً؛ هنا تختار ما يصلك أيضاً على بريدك وعلى هاتفك أو حاسوبك، وأي مواد تريد أن تُنبَّه لها.
           </p>
         </div>
         <button
@@ -117,14 +117,14 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <div className="p-3 rounded-xl border border-slate-200 space-y-2">
             <p className="text-xs font-bold text-slate-700">تنبيهات هذا الجهاز (هاتف / حاسوب)</p>
             {!support.ok ? (
-              <p className="text-[11px] text-amber-700 leading-relaxed">{support.reason}</p>
+              <p className="text-2xs text-amber-700 leading-relaxed">{support.reason}</p>
             ) : thisRegistered ? (
               <div className="flex flex-wrap gap-2">
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">مفعّلة على هذا الجهاز</span>
-                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'أُرسل تنبيه تجريبي')} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+                <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">مفعّلة على هذا الجهاز</span>
+                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'أُرسل تنبيه تجريبي')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
                   <Send className="w-3 h-3" /> تجربة
                 </button>
-                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
+                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
                   إيقاف
                 </button>
               </div>
@@ -133,7 +133,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 type="button"
                 disabled={!delivery || !!busy}
                 onClick={() => run('on', () => enablePush(delivery!.publicKey), 'فُعّلت التنبيهات على هذا الجهاز')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold"
+                className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold"
               >
                 <BellRing className="w-3.5 h-3.5" />
                 {busy === 'on' ? 'جارٍ التفعيل...' : 'تفعيل التنبيهات على هذا الجهاز'}
@@ -142,7 +142,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             {delivery && delivery.devices.length > 0 && (
               <ul className="space-y-1 pt-1">
                 {delivery.devices.map((d) => (
-                  <li key={d.endpoint} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                  <li key={d.endpoint} className="flex items-center justify-between gap-2 text-2xs text-slate-600">
                     <span>
                       {deviceName(d.userAgent)}
                       {d.endpoint === thisDevice ? ' (هذا الجهاز)' : ''}
@@ -164,13 +164,13 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-slate-500" /> البريد الإلكتروني
             </p>
-            <p className="text-[11px] text-slate-600" dir="ltr">
+            <p className="text-2xs text-slate-600" dir="ltr">
               {delivery?.emailAddress || currentUser.email}
             </p>
             {delivery && !delivery.email ? (
-              <p className="text-[11px] text-amber-700">البريد غير مهيأ على الخادم بعد؛ اطلب من مدير النظام ضبط SMTP.</p>
+              <p className="text-2xs text-amber-700">البريد غير مهيأ على الخادم بعد؛ اطلب من مدير النظام ضبط SMTP.</p>
             ) : (
-              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'أُرسلت رسالة تجريبية إلى بريدك')} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'أُرسلت رسالة تجريبية إلى بريدك')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
                 <Send className="w-3 h-3" /> إرسال رسالة تجريبية
               </button>
             )}
@@ -196,7 +196,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
               <tr key={c.id}>
                 <td className="p-3">
                   <p className="font-bold text-slate-800">{c.name}</p>
-                  <p className="text-[11px] text-slate-500">{c.hint}</p>
+                  <p className="text-2xs text-slate-500">{c.hint}</p>
                 </td>
                 {(['push', 'email'] as const).map((ch) => (
                   <td key={ch} className="p-3 text-center">
@@ -216,18 +216,18 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
       </section>
 
       {/* Wires */}
-      <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات البرقيات">
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات المصادر">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Radio className="w-4 h-4 text-red-600" />
-          البرقيات العاجلة وكلمات المتابعة
+          المواد العاجلة وكلمات المتابعة
         </h2>
         <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
           <input type="checkbox" className="w-4 h-4 accent-red-600" checked={prefs.flashAlerts} onChange={(e) => update({ flashAlerts: e.target.checked })} />
           <Zap className="w-3.5 h-3.5 text-red-600" />
-          نبّهني فور وصول برقية عاجلة من أي وكالة
+          نبّهني فور وصول مادة عاجلة من أي وكالة
         </label>
         <div>
-          <p className="text-xs text-slate-600 mb-2">نبّهني عندما تحوي برقية إحدى هذه الكلمات أو الأسماء (تُطابق دون اعتبار للتشكيل والهمزات):</p>
+          <p className="text-xs text-slate-600 mb-2">نبّهني عندما تحوي مادة إحدى هذه الكلمات أو الأسماء (تُطابق دون اعتبار للتشكيل والهمزات):</p>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {prefs.watchWords.map((w) => (
               <span key={w} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-2 py-1">
@@ -237,7 +237,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 </button>
               </span>
             ))}
-            {!prefs.watchWords.length && <span className="text-[11px] text-slate-500">لا كلمات بعد</span>}
+            {!prefs.watchWords.length && <span className="text-2xs text-slate-500">لا كلمات بعد</span>}
           </div>
           <div className="flex gap-2">
             <input
@@ -267,14 +267,14 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <Moon className="w-4 h-4 text-indigo-600" />
           ساعات الهدوء
         </h2>
-        <p className="text-[11px] text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت الخادم) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
+        <p className="text-2xs text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت المحطة المضبوط في الإعدادات) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>من</span>
           <input type="time" aria-label="بداية ساعات الهدوء" value={prefs.quietFrom || ''} onChange={(e) => update({ quietFrom: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
           <span>إلى</span>
           <input type="time" aria-label="نهاية ساعات الهدوء" value={prefs.quietTo || ''} onChange={(e) => update({ quietTo: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
           {(prefs.quietFrom || prefs.quietTo) && (
-            <button type="button" onClick={() => update({ quietFrom: '', quietTo: '' })} className="text-[11px] text-slate-500 underline">
+            <button type="button" onClick={() => update({ quietFrom: '', quietTo: '' })} className="text-2xs text-slate-500 underline">
               بلا ساعات هدوء
             </button>
           )}

@@ -2,7 +2,15 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, Search, Sparkles } from 'lucide-react';
 import type { User } from '../types';
 import { HELP_ARTICLES } from '../content/help';
+import { scoreFields } from '../shared/arabicSearch';
 import { departmentIdOf, departmentName } from '../shared/departments';
+import { toursFor } from '../components/help/TourHost';
+import { navigateTo, setupCommand, tourCommand } from '../services/uiEvents';
+import { RbacService } from '../services/rbacService';
+import { BookOpenText, PlayCircle, Settings2 } from 'lucide-react';
+import { countLabel } from '../shared/arabicPlural';
+
+const STEP_FORMS = { one: 'خطوة واحدة', two: 'خطوتان', few: 'خطوات', many: 'خطوة' };
 
 interface HelpViewProps {
   currentUser: User;
@@ -17,15 +25,14 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
   const [onlyMine, setOnlyMine] = useState(false);
   const [activeId, setActiveId] = useState<string>(HELP_ARTICLES[0].id);
 
+  // Arabic-aware search over the whole guide; with a query the best match comes first.
   const articles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const mine = (a: (typeof HELP_ARTICLES)[number]) => Number(a.departments.includes(myDept));
     return HELP_ARTICLES.filter((a) => !onlyMine || a.departments.length === 0 || a.departments.includes(myDept))
-      .filter((a) => {
-        if (!q) return true;
-        const text = [a.title, a.summary, ...a.keywords, ...a.sections.flatMap((s) => [s.heading, ...s.steps])].join(' ').toLowerCase();
-        return text.includes(q);
-      })
-      .sort((a, b) => Number(b.departments.includes(myDept)) - Number(a.departments.includes(myDept)));
+      .map((a) => ({ a, score: query.trim() ? scoreFields(query, a.title, a.summary, a.keywords, a.sections.flatMap((s) => [s.heading, ...s.steps])) : 0 }))
+      .filter((x) => x.score !== null)
+      .sort((x, y) => (y.score ?? 0) - (x.score ?? 0) || mine(y.a) - mine(x.a))
+      .map((x) => x.a);
   }, [query, onlyMine, myDept]);
 
   const active = articles.find((a) => a.id === activeId) || articles[0];
@@ -41,15 +48,61 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
           <p className="text-xs text-slate-500 mt-1">أدلة مختصرة لكل مهمة يومية. قسمك: {departmentName(myDept)}.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onOpenShortcuts} className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+          <button type="button" onClick={onOpenShortcuts} className="min-h-10 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
             اختصارات لوحة المفاتيح
           </button>
-          <button type="button" onClick={onOpenWhatsNew} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
+          <button type="button" onClick={onOpenWhatsNew} className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5" />
             ما الجديد
           </button>
         </div>
       </div>
+
+      <a
+        href="/guide"
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          e.preventDefault();
+          navigateTo.emit('/guide');
+        }}
+        className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50 hover:border-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+      >
+        <BookOpenText className="w-6 h-6 text-blue-700 shrink-0" aria-hidden="true" />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-bold text-slate-900">دليل الاستخدام</span>
+          <span className="block text-xs text-slate-700 mt-0.5">الدليل الكامل للقراءة والطباعة: دليلك حسب دورك، كل شاشة وأزرارها، خطوات العمل، المصطلحات والأسئلة الشائعة.</span>
+        </span>
+        <span className="inline-flex items-center justify-center min-h-10 px-4 rounded-lg bg-blue-600 text-white text-xs font-bold shrink-0">افتح الدليل</span>
+      </a>
+
+      <section aria-labelledby="help-tours-title" className="space-y-2">
+        <h2 id="help-tours-title" className="text-sm font-bold text-slate-900">جولات تفاعلية</h2>
+        <p className="text-xs text-slate-600">تشير الجولة إلى الأزرار الحقيقية في الشاشة وتشرح كل واحد. الأسهم للتنقل وEsc للإنهاء.</p>
+        <ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {toursFor(currentUser).map((tour) => (
+            <li key={tour.id}>
+              <button type="button" onClick={() => tourCommand.emit(tour.id)} className="w-full h-full text-right flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40">
+                <PlayCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-900">{tour.title}</span>
+                  <span className="block text-xs text-slate-600 mt-0.5">{tour.summary} · {countLabel(tour.steps.length, STEP_FORMS)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {RbacService.hasPermission(currentUser, 'system.settings') && (
+            <li>
+              <button type="button" onClick={() => setupCommand.emit('open')} className="w-full h-full text-right flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40">
+                <Settings2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-900">الإعداد السريع للنظام</span>
+                  <span className="block text-xs text-slate-600 mt-0.5">المؤسسة، المحطات، الأقسام، الفريق، الأمان والنسخ الاحتياطي.</span>
+                </span>
+              </button>
+            </li>
+          )}
+        </ul>
+      </section>
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
@@ -83,8 +136,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 className={`w-full text-right p-3 rounded-xl transition-colors ${active?.id === a.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
               >
                 <span className="block text-xs font-bold text-slate-800">{a.title}</span>
-                <span className="block text-[11px] text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
-                {a.departments.includes(myDept) && <span className="inline-block mt-1 text-[10px] font-bold text-blue-700">لقسمك</span>}
+                <span className="block text-2xs text-slate-500 mt-0.5 line-clamp-2">{a.summary}</span>
+                {a.departments.includes(myDept) && <span className="inline-block mt-1.5 px-1.5 py-px rounded bg-blue-50 text-2xs font-bold text-blue-700">لقسمك</span>}
               </button>
             ))}
           </nav>
@@ -94,7 +147,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
                 <h2 className="text-lg font-bold text-slate-900">{active.title}</h2>
                 <p className="text-xs text-slate-500 mt-1">{active.summary}</p>
                 {active.departments.length > 0 && (
-                  <p className="text-[11px] text-slate-500 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
+                  <p className="text-2xs text-slate-500 mt-1">الأقسام: {active.departments.map(departmentName).join('، ')}</p>
                 )}
               </header>
               {active.sections.map((s) => (

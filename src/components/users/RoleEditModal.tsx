@@ -6,12 +6,15 @@ import {
   PERMISSION_CATEGORIES,
   PermissionCategory,
 } from '../../services/rbacService';
-import { Shield, Sparkles, Check, CheckSquare, Square, Palette, AlertTriangle } from 'lucide-react';
+import { ASSIGNABLE_SCREENS, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
+import { screenPermission } from '../../shared/commandPalette';
+import { Shield, Check, CheckSquare, Square } from 'lucide-react';
 
 interface RoleEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (role: RoleDefinition) => void;
+  /** Returns an error message when the role was refused (the form stays open and shows it). */
+  onSave: (role: RoleDefinition) => void | string | null;
   roleToEdit?: RoleDefinition | null;
 }
 
@@ -39,6 +42,8 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
   const [description, setDescription] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_ROLE_COLORS[2]);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  /** null = every screen the permissions allow. */
+  const [screens, setScreens] = useState<string[] | null>(null);
   const [activeCategory, setActiveCategory] = useState<PermissionCategory | 'ALL'>('ALL');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -51,12 +56,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       const foundColor = PRESET_ROLE_COLORS.find((c) => c.hex === roleToEdit.color) || PRESET_ROLE_COLORS[2];
       setSelectedColor(foundColor);
       setSelectedPermissions([...roleToEdit.permissions]);
+      setScreens(Array.isArray(roleToEdit.screens) ? [...roleToEdit.screens] : null);
     } else {
       setNameAr('');
       setNameEn('');
       setRoleCode(`CUSTOM_ROLE_${Date.now().toString().slice(-4)}`);
       setDescription('');
       setSelectedColor(PRESET_ROLE_COLORS[3]);
+      setScreens(null);
       setSelectedPermissions([
         'news.view',
         'news.create',
@@ -75,30 +82,20 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
     );
   };
 
-  const handleSelectAllCategory = (categoryKey: PermissionCategory) => {
-    const categoryPermCodes = ALL_PERMISSIONS.filter((p) => p.category === categoryKey).map((p) => p.code);
-    const allSelected = categoryPermCodes.every((c) => selectedPermissions.includes(c));
-
-    if (allSelected) {
-      setSelectedPermissions((prev) => prev.filter((c) => !categoryPermCodes.includes(c)));
-    } else {
-      setSelectedPermissions((prev) => Array.from(new Set([...prev, ...categoryPermCodes])));
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
     if (!nameAr.trim()) newErrors.nameAr = 'اسم الدور بالعربية مطلوب';
     if (!roleCode.trim()) newErrors.roleCode = 'رمز الدور البرمجي مطلوب';
+    else if (!roleToEdit?.isSystemRole && !/^[A-Z][A-Z0-9_]{1,39}$/.test(roleCode.trim().toUpperCase().replace(/\s+/g, '_'))) newErrors.roleCode = 'رمز الدور: حروف إنجليزية وأرقام وشرطة سفلية (_) فقط، ويبدأ بحرف';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    onSave({
+    const refused = onSave({
       id: roleToEdit?.id || `role-${Date.now()}`,
       roleCode: roleCode.trim().toUpperCase().replace(/\s+/g, '_'),
       nameAr: nameAr.trim(),
@@ -109,7 +106,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       badgeText: nameAr.trim(),
       isSystemRole: roleToEdit?.isSystemRole ?? false,
       permissions: selectedPermissions,
+      // Kept in sidebar order; a role without a list opens every screen its permissions allow.
+      ...(screens ? { screens: ASSIGNABLE_SCREENS.filter((nav) => screens.includes(nav)) } : {}),
     });
+    if (refused) {
+      // A duplicate code belongs next to the code field; anything else above the actions.
+      setErrors(/الرمز/.test(refused) ? { roleCode: refused } : { form: refused });
+      return;
+    }
     onClose();
   };
 
@@ -144,7 +148,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 errors.nameAr ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
               }`}
             />
-            {errors.nameAr && <p className="text-[10px] text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
+            {errors.nameAr && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.nameAr}</p>}
           </div>
 
           <div>
@@ -169,11 +173,17 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
               type="text"
               value={roleCode}
               disabled={roleToEdit?.isSystemRole}
-              onChange={(e) => setRoleCode(e.target.value)}
+              onChange={(e) => {
+                setRoleCode(e.target.value);
+                if (errors.roleCode || errors.form) setErrors((prev) => ({ ...prev, roleCode: '', form: '' }));
+              }}
               placeholder="ROLE_COORDINATOR"
-              className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left font-mono disabled:bg-slate-100 disabled:text-slate-500"
+              aria-invalid={!!errors.roleCode}
+              aria-describedby={errors.roleCode ? 'role-edit-modal-code-error' : undefined}
+              className={`w-full text-xs px-3 py-2 bg-white border rounded-xl focus:outline-none focus:border-blue-500 text-left font-mono disabled:bg-slate-100 disabled:text-slate-500 ${errors.roleCode ? 'border-red-500 bg-red-50/20' : 'border-slate-200'}`}
               dir="ltr"
             />
+            {errors.roleCode && <p id="role-edit-modal-code-error" role="alert" className="text-2xs text-red-600 mt-1 font-bold">{errors.roleCode}</p>}
           </div>
 
           <div className="md:col-span-2">
@@ -217,14 +227,14 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 <Shield className="w-4 h-4 text-blue-600" />
                 <span>تعيين الصلاحيات الممنوحة لهذا الدور ({selectedPermissions.length} من {ALL_PERMISSIONS.length})</span>
               </h3>
-              <p className="text-[11px] text-slate-500">حدد الإجراءات المسموح لأصحاب هذا الدور تنفيذها في النظام</p>
+              <p className="text-2xs text-slate-500">حدد الإجراءات المسموح لأصحاب هذا الدور تنفيذها في النظام</p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedPermissions(ALL_PERMISSIONS.map((p) => p.code))}
-                className="text-[11px] text-blue-600 hover:text-blue-800 font-bold underline"
+                className="text-2xs text-blue-600 hover:text-blue-800 font-bold underline"
               >
                 تحديد الكل
               </button>
@@ -232,7 +242,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedPermissions([])}
-                className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+                className="text-2xs text-slate-500 hover:text-slate-700 underline"
               >
                 إلغاء التحديد
               </button>
@@ -271,7 +281,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                 >
                   <span>{cat.labelAr}</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-2xs px-1.5 py-0.2 rounded-full font-mono ${
                       activeCategory === cat.key ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-600'
                     }`}
                   >
@@ -321,15 +331,15 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-800">{perm.nameAr}</span>
-                        <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
+                        <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                           ({perm.code})
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{perm.description}</p>
+                      <p className="text-2xs text-slate-500 mt-0.5">{perm.description}</p>
                     </div>
                   </div>
 
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
+                  <span className={`text-2xs font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
                     {riskLabel}
                   </span>
                 </div>
@@ -337,6 +347,48 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
             })}
           </div>
         </div>
+
+        {/* Screens the role opens */}
+        <fieldset className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <legend className="text-sm font-bold text-slate-900 px-1">الصفحات التي يفتحها هذا الدور</legend>
+          <p className="text-xs text-slate-600">الصلاحيات تحدد ما يستطيع فعله بالبيانات؛ وهنا تحدد الصفحات التي تظهر له. الرئيسية والمساعدة وإعدادات التنبيهات تبقى متاحة للجميع.</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-1">
+            <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-slate-800">
+              <input type="radio" name="role-screens-mode" checked={screens === null} onChange={() => setScreens(null)} />
+              كل الصفحات التي تسمح بها صلاحياته
+            </label>
+            <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-slate-800">
+              <input type="radio" name="role-screens-mode" checked={screens !== null} onChange={() => setScreens(screens ?? ASSIGNABLE_SCREENS.filter((nav) => !screenPermission(nav) || selectedPermissions.includes(screenPermission(nav)!)))} />
+              صفحات محددة فقط
+            </label>
+          </div>
+          {screens !== null && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {SCREEN_GROUPS.map((group) => (
+                <div key={group.label} role="group" aria-label={group.label} className="bg-white border border-slate-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-slate-700 mb-1">{group.label}</p>
+                  {group.navs.map((nav) => {
+                    const needs = screenPermission(nav);
+                    const lacks = !!needs && !selectedPermissions.includes(needs);
+                    return (
+                      <label key={nav} className={`flex items-center gap-2 min-h-9 text-xs ${lacks ? 'text-slate-400' : 'text-slate-800'}`}>
+                        <input type="checkbox" checked={screens.includes(nav)} onChange={() => setScreens(screens.includes(nav) ? screens.filter((x) => x !== nav) : [...screens, nav])} />
+                        {screenLabel(nav)}
+                        {lacks && <span className="text-2xs">(تحتاج صلاحيتها)</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </fieldset>
+
+        {(errors.form || errors.roleCode || errors.nameAr) && (
+          <p role="alert" className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            {errors.form || errors.roleCode || errors.nameAr}
+          </p>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">

@@ -10,8 +10,7 @@ import {
   Guest,
   NewsItem,
 } from '../../types';
-import { Modal } from '../common/Modal';
-import { formatSecondsToTime, parseTimeToSeconds, apiService } from '../../services/api';
+import { parseTimeToSeconds, apiService } from '../../services/api';
 import { newId } from '../../shared/ids';
 import { departmentIdOf } from '../../shared/departments';
 import { isRequestClosed } from '../../shared/production';
@@ -27,20 +26,7 @@ import {
   segmentGuests,
   withSegmentGuests,
 } from '../../shared/episodePlan';
-import {
-  Clock,
-  Video,
-  Mic,
-  Tv,
-  Users,
-  Film,
-  Sparkles,
-  Volume2,
-  X,
-  Plus,
-  Play,
-  Check,
-} from 'lucide-react';
+import { Clock, Mic, Tv, Users, Film, Sparkles, Volume2, X } from 'lucide-react';
 
 interface SegmentModalProps {
   isOpen: boolean;
@@ -105,6 +91,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
   const [videoAssetUrl, setVideoAssetUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
+  // FormPage focuses the field marked data-autofocus; this brings it into view as well.
   useEffect(() => {
     if (!isOpen || !focusField) return;
     const frame = requestAnimationFrame(() => {
@@ -312,7 +299,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               <button
                 type="button"
                 onClick={() => setTitle('')}
-                className="text-[10px] text-slate-500 hover:text-rose-500"
+                className="text-2xs text-slate-500 hover:text-rose-500"
               >
                 مسح
               </button>
@@ -365,7 +352,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 <Clock className="w-3.5 h-3.5 text-blue-600" />
                 المدة المقررة للبث (دقيقة : ثانية) *
               </label>
-              <span className="text-[10px] text-slate-500">تنسيق MM:SS (مثلاً 02:30)</span>
+              <span className="text-2xs text-slate-500">تنسيق MM:SS (مثلاً 02:30)</span>
             </div>
 
             <input
@@ -378,20 +365,20 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
               pattern="^[0-9]{1,2}:[0-9]{2}$"
               inputMode="numeric"
               title="أدخل الوقت بصيغة MM:SS مثل 03:30"
-              className="w-28 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-black text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              className="w-28 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-bold text-center font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               dir="ltr"
             />
           </div>
 
           {/* Quick Preset Buttons */}
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[10px] text-slate-500 font-bold">تحديد سريع:</span>
+            <span className="text-2xs text-slate-500 font-bold">تحديد سريع:</span>
             {DURATION_PRESETS.map((p, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => handleApplyDurationPreset(p)}
-                className="text-[10px] font-mono font-bold bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs transition-colors"
+                className="text-2xs font-mono font-bold bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs transition-colors"
               >
                 {p.label}
               </button>
@@ -473,7 +460,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   </option>
                 ))}
             </select>
-            {segGuests.length > 0 && <p className="text-[10px] text-slate-500">يُضاف الضيوف تلقائياً لقائمة ضيوف الحلقة كمرشحين حتى تأكيد حجزهم.</p>}
+            {segGuests.length > 0 && <p className="text-2xs text-slate-500">يُضاف الضيوف تلقائياً لقائمة ضيوف الحلقة كمرشحين حتى تأكيد حجزهم.</p>}
           </fieldset>
         )}
 
@@ -494,7 +481,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   }`}
                 >
                   <span className="block text-xs font-bold">{src.name}</span>
-                  <span className={`block text-[10px] ${report.source === src.id ? 'text-blue-100' : 'text-slate-500'}`}>{src.hint}</span>
+                  <span className={`block text-2xs ${report.source === src.id ? 'text-blue-100' : 'text-slate-500'}`}>{src.hint}</span>
                 </button>
               ))}
             </div>
@@ -514,16 +501,16 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                     </option>
                   ))}
                 </select>
-                {reporters.length === 0 && <p className="text-[10px] text-rose-600 mt-1">لا يوجد مستخدمون في قسم المراسلين.</p>}
+                {reporters.length === 0 && <p className="text-2xs text-rose-600 mt-1">لا يوجد مستخدمون في قسم المراسلين.</p>}
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <label htmlFor="report-location" className="block text-[11px] font-bold text-slate-700 mb-1">موقع التصوير</label>
+                <label htmlFor="report-location" className="block text-2xs font-bold text-slate-700 mb-1">موقع التصوير</label>
                 <input id="report-location" value={report.location || ''} onChange={(e) => setReport({ ...report, location: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs" />
               </div>
               <div>
-                <label htmlFor="report-target" className="block text-[11px] font-bold text-slate-700 mb-1">المدة المستهدفة (MM:SS)</label>
+                <label htmlFor="report-target" className="block text-2xs font-bold text-slate-700 mb-1">المدة المستهدفة (MM:SS)</label>
                 <input id="report-target" dir="ltr" placeholder="02:30" value={reportTarget} onChange={(e) => setReportTarget(e.target.value)}
                   onBlur={() => {
                     // A new report is planned at its target length.
@@ -531,29 +518,29 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                   }} pattern="^[0-9]{1,2}:[0-9]{2}$" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-center" />
               </div>
               <div>
-                <label htmlFor="report-due" className="block text-[11px] font-bold text-slate-700 mb-1">موعد التسليم</label>
+                <label htmlFor="report-due" className="block text-2xs font-bold text-slate-700 mb-1">موعد التسليم</label>
                 <input id="report-due" type="datetime-local" value={toLocalInput(report.dueAt)} onChange={(e) => setReport({ ...report, dueAt: fromLocalInputValue(e.target.value) || undefined })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <label htmlFor="report-shots" className="block text-[11px] font-bold text-slate-700 mb-1">اللقطات والمقابلات المطلوبة</label>
+                <label htmlFor="report-shots" className="block text-2xs font-bold text-slate-700 mb-1">اللقطات والمقابلات المطلوبة</label>
                 <textarea id="report-shots" rows={2} value={report.shots || ''} onChange={(e) => setReport({ ...report, shots: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs" />
               </div>
               <div>
-                <label htmlFor="report-soundbites" className="block text-[11px] font-bold text-slate-700 mb-1">التصريحات</label>
+                <label htmlFor="report-soundbites" className="block text-2xs font-bold text-slate-700 mb-1">التصريحات</label>
                 <textarea id="report-soundbites" rows={2} value={report.soundbites || ''} onChange={(e) => setReport({ ...report, soundbites: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs" />
               </div>
             </div>
             <div>
-              <label htmlFor="report-note" className="block text-[11px] font-bold text-slate-700 mb-1">
+              <label htmlFor="report-note" className="block text-2xs font-bold text-slate-700 mb-1">
                 {report.source === 'AGENCY' ? 'الوكالة ورقم المادة' : report.source === 'ARCHIVE' ? 'المواد المطلوبة من الأرشيف' : 'ملاحظات للمنفذ'}
               </label>
               <input id="report-note" value={report.sourceNote || ''} onChange={(e) => setReport({ ...report, sourceNote: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs" />
             </div>
             {reportSourceOf(report.source)?.requestType && episodeId && (
               existingReportRequest ? (
-                <p className="text-[11px] text-emerald-700 font-bold">أُرسل الطلب للقسم ({existingReportRequest.addressedToName || existingReportRequest.assigneeName || 'بانتظار الاستلام'}).</p>
+                <p className="text-2xs text-emerald-700 font-bold">أُرسل الطلب للقسم ({existingReportRequest.addressedToName || existingReportRequest.assigneeName || 'بانتظار الاستلام'}).</p>
               ) : (
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
                   <input type="checkbox" checked={sendReportRequest} onChange={(e) => setSendReportRequest(e.target.checked)} />
@@ -561,8 +548,8 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 </label>
               )
             )}
-            {!report.source && <p className="text-[11px] font-bold text-amber-800">اختر مصدر التقرير لإنشاء أمر التكليف (اختياري).</p>}
-            <p className="text-[10px] text-slate-500">بعد وصول المادة: أرفق الفيديو أدناه أو اطلب المونتاج من الرانداون؛ تتحدث جاهزية الفقرة تلقائياً.</p>
+            {!report.source && <p className="text-2xs font-bold text-amber-800">اختر مصدر التقرير لإنشاء أمر التكليف (اختياري).</p>}
+            <p className="text-2xs text-slate-500">بعد وصول المادة: أرفق الفيديو أدناه أو اطلب المونتاج من الرانداون؛ تتحدث جاهزية الفقرة تلقائياً.</p>
           </fieldset>
         )}
 
@@ -592,7 +579,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setVideoAssetUrl('')}
-                  className="text-[10px] text-slate-500 hover:text-rose-500"
+                  className="text-2xs text-slate-500 hover:text-rose-500"
                 >
                   مسح
                 </button>
@@ -600,6 +587,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
             </div>
             <input
               id="segment-video-input"
+              data-autofocus={focusField === 'segment-video-input' || undefined}
               type="text"
               value={videoAssetUrl}
               onChange={(e) => setVideoAssetUrl(e.target.value)}
@@ -619,19 +607,20 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         {/* Autocue / Script Text with Live Reading Pace Calculator */}
         <LongTextField
           id="segment-script-textarea"
+          data-autofocus={focusField === 'segment-script-textarea' || undefined}
           name="نص المذيع"
           sizeKey="anchor-script"
           label="نص الأوتوكيو / القراءة للمذيع"
           aside={
             scriptSpeechPace && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                <span className="text-2xs font-mono font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
                   {scriptSpeechPace.words} كلمة ~ {scriptSpeechPace.formatted} دقيقة
                 </span>
                 <button
                   type="button"
                   onClick={handleApplySpeechDuration}
-                  className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors"
+                  className="text-2xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors"
                   title="تحديث حقل المدة المقررة وفق زمن قراءة هذا النص"
                 >
                   تطبيق كمدة للفقرة

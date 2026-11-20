@@ -1,3 +1,4 @@
+import { AR, countLabel } from '../shared/arabicPlural';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { confirmDialog } from '../services/dialogs';
 import { GlossaryDatalist } from '../components/editor/WritingAids';
@@ -70,33 +71,41 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-blue-600" />
             أجندة التغطية
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             الأحداث المتوقعة وقرار تغطيتها ومن يغطيها؛ يصل المكلفين تنبيه، ويُكتب الخبر من الحدث مباشرة.
-            {undecided > 0 && <span className="text-amber-700 font-bold"> أحداث قادمة بلا قرار تغطية: {undecided}.</span>}
           </p>
+          {undecided > 0 && (
+            <button type="button" onClick={() => {
+                const first = entries.filter((e) => e.date >= today && e.coverage === 'UNDECIDED').map((e) => e.date).sort()[0];
+                if (first) setAnchor(first);
+                setCoverage('UNDECIDED');
+              }} className="mt-1.5 min-h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs font-bold hover:bg-amber-100">
+              {countLabel(undecided, { one: 'حدث قادم', two: 'حدثان قادمان', few: 'أحداث قادمة', many: 'حدثاً قادماً' })} بلا قرار تغطية
+            </button>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setAnchor(shiftDay(anchor, -7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 shrink-0">
+          <button type="button" onClick={() => setAnchor(shiftDay(anchor, -7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-xs font-bold text-slate-700 px-1" aria-live="polite">
+          <span className="text-xs font-bold text-slate-700 px-1 whitespace-nowrap" aria-live="polite">
             من {arabicDate(days[0])} إلى {arabicDate(days[6])}
           </span>
-          <button type="button" onClick={() => setAnchor(shiftDay(anchor, 7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
+          <button type="button" onClick={() => setAnchor(shiftDay(anchor, 7))} className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => setAnchor(today)} className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+          <button type="button" onClick={() => setAnchor(today)} className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold whitespace-nowrap">
             هذا الأسبوع
           </button>
           {canManage && (
-            <button type="button" onClick={() => setEditing({ date: days.includes(today) ? today : days[0] })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
-              <Plus className="w-3.5 h-3.5" /> حدث جديد
+            <button type="button" onClick={() => setEditing({ date: days.includes(today) ? today : days[0] })} className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs whitespace-nowrap">
+              <Plus className="w-4 h-4" /> حدث جديد
             </button>
           )}
         </div>
@@ -105,9 +114,9 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
       <div className="bg-white p-3 rounded-2xl border border-slate-200 flex flex-col lg:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث في الأحداث والأماكن والمكلفين..." aria-label="بحث في الأجندة" className="w-full pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-xs" />
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث في الأحداث والأماكن والمكلفين..." aria-label="بحث في الأجندة" className="w-full min-h-11 sm:min-h-0 pr-9 pl-3 py-2 border border-slate-300 rounded-xl text-xs" />
         </div>
-        <select value={coverage} onChange={(e) => setCoverage(e.target.value)} aria-label="قرار التغطية" className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
+        <select value={coverage} onChange={(e) => setCoverage(e.target.value)} aria-label="قرار التغطية" className="min-h-11 sm:min-h-0 px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
           <option value="ALL">كل القرارات</option>
           {COVERAGE_DECISIONS.map((c) => (
             <option key={c.id} value={c.id}>
@@ -115,7 +124,7 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
             </option>
           ))}
         </select>
-        <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700">
+        <label className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer">
           <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} className="accent-blue-600" />
           تكليفاتي فقط
         </label>
@@ -125,20 +134,23 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
         {days.map((day) => {
           const list = visible.filter((e) => e.date === day);
           return (
-            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
+            <section key={day} aria-label={`${dayName(day)} ${arabicDate(day)}`} className={`rounded-2xl border p-2.5 space-y-2 md:min-h-[8rem] ${day === today ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
               <header className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-800">
                   {dayName(day)}
-                  {day === today && <span className="ms-1 text-[10px] text-blue-700">(اليوم)</span>}
-                  <span className="block font-normal text-[11px] text-slate-500">{arabicDate(day)}</span>
+                  {day === today && <span className="ms-1 text-2xs text-blue-700">(اليوم)</span>}
+                  <span className={`font-normal text-2xs text-slate-500 ${list.length ? 'block' : 'ms-1.5 md:ms-0 md:block'}`}>
+                    {arabicDate(day)}
+                    {list.length === 0 && <span className="md:hidden"> · لا أحداث</span>}
+                  </span>
                 </p>
                 {canManage && (
-                  <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-                    <Plus className="w-3.5 h-3.5" />
+                  <button type="button" onClick={() => setEditing({ date: day })} aria-label={`إضافة حدث ${arabicDate(day)}`} className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600">
+                    <Plus className="w-4 h-4" />
                   </button>
                 )}
               </header>
-              {list.length === 0 && <p className="text-[11px] text-slate-500">لا أحداث</p>}
+              {list.length === 0 && <p className="hidden md:block text-2xs text-slate-500">لا أحداث</p>}
               {list.map((e) => {
                 const cov = coverageOf(e.coverage);
                 const produced = newsList.filter((n) => n.diaryId === e.id && !n.deletedAt).length;
@@ -147,22 +159,22 @@ export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, catego
                     <p className="text-xs font-bold text-slate-900 leading-snug">
                       {e.priority === 'HIGH' && <Flag className="w-3 h-3 text-red-600 inline ms-0.5" aria-label="أولوية عالية" />} {e.title}
                     </p>
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-2xs text-slate-500">
                       {e.startTime ? `${e.startTime}${e.endTime ? `–${e.endTime}` : ''}` : 'طوال اليوم'} · {diaryKindName(e.kind)}
                     </p>
                     {e.location && (
-                      <p className="text-[10px] text-slate-500 flex items-center gap-0.5">
+                      <p className="text-2xs text-slate-500 flex items-center gap-0.5">
                         <MapPin className="w-3 h-3" /> {e.location}
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
+                      <span className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${cov.tone}`}>{cov.name}</span>
                       {e.assigneeIds.length > 0 && (
-                        <span className="text-[10px] text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
-                          <UsersIcon className="w-3 h-3" /> {e.assigneeIds.length === 1 ? userName(e.assigneeIds[0]) : `${e.assigneeIds.length} مكلفين`}
+                        <span className="text-2xs text-slate-600 flex items-center gap-0.5" title={e.assigneeIds.map(userName).join('، ')}>
+                          <UsersIcon className="w-3 h-3" /> {e.assigneeIds.length === 1 ? userName(e.assigneeIds[0]) : countLabel(e.assigneeIds.length, { one: 'مكلف واحد', two: 'مكلفان', few: 'مكلفين', many: 'مكلفاً' })}
                         </span>
                       )}
-                      {produced > 0 && <span className="text-[10px] text-emerald-700 font-bold">{produced} خبر</span>}
+                      {produced > 0 && <span className="text-2xs text-emerald-700 font-bold">{countLabel(produced, AR.news)}</span>}
                     </div>
                   </button>
                 );
@@ -359,7 +371,7 @@ const DiaryEntryPage: React.FC<{
                 )}
               </span>
             ))}
-            {!(draft.assigneeIds || []).length && <span className="text-[11px] text-slate-500">لا أحد بعد</span>}
+            {!(draft.assigneeIds || []).length && <span className="text-2xs text-slate-500">لا أحد بعد</span>}
           </div>
           {!readOnly && (
             <select
@@ -389,7 +401,7 @@ const DiaryEntryPage: React.FC<{
           <section className="grid sm:grid-cols-2 gap-3">
             <div className="p-3 rounded-xl border border-slate-200 space-y-2">
               <p className="text-xs font-bold text-slate-700">الأخبار المكتوبة من الحدث</p>
-              {produced.length === 0 && <p className="text-[11px] text-slate-500">لا شيء بعد</p>}
+              {produced.length === 0 && <p className="text-2xs text-slate-500">لا شيء بعد</p>}
               {produced.map((n) => (
                 <button key={n.id} type="button" onClick={() => onOpenNews(n.id)} className="block text-right text-xs text-blue-700 hover:underline">
                   {n.title}
@@ -403,7 +415,7 @@ const DiaryEntryPage: React.FC<{
             </div>
             <div className="p-3 rounded-xl border border-slate-200 space-y-2">
               <p className="text-xs font-bold text-slate-700">المعدات والطواقم المحجوزة</p>
-              {bookings.length === 0 && <p className="text-[11px] text-slate-500">لا حجوزات</p>}
+              {bookings.length === 0 && <p className="text-2xs text-slate-500">لا حجوزات</p>}
               {bookings.map((b) => (
                 <p key={b.id} className="text-xs text-slate-700">
                   {resName(b.resourceId)} — {fmtTime(b.start)}–{fmtTime(b.end)}

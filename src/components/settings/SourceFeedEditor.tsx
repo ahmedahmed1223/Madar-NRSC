@@ -66,14 +66,14 @@ export const SourceFeedEditor: React.FC<SourceFeedEditorProps> = ({ source, onSa
           setResult(null);
         }}
         placeholder="https://agency.example/rss.xml"
-        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+        className="w-full min-h-11 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
       />
       <label className="flex items-center gap-2 text-slate-600">
         <input type="checkbox" disabled={saving || testing} checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        جلب البرقيات تلقائياً إلى مكتب البرقيات
+        جلب المواد تلقائياً إلى شاشة المصادر
       </label>
       {result && (
-        <div className={`p-2 rounded-lg text-[11px] ${result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
+        <div className={`p-2 rounded-lg text-2xs ${result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
           <div className="flex items-center gap-1.5 font-bold">
             {result.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
             {result.text}
@@ -96,7 +96,7 @@ export const SourceFeedEditor: React.FC<SourceFeedEditorProps> = ({ source, onSa
           type="button"
           onClick={handleTest}
           disabled={!validUrl || testing || saving}
-          className="px-3 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 inline-flex items-center gap-1"
+          className="min-h-11 px-3 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 inline-flex items-center gap-1"
         >
           {testing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           اختبار الرابط
@@ -105,7 +105,7 @@ export const SourceFeedEditor: React.FC<SourceFeedEditorProps> = ({ source, onSa
           type="button"
           onClick={handleSave}
           disabled={saving || testing || (!!feedUrl.trim() && !validUrl)}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold disabled:opacity-50"
+          className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold disabled:opacity-50"
         >
           {saving ? 'جارٍ الحفظ...' : saveError ? 'إعادة محاولة الحفظ' : 'حفظ'}
         </button>

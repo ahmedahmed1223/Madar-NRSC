@@ -20,7 +20,7 @@ test('task draft survives browser Back and an immediate reload without saving a 
 test('task list actions have task-specific accessible names and fit a scroll region on mobile', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
   await openNav(page, 'المهام');
-  await page.getByRole('button', { name: 'جدول قائمة', exact: true }).click();
+  await page.getByRole('button', { name: 'قائمة', exact: true }).click();
   await expect(page.getByRole('button', { name: /^تعديل المهمة:/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^حذف المهمة:/ }).first()).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });

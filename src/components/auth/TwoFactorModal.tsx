@@ -131,7 +131,7 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
           <form onSubmit={handleEnable} className="space-y-3">
             <p className="text-xs text-slate-600">امسح الرمز بتطبيق المصادقة، ثم أدخل الرمز المكوّن من 6 أرقام الظاهر فيه.</p>
             {qrDataUrl && <img src={qrDataUrl} alt="رمز QR لإعداد تطبيق المصادقة" className="mx-auto w-48 h-48" />}
-            <div className="text-[11px] text-slate-500 text-center">
+            <div className="text-2xs text-slate-500 text-center">
               أو أدخل المفتاح يدوياً:
               <div className="font-mono text-xs text-slate-800 break-all mt-1 select-all" dir="ltr">
                 {secret.replace(/(.{4})/g, '$1 ').trim()}

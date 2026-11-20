@@ -1,4 +1,5 @@
 import { newId } from '../../shared/ids';
+import { matchesQuery } from '../../shared/search';
 import React, { useEffect, useState } from 'react';
 import {
   RundownSegment,
@@ -6,26 +7,7 @@ import {
   Guest,
   NewsItem,
 } from '../../types';
-import {
-  ArrowUp,
-  ArrowDown,
-  Edit2,
-  Trash2,
-  Plus,
-  Clock,
-  Printer,
-  CheckCircle2,
-  Video,
-  FileText,
-  User as UserIcon,
-  AlertCircle,
-  Download,
-  Database,
-  Tv,
-  Radio,
-  Search,
-  X,
-} from 'lucide-react';
+import { ArrowUp, ArrowDown, Edit2, Trash2, Plus, Clock, Printer, CheckCircle2, Video, FileText, User as UserIcon, Download, Database, Tv, Search, X } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { SegmentModal } from './SegmentModal';
 import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sortable';
@@ -38,7 +20,8 @@ import { RbacService } from '../../services/rbacService';
 import { segmentReadiness } from '../../shared/production';
 import { departmentName } from '../../shared/departments';
 import { TeleprompterModal } from './TeleprompterModal';
-import { formatSecondsToTime, apiService } from '../../services/api';
+import { apiService } from '../../services/api';
+import { minutesLabel, segmentClock } from '../../shared/durations';
 
 interface RundownTableProps {
   segments: RundownSegment[];
@@ -92,15 +75,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
   const displayedSegments = segments.filter((s) => {
     if (filterType !== 'ALL' && s.segmentType !== filterType) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = s.title.toLowerCase().includes(q);
-      const matchScript = s.scriptText?.toLowerCase().includes(q);
-      const matchPresenter = s.presenterName?.toLowerCase().includes(q);
-      const matchGuest = s.guestName?.toLowerCase().includes(q);
-      const matchNotes = s.notes?.toLowerCase().includes(q);
-      if (!matchTitle && !matchScript && !matchPresenter && !matchGuest && !matchNotes) return false;
-    }
+    if (searchQuery.trim() && !matchesQuery(searchQuery, s.title, s.scriptText, s.presenterName, s.guestName, s.notes)) return false;
     return true;
   });
 
@@ -233,8 +208,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
             </div>
             <div>
               <span className="text-xs text-slate-500 block">إجمالي زمن الرانداون</span>
-              <strong className="text-lg font-bold font-mono text-slate-800">
-                {formatSecondsToTime(totalRundownSeconds)}
+              <strong className="text-lg font-bold tabular-nums text-slate-800">
+                {minutesLabel(totalRundownSeconds)}
               </strong>
             </div>
           </div>
@@ -244,7 +219,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           <div>
             <span className="text-xs text-slate-500 block">المدة المقررة للحلقة</span>
             <span className="text-sm font-semibold text-slate-700">
-              {plannedDurationMinutes} دقيقة ({formatSecondsToTime(plannedSeconds)})
+              {minutesLabel(plannedSeconds)}
             </span>
           </div>
 
@@ -258,11 +233,11 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               </Badge>
             ) : differenceSeconds > 0 ? (
               <Badge variant="danger" size="md" dot>
-                فائض في الوقت: +{formatSecondsToTime(differenceSeconds)}
+                فائض في الوقت: {minutesLabel(differenceSeconds)}
               </Badge>
             ) : (
               <Badge variant="warning" size="md" dot>
-                عجز في الوقت: -{formatSecondsToTime(Math.abs(differenceSeconds))}
+                عجز في الوقت: {minutesLabel(differenceSeconds)}
               </Badge>
             )}
           </div>
@@ -271,7 +246,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         {/* Action buttons */}
         <div className="flex items-center flex-wrap gap-2">
           {syncStatusMsg && (
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-fade-in">
+            <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-fade-in">
               {syncStatusMsg}
             </span>
           )}
@@ -280,7 +255,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
             <a
               href={apiService.getMosExportUrl(episodeId)}
               download={`episode_${episodeId}_mos.xml`}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors border border-indigo-200"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-xl transition-colors border border-slate-200"
               title="تصدير بروتوكول MOS Protocol 2.8.5 لأنظمة أتمتة البث وغرف الأخبار"
             >
               <Download className="w-4 h-4" />
@@ -293,7 +268,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               type="button"
               onClick={handleManualDbSync}
               disabled={isSyncingDb}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-xl transition-colors border border-slate-200 disabled:opacity-50"
               title="حفظ ومزامنة فورية مع قاعدة بيانات SQLite"
             >
               <Database className={`w-4 h-4 ${isSyncingDb ? 'animate-spin text-blue-600' : ''}`} />
@@ -305,10 +280,10 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           <button
             type="button"
             onClick={() => setIsPrompterOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors border border-purple-200 shadow-2xs"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-xl transition-colors border border-slate-200"
             title="فتح شاشة الملقن التفاعلية للمذيع ومخرج الاستوديو"
           >
-            <Tv className="w-4 h-4 text-purple-600" />
+            <Tv className="w-4 h-4 text-slate-500" />
             <span>شاشة الملقن</span>
           </button>
 
@@ -393,13 +368,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                   setSearchQuery('');
                   setFilterType('ALL');
                 }}
-                className="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-bold"
+                className="text-2xs text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-bold"
               >
                 إلغاء التصفية
               </button>
             )}
 
-            <div className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+            <div className="text-2xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
               {displayedSegments.length} من {segments.length}
             </div>
           </div>
@@ -413,17 +388,17 @@ export const RundownTable: React.FC<RundownTableProps> = ({
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <th className="py-3 px-3 w-12 text-center">#</th>
-                <th className="py-3 px-3 w-10 text-center">تمت</th>
-                <th className="py-3 px-4">عنوان وموضوع الفقرة</th>
-                <th className="py-3 px-3">النوع</th>
-                <th className="py-3 px-3 font-mono text-center">البداية</th>
-                <th className="py-3 px-3 font-mono text-center">المدة</th>
-                <th className="py-3 px-3 font-mono text-center">النهاية</th>
-                <th className="py-3 px-3">المذيع / الضيف</th>
-                <th className="py-3 px-3">ملاحظات البث والمواد</th>
-                <th className="py-3 px-3">الجاهزية</th>
-                {canEdit && <th className="py-3 px-3 text-center w-28">إجراءات</th>}
+                <th className="py-3 px-2.5 w-12 text-center">#</th>
+                <th className="py-3 px-2.5 w-10 text-center">تمت</th>
+                <th className="py-3 px-3 min-w-[12rem]">الفقرة</th>
+                <th className="py-3 px-2.5">النوع</th>
+                <th className="py-3 px-2.5 font-mono text-center">البداية</th>
+                <th className="py-3 px-2.5 font-mono text-center">المدة</th>
+                <th className="py-3 px-2.5 font-mono text-center hidden 2xl:table-cell">النهاية</th>
+                <th className="py-3 px-2.5 min-w-[7.5rem]">المذيع / الضيف</th>
+                <th className="py-3 px-2.5 min-w-[7rem]">ملاحظات ومواد</th>
+                <th className="py-3 px-2.5">الجاهزية</th>
+                {canEdit && <th className="py-3 px-2.5 text-center w-28">إجراءات</th>}
               </tr>
             </thead>
             <SortableList id="rundown" as="tbody" className="divide-y divide-slate-100 text-slate-800">
@@ -452,9 +427,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               ) : (
                 displayedSegments.map((seg, idx) => {
                   const badgeInfo = typeBadges[seg.segmentType] || { label: seg.segmentType, variant: 'default' };
-                  const durationMins = Math.floor(seg.durationSeconds / 60);
-                  const durationSecs = seg.durationSeconds % 60;
-                  const durationStr = `${durationMins.toString().padStart(2, '0')}:${durationSecs.toString().padStart(2, '0')}`;
+                  const durationStr = segmentClock(seg.durationSeconds || 0);
 
                   return (
                     <SortableItem
@@ -478,59 +451,61 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       </td>
 
                       {/* Completed toggle */}
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="py-3.5 px-2.5 text-center">
                         <button
                           type="button"
                           onClick={() => toggleComplete(seg.id)}
-                          className={`p-1 rounded-md transition-colors ${
-                            seg.isCompleted ? 'text-emerald-700' : 'text-slate-300 hover:text-slate-500'
+                          aria-pressed={!!seg.isCompleted}
+                          aria-label={`${seg.isCompleted ? 'أُذيعت' : 'تحديد كمُذاعة'}: ${seg.title}`}
+                          className={`min-h-9 min-w-9 inline-flex items-center justify-center rounded-md transition-colors ${
+                            seg.isCompleted ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
                           }`}
-                          title={seg.isCompleted ? 'تم بث الفقرة' : 'تحديد كتم البث'}
+                          title={seg.isCompleted ? 'أُذيعت الفقرة' : 'تحديد الفقرة كمُذاعة'}
                         >
                           <CheckCircle2 className="w-4 h-4" />
                         </button>
                       </td>
 
                       {/* Title & Script excerpt */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-3">
                         {seg.topicId && topics.some((t) => t.id === seg.topicId) && (
-                          <div className="text-[10px] font-bold text-indigo-700">
+                          <div className="text-2xs font-semibold text-slate-500">
                             محور {topics.findIndex((t) => t.id === seg.topicId) + 1}: {topics.find((t) => t.id === seg.topicId)?.title}
                           </div>
                         )}
                         <div className="font-bold text-slate-800 text-sm">{seg.title}</div>
                         {seg.newsId && RbacService.hasPermission(apiService.getCurrentUser(), 'news.view') && apiService.getNewsCorrections().some(r => r.newsId === seg.newsId) && <a href={`/news/${encodeURIComponent(seg.newsId)}`} className="inline-flex min-h-11 items-center text-xs text-rose-700 underline">تصحيح مسجل</a>}
                         {seg.scriptText && (
-                          <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
+                          <p className="text-2xs text-slate-500 line-clamp-1 mt-0.5" title={seg.scriptText}>
                             {seg.scriptText}
                           </p>
                         )}
                       </td>
 
                       {/* Type Badge */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-2.5">
                         <Badge variant={badgeInfo.variant} size="sm">
                           {badgeInfo.label}
                         </Badge>
                       </td>
 
                       {/* Start Offset */}
-                      <td className="py-3.5 px-3 text-center font-mono text-slate-600 font-semibold bg-slate-50/50">
+                      <td className="py-3.5 px-2.5 text-center font-mono text-slate-600 font-semibold bg-slate-50/50" title={`حتى ${seg.endTimeOffset}`}>
                         {seg.startTimeOffset}
                       </td>
 
                       {/* Duration */}
-                      <td className="py-3.5 px-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
+                      <td className="py-3.5 px-2.5 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
                         {durationStr}
                       </td>
 
                       {/* End Offset */}
-                      <td className="py-3.5 px-3 text-center font-mono text-slate-600 font-semibold bg-slate-50/50">
+                      <td className="py-3.5 px-2.5 text-center font-mono text-slate-600 font-semibold bg-slate-50/50 hidden 2xl:table-cell">
                         {seg.endTimeOffset}
                       </td>
 
                       {/* Presenter / Guest */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-2.5">
                         <div className="space-y-0.5">
                           {seg.presenterName && (
                             <div className="flex items-center gap-1 text-slate-700 font-medium">
@@ -539,8 +514,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                             </div>
                           )}
                           {segmentGuests(seg).map((g) => (
-                            <div key={g.guestId} className="flex items-center gap-1 text-purple-700 font-medium">
-                              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                            <div key={g.guestId} className="flex items-start gap-1 text-slate-700">
+                              <span className="w-1.5 h-1.5 mt-1.5 shrink-0 rounded-full bg-slate-400" aria-hidden />
                               <span>{g.role === 'MAIN' ? 'الضيف' : g.role === 'CALLER' ? 'مداخلة' : 'معقّب'}: {g.guestName}</span>
                             </div>
                           ))}
@@ -548,36 +523,36 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                       </td>
 
                       {/* Notes & Linked News/Video */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-2.5 max-w-[10rem]">
                         <div className="space-y-1">
                           {seg.videoAssetUrl && (
-                            <div className="flex items-center gap-1 text-[11px] text-red-600">
+                            <div className="flex items-center gap-1 text-2xs text-red-600">
                               <Video className="w-3 h-3 shrink-0" />
-                              <span className="truncate max-w-[120px]">فيديو مرفق</span>
+                              <span>فيديو مرفق</span>
                             </div>
                           )}
                           {seg.newsTitle && (
-                            <div className="flex items-center gap-1 text-[11px] text-blue-600">
+                            <div className="flex items-center gap-1 text-2xs text-blue-600">
                               <FileText className="w-3 h-3 shrink-0" />
-                              <span className="truncate max-w-[120px]" title={seg.newsTitle}>
+                              <span className="min-w-0 line-clamp-2" title={seg.newsTitle}>
                                 {seg.newsTitle}
                               </span>
                             </div>
                           )}
                           {seg.notes && (
-                            <span className="text-[11px] text-slate-500 italic block">{seg.notes}</span>
+                            <span className="text-2xs text-slate-500 block">{seg.notes}</span>
                           )}
                         </div>
                       </td>
 
                       {/* Readiness per department */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-2.5">
                         <div className="flex flex-wrap gap-1 max-w-[180px]">
                           {segmentReadiness(seg, episodeRecord, readinessCtx).map((item) => (
                             <span
                               key={item.key}
                               title={`${departmentName(item.departmentId)}: ${item.detail}`}
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                              className={`whitespace-nowrap text-2xs font-bold px-1.5 py-0.5 rounded-md border ${
                                 item.state === 'ready'
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : item.state === 'pending'
@@ -597,7 +572,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                                   link: { kind: 'segment', episodeId, segmentId: seg.id, title: `${episodeRecord?.title || 'حلقة'} — ${seg.title}` },
                                 })
                               }
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
+                              className="text-2xs font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"
                               title="طلب مونتاج أو جرافيك أو استديو لهذه الفقرة"
                             >
                               + طلب
@@ -608,13 +583,13 @@ export const RundownTable: React.FC<RundownTableProps> = ({
 
                       {/* Action buttons */}
                       {canEdit && (
-                        <td className="py-3.5 px-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="py-3.5 px-2.5 text-center">
+                          <div className="flex items-center justify-center gap-0">
                             <button
                               type="button"
                               onClick={() => handleMove(idx, 'UP')}
                               disabled={idx === 0}
-                              className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+                              className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
                               title="تحريك لأعلى"
                             >
                               <ArrowUp className="w-3.5 h-3.5" />
@@ -623,7 +598,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                               type="button"
                               onClick={() => handleMove(idx, 'DOWN')}
                               disabled={idx === segments.length - 1}
-                              className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+                              className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
                               title="تحريك لأسفل"
                             >
                               <ArrowDown className="w-3.5 h-3.5" />
@@ -634,7 +609,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                                 setEditingSegment(seg);
                                 setIsAddModalOpen(true);
                               }}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded-md"
+                              className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-md"
                               title="تعديل الفقرة"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
@@ -642,7 +617,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDelete(seg.id)}
-                              className="p-1 text-red-500 hover:bg-red-50 rounded-md"
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-md"
                               title="حذف الفقرة"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

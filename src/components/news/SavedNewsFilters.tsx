@@ -96,7 +96,9 @@ export function SavedNewsFilters({ userId, definition, onApply }: Props) {
       let row: SavedNewsFilterRow | undefined;
       if (unknown.current.has(key)) {
         const latest = (await apiService.getSavedNewsFilterRows(controller.signal)).find(item => item.id === draft.id);
-        if (latest && latest.d.name === draft.name.trim() && latest.d.pinned === draft.pinned && Object.keys(draft.definition).every(field => latest.d.definition[field] === draft.definition[field])) row = latest;
+        const sameDefinition = latest && Object.keys(draft.definition).every(field => field === 'selectedSource' || latest.d.definition[field] === draft.definition[field])
+          && (latest.d.definition.selectedSource || 'ALL') === (draft.definition.selectedSource || 'ALL');
+        if (latest && sameDefinition && latest.d.name === draft.name.trim() && latest.d.pinned === draft.pinned) row = latest;
         else if ((latest && latest.v !== baseV) || (!latest && baseV !== undefined)) throw new Error('تغيرت النسخة؛ أعد تحميل الفلاتر وراجعها قبل الحفظ');
       }
       row ??= await apiService.saveSavedNewsFilter(draft, baseV, controller.signal);

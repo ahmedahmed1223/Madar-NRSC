@@ -61,6 +61,14 @@ export const COLLECTIONS = {
   resources: { storageKey: 'nrcs_resources_v1', kind: 'list' },
   /** Resource bookings (the server rejects overlapping bookings of the same resource). */
   bookings: { storageKey: 'nrcs_bookings_v1', kind: 'list' },
+  /** Production cards that travel with an item between stations (see shared/productionCards). */
+  productionCards: { storageKey: 'madar_production_cards_v1', kind: 'list' },
+  /** Workflow templates assignments are created from (see shared/workflowTemplates). */
+  workflowTemplates: { storageKey: 'madar_workflow_templates_v1', kind: 'list' },
+  /** Group conversations; a row is visible to its members only (see shared/chat). */
+  conversations: { storageKey: 'madar_conversations_v1', kind: 'list' },
+  /** Where each colleague has read up to, per channel; id = userId (private). */
+  chatReads: { storageKey: 'madar_chat_reads_v1', kind: 'list' },
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;
@@ -83,6 +91,13 @@ export interface BroadcastState {
 /** Collections whose previous versions are kept for review and restore. */
 export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories']);
 
+/**
+ * Collections where a write based on an older version is merged on the server instead of refused
+ * (see mergeCardChanges); their recent versions are kept so the merge can find what the sender started from.
+ */
+export const MERGE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['productionCards']);
+export const MERGE_HISTORY_KEEP = 50;
+
 /** Collections protected by edit locks. */
 export const LOCKABLE_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'episodes', 'bulletinStories']);
 
@@ -103,24 +118,27 @@ export function lockIdFor(collection: CollectionName, entityId: string) {
   return `${collection}:${entityId}`;
 }
 
+/**
+ * Whether this browser may release the lock: one the server stamped with this user, or our own
+ * request still waiting for the server (it has no owner yet). Leaving before the server answers
+ * must still release it, otherwise the lock is granted afterwards and blocks colleagues until it expires.
+ */
+export function isOwnLock(lock: EditLock | null | undefined, userId: string | undefined): boolean {
+  return !!lock && (!lock.userId || (!!userId && lock.userId === userId));
+}
+
 export function isLockActive(lock: EditLock | null | undefined, now = Date.now()): boolean {
   return !!lock && !!lock.expiresAt && new Date(lock.expiresAt).getTime() > now;
 }
 
-export interface ChatMessage {
-  id: string;
-  /** 'general', a department id, or a legacy channel (STUDIO_PCR, NEWSROOM, FIELD). */
-  channel: string;
-  text: string;
-  userId?: string;
-  userName?: string;
-  userRole?: string;
-  userAvatar?: string;
-  timestamp?: string;
-}
+export type { ChatMessage } from './chat';
 
 /** Maximum rows of an append-only log sent to a browser on bootstrap. */
 export const LOG_BOOTSTRAP_LIMIT = 500;
+/** Messages a browser starts with (the newest it may read); older ones are fetched per conversation. */
+export const MESSAGE_BOOTSTRAP_LIMIT = 1500;
+/** How far back the server looks for them, since most rows of a busy newsroom are other people's conversations. */
+export const MESSAGE_BOOTSTRAP_SCAN = 30000;
 
 /**
  * News in these states is finished work. Once untouched for NEWS_ACTIVE_DAYS it leaves the

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tv, Copy, Check, Sparkles, AlertCircle } from 'lucide-react';
+import { Tv, Copy, Check, Sparkles } from 'lucide-react';
 import { Modal } from '../common/Modal';
 
 interface LowerThirdGeneratorModalProps {
@@ -261,7 +261,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             معاينة شارة البث على شاشة التلفزيون
           </label>
           <div className="relative h-28 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden p-3 flex flex-col justify-end border border-slate-700 shadow-inner">
-            <div className="absolute top-2 left-3 flex items-center gap-1.5 text-[10px] font-mono text-red-400 font-bold">
+            <div className="absolute top-2 left-3 flex items-center gap-1.5 text-2xs font-mono text-red-400 font-bold">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               LIVE 1080p50 HD
             </div>
@@ -270,10 +270,10 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             <div className="bg-slate-950/90 border-r-4 border-blue-600 px-3 py-2 rounded-l-lg max-w-md shadow-2xl animate-in slide-in-from-bottom-2">
               {activeTab === 'GUEST' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide">
+                  <div className="text-white text-xs font-bold tracking-wide">
                     {guestName || 'اسم الضيف الكريم'}
                   </div>
-                  <div className="text-blue-400 text-[10px] font-semibold mt-0.5">
+                  <div className="text-blue-400 text-2xs font-semibold mt-0.5">
                     {[guestTitle, guestOrg].filter(Boolean).join(' - ') || 'الوظيفة أو التخصص والمؤسسة'}
                   </div>
                 </>
@@ -281,30 +281,30 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
 
               {activeTab === 'HEADLINE' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide">
+                  <div className="text-white text-xs font-bold tracking-wide">
                     {headlineText || 'العنوان الرئيسي للموضوع'}
                   </div>
                   {subHeadlineText && (
-                    <div className="text-slate-300 text-[10px] mt-0.5">{subHeadlineText}</div>
+                    <div className="text-slate-300 text-2xs mt-0.5">{subHeadlineText}</div>
                   )}
                 </>
               )}
 
               {activeTab === 'LOCATION' && (
                 <>
-                  <div className="text-white text-xs font-black tracking-wide flex items-center gap-1.5">
+                  <div className="text-white text-xs font-bold tracking-wide flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     {reporterName || 'مراسلنا الميداني'}
                   </div>
-                  <div className="text-slate-300 text-[10px] mt-0.5">
+                  <div className="text-slate-300 text-2xs mt-0.5">
                     {[locationCity, locationCountry].filter(Boolean).join(' - ') || 'العاصمة - الدولة'}
                   </div>
                 </>
               )}
 
               {activeTab === 'BREAKING' && (
-                <div className="text-red-400 text-xs font-black flex items-center gap-1.5">
-                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-[10px]">عاجل</span>
+                <div className="text-red-400 text-xs font-bold flex items-center gap-1.5">
+                  <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-2xs">عاجل</span>
                   <span className="text-white">{breakingText || 'نص الخبر العاجل'}</span>
                 </div>
               )}
@@ -319,7 +319,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors text-[11px]"
+              className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors text-2xs"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'تم النسخ' : 'نسخ الوسم'}
@@ -327,7 +327,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
             <button
               type="button"
               onClick={handleInsert}
-              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-[11px] font-bold"
+              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-2xs font-bold"
             >
               <Sparkles className="w-3.5 h-3.5" />
               إدراج في المحرر
@@ -339,7 +339,7 @@ export const LowerThirdGeneratorModal: React.FC<LowerThirdGeneratorModalProps> =
                   onSendToGraphics(tagResult);
                   onClose();
                 }}
-                className="flex items-center gap-1 px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-[11px] font-bold"
+                className="flex items-center gap-1 px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-2xs font-bold"
               >
                 إرسال لقسم الجرافيك
               </button>

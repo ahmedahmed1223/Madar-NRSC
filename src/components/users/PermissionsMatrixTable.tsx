@@ -1,23 +1,13 @@
 import React, { useState } from 'react';
+import { matchesQuery } from '../../shared/search';
 import {
   ALL_PERMISSIONS,
   PERMISSION_CATEGORIES,
   PermissionCategory,
   RoleDefinition,
 } from '../../services/rbacService';
-import {
-  Shield,
-  Check,
-  X,
-  Plus,
-  Edit2,
-  Trash2,
-  Search,
-  Filter,
-  RefreshCw,
-  AlertTriangle,
-  Info,
-} from 'lucide-react';
+import { Check, Plus, Edit2, Trash2, Search, Filter, RefreshCw, Info } from 'lucide-react';
+import { alertDialog, confirmDialog } from '../../services/dialogs';
 
 interface PermissionsMatrixTableProps {
   roles: RoleDefinition[];
@@ -26,6 +16,8 @@ interface PermissionsMatrixTableProps {
   onDeleteRole: (roleId: string) => void;
   onAddNewRole: () => void;
   onResetDefaults: () => void;
+  /** Why a role cannot be deleted (e.g. colleagues still hold it), or null; checked before asking to confirm. */
+  roleDeleteBlocker?: (role: RoleDefinition) => string | null;
 }
 
 export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
@@ -35,16 +27,28 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
   onDeleteRole,
   onAddNewRole,
   onResetDefaults,
+  roleDeleteBlocker,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PermissionCategory | 'ALL'>('ALL');
 
+  const handleDeleteRole = async (role: RoleDefinition) => {
+    const blocker = roleDeleteBlocker?.(role);
+    if (blocker) {
+      await alertDialog({ title: 'تعذر حذف الدور', message: blocker });
+      return;
+    }
+    const ok = await confirmDialog({
+      title: 'حذف الدور',
+      message: `حذف الدور المخصص «${role.nameAr}» نهائياً مع صلاحياته؟`,
+      confirmLabel: 'حذف الدور',
+      danger: true,
+    });
+    if (ok) onDeleteRole(role.id);
+  };
+
   const filteredPermissions = ALL_PERMISSIONS.filter((perm) => {
-    const matchesSearch =
-      perm.nameAr.includes(searchQuery) ||
-      perm.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      perm.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      perm.description.includes(searchQuery);
+    const matchesSearch = matchesQuery(searchQuery, perm.nameAr, perm.nameEn, perm.code, perm.description);
 
     const matchesCat = selectedCategory === 'ALL' || perm.category === selectedCategory;
 
@@ -59,22 +63,24 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
             <input
-              type="text"
+              type="search"
+              aria-label="بحث في الصلاحيات"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="البحث في الصلاحيات أو الرمز البرمجي..."
-              className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+              placeholder="ابحث باسم الصلاحية أو رمزها..."
+              className="w-full min-h-11 sm:min-h-9 text-xs pr-9 pl-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Filter className="w-4 h-4 text-slate-500 shrink-0" />
+            <Filter className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
             <select
+              aria-label="مجال الصلاحيات"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as any)}
-              className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-medium"
+              className="min-h-11 sm:min-h-9 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
             >
-              <option value="ALL">كافة الأقسام والموديولات</option>
+              <option value="ALL">كل المجالات</option>
               {PERMISSION_CATEGORIES.map((cat) => (
                 <option key={cat.key} value={cat.key}>
                   {cat.labelAr}
@@ -88,7 +94,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
           <button
             type="button"
             onClick={onResetDefaults}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+            className="min-h-11 sm:min-h-9 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
             title="استعادة الصلاحيات القياسية للمنظومة"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -98,7 +104,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
           <button
             type="button"
             onClick={onAddNewRole}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+            className="min-h-11 sm:min-h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>إضافة دور مخصص جديد</span>
@@ -106,12 +112,17 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
         </div>
       </div>
 
+      <p className="text-xs text-slate-600 flex items-start gap-1.5">
+        <Info className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+        الضغط على خانة يمنح الصلاحية للدور أو يلغيها فوراً ويُسجَّل في سجل التدقيق. دور «مدير النظام العام» يملك كل الصلاحيات دائماً حتى لا يُقفل النظام.
+      </p>
+
       {/* Matrix Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
             <thead>
-              <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold border-b border-slate-200">
+              <tr className="bg-slate-100 text-slate-700 text-2xs font-bold border-b border-slate-200">
                 <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-100 z-10">
                   الصلاحية ونطاق العملية
                 </th>
@@ -124,19 +135,21 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         <button
                           type="button"
                           onClick={() => onEditRole(role)}
-                          className="p-1 hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-md transition-colors"
+                          className="min-h-8 min-w-8 inline-flex items-center justify-center hover:bg-slate-200 text-slate-500 hover:text-slate-900 rounded-md transition-colors"
                           title="تعديل هذا الدور"
+                          aria-label={`تعديل الدور: ${role.nameAr}`}
                         >
-                          <Edit2 className="w-3 h-3" />
+                          <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                         </button>
                         {!role.isSystemRole && (
                           <button
                             type="button"
-                            onClick={() => onDeleteRole(role.id)}
-                            className="p-1 hover:bg-red-50 text-red-600 hover:text-red-700 rounded-md transition-colors"
+                            onClick={() => void handleDeleteRole(role)}
+                            className="min-h-8 min-w-8 inline-flex items-center justify-center hover:bg-rose-50 text-slate-500 hover:text-rose-700 rounded-md transition-colors"
+                            aria-label={`حذف الدور: ${role.nameAr}`}
                             title="حذف هذا الدور"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -155,10 +168,10 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
               ) : (
                 filteredPermissions.map((perm, idx) => {
                   const riskBadge = {
-                    LOW: <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
-                    MEDIUM: <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
-                    HIGH: <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
-                    CRITICAL: <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold border border-red-200">حرج / سيادي</span>,
+                    LOW: <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
+                    MEDIUM: <span className="text-2xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
+                    HIGH: <span className="text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">مرتفع</span>,
+                    CRITICAL: <span className="text-2xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 font-bold border border-rose-200 whitespace-nowrap">حرج</span>,
                   }[perm.riskLevel];
 
                   return (
@@ -173,11 +186,11 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{perm.nameAr}</span>
-                            <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
-                              ({perm.code})
+                            <span className="text-2xs text-slate-500 font-mono" dir="ltr">
+                              {perm.code}
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                          <span className="text-2xs text-slate-500 mt-0.5 line-clamp-1">
                             {perm.description}
                           </span>
                         </div>
@@ -186,36 +199,32 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                       {/* Risk Level */}
                       <td className="p-3 text-center">{riskBadge}</td>
 
-                      {/* Role Checkboxes */}
+                      {/* Role cells: real toggle buttons, so the grid works from the keyboard too. */}
                       {roles.map((role) => {
                         const isGranted = role.permissions.includes(perm.code);
                         const isSuper = role.roleCode === 'SUPER_ADMIN';
-
+                        const label = `${perm.nameAr} — ${role.nameAr}`;
                         return (
-                          <td
-                            key={role.id}
-                            className="p-3 text-center border-r border-slate-100 cursor-pointer hover:bg-blue-100/30"
-                            onClick={() => {
-                              if (!isSuper) {
-                                onUpdateRolePermissions(role.id, perm.code, !isGranted);
-                              }
-                            }}
-                          >
-                            <div className="flex items-center justify-center">
-                              {isSuper ? (
-                                <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold" title="مدير النظام يملك كافة الصلاحيات تلقائياً">
-                                  <Check className="w-3.5 h-3.5" />
-                                </div>
-                              ) : isGranted ? (
-                                <div className="w-6 h-6 rounded-md bg-emerald-500 text-white flex items-center justify-center shadow-xs transition-transform hover:scale-110">
-                                  <Check className="w-3.5 h-3.5" />
-                                </div>
-                              ) : (
-                                <div className="w-6 h-6 rounded-md bg-slate-100 text-slate-300 hover:text-slate-500 hover:bg-slate-200 flex items-center justify-center transition-colors">
-                                  <X className="w-3.5 h-3.5" />
-                                </div>
-                              )}
-                            </div>
+                          <td key={role.id} className="p-1.5 text-center border-r border-slate-100">
+                            {isSuper ? (
+                              <span className="inline-flex w-9 h-9 items-center justify-center text-slate-500" title="مدير النظام يملك كل الصلاحيات دائماً">
+                                <Check className="w-4 h-4" aria-hidden="true" />
+                                <span className="sr-only">{label}: ممنوحة دائماً</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-pressed={isGranted}
+                                aria-label={label}
+                                title={isGranted ? 'ممنوحة؛ اضغط للإلغاء' : 'غير ممنوحة؛ اضغط للمنح'}
+                                onClick={() => onUpdateRolePermissions(role.id, perm.code, !isGranted)}
+                                className="group inline-flex w-11 h-11 sm:w-9 sm:h-9 items-center justify-center rounded-md hover:bg-blue-50"
+                              >
+                                <span className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${isGranted ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-transparent group-hover:border-blue-400'}`}>
+                                  <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                                </span>
+                              </button>
+                            )}
                           </td>
                         );
                       })}
@@ -228,16 +237,6 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
         </div>
       </div>
 
-      {/* Info footer */}
-      <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <p className="font-bold">ملاحظة أمنية حول مصفوفة الصلاحيات:</p>
-          <p className="text-[11px] text-amber-800 leading-relaxed">
-            النقر المباشر على أي خلية يقوم بتفعيل أو إلغاء الصلاحية للدور المحدد فورياً. دور (مدير النظام العام) يمتلك كامل الصلاحيات بصورة سيادية غير قابلة للإلغاء لضمان عدم قفل النظام.
-          </p>
-        </div>
-      </div>
     </div>
   );
 };

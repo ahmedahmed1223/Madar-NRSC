@@ -1,9 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, FileText, Tv, Video, Users, CheckSquare, X } from 'lucide-react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, FileText, Tv, Video, Users, CheckSquare, X, History, FilePlus2, ArrowUpLeft, ListVideo, ClipboardList } from 'lucide-react';
 import { ApiService } from '../../services/api';
-import { NewsItem, Program, Episode, Guest } from '../../types';
+import { NewsItem, Program, Episode, Guest, User } from '../../types';
 import { statusLabel } from '../../shared/labels';
 import { useLiveData } from '../../hooks/useLiveData';
+import { RbacService } from '../../services/rbacService';
+import { clearRecent, loadRecent, rememberRecent } from '../../services/recentItems';
+import { matchScreens, QUICK_SCREENS, type RecentEntry, type RecentKind } from '../../shared/commandPalette';
+import { matchesQuery } from '../../shared/search';
+import { buildVocabulary, completeQuery, didYouMean, matchingRecentSearches, FEW_RESULTS } from '../../shared/arabicSearch';
+import { bulletinKindName, BULLETIN_STATUSES } from '../../shared/bulletins';
+import { cardKindName, CARD_STATUSES } from '../../shared/productionCards';
+import { clearRecentSearches, loadRecentSearches, rememberSearch } from '../../services/recentSearches';
+import { Highlight } from '../common/Highlight';
+import { DidYouMean, SearchHints, type SearchHint } from '../common/SearchHints';
+import { countLabel } from '../../shared/arabicPlural';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -14,27 +25,61 @@ interface CommandPaletteProps {
   onSelectGuest?: (id: string) => void;
   onSelectTask?: (id: string) => void;
   onNavigate?: (view: string) => void;
+  /** Opens a record by its address ("/bulletins/<id>", "/cards/<id>"). */
+  onOpenLink?: (path: string) => void;
   onQuickCreateNews?: () => void;
   newsList?: NewsItem[];
   programs?: Program[];
   episodes?: Episode[];
   guests?: Guest[];
+  currentUser?: User;
 }
 
 interface Result {
   key: string;
   group: string;
   icon: React.ElementType;
-  tone: string;
   title: string;
   meta?: string;
   badge?: string;
   open: () => void;
 }
 
+const RECENT_GROUP = 'فتح مؤخراً';
+/** Screen names and their keywords also feed the suggestions. */
+const QUICK_WORDS = QUICK_SCREENS.flatMap((s) => [s.label, s.keywords || '']);
+const ACTIONS_GROUP = 'إجراءات سريعة';
+const SCREENS_GROUP = 'الشاشات';
+const KIND_LOOK: Record<RecentKind, { icon: React.ElementType; label: string }> = {
+  news: { icon: FileText, label: 'خبر' },
+  program: { icon: Tv, label: 'برنامج' },
+  episode: { icon: Video, label: 'حلقة' },
+  guest: { icon: Users, label: 'ضيف' },
+  task: { icon: CheckSquare, label: 'مهمة' },
+  bulletin: { icon: ListVideo, label: 'نشرة' },
+  card: { icon: ClipboardList, label: 'تكليف' },
+};
+const RESULT_GROUPS = ['الأخبار', 'النشرات', 'التكليفات', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'];
+const RESULT_FORMS = { one: 'نتيجة واحدة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجة' };
+
+/** Current title of a remembered record, or null when it was deleted since. */
+function currentTitle(entry: RecentEntry): string | null {
+  switch (entry.kind) {
+    case 'news': return ApiService.getNewsById(entry.id)?.title ?? null;
+    case 'program': return ApiService.getProgramById(entry.id)?.name ?? null;
+    case 'episode': return ApiService.getEpisodeById(entry.id)?.title ?? null;
+    case 'guest': return ApiService.getGuests().find((g) => g.id === entry.id)?.fullName ?? null;
+    case 'task': return ApiService.getTasks().find((t) => t.id === entry.id)?.title ?? null;
+    case 'bulletin': return ApiService.getBulletins().find((b) => b.id === entry.id)?.title ?? null;
+    case 'card': return ApiService.getCard(entry.id)?.title ?? null;
+  }
+}
+
 /**
  * Unified search (Ctrl+K) as an accessible dialog: a combobox with a listbox of results.
  * ↑/↓ move, Enter opens, Escape closes from anywhere inside, and focus stays in the dialog.
+ * With an empty query it lists recently opened records, quick actions and screens; while typing,
+ * matching screens and actions follow the record results.
  */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
@@ -44,15 +89,31 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectEpisode = () => {},
   onSelectGuest = () => {},
   onSelectTask = () => {},
+  onNavigate,
+  onOpenLink,
+  onQuickCreateNews,
+  currentUser,
 }) => {
   const [query, setQuery] = useState('');
+  // The box stays responsive while a large archive is searched: results follow the typing.
+  const searchTerm = useDeferredValue(query);
   const [active, setActive] = useState(0);
   const [groupFilter, setGroupFilter] = useState('');
   const [limit, setLimit] = useState(40);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
-  const dataVersion = useLiveData(['news', 'programs', 'episodes', 'guests', 'tasks']);
+  const dataVersion = useLiveData(['news', 'programs', 'episodes', 'guests', 'tasks', 'bulletins', 'productionCards']);
+  const userId = currentUser?.id || '';
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const hasQuery = !!searchTerm.trim();
+  // The newsroom's own words, for suggestions and «هل تقصد»; built once per data change, on first use.
+  const vocabulary = useMemo(
+    () => (isOpen && hasQuery ? buildVocabulary([...ApiService.searchVocabularyTexts(), ...QUICK_WORDS]) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isOpen, hasQuery, dataVersion]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,6 +121,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setQuery('');
     setActive(0);
     setGroupFilter('');
+    setRecent(userId ? loadRecent(userId) : []);
+    setRecentSearches(loadRecentSearches(userId, 'global'));
     const t = setTimeout(() => inputRef.current?.focus(), 30);
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && !document.querySelector('[role=alertdialog]')) { event.preventDefault(); onClose(); }
@@ -73,20 +136,77 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }, [isOpen]);
 
   const results: Result[] = useMemo(() => {
-    if (!query.trim()) return [];
-    const r = ApiService.globalSearch(query);
-    const pick = (fn: (id: string) => void, id: string) => () => {
-      fn(id);
+    const openLink = onOpenLink || (() => {});
+    const openers: Record<RecentKind, (id: string) => void> = {
+      news: onSelectNews, program: onSelectProgram, episode: onSelectEpisode, guest: onSelectGuest, task: onSelectTask,
+      bulletin: (id) => openLink(`/bulletins/${id}`), card: (id) => openLink(`/cards/${id}`),
+    };
+    const pick = (kind: RecentKind, id: string, title: string) => () => {
+      if (userId) rememberRecent(userId, { kind, id, title });
+      if (userId && searchTerm.trim()) rememberSearch(userId, 'global', searchTerm);
+      openers[kind](id);
       onClose();
     };
+    const run = (fn: () => void) => () => {
+      fn();
+      onClose();
+    };
+    const can = (permission: string) => !currentUser || RbacService.hasPermission(currentUser, permission);
+    const actions: Result[] = [];
+    if (onQuickCreateNews && can('news.create') && matchesQuery(searchTerm, 'خبر جديد', 'انشاء كتابة مسودة')) {
+      actions.push({ key: 'a-new-news', group: ACTIONS_GROUP, icon: FilePlus2, title: 'خبر جديد', meta: 'فتح محرر الخبر على مسودة فارغة', open: run(onQuickCreateNews) });
+    }
+    const screens: Result[] = onNavigate
+      ? matchScreens(searchTerm, can).filter((s) => !currentUser || RbacService.canOpenScreen(currentUser, s.nav)).map((s) => ({ key: `s-${s.nav}`, group: SCREENS_GROUP, icon: ArrowUpLeft, title: s.label, open: run(() => onNavigate(s.nav)) }))
+      : [];
+
+    if (!searchTerm.trim()) {
+      const recentResults = recent.flatMap((entry): Result[] => {
+        const title = currentTitle(entry);
+        if (title == null) return [];
+        const look = KIND_LOOK[entry.kind];
+        return [{ key: `r-${entry.kind}-${entry.id}`, group: RECENT_GROUP, icon: History, title, meta: look.label, open: pick(entry.kind, entry.id, title) }];
+      });
+      return [...recentResults, ...actions, ...screens];
+    }
+
+    const r = ApiService.globalSearch(searchTerm);
+    const canScreen = (nav: string) => !!onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, nav));
+    const bulletins = canScreen('bulletins') ? r.bulletins : [];
+    const cards = canScreen('cards') ? r.cards : [];
     return [
-      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, tone: 'text-blue-500', title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick(onSelectNews, n.id) })),
-      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, tone: 'text-emerald-500', title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick(onSelectProgram, p.id) })),
-      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, tone: 'text-purple-500', title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick(onSelectEpisode, e.id) })),
-      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, tone: 'text-amber-500', title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick(onSelectGuest, g.id) })),
-      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, tone: 'text-indigo-500', title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick(onSelectTask, t.id) })),
+      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
+      ...bulletins.map((b) => ({ key: `b-${b.id}`, group: 'النشرات', icon: ListVideo, title: b.title, meta: [bulletinKindName(b.kind), `${b.date} ${b.startTime}`, b.editorName && `المحرر: ${b.editorName}`].filter(Boolean).join(' · '), badge: BULLETIN_STATUSES.find((x) => x.id === b.status)?.name, open: pick('bulletin', b.id, b.title) })),
+      ...cards.map((c) => ({ key: `c-${c.id}`, group: 'التكليفات', icon: ClipboardList, title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
+      ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
+      ...r.episodes.map((e) => ({ key: `e-${e.id}`, group: 'الحلقات', icon: Video, title: e.title, meta: `${e.programName} · حلقة ${e.episodeNumber} · ${e.broadcastDate || ''}`, badge: statusLabel(e.status, 'episode'), open: pick('episode', e.id, e.title) })),
+      ...r.guests.map((g) => ({ key: `g-${g.id}`, group: 'الضيوف', icon: Users, title: g.fullName, meta: [g.jobTitle, g.organization].filter(Boolean).join(' — '), open: pick('guest', g.id, g.fullName) })),
+      ...r.tasks.map((t) => ({ key: `t-${t.id}`, group: 'المهام', icon: CheckSquare, title: t.title, meta: t.assigneeName || t.assignedToName ? `المسند إليه: ${t.assigneeName || t.assignedToName}` : 'غير مسندة', badge: statusLabel(t.status, 'task'), open: pick('task', t.id, t.title) })),
+      ...actions,
+      ...screens,
     ];
-  }, [query, dataVersion, onClose, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
+  }, [searchTerm, dataVersion, recent, userId, currentUser, onClose, onNavigate, onOpenLink, onQuickCreateNews, onSelectNews, onSelectProgram, onSelectEpisode, onSelectGuest, onSelectTask]);
+
+  const recordCount = results.filter((r) => RESULT_GROUPS.includes(r.group)).length;
+  // «هل تقصد»: only when the records found are few, and only when the correction finds more.
+  const correction = useMemo(() => {
+    if (!vocabulary || !hasQuery || recordCount > FEW_RESULTS) return null;
+    const fixed = didYouMean(searchTerm, vocabulary);
+    if (!fixed) return null;
+    const r = ApiService.globalSearch(fixed);
+    const found = r.news.length + r.programs.length + r.episodes.length + r.guests.length + r.tasks.length + r.bulletins.length + r.cards.length;
+    return found > recordCount ? fixed : null;
+  }, [vocabulary, hasQuery, recordCount, searchTerm]);
+  const hints: SearchHint[] = useMemo(() => {
+    if (!isOpen) return [];
+    const past = matchingRecentSearches(recentSearches, query, hasQuery ? 2 : 5).map((q): SearchHint => ({ query: q, kind: 'recent' }));
+    const next = vocabulary && query.trim() ? completeQuery(query, vocabulary, 5).map((c): SearchHint => ({ query: c.query, label: c.word, kind: 'completion' })) : [];
+    return [...next.filter((c) => !past.some((p) => p.query === c.query)), ...past];
+  }, [isOpen, recentSearches, query, hasQuery, vocabulary]);
+  const pickQuery = (q: string) => {
+    setQuery(q);
+    inputRef.current?.focus();
+  };
 
   const filteredResults = results.filter(r => !groupFilter || r.group === groupFilter);
   const visibleResults = filteredResults.slice(0, limit);
@@ -139,7 +259,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         onKeyDown={onKeyDown}
         className="relative w-full max-w-2xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[75vh]"
       >
-        <div className="flex items-center px-4 py-3.5 border-b border-slate-200 bg-slate-50/50">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-y-2 px-4 py-2.5 border-b border-slate-200 bg-slate-50/50">
           <Search className="w-5 h-5 text-slate-500 shrink-0 ml-3" aria-hidden />
           <input
             ref={inputRef}
@@ -153,8 +273,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="بحث فوري في الأخبار، البرامج، الحلقات، الضيوف، والمهام…"
-            className="w-full bg-transparent border-none text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-400"
+            className="input-bare flex-1 min-w-0 min-h-11 px-1 bg-transparent text-slate-800 text-sm focus:outline-hidden placeholder:text-slate-500"
           />
+          <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="order-last sm:order-none w-full sm:w-auto min-h-11 sm:min-h-9 sm:ms-2 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-700">
+            <option value="">كل الأنواع</option>
+            {[...RESULT_GROUPS.filter((g) => (g !== 'النشرات' && g !== 'التكليفات') || (onOpenLink && (!currentUser || RbacService.canOpenScreen(currentUser, g === 'النشرات' ? 'bulletins' : 'cards')))), SCREENS_GROUP].map(group => <option key={group} value={group}>{group}</option>)}
+          </select>
           {query && (
             <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="مسح البحث" title="مسح البحث" className="w-11 h-11 shrink-0 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md">
               <X className="w-4 h-4" />
@@ -165,18 +289,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </button>
         </div>
 
-        <div className="px-4 py-2 border-b border-slate-100">
-          <select aria-label="نوع نتائج البحث" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="w-full sm:w-auto min-h-11 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
-            <option value="">كل الأنواع</option>
-            {['الأخبار', 'البرامج', 'الحلقات', 'الضيوف', 'المهام'].map(group => <option key={group} value={group}>{group}</option>)}
-          </select>
-        </div>
+        {(hints.length > 0 || (correction && visibleResults.length > 0)) && (
+          <div className="px-4 py-2 border-b border-slate-100 space-y-1">
+            {correction && visibleResults.length > 0 && <DidYouMean suggestion={correction} onPick={pickQuery} />}
+            <SearchHints
+              hints={hints}
+              onPick={pickQuery}
+              inputRef={inputRef}
+              onClearRecent={!hasQuery ? () => { clearRecentSearches(userId, 'global'); setRecentSearches([]); inputRef.current?.focus(); } : undefined}
+            />
+          </div>
+        )}
         <div className="p-2 overflow-y-auto overscroll-contain min-h-0 flex-1">
-          {!query.trim() ? (
+          {!query.trim() && visibleResults.length === 0 ? (
             <p className="p-8 text-center text-slate-500 text-xs">اكتب كلمة للبحث في المنظومة الإخبارية كلها</p>
           ) : visibleResults.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-sm" role="status">
-              لا نتائج مطابقة لـ «{query}»
+              لا نتائج لـ«{query.trim()}»
+              <DidYouMean suggestion={correction} onPick={pickQuery} className="mt-2" />
               {groupFilter && <button type="button" onClick={() => { setGroupFilter(''); inputRef.current?.focus(); }} className="block mx-auto mt-3 min-h-11 text-blue-600 font-semibold">البحث في كل الأنواع</button>}
             </div>
           ) : (
@@ -188,8 +318,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 return (
                   <React.Fragment key={r.key}>
                     {header && (
-                      <li role="presentation" className="text-[11px] font-bold text-slate-500 mt-2 mb-1 px-2">
-                        {header}
+                      <li role="presentation" className="text-2xs font-bold text-slate-500 mt-2 mb-1 px-2 flex items-center justify-between gap-2">
+                        <span>{header}</span>
+                        {header === RECENT_GROUP && (
+                          <button type="button" onClick={() => { clearRecent(userId); setRecent([]); inputRef.current?.focus(); }} className="min-h-8 px-2 rounded-md text-2xs font-semibold text-blue-700 hover:bg-blue-50">
+                            مسح السجل
+                          </button>
+                        )}
                       </li>
                     )}
                     <li
@@ -198,14 +333,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       aria-selected={i === active}
                       onMouseEnter={() => setActive(i)}
                       onClick={r.open}
-                      className={`p-3 min-h-14 rounded-lg cursor-pointer flex items-center gap-3 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                      className={`px-3 py-2 min-h-11 rounded-lg cursor-pointer flex items-center gap-3 ${i === active ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${r.tone}`} aria-hidden />
+                      <Icon className={`w-4 h-4 shrink-0 ${i === active ? 'text-blue-600' : 'text-slate-500'}`} aria-hidden />
                       <span className="truncate flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}>{r.title}</span>
-                        {r.meta && <span className="text-[11px] text-slate-500 block truncate">{r.meta}</span>}
+                        <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}><Highlight text={r.title} query={searchTerm} /></span>
+                        {r.meta && <span className="text-2xs text-slate-500 block truncate"><Highlight text={r.meta} query={searchTerm} /></span>}
                       </span>
-                      {r.badge && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
+                      {r.badge && <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
                     </li>
                   </React.Fragment>
                 );
@@ -222,9 +357,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             عرض المزيد من النتائج ({filteredResults.length - visibleResults.length})
           </button>
         )}
-        <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="hidden sm:inline">↑↓ للتنقل · Enter للفتح · Esc للإغلاق</span>
-          <span aria-live="polite">{query.trim() ? `${visibleResults.length} من ${filteredResults.length} نتيجة` : ''}</span>
+        <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-500">
+          <span className="hidden sm:inline">{query.trim() ? '↑↓ للتنقل · Enter للفتح · Esc للإغلاق' : 'اكتب للبحث، أو اختر من الوصول السريع بالأسهم وEnter'}</span>
+          <span aria-live="polite">{query.trim() ? `${visibleResults.length} من ${countLabel(filteredResults.length, RESULT_FORMS)}` : ''}</span>
         </div>
       </div>
     </div>

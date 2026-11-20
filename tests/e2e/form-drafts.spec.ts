@@ -4,7 +4,7 @@ import { openNav, signIn } from './helpers';
 const forms = [
   { screen: 'الضيوف', button: 'إضافة ضيف جديد', field: '#guest-fullname-input', collection: 'guests' },
   { screen: 'البرامج', button: 'إضافة برنامج جديد', field: '#program-name-input', collection: 'programs' },
-  { screen: 'التغطيات', button: 'إنشاء تغطية / قصة جديدة', field: '#stories-view-field-1', collection: 'stories' },
+  { screen: 'التغطيات', button: 'تغطية جديدة', field: '#stories-view-field-1', collection: 'stories' },
   { screen: 'الحلقات', button: 'إعداد حلقة جديدة', field: '#episode-title-input', collection: 'episodes' },
 ];
 

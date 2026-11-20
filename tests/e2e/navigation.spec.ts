@@ -3,15 +3,15 @@ import { openNav, signIn } from './helpers';
 
 test('the address follows the screen: Back/Forward, reload and deep links', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
-  await openNav(page, 'البرقيات');
+  await openNav(page, 'المصادر');
   await expect(page).toHaveURL(/\/wires$/);
-  await expect(page).toHaveTitle(/البرقيات · مدار/);
+  await expect(page).toHaveTitle(/المصادر · مدار/);
   await openNav(page, 'المهام');
   await expect(page).toHaveURL(/\/tasks$/);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/wires$/);
-  await expect(page.locator('main')).toContainText('البرقيات');
+  await expect(page.locator('main')).toContainText('المصادر');
   await page.goForward();
   await expect(page).toHaveURL(/\/tasks$/);
 

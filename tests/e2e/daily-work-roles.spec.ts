@@ -9,7 +9,7 @@ for (const width of [390, 1440]) {
     await panel.getByRole('button', { name: 'تخصيص عملي' }).click();
     await panel.getByRole('checkbox', { name: 'عرض أخباري قيد العمل' }).uncheck();
     await expect(panel.getByTestId('my-news')).toHaveCount(0);
-    await panel.getByRole('button', { name: 'تقديم مهامي' }).click();
+    await panel.getByRole('button', { name: 'تقديم مهامي', exact: true }).click();
     const data = await (await page.request.get('/api/v1/data')).json();
     const userId = data.collections.users.find((row: any) => row.d.email === 'journalist@akhbar.tv').id;
     const preferences = await page.evaluate(id => JSON.parse(localStorage.getItem(`madar-work-sections:${id}`) || '{}'), userId);

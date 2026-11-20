@@ -184,7 +184,7 @@ export const TestingView: React.FC = () => {
     <div className="space-y-5 text-right" dir="rtl">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-emerald-700" />
             حالة النظام
           </h1>
@@ -206,7 +206,7 @@ export const TestingView: React.FC = () => {
       <div className="grid grid-cols-3 gap-3">
         {(['PASSED', 'WARNING', 'FAILED'] as CheckStatus[]).map((s) => (
           <div key={s} className={`p-3 rounded-xl ${STATUS_STYLE[s]}`}>
-            <div className="text-2xl font-extrabold">{counts[s] || 0}</div>
+            <div className="text-2xl font-bold">{counts[s] || 0}</div>
             <div className="text-xs font-bold">{STATUS_LABEL[s]}</div>
           </div>
         ))}
@@ -226,13 +226,13 @@ export const TestingView: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold text-slate-800">{check.name}</span>
-                  <span className="text-[10px] font-semibold text-slate-500">{check.category}</span>
+                  <span className="text-2xs font-semibold text-slate-500">{check.category}</span>
                 </div>
                 {r.message && <p className="text-xs text-slate-600 mt-1">{r.message}</p>}
               </div>
               <div className="text-left shrink-0">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
-                {r.durationMs !== undefined && <div className="text-[10px] text-slate-500 mt-1 font-mono">{r.durationMs}ms</div>}
+                <span className={`text-2xs font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+                {r.durationMs !== undefined && <div className="text-2xs text-slate-500 mt-1 font-mono">{r.durationMs}ms</div>}
               </div>
             </div>
           );

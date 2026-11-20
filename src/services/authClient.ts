@@ -29,7 +29,12 @@ export const authClient = {
   async fetchSession(): Promise<SessionInfo | null> {
     try {
       // A slow or stuck first request must not leave the screen waiting forever.
-      const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/me', { signal: AbortSignal.timeout(10_000) });
+      // ?optional=1: nobody signed in yet is a normal answer (200, user null), so the sign-in screen logs no 401.
+      const res = await apiFetch<Omit<SessionInfo, 'user'> & { user: SessionInfo['user'] | null; success: boolean }>('/api/v1/auth/me?optional=1', { signal: AbortSignal.timeout(10_000) });
+      if (!res.user) {
+        session = null;
+        return null;
+      }
       session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
       return session;
     } catch {
@@ -63,6 +68,16 @@ export const authClient = {
     await apiFetch('/api/v1/auth/logout', { method: 'POST' });
     session = null;
     return true;
+  },
+
+  /** The server answered PASSWORD_CHANGE_REQUIRED: the session now has to change its password first. */
+  requirePasswordChange() {
+    if (session) session = { ...session, mustChangePassword: true };
+  },
+
+  /** Admin: sign a colleague out of every device. */
+  async revokeUserSessions(userId: string): Promise<void> {
+    await apiFetch('/api/v1/admin/sessions/revoke', { method: 'POST', json: { userId } });
   },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {

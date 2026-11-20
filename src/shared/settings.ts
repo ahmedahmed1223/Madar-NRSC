@@ -1,5 +1,10 @@
 import type { SystemSettings } from '../types';
 import { validZone } from './dateFormat';
+import { stationGroupsError, stationsArchiveError, stationsError, stationsOf } from './stations';
+import { departmentsError } from './departments';
+import { setupStateError } from './setup';
+import { validateStorage } from './storage';
+import { stepTypesError } from './productionCards';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
   for (const key of ['onAirDisplayMode', 'studioDisplayMode'] as const) {
@@ -16,6 +21,34 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
     if (!value || typeof value !== 'object' || Array.isArray(value)) return 'إعدادات التاريخ والوقت غير صالحة';
     const options: Record<string, unknown[]> = { digits: ['latn', 'arab'], calendar: ['gregory', 'islamic-umalqura'], hourCycle: ['h23', 'h12'], dateStyle: ['long', 'numeric'], clockSeconds: [true, false], timeBasis: ['station', 'device'] };
     if (Object.entries(value).some(([key, item]) => !options[key]?.includes(item))) return 'خيارات التاريخ والوقت غير صالحة';
+  }
+  if (settings.stations !== undefined) {
+    const error = stationsError(settings.stations);
+    if (error) return error;
+  }
+  if (settings.stationGroups !== undefined) {
+    const error = stationGroupsError(settings.stationGroups, stationsOf(settings));
+    if (error) return error;
+  }
+  if (settings.stationsArchive !== undefined) {
+    const error = stationsArchiveError(settings.stationsArchive);
+    if (error) return error;
+  }
+  if (settings.departments !== undefined) {
+    const error = departmentsError(settings.departments, { stationIds: stationsOf(settings).map((s) => s.id) });
+    if (error) return error;
+  }
+  if (settings.cardStepTypes !== undefined) {
+    const error = stepTypesError(settings.cardStepTypes);
+    if (error) return error;
+  }
+  if (settings.storage !== undefined) {
+    const error = validateStorage(settings.storage);
+    if (error) return error;
+  }
+  if (settings.setup !== undefined) {
+    const error = setupStateError(settings.setup);
+    if (error) return error;
   }
   if (settings.enableAuditLog !== true) return 'سجل التدقيق إلزامي ولا يمكن تعطيله';
   if (settings.newsTemplates !== undefined) {

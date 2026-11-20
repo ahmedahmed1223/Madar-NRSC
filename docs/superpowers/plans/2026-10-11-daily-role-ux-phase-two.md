@@ -122,11 +122,11 @@
 
 **Interfaces:** Reuse isolated Playwright data setup and current role fixtures; no live account mutation. Verification records exact commands/counts and remaining roadmap scope.
 
-- [ ] Add tests for HTTP failure, stall/cancel, committed write with lost response, revoked permission, offline reconnect, blocked storage and account change. Assert retained draft, no false success, no duplicate publication/receipt and no replay.
-- [ ] Test 390/1440 widths, light/dark RTL, 44px actions, no horizontal overflow, Tab/arrows/Escape/focus return and axe checks. Inspect screenshots, including populated/error states.
+- [x] Add tests for HTTP failure, stall/cancel, committed write with lost response, revoked permission, offline reconnect, blocked storage and account change. Assert retained draft, no false success, no duplicate publication/receipt and no replay.
+- [x] Test 390/1440 widths, light/dark RTL, 44px actions, no horizontal overflow, Tab/arrows/Escape/focus return and axe checks. Inspect screenshots, including populated/error states.
 - [ ] Run `npm run check`, then affected phase-one and phase-two Playwright suites with `--workers=1`; build before browser, never concurrently. Rebuild afterward to remove test-only artifacts and check preview health/readiness and live DB identity without mutation.
-- [ ] Self-review the phase diff and address actionable findings with focused regression tests. Preserve the already authorized independent whole-branch review for final integration after all roadmap stages; do not spawn per-task reviewers.
-- [ ] Record actual evidence, update plan/spec status and commit. Do not claim later stages or release completed; proceed to the next stage's specification gate.
+- [x] Self-review the phase diff and address actionable findings with focused regression tests. Preserve the already authorized independent whole-branch review for final integration after all roadmap stages; do not spawn per-task reviewers.
+- [x] Record actual evidence, update plan/spec status and commit. Do not claim later stages or release completed; proceed to the next stage's specification gate.
 
 ## Execution Handoff
 

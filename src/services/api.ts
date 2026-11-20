@@ -7,19 +7,17 @@ import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
 import type { SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
-import { matchesQuery } from '../shared/search';
+import { createSearchIndex, type SearchIndex } from '../shared/arabicSearch';
 import {
   NewsItem,
   Story,
   NewsStatus,
-  NewsPriority,
   Program,
   Episode,
   RundownSegment,
   Guest,
   EditorialTask,
   MediaFile,
-  BreakingNews,
   User,
   UserRole,
   Category,
@@ -69,6 +67,8 @@ export interface NewsArchivePage {
     publishDate: string | null;
     updatedAt: string;
   }[];
+  /** «هل تقصد»: a corrected query that finds more, when this one found little or nothing. */
+  suggestion?: string;
 }
 
 export interface WireStatusInfo {
@@ -79,7 +79,11 @@ export interface WireStatusInfo {
 import { addDaysIso, localDateString } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
-import { departmentIdOf } from '../shared/departments';
+import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
+import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
+import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
+import { applyDepartmentSettings, departmentIdOf } from '../shared/departments';
+import { rememberStationSettings } from '../shared/stations';
 import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
 import {
   Bulletin,
@@ -99,10 +103,11 @@ import {
   storyError,
   storyStatusError,
 } from '../shared/bulletins';
+import { scheduledBulletinExists } from '../shared/bulletinReadiness';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { defaultPrefs, NotificationPrefs, prefsError } from '../shared/notifications';
 import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
-import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, lockIdFor } from '../shared/collections';
+import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
 export interface NewsRevision {
   version: number;
@@ -217,12 +222,39 @@ export function hasPermission(
   }
 }
 
+const htmlText = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
+const versionOf = (r: { updatedAt?: string; createdAt?: string }) => `${r.updatedAt || ''}|${r.createdAt || ''}`;
+
+/** Search indexes of the unified search, memoised per record id + updatedAt. */
+const GLOBAL_INDEX = {
+  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: (n) => [n.title, n.shortTitle], body: (n) => [n.keywords, n.summary, n.locationName, htmlText(n.content)] }),
+  programs: createSearchIndex<Program & { createdAt?: string }>({ id: (p) => p.id, version: versionOf, title: (p) => [p.name], body: (p) => [p.description, p.presenterName, p.producerName] }),
+  episodes: createSearchIndex<Episode & { createdAt?: string }>({ id: (e) => e.id, version: versionOf, title: (e) => [e.title], body: (e) => [e.description, e.programName, e.episodeNumber, e.broadcastDate] }),
+  guests: createSearchIndex<Guest & { createdAt?: string }>({ id: (g) => g.id, version: versionOf, title: (g) => [g.fullName], body: (g) => [g.organization, g.specialty, g.jobTitle] }),
+  tasks: createSearchIndex<EditorialTask & { createdAt?: string }>({ id: (t) => t.id, version: versionOf, title: (t) => [t.title], body: (t) => [t.description, t.assigneeName, t.assignedToName] }),
+  bulletins: createSearchIndex<Bulletin>({ id: (b) => b.id, version: versionOf, title: (b) => [b.title], body: (b) => [b.date, b.editorName, b.anchors, b.studioName, b.notes] }),
+  cards: createSearchIndex<ProductionCard>({ id: (c) => c.id, version: versionOf, title: (c) => [c.title], body: (c) => [c.brief, c.ownerName, c.target?.title, c.steps.map((st) => st.assigneeName || '')] }),
+};
+
+export interface GlobalSearchResult {
+  news: NewsItem[];
+  programs: Program[];
+  episodes: Episode[];
+  guests: Guest[];
+  tasks: EditorialTask[];
+  bulletins: Bulletin[];
+  cards: ProductionCard[];
+}
+
 export class ApiService {
   static async getShiftHandovers(signal?: AbortSignal): Promise<HandoverRow[]> {
     return (await handoverRequest<{ rows: HandoverRow[] }>('/api/v1/shift-handovers', {}, signal)).rows;
   }
   static async getShiftHandover(id: string, signal?: AbortSignal): Promise<HandoverRow> {
     return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}`, {}, signal)).row;
+  }
+  static async isShiftHandoverPublished(id: string, signal?: AbortSignal): Promise<boolean> {
+    return (await handoverRequest<{ published: boolean }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/publication-status`, {}, signal)).published;
   }
   static async saveShiftHandover(draft: HandoverDraftInput, baseV?: number, signal?: AbortSignal): Promise<HandoverRow> {
     return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers${baseV === undefined ? '' : `/${encodeURIComponent(draft.id)}`}`, { method: baseV === undefined ? 'POST' : 'PATCH', json: baseV === undefined ? draft : { draft, baseV } }, signal)).row;
@@ -272,7 +304,6 @@ export class ApiService {
       if (idx !== -1) {
         users[idx] = { ...users[idx], ...user };
         setStored(STORAGE_KEYS.USERS, users);
-        this.logAudit('SETTINGS_UPDATE', 'USER', user.id, 'INFO', `تحديث بيانات المستخدم: ${user.fullName}`);
         return users[idx];
       }
     }
@@ -288,17 +319,17 @@ export class ApiService {
       jobTitle: user.jobTitle || 'صحفي',
       departmentId: user.departmentId || 'newsroom',
       department: user.department || 'غرفة التحرير',
+      stationId: user.stationId,
       staffId: user.staffId || '',
       bio: user.bio || '',
       twoFactorEnabled: user.twoFactorEnabled ?? false,
-      lastLogin: new Date().toISOString(),
+      // Empty until the first sign-in (the server sets it at login).
       customPermissions: user.customPermissions || [],
       isActive: user.isActive !== undefined ? user.isActive : true,
       createdAt: user.createdAt || new Date().toISOString(),
     };
     users.push(newUser);
     setStored(STORAGE_KEYS.USERS, users);
-    this.logAudit('SETTINGS_UPDATE', 'USER', newUser.id, 'INFO', `إضافة مستخدم جديد: ${newUser.fullName} (${newUser.role})`);
     return newUser;
   }
 
@@ -313,7 +344,6 @@ export class ApiService {
 
     const filtered = users.filter((u) => u.id !== id);
     setStored(STORAGE_KEYS.USERS, filtered);
-    this.logAudit('SETTINGS_UPDATE', 'USER', id, 'WARNING', `تم حذف حساب المستخدم: ${target.fullName}`);
     return true;
   }
 
@@ -328,13 +358,6 @@ export class ApiService {
 
     users[idx].isActive = !users[idx].isActive;
     setStored(STORAGE_KEYS.USERS, users);
-    this.logAudit(
-      'SETTINGS_UPDATE',
-      'USER',
-      id,
-      'INFO',
-      `تم ${users[idx].isActive ? 'تنشيط' : 'تجميد'} حساب المستخدم: ${users[idx].fullName}`
-    );
     return users[idx];
   }
 
@@ -473,9 +496,6 @@ export class ApiService {
       contentDenial(item, toStatus)?.message ||
       null;
     if (denial) {
-      if (/صلاحيات/.test(denial)) {
-        this.logAudit('SECURITY_VIOLATION', 'NEWS', newsId, 'WARNING', `محاولة غير مصرح بها لنقل الخبر إلى ${toStatus}: ${currentUser.fullName}`);
-      }
       throw new Error(denial);
     }
 
@@ -1361,7 +1381,9 @@ export class ApiService {
     const f = this.getBulletinFormats().find((x) => x.id === formatId);
     if (!f) throw new Error('القالب غير موجود');
     const id = opts.scheduled ? scheduledBulletinId(f.id, date) : newId('bul');
-    if (getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).some((b) => b.id === id)) throw new Error('هذه النشرة موجودة مسبقاً');
+    const stored = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    // A scheduled day is matched by format and date too, not only by id (a hand-made or imported copy counts).
+    if (stored.some((b) => b.id === id) || (opts.scheduled && scheduledBulletinExists(f, date, stored))) throw new Error('هذه النشرة موجودة مسبقاً');
     const { bulletin, stories } = bulletinFromFormat(f, date, id, newId);
     const saved = this.saveBulletin({ ...bulletin, ...opts.overrides, id });
     const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
@@ -1372,8 +1394,8 @@ export class ApiService {
 
   /** Scheduled bulletins for a day that have not been created yet. */
   static missingScheduledBulletins(date: string): BulletinFormat[] {
-    const existing = new Set(getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).map((b) => b.id));
-    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !existing.has(scheduledBulletinId(f.id, date)));
+    const existing = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
+    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !scheduledBulletinExists(f, date, existing));
   }
 
   /** Programme episodes and bulletins that can run in on-air mode. */
@@ -1448,6 +1470,114 @@ export class ApiService {
     setStored(COLLECTIONS.requests.storageKey, all.filter((r) => r.id !== id));
   }
 
+  // --- PRODUCTION CARDS ---
+  static getCards(): ProductionCard[] {
+    return getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
+  }
+
+  static getCard(id: string): ProductionCard | undefined {
+    return this.getCards().find((c) => c.id === id);
+  }
+
+  /** What the signed-in colleague may do on cards (the server applies the same rules). */
+  static cardActor(): CardActor {
+    const me = this.getCurrentUser();
+    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: departmentIdOf(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+  }
+
+  /** Creates or replaces a card after checking it with the rules the server enforces. */
+  static saveCard(card: ProductionCard): ProductionCard {
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    const idx = all.findIndex((c) => c.id === card.id);
+    const before = idx === -1 ? null : all[idx];
+    const error = cardChangeError(before, card, this.cardActor(), cardContextOf(this.getSettings(), this.getUsers()));
+    if (error) throw new Error(error);
+    const saved = { ...card, updatedAt: new Date().toISOString() };
+    if (idx === -1) setStored(COLLECTIONS.productionCards.storageKey, [saved, ...all]);
+    else {
+      all[idx] = saved;
+      setStored(COLLECTIONS.productionCards.storageKey, all);
+    }
+    return saved;
+  }
+
+  static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard {
+    const card = this.getCard(id);
+    if (!card) throw new Error('التكليف غير موجود');
+    return this.saveCard(change(card));
+  }
+
+  static updateCardStep(cardId: string, stepId: string, changes: Partial<CardStep>): ProductionCard {
+    return this.updateCard(cardId, (card) => ({ ...card, steps: card.steps.map((s) => (s.id === stepId ? { ...s, ...changes } : s)) }));
+  }
+
+  /** Documents work on the card; the server records who wrote it, from which station and when. */
+  static addCardNote(cardId: string, text: string, stepId?: string, decision = false): ProductionCard {
+    const me = this.getCurrentUser();
+    return this.updateCard(cardId, (card) => ({
+      ...card,
+      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, ...(decision ? { decision: true } : {}), byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
+    }));
+  }
+
+  /** Sends an earlier step back for rework with a reason (a reviewer, the owner or a supervisor). */
+  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string): ProductionCard {
+    return this.updateCard(cardId, (card) => sendBackCard(card, targetStepId, reason, fromStepId));
+  }
+
+  /** Finishes a step; the minutes of this work session are added to the step's total, never replacing it. */
+  static finishCardStep(cardId: string, stepId: string, note: string | undefined, sessionMinutes?: number): ProductionCard {
+    const me = this.getCurrentUser();
+    return this.updateCard(cardId, (card) => ({
+      ...card,
+      steps: card.steps.map((s) => {
+        if (s.id !== stepId) return s;
+        const session = sessionMinutes && sessionMinutes > 0 ? [{ id: newId('tim'), minutes: Math.min(1440, Math.round(sessionMinutes)), byId: me.id, byName: me.fullName, at: new Date().toISOString() }] : [];
+        return {
+          ...s,
+          status: 'DONE' as const,
+          note: note?.trim() || undefined,
+          blockedReason: undefined,
+          waitingOnId: undefined,
+          timeLog: session.length ? [...(s.timeLog || []), ...session] : s.timeLog,
+          spentMinutes: (s.spentMinutes || 0) + timeLogMinutes(session) || undefined,
+        };
+      }),
+    }));
+  }
+
+  static deleteCard(id: string): void {
+    if (!this.cardActor().canManage) throw new Error('حذف التكليفات لمسؤولي التكليف');
+    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
+    setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
+  // --- WORKFLOW TEMPLATES (assignments are created from them) ---
+  static getWorkflowTemplates(): WorkflowTemplate[] {
+    return getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []).filter((t) => !t.deletedAt);
+  }
+
+  /** Creates or replaces a template after checking it with the rules the server enforces. */
+  static saveWorkflowTemplate(template: WorkflowTemplate): WorkflowTemplate {
+    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
+    const idx = all.findIndex((t) => t.id === template.id);
+    const error = templateChangeError(idx === -1 ? null : all[idx], template, this.cardActor().canManage);
+    if (error) throw new Error(error);
+    const saved = { ...template, name: template.name.trim(), updatedAt: new Date().toISOString() };
+    if (idx === -1) setStored(COLLECTIONS.workflowTemplates.storageKey, [saved, ...all]);
+    else {
+      all[idx] = saved;
+      setStored(COLLECTIONS.workflowTemplates.storageKey, all);
+    }
+    return saved;
+  }
+
+  static deleteWorkflowTemplate(id: string): void {
+    if (!this.cardActor().canManage) throw new Error('قوالب سير العمل لمسؤولي التكليف');
+    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
+    setStored(COLLECTIONS.workflowTemplates.storageKey, all.map((t) => (t.id === id ? { ...t, deletedAt: new Date().toISOString() } : t)));
+  }
+
   // --- TAXONOMY & CONFIG ---
   static getCategories(): Category[] {
     return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
@@ -1506,7 +1636,9 @@ export class ApiService {
 
   static saveCategory(cat: Partial<Category>): Category {
     const all = this.getCategories();
-    const colorVal = cat.colorCode || cat.color || '#2563eb';
+    const existing = cat.id ? all.find((c) => c.id === cat.id) : undefined;
+    // A partial update (e.g. only orderIndex) keeps the stored colour.
+    const colorVal = cat.colorCode || cat.color || existing?.colorCode || existing?.color || '#2563eb';
 
     if (cat.id) {
       const idx = all.findIndex((c) => c.id === cat.id);
@@ -1861,9 +1993,43 @@ export class ApiService {
     return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
   }
 
+  /** Adds or renames a program type. Programs pick up a new name from the server (see server sync). */
+  static saveProgramType(data: Partial<ProgramType>): ProgramType {
+    const nameAr = (data.nameAr ?? '').trim();
+    if (!nameAr) throw new Error('اسم نوع البرنامج مطلوب');
+    if (nameAr.length > 80) throw new Error('اسم نوع البرنامج حتى 80 حرفاً');
+    const all = this.getProgramTypes();
+    const key = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (all.some((t) => t.id !== data.id && key(t.nameAr || t.name || '') === key(nameAr))) throw new Error('يوجد نوع برنامج بالاسم نفسه');
+    const idx = data.id ? all.findIndex((t) => t.id === data.id) : -1;
+    const next: ProgramType = { ...(idx >= 0 ? all[idx] : { id: data.id || newId('ptype') }), ...data, nameAr, name: nameAr };
+    if (idx >= 0) all[idx] = next;
+    else all.push(next);
+    setStored(STORAGE_KEYS.PROGRAM_TYPES, all);
+    return next;
+  }
+
+  /** Programs (not deleted) still classified under a program type. */
+  static countProgramsOfType(id: string): number {
+    return getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => !p.deletedAt && p.typeId === id).length;
+  }
+
+  static deleteProgramType(id: string): void {
+    const inUse = this.countProgramsOfType(id);
+    if (inUse > 0) {
+      const count = inUse === 1 ? 'برنامج واحد' : inUse === 2 ? 'برنامجين' : inUse <= 10 ? `${inUse} برامج` : `${inUse} برنامجاً`;
+      throw new Error(`لا يمكن حذف نوع البرنامج لأنه مستخدم في ${count}؛ انقل البرامج إلى نوع آخر أولاً`);
+    }
+    setStored(STORAGE_KEYS.PROGRAM_TYPES, this.getProgramTypes().filter((t) => t.id !== id));
+  }
+
   // --- SETTINGS ---
   static getSettings(): SystemSettings {
-    return getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const settings = getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    // Department names, station groups and removed stations' names follow the shared settings everywhere.
+    applyDepartmentSettings(settings);
+    rememberStationSettings(settings);
+    return settings;
   }
 
   static saveSettings(settings: Partial<SystemSettings>): SystemSettings {
@@ -1910,12 +2076,35 @@ export class ApiService {
     this.releaseEditLock('news', entityId);
   }
 
+  /**
+   * Asks the server to drop the lock if, and only if, this user holds it. Works while the page is
+   * unloading (keepalive) and before the local data has loaded, when the store cannot write yet.
+   */
+  static releaseEditLockOnServer(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
+    this.releaseLockIdOnServer(lockIdFor(collection, entityId));
+  }
+
+  static releaseLockIdOnServer(id: string): void {
+    try {
+      void fetch('/api/v1/data/locks/release', {
+        method: 'POST',
+        keepalive: true,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
+        body: JSON.stringify({ id }),
+      }).catch(() => undefined);
+    } catch {
+      // the lock simply expires
+    }
+  }
+
   static releaseEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
+    // Leaving right after a reload: the store has not loaded the locks yet, but one may be ours.
+    if (!dataStore.isReady()) return this.releaseEditLockOnServer(collection, entityId);
     const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();
-    const mine = locks.find((l) => l.id === id && l.userId === me);
-    if (!mine) return;
+    if (!isOwnLock(locks.find((l) => l.id === id), me)) return;
     setStored(COLLECTIONS.editLocks.storageKey, locks.filter((l) => l.id !== id));
     void dataStore.flush();
   }
@@ -1957,7 +2146,7 @@ export class ApiService {
       ? { liveLock: true, lockedById: user.id, lockedByName: user.fullName, lockedAt: new Date().toISOString() }
       : { liveLock: false };
     setStored(COLLECTIONS.broadcastState.storageKey, next);
-    this.logAudit('SETTINGS_UPDATE', 'BROADCAST', 'live-lock', 'WARNING', locked ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر');
+    // Audited by the server once the change is accepted (BROADCAST_LOCK / BROADCAST_UNLOCK).
     return next;
   }
 
@@ -1967,12 +2156,78 @@ export class ApiService {
     return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
-  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false): void {
+  static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): void {
+    const me = this.getCurrentUser();
+    const message = { id: newId('msg'), channel, text: text.trim(), isUrgent, ...(extra.attachments?.length ? { attachments: extra.attachments } : {}), ...(extra.ref ? { ref: extra.ref } : {}) };
+    const error = messageError(message);
+    if (error) throw new Error(error);
     const all = getStored<any[]>(COLLECTIONS.messages.storageKey, []);
-    all.unshift({ id: newId('msg'), channel, text: text.slice(0, 2000), isUrgent });
+    // Shown at once; the server stamps the author, the time and who may read it.
+    all.unshift({ ...message, userId: me.id, userName: me.fullName, userAvatar: me.avatarUrl, timestamp: new Date().toISOString() });
     // keep the local window bounded; the server keeps the full history
-    if (all.length > 500) all.length = 500;
+    if (all.length > 3000) all.length = 3000;
     setStored(COLLECTIONS.messages.storageKey, all);
+  }
+
+  /** Older messages of one conversation than this browser holds (oldest first). */
+  static async loadOlderMessages(channel: string, before: string): Promise<ChatMessage[]> {
+    const res = await apiFetch<{ data: ChatMessage[] }>(`/api/v1/chat/history?channel=${encodeURIComponent(channel)}&before=${encodeURIComponent(before)}`);
+    return res.data;
+  }
+
+  // --- GROUP CONVERSATIONS ---
+  static getConversations(): Conversation[] {
+    const me = this.getCurrentUser().id;
+    return getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []).filter((c) => !c.deletedAt && c.memberIds.includes(me));
+  }
+
+  /** Creates a group or changes its name and members, checked with the rules the server enforces. */
+  static saveConversation(data: Pick<Conversation, 'name' | 'memberIds'> & { id?: string }): Conversation {
+    const me = this.getCurrentUser();
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const idx = data.id ? all.findIndex((c) => c.id === data.id) : -1;
+    const before = idx === -1 ? null : all[idx];
+    const after: Conversation = { ...(before || { id: newId('cnv'), ownerId: me.id, ownerName: me.fullName, createdAt: new Date().toISOString() }), name: data.name.trim(), memberIds: data.memberIds };
+    const active = new Set(this.getUsers().filter((u) => u.isActive !== false && !u.deletedAt).map((u) => u.id));
+    const error = conversationChangeError(before, after, me.id, RbacService.hasPermission(me, 'messages.groups'), active);
+    if (error) throw new Error(error);
+    if (idx === -1) setStored(COLLECTIONS.conversations.storageKey, [after, ...all]);
+    else {
+      all[idx] = after;
+      setStored(COLLECTIONS.conversations.storageKey, all);
+    }
+    return after;
+  }
+
+  static leaveConversation(id: string): void {
+    const me = this.getCurrentUser();
+    const group = this.getConversations().find((c) => c.id === id);
+    if (group) this.saveConversation({ id, name: group.name, memberIds: group.memberIds.filter((m) => m !== me.id) });
+  }
+
+  static deleteConversation(id: string): void {
+    const all = getStored<Conversation[]>(COLLECTIONS.conversations.storageKey, []);
+    const group = all.find((c) => c.id === id);
+    if (!group || group.ownerId !== this.getCurrentUser().id) throw new Error('يحذف المجموعة منشئها');
+    setStored(COLLECTIONS.conversations.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
+  }
+
+  /** Where I have read up to in each conversation (shared by my devices). */
+  static getChatReads(): ChatReads | undefined {
+    const me = this.getCurrentUser().id;
+    return getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []).find((r) => r.id === me);
+  }
+
+  static markChannelRead(channel: string, timestamp: string): void {
+    const me = this.getCurrentUser().id;
+    const all = getStored<ChatReads[]>(COLLECTIONS.chatReads.storageKey, []);
+    const mine = all.find((r) => r.id === me) || { id: me, userId: me, seen: {} };
+    if ((mine.seen[channel] || '') >= timestamp) return;
+    const next: ChatReads = { ...mine, seen: { ...mine.seen, [channel]: timestamp } };
+    if (chatReadsError(next, me)) return;
+    setStored(COLLECTIONS.chatReads.storageKey, [next, ...all.filter((r) => r.id !== me)]);
+    // Reading the conversation is reading its notification; the next message notifies again.
+    this.markNotificationsReadFor(`/messages/${encodeURIComponent(channel)}`);
   }
 
   // --- NOTIFICATIONS ---
@@ -2010,6 +2265,16 @@ export class ApiService {
     const target = all.find((n) => n.id === id && n.userId === me);
     if (!target || target.isRead) return;
     target.isRead = true;
+    setStored(STORAGE_KEYS.NOTIFICATIONS, all);
+  }
+
+  /** Marks my unread notifications that lead to one place as read (the place was just opened). */
+  static markNotificationsReadFor(linkUrl: string): void {
+    const all = this.getNotifications();
+    const me = this.getCurrentUser().id;
+    const mine = all.filter((n) => n.userId === me && !n.isRead && n.linkUrl === linkUrl);
+    if (!mine.length) return;
+    mine.forEach((n) => (n.isRead = true));
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }
 
@@ -2053,54 +2318,45 @@ export class ApiService {
     return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
   }
 
-  static logAudit(
-    actionType: AuditLog['actionType'],
-    targetEntity: string,
-    targetId: string,
-    severity: AuditLog['severity'],
-    details: string
-  ): void {
-    const all = this.getAuditLogs();
-    const user = this.getCurrentUser();
-    const newAudit: AuditLog = {
-      id: newId('aud'),
-      userId: user.id,
-      userName: user.fullName,
-      userRole: user.role,
-      actionType,
-      targetEntity,
-      targetId,
-      severity,
-      details,
-      ipAddress: '192.168.1.15',
-      timestamp: new Date().toISOString(),
-    };
-    all.unshift(newAudit);
-    if (all.length > 200) all.length = 200;
-    setStored(STORAGE_KEYS.AUDIT_LOGS, all);
-  }
+  // Audit entries are written by the server alone (see src/server/sync.ts and the auditLogs policy).
 
   // --- GLOBAL SEARCH ---
-  static globalSearch(query: string): {
-    news: NewsItem[];
-    programs: Program[];
-    episodes: Episode[];
-    guests: Guest[];
-    tasks: EditorialTask[];
-  } {
+  /**
+   * Unified search (Ctrl+K): every record type, Arabic-normalised and stem aware, best match first
+   * (title matches above body matches, newest first on equal relevance).
+   */
+  static globalSearch(query: string): GlobalSearchResult {
     if (!query.trim()) {
-      return { news: [], programs: [], episodes: [], guests: [], tasks: [] };
+      return { news: [], programs: [], episodes: [], guests: [], tasks: [], bulletins: [], cards: [] };
     }
-    const has = (...values: unknown[]) => matchesQuery(query, ...values);
-    const text = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
+    const ranked = <T extends { updatedAt?: string; createdAt?: string }>(index: SearchIndex<T>, items: T[]) =>
+      index
+        .search(items, query)
+        .sort((a, b) => b.score - a.score || String(b.item.updatedAt || b.item.createdAt || '').localeCompare(String(a.item.updatedAt || a.item.createdAt || '')))
+        .map((h) => h.item);
+    return {
+      news: ranked(GLOBAL_INDEX.news, this.getNews()),
+      programs: ranked(GLOBAL_INDEX.programs, this.getPrograms() as Array<Program & { createdAt?: string }>),
+      episodes: ranked(GLOBAL_INDEX.episodes, this.getEpisodes() as Array<Episode & { createdAt?: string }>),
+      guests: ranked(GLOBAL_INDEX.guests, this.getGuests() as Array<Guest & { createdAt?: string }>),
+      tasks: ranked(GLOBAL_INDEX.tasks, this.getTasks() as Array<EditorialTask & { createdAt?: string }>),
+      bulletins: ranked(GLOBAL_INDEX.bulletins, this.getBulletins()),
+      cards: ranked(GLOBAL_INDEX.cards, this.getCards()),
+    };
+  }
 
-    const news = this.getNews().filter((n) => has(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, text(n.content)));
-    const programs = this.getPrograms().filter((p) => has(p.name, p.description, p.presenterName, p.producerName));
-    const episodes = this.getEpisodes().filter((e) => has(e.title, e.description, e.programName, e.episodeNumber, e.broadcastDate));
-    const guests = this.getGuests().filter((g) => has(g.fullName, g.organization, g.specialty, g.jobTitle));
-    const tasks = this.getTasks().filter((t) => has(t.title, t.description, t.assigneeName, t.assignedToName));
-
-    return { news, programs, episodes, guests, tasks };
+  /** Words of the records the unified search covers, for «هل تقصد» and suggestions. */
+  static searchVocabularyTexts(): string[] {
+    const out: string[] = [];
+    const push = (...v: unknown[]) => v.forEach((x) => { if (Array.isArray(x)) x.forEach((y) => push(y)); else if (x) out.push(String(x)); });
+    this.getNews().forEach((n) => push(n.title, n.shortTitle, n.summary, n.keywords, n.locationName, n.categoryName));
+    this.getPrograms().forEach((p) => push(p.name, p.presenterName, p.producerName));
+    this.getEpisodes().forEach((e) => push(e.title, e.programName));
+    this.getGuests().forEach((g) => push(g.fullName, g.organization, g.jobTitle, g.specialty));
+    this.getTasks().forEach((t) => push(t.title));
+    this.getBulletins().forEach((b) => push(b.title));
+    this.getCards().forEach((c) => push(c.title, c.ownerName));
+    return out;
   }
 
   // --- SQLITE DATABASE OPERATIONS (server administration) ---
@@ -2150,6 +2406,26 @@ export class ApiService {
   }
   static async confirmDatabaseOperation(input: { action: 'restore' | 'reset'; fileName?: string; password: string; totp?: string }): Promise<{ token: string; expiresAt: string }> {
     return (await apiFetch<{ data: { token: string; expiresAt: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: input, confirmationErrors: true })).data;
+  }
+
+  /** Confirms the identity again before a full database file leaves the server; returns the one-time download link. */
+  static async confirmedDownloadUrl(kind: 'download' | 'export', input: { fileName?: string; password: string; totp?: string }): Promise<string> {
+    const { token } = (await apiFetch<{ data: { token: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: { action: kind, ...input }, confirmationErrors: true })).data;
+    return kind === 'download'
+      ? `/api/v1/db/backups/download?fileName=${encodeURIComponent(input.fileName || '')}&confirmationToken=${encodeURIComponent(token)}`
+      : `/api/v1/db/export?confirmationToken=${encodeURIComponent(token)}`;
+  }
+
+  /** Colleagues, general managers and open card steps still belonging to a station. */
+  static async getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number }> {
+    return (await apiFetch<{ data: any }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/usage`)).data;
+  }
+
+  /** Removes a station on the server, moving its colleagues and open work to `replacementId`. */
+  static async removeStation(stationId: string, replacementId?: string): Promise<{ movedUsers: number; movedSteps: number }> {
+    const res = (await apiFetch<{ data: { movedUsers: number; movedSteps: number } }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/remove`, { method: 'POST', json: { replacementId } })).data;
+    await dataStore.pull();
+    return res;
   }
 
   static async createBackup(): Promise<DbBackupFileInfo | null> {
@@ -2228,7 +2504,6 @@ export class ApiService {
         added += fresh.length;
       }
     });
-    this.logAudit('SETTINGS_UPDATE', 'BACKUP', 'import', 'WARNING', `استيراد نسخة JSON: إضافة ${added} سجل وتخطي ${skipped}`);
     return { added, skipped };
   }
 }

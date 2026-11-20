@@ -1,23 +1,38 @@
 import { countLabel } from '../shared/labels';
+import { AR, countLabel as countOf } from '../shared/arabicPlural';
+import { downloadCsv } from '../services/csvExport';
+import { apiService } from '../services/api';
+import { RbacService } from '../services/rbacService';
+import { stationName, stationsOf } from '../shared/stations';
+import { managerScope, stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
+import { productionSummary } from '../shared/workload';
+import { stepTypesOf } from '../shared/productionCards';
+import { localDateString } from '../shared/dates';
+import { when } from '../components/cards/cardUi';
 import React, { useState, useMemo } from 'react';
-import {
-  BarChart3,
-  TrendingUp,
-  Clock,
-  CheckCircle2,
-  Tv,
-  FileText,
-  Users,
-  AlertTriangle,
-  Award,
-  Calendar,
-  Printer,
-  Download,
-  Filter,
-  Layers,
-  ChevronDown,
-} from 'lucide-react';
+import { BarChart3, Clock, Tv, FileText, Users, Calendar, Printer, Download, Filter } from 'lucide-react';
 import { NewsItem, Episode, Guest, Category } from '../types';
+
+const PERIODS = [
+  { id: 'today', name: 'اليوم' },
+  { id: 'week', name: 'آخر 7 أيام' },
+  { id: 'month', name: 'آخر 30 يوماً' },
+  { id: 'all', name: 'كل الفترات' },
+] as const;
+
+/** A headline figure: what it measures (and over which period), the figure, and how it was counted. */
+const Metric: React.FC<{ label: string; scope: string; icon: React.ElementType; value: React.ReactNode; note: React.ReactNode }> = ({ label, scope, icon: Icon, value, note }) => (
+  <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-2">
+    <div className="flex items-start justify-between gap-2">
+      <h2 className="text-xs font-bold text-slate-700">
+        {label} <span className="font-normal text-slate-500">({scope})</span>
+      </h2>
+      <Icon className="w-5 h-5 shrink-0 text-slate-400" aria-hidden="true" />
+    </div>
+    <p className="text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
+    <p className="text-2xs text-slate-600">{note}</p>
+  </div>
+);
 
 interface ReportsViewProps {
   newsList: NewsItem[];
@@ -34,6 +49,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedStation, setSelectedStation] = useState<string>('ALL');
+
+  // Stations this reader follows (all for central management), and the station groups among them.
+  const currentUser = apiService.getCurrentUser();
+  const settings = apiService.getSettings();
+  const allStations = stationsOf(settings);
+  const scope = managerScope(currentUser, allStations, RbacService.hasPermission(currentUser, 'workload.view_all'));
+  const stations = allStations.filter((s) => scope.has(s.id));
+  const groups = stationGroupsOf(settings).filter((g) => g.stationIds.some((id) => scope.has(id)));
+  const seesAll = stations.length === allStations.length;
+  const stationOfUser = useMemo(() => new Map(apiService.getUsers().map((u) => [u.id, u.stationId])), [newsList]);
+  const inStation = stationFilterMatcher(selectedStation, groups);
+  /** A story belongs to its writer's station. */
+  const newsStation = (n: NewsItem) => stationOfUser.get(n.authorId);
+  const inScope = (n: NewsItem) => seesAll || scope.has(newsStation(n) || '');
+  const stationLabel = selectedStation === 'ALL' ? (seesAll ? 'كل المحطات' : 'محطاتي') : selectedStation.startsWith('group:') ? groups.find((g) => `group:${g.id}` === selectedStation)?.name || '' : stationName(allStations, selectedStation);
 
   // Filter news based on selected category
 
@@ -60,9 +91,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
         return false;
       }
+      if (!inScope(item) || !inStation(newsStation(item))) return false;
       return inPeriod(item.updatedAt || item.createdAt);
     });
-  }, [newsList, selectedCategory, periodStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsList, selectedCategory, periodStart, selectedStation, stationOfUser]);
+
+  // Per station: the stories its writers worked on in the period, and the production cards it finished.
+  const periodRange = useMemo(() => ({ from: periodStart ? periodStart.getTime() : 0, to: Date.now() + 1 }), [periodStart]);
+  const production = useMemo(() => productionSummary(apiService.getCards(), stepTypesOf(settings), periodRange), [periodRange, settings]);
+  const stationBreakdown = stations
+    .filter((st) => inStation(st.id))
+    .map((st) => {
+      const own = newsList.filter((n) => newsStation(n) === st.id && (selectedCategory === 'ALL' || n.categoryId === selectedCategory) && inPeriod(n.updatedAt || n.createdAt));
+      const cards = production.byStation.find((r) => r.stationId === st.id);
+      return {
+        id: st.id,
+        name: st.name,
+        total: own.length,
+        published: own.filter((n) => n.status === 'PUBLISHED').length,
+        approved: own.filter((n) => n.status === 'APPROVED').length,
+        review: own.filter((n) => n.status === 'UNDER_REVIEW').length,
+        drafts: own.filter((n) => n.status === 'DRAFT').length,
+        cards: cards?.cards || 0,
+        cardSteps: cards?.steps || 0,
+      };
+    });
 
   const periodEpisodes = useMemo(
     () => episodes.filter((e) => inPeriod(e.broadcastDate)),
@@ -89,6 +143,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
   }, [filteredNews]);
 
+  // Same period as the other indicators (the category filter is ignored in the per-category list by design).
+  const newsInPeriod = newsList.filter((n) => inPeriod(n.updatedAt || n.createdAt));
   const publishedCount = (filteredNews || []).filter((n) => n.status === 'PUBLISHED').length;
   const draftCount = (filteredNews || []).filter((n) => n.status === 'DRAFT').length;
   const reviewCount = (filteredNews || []).filter((n) => n.status === 'UNDER_REVIEW').length;
@@ -97,48 +153,57 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const totalEpisodes = periodEpisodes.length;
   const readyEpisodes = periodEpisodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length;
   const completedEpisodes = periodEpisodes.filter((e) => e.status === 'BROADCASTED').length;
+  const notAired = periodEpisodes.filter((e) => !['BROADCASTED', 'CANCELLED', 'ARCHIVED'].includes(e.status)).length;
+  /** The period in words for a sentence: «اليوم», «في آخر 7 أيام»… */
+  const inPeriodWords = selectedPeriod === 'today' ? 'اليوم' : selectedPeriod === 'all' ? 'في كل الفترات' : `في ${periodLabel}`;
+  const preparedAt = when(new Date().toISOString());
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleExportCsv = () => {
-    const csvRows = [
+    // Same filters as the screen: the period and the selected category.
+    const categoryLabel = selectedCategory === 'ALL' ? 'كل التصنيفات' : categories.find((c) => c.id === selectedCategory)?.nameAr || selectedCategory;
+    const approvalLabel = avgApprovalMinutes === null ? 'لا توجد أخبار معتمدة' : countOf(avgApprovalMinutes, { ...AR.minute, zero: 'أقل من دقيقة' });
+    const csvRows: unknown[][] = [
       ['المؤشر الإحصائي', 'القيمة'],
+      ['المؤسسة', settings?.organizationName || ''],
+      ['أُعدّ في', preparedAt],
       ['الفترة', periodLabel],
-      ['إجمالي الأخبار المرشحة', String(filteredNews.length)],
-      ['الأخبار المنشورة', String(publishedCount)],
-      ['الأخبار المعتمدة', String(approvedCount)],
-      ['أخبار قيد المراجعة', String(reviewCount)],
-      ['المسودات الأولية', String(draftCount)],
-      ['إجمالي الحلقات التلفزيونية', String(totalEpisodes)],
-      ['حلقات جاهزة للبث المباشر', String(readyEpisodes)],
-      ['حلقات تم بثها', String(completedEpisodes)],
-      ['إجمالي الضيوف المعتمدين (كل الفترات)', String(guests.length)],
+      ['تصنيف الأخبار', categoryLabel],
+      ['المحطة', stationLabel],
+      ['إجمالي الأخبار المرشحة', filteredNews.length],
+      ['الأخبار المنشورة', publishedCount],
+      ['الأخبار المعتمدة', approvedCount],
+      ['أخبار قيد المراجعة', reviewCount],
+      ['المسودات الأولية', draftCount],
+      ['متوسط زمن الاعتماد (من الإنشاء حتى الاعتماد)', approvalLabel],
+      ['إجمالي الحلقات التلفزيونية', totalEpisodes],
+      ['حلقات جاهزة للبث (لم تُبث بعد)', readyEpisodes],
+      ['حلقات لم تُبث بعد', notAired],
+      ['حلقات تم بثها', completedEpisodes],
+      ['إجمالي الضيوف المعتمدين (كل الفترات)', guests.length],
       ['دقة توقيت الرانداون', `${rundownAccuracy.onTime}/${rundownAccuracy.total}`],
+      [],
+      ['المحطة', 'أخبار في الفترة', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'تكليفات شاركت فيها', 'خطوات تكليفات أنجزتها'],
+      ...stationBreakdown.map((r) => [r.name, r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps]),
     ];
-
-    const csvContent = '\uFEFF' + csvRows.map((e) => e.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `nrcs_performance_report_${selectedPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const categorySlug = selectedCategory === 'ALL' ? 'all' : selectedCategory;
+    downloadCsv(`nrcs_performance_report_${selectedPeriod}_${categorySlug}_${selectedStation === 'ALL' ? 'all' : selectedStation.replace(':', '-')}_${localDateString()}.csv`, csvRows);
   };
 
   return (
     <div className="space-y-6">
-      {/* Header with Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header with Actions (on paper the sheet heading below replaces it) */}
+      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
             التقارير
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            إحصائيات الإنتاج الإخباري، كفاءة التدقيق التحريري، ودقة الالتزام بجداول البث التلفزيوني
+          <p className="text-xs text-slate-500 mt-1">
+            ما أُنتج من أخبار وحلقات، وسرعة الاعتماد، ودقة توقيت الرانداون، لكل محطة وتصنيف.
           </p>
         </div>
 
@@ -146,85 +211,81 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <button
             type="button"
             onClick={handleExportCsv}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
+            className="flex items-center gap-2 min-h-11 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
           >
-            <Download className="w-4 h-4 text-emerald-700" />
+            <Download className="w-4 h-4" />
             <span>تصدير تقرير CSV</span>
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+            className="flex items-center gap-2 min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
           >
-            <Printer className="w-4 h-4 text-white" />
+            <Printer className="w-4 h-4" />
             <span>طباعة التقرير</span>
           </button>
         </div>
       </div>
 
+      {/* On paper: who, what period and which filters, and when it was prepared. */}
+      <div className="hidden print-only print-keep text-xs">
+        <p>{settings?.organizationName}</p>
+        <h2 className="text-lg font-bold">التقارير</h2>
+        <p>الفترة: {periodLabel} · التصنيف: {selectedCategory === 'ALL' ? 'كل التصنيفات' : categories.find((c) => c.id === selectedCategory)?.nameAr} · المحطة: {stationLabel} · أُعدّ في {preparedAt}</p>
+      </div>
+
       {/* Filter & Period Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-slate-500" />
-          <span className="font-bold text-slate-700">النطاق الزمني:</span>
-          <div className="inline-flex rounded-xl bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => setSelectedPeriod('today')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                selectedPeriod === 'today'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              اليوم
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedPeriod('week')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                selectedPeriod === 'week'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              آخر 7 أيام
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedPeriod('month')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                selectedPeriod === 'month'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              هذا الشهر
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedPeriod('all')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                selectedPeriod === 'all'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              جميع الفترات
-            </button>
+      <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-500" aria-hidden="true" />
+          <span id="reports-period-label" className="font-bold text-slate-700">الفترة:</span>
+          <div role="group" aria-labelledby="reports-period-label" className="inline-flex flex-wrap rounded-xl bg-slate-100 p-1">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={selectedPeriod === p.id}
+                onClick={() => setSelectedPeriod(p.id)}
+                className={`min-h-9 px-3 py-1 rounded-lg font-bold text-xs whitespace-nowrap ${
+                  selectedPeriod === p.id ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
           </div>
         </div>
 
+        {(stations.length > 1 || groups.length > 0) && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="reports-station-filter" className="text-slate-600 font-medium">المحطة:</label>
+            <select
+              id="reports-station-filter"
+              value={selectedStation}
+              onChange={(e) => setSelectedStation(e.target.value)}
+              className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium"
+            >
+              <option value="ALL">{seesAll ? 'كل المحطات' : 'كل محطاتي'}</option>
+              {groups.length > 0 && (
+                <optgroup label="مجموعات المحطات">
+                  {groups.map((g) => <option key={g.id} value={`group:${g.id}`}>{g.name}</option>)}
+                </optgroup>
+              )}
+              {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </select>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">القسم الصحفي:</label>
+          <Filter className="w-4 h-4 text-slate-500" aria-hidden="true" />
+          <label htmlFor="reports-category-filter" className="text-slate-600 font-medium">التصنيف:</label>
           <select
             id="reports-category-filter"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
           >
-            <option value="ALL">كافة الأقسام ({newsList.length})</option>
+            <option value="ALL">كل التصنيفات ({newsList.length})</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nameAr}
@@ -236,71 +297,43 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
       {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">معدل نشر الأخبار</span>
-            <FileText className="w-5 h-5 text-blue-600" />
-          </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
-            {filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%
-          </div>
-          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>{publishedCount} من أصل {filteredNews.length} مادة معتمدة ومنشورة</span>
-          </p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">جاهزية الحلقات للبث</span>
-            <Tv className="w-5 h-5 text-purple-600" />
-          </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
-            {readyEpisodes + completedEpisodes} / {totalEpisodes}
-          </div>
-          <p className="text-[11px] text-purple-600 font-semibold">
-            {readyEpisodes} حلقة جاهزة للبث المباشر اليوم
-          </p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">دقة توقيت الرانداون</span>
-            <Clock className="w-5 h-5 text-emerald-700" />
-          </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">
-            {rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
-          </div>
-          <p className="text-[11px] text-slate-500">
-            {rundownAccuracy.total > 0
-              ? `${rundownAccuracy.onTime} من ${rundownAccuracy.total} حلقة مجموع فقراتها ضمن ±60 ثانية من المدة المخططة`
-              : 'لا توجد حلقات بفقرات رانداون بعد'}
-          </p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold text-slate-600">قاعدة الخبراء والضيوف <span className="font-normal text-slate-500">(الإجمالي، لا يتأثر بالفترة)</span></span>
-            <Users className="w-5 h-5 text-amber-700" />
-          </div>
-          <div className="text-2xl font-black text-slate-800 font-mono">{guests.length}</div>
-          <p className="text-[11px] text-amber-700 font-semibold">
-            موزعين على مختلف التخصصات السياسية والاقتصادية
-          </p>
-        </div>
+        <Metric
+          label="معدل نشر الأخبار"
+          scope={periodLabel}
+          icon={FileText}
+          value={`${filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%`}
+          note={filteredNews.length > 0 ? `نُشر ${publishedCount} من ${filteredNews.length}` : 'لا أخبار في هذه الفترة'}
+        />
+        <Metric
+          label="جاهزية الحلقات للبث"
+          scope={`${periodLabel}، كل المحطات`}
+          icon={Tv}
+          value={notAired > 0 ? `${readyEpisodes} من ${notAired}` : '—'}
+          note={<>{notAired > 0 ? 'جاهزة من الحلقات التي لم تُبث بعد' : `لا حلقات تنتظر البث ${inPeriodWords}`} · {countOf(completedEpisodes, { ...AR.episode, zero: 'لا حلقات' })} بُثّت</>}
+        />
+        <Metric
+          label="دقة توقيت الرانداون"
+          scope={periodLabel}
+          icon={Clock}
+          value={rundownAccuracy.total > 0 ? `${Math.round((rundownAccuracy.onTime / rundownAccuracy.total) * 100)}%` : '—'}
+          note={
+            rundownAccuracy.total > 0
+              ? `${rundownAccuracy.onTime} من ${rundownAccuracy.total}: مجموع الفقرات ضمن ±60 ثانية من المدة المخططة`
+              : 'لا حلقات بفقرات رانداون بعد'
+          }
+        />
+        <Metric label="الضيوف في الدليل" scope="العدد الكلي" icon={Users} value={guests.length} note="لا يتأثر بالفترة ولا بالمحطة." />
       </div>
 
       {/* Production by Category & Workflow Velocity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Category Breakdown */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">
-            حجم الإنتاج الإخباري حسب الأقسام الصحفية <span className="text-[11px] font-normal text-slate-500">(ضمن الفترة المختارة)</span>
-          </h3>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
+          <h2 className="text-sm font-bold text-slate-800">
+            الأخبار حسب التصنيف <span className="text-2xs font-normal text-slate-500">({periodLabel})</span>
+          </h2>
           <div className="space-y-3">
             {categories.map((cat) => {
-              // Same period as the other indicators (the category filter is ignored here by design).
-              const newsInPeriod = (newsList || []).filter((n) => inPeriod(n.updatedAt || n.createdAt));
               const count = newsInPeriod.filter((n) => n.categoryId === cat.id).length;
               const pct = newsInPeriod.length > 0 ? Math.round((count / newsInPeriod.length) * 100) : 0;
 
@@ -308,13 +341,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <div key={cat.id} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-700">{cat.nameAr}</span>
-                    <span className="font-mono text-slate-500">
+                    <span className="tabular-nums text-slate-600">
                       {countLabel(count, { zero: 'لا أخبار', one: 'خبر واحد', two: 'خبران', few: 'أخبار', many: 'خبراً' })} ({pct}%)
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden" aria-hidden="true">
                     <div
-                      className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                      className="h-full bg-blue-600 rounded-full"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -325,49 +358,62 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         {/* Workflow Breakdown */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">
-            توزيع المواد الإخبارية في خط الإنتاج والتحرير
-          </h3>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
+          <h2 className="text-sm font-bold text-slate-800">
+            أين الأخبار في مسار التحرير <span className="text-2xs font-normal text-slate-500">({periodLabel})</span>
+          </h2>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="text-xs text-slate-500 block">المسودات الأولية</span>
-              <strong className="text-xl font-bold font-mono text-slate-700 block mt-1">
-                {draftCount}
-              </strong>
-            </div>
+          <dl className="grid grid-cols-2 gap-3 pt-2">
+            {[
+              { label: 'مسودات', value: draftCount, tone: 'text-slate-900' },
+              { label: 'قيد المراجعة', value: reviewCount, tone: 'text-amber-800' },
+              { label: 'معتمدة', value: approvedCount, tone: 'text-violet-700' },
+              { label: 'منشورة', value: publishedCount, tone: 'text-emerald-700' },
+            ].map((stage) => (
+              <div key={stage.label} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <dt className="text-xs text-slate-600">{stage.label}</dt>
+                <dd className={`text-xl font-bold tabular-nums mt-1 ${stage.value ? stage.tone : 'text-slate-900'}`}>{stage.value}</dd>
+              </div>
+            ))}
+          </dl>
 
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <span className="text-xs text-amber-700 block">قيد التدقيق والمراجعة</span>
-              <strong className="text-xl font-bold font-mono text-amber-800 block mt-1">
-                {reviewCount}
-              </strong>
-            </div>
-
-            <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
-              <span className="text-xs text-purple-700 block">معتمدة من مدراء التحرير</span>
-              <strong className="text-xl font-bold font-mono text-purple-800 block mt-1">
-                {approvedCount}
-              </strong>
-            </div>
-
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <span className="text-xs text-emerald-700 block">منشورة على الهواء والرقمي</span>
-              <strong className="text-xl font-bold font-mono text-emerald-800 block mt-1">
-                {publishedCount}
-              </strong>
-            </div>
-          </div>
-
-          <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
-            <strong>مؤشر الكفاءة:</strong>{' '}
+          <p className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 leading-relaxed">
+            <strong className="text-slate-900">سرعة الاعتماد:</strong>{' '}
             {avgApprovalMinutes === null
               ? 'لا توجد أخبار معتمدة في الفترة المحددة لحساب متوسط زمن الاعتماد.'
-              : <>متوسط الوقت من إنشاء الخبر حتى اعتماده في الفترة المحددة هو <strong>{avgApprovalMinutes >= 120 ? `${Math.round(avgApprovalMinutes / 60)} ساعة` : `${avgApprovalMinutes} دقيقة`}</strong>.</>}
-          </div>
+              : <>متوسط الوقت من إنشاء الخبر حتى اعتماده <strong>{avgApprovalMinutes >= 120 ? countOf(Math.round(avgApprovalMinutes / 60), AR.hour) : countOf(avgApprovalMinutes, { ...AR.minute, zero: 'أقل من دقيقة' })}</strong>.</>}
+          </p>
         </div>
       </div>
+
+      {/* Per station: a story counts for its writer's station; cards for each station that finished a step on them. */}
+      {stationBreakdown.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">حسب المحطة <span className="text-2xs font-normal text-slate-500">({periodLabel})</span></h2>
+          <div role="region" tabIndex={0} aria-label="جدول المحطات (يمكن تمريره أفقياً)" className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-xs">
+              <thead>
+                <tr className="text-slate-600 border-b border-slate-200">
+                  {['المحطة', 'أخبار', 'منشورة', 'معتمدة', 'قيد المراجعة', 'مسودات', 'تكليفات شاركت فيها', 'خطوات تكليفات أنجزتها'].map((h, i) => (
+                    <th key={h} scope="col" className={`p-3 font-bold text-right whitespace-nowrap ${i === 0 ? 'sticky right-0 bg-white' : ''}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stationBreakdown.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                    <th scope="row" className="p-3 text-right font-bold text-slate-900 whitespace-nowrap sticky right-0 bg-white">{r.name}</th>
+                    {[r.total, r.published, r.approved, r.review, r.drafts, r.cards, r.cardSteps].map((v, i) => (
+                      <td key={i} className="p-3 tabular-nums">{v}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-2xs text-slate-500">يُنسب الخبر إلى محطة كاتبه. الحلقات لا تُنسب إلى محطة، فأرقامها تخص كل المحطات.</p>
+        </section>
+      )}
     </div>
   );
 };

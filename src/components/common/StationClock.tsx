@@ -40,21 +40,21 @@ export const StationClock: React.FC<{ variant?: 'hero' | 'strip'; className?: st
   if (variant === 'hero') {
     return (
       <div className={`text-center ${className}`} role="timer" aria-live="off" aria-label={`الساعة ${time}، ${date}`}>
-        <p className={`text-4xl sm:text-5xl font-black tabular-nums tracking-tight ${onDark ? 'theme-fixed text-white' : 'text-slate-900'}`}>
+        <p className={`font-mono text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight ${onDark ? 'theme-fixed text-white' : 'text-slate-900'}`}>
           {time}
         </p>
         <p className={`mt-1 text-sm font-bold ${onDark ? 'theme-fixed text-slate-300' : 'text-slate-600'}`}>{date}</p>
-        {zone && <p className="theme-fixed text-[11px] text-slate-500 mt-0.5">بتوقيت المحطة ({zone})</p>}
+        {zone && <p className="theme-fixed text-2xs text-slate-500 mt-0.5">بتوقيت المحطة ({zone})</p>}
       </div>
     );
   }
   return (
     <div className={`inline-flex items-baseline gap-2 ${className}`} role="timer" aria-live="off" aria-label={`الساعة ${time}، ${date}`}>
-      <span className="text-sm font-black text-slate-900 tabular-nums">
+      <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">
         {time}
       </span>
       <span className="text-xs font-bold text-slate-600">{date}</span>
-      {zone && <span className="text-[10px] text-slate-500">بتوقيت المحطة</span>}
+      {zone && <span className="text-2xs text-slate-500">بتوقيت المحطة</span>}
     </div>
   );
 };

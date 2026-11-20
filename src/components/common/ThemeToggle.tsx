@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, Monitor, Moon, Sun, Waves } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
-import { reducedMotion, setReducedMotion, type ThemePreference } from '../../services/theme';
+import { reducedMotion, setReducedMotion, setTextScale, TEXT_SCALES, textScale, type ThemePreference } from '../../services/theme';
 
 const OPTIONS: { id: ThemePreference; label: string; hint: string; icon: typeof Sun }[] = [
   { id: 'light', label: 'نهاري', hint: 'خلفية فاتحة', icon: Sun },
@@ -14,6 +14,7 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
   const { mode, preference, setPreference } = useTheme();
   const [open, setOpen] = useState(false);
   const [calm, setCalm] = useState(reducedMotion);
+  const [scale, setScale] = useState(textScale);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
                 <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-500'}`} />
                 <span className="flex-1 min-w-0">
                   <span className={`block text-xs font-bold ${active ? 'text-blue-700' : 'text-slate-700'}`}>{o.label}</span>
-                  <span className="block text-[11px] text-slate-500">{o.hint}</span>
+                  <span className="block text-2xs text-slate-500">{o.hint}</span>
                 </span>
                 {active && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
               </button>
@@ -83,10 +84,31 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
               <Waves className={`w-4 h-4 shrink-0 ${calm ? 'text-blue-600' : 'text-slate-500'}`} />
               <span className="flex-1 min-w-0">
                 <span className={`block text-xs font-bold ${calm ? 'text-blue-700' : 'text-slate-700'}`}>تقليل الحركة</span>
-                <span className="block text-[11px] text-slate-500">إيقاف الوميض والنبض والانتقالات المتحركة</span>
+                <span className="block text-2xs text-slate-500">إيقاف الوميض والنبض والانتقالات المتحركة</span>
               </span>
               {calm && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
             </button>
+          </div>
+          <div className="border-t border-slate-100 mt-1 pt-2 px-2 pb-1" role="group" aria-label="حجم الخط">
+            <span className="block text-xs font-bold text-slate-700 mb-1.5">حجم الخط</span>
+            <div className="grid grid-cols-4 gap-1">
+              {TEXT_SCALES.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={scale === option.id}
+                  title={option.hint}
+                  onClick={() => {
+                    setTextScale(option.id);
+                    setScale(option.id);
+                  }}
+                  className={`min-h-9 rounded-lg border text-2xs font-bold ${scale === option.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

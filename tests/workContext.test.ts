@@ -2,9 +2,12 @@ import { expect, it } from 'vitest';
 import { workContextPage, readWorkContext, writeWorkContext, sanitizeWorkContext, sanitizeWorkSections } from '../src/shared/workContext';
 
 it('bounds context and excludes content and selection', () => {
-  const value = sanitizeWorkContext({ schemaVersion: 1, definition: { activeTab: 'UNDER_REVIEW', onlyMine: true }, page: 3, anchorId: 'news-1', body: 'secret', selectedIds: ['news-1'], modal: true });
+  const value = sanitizeWorkContext({ schemaVersion: 1, definition: { activeTab: 'UNDER_REVIEW', onlyMine: true }, page: 3, anchorId: 'news-1', anchorOffset: -120, body: 'secret', selectedIds: ['news-1'], modal: true });
   expect(value.page).toBe(3);
   expect(value.anchorId).toBe('news-1');
+  expect(value.anchorOffset).toBe(-120);
+  expect(sanitizeWorkContext({ schemaVersion: 1, anchorId: 'news-1', anchorOffset: 10000 }).anchorOffset).toBeUndefined();
+  expect(sanitizeWorkContext({ schemaVersion: 1, anchorOffset: 120 }).anchorOffset).toBeUndefined();
   expect(value.definition.activeTab).toBe('UNDER_REVIEW');
   expect(value.definition.onlyMine).toBe(true);
   expect(value).not.toHaveProperty('body');

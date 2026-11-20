@@ -14,7 +14,16 @@ export type UserRole =
   | 'REPORTER'
   | 'MEDIA'
   | 'CREW'
-  | 'VIEWER';
+  | 'VIEWER'
+  | 'MAIN_STATION_MANAGER'
+  | 'GENERAL_MANAGER'
+  | 'STATION_MANAGER'
+  | 'DIRECTOR'
+  | 'PREPARER'
+  | 'MONTAGE'
+  | 'QUALITY'
+  | 'MONITOR'
+  | 'REPORTS_EDITOR';
 
 
 export interface User {
@@ -31,6 +40,12 @@ export interface User {
   department: string;
   /** Structured department id (see shared/departments). */
   departmentId?: string;
+  /** Station (bureau) the colleague works at (see shared/stations). */
+  stationId?: string;
+  /** General manager: the stations this person follows (union of their scopes; see shared/stations). */
+  managedStationIds?: string[];
+  /** General manager: station groups (regions) this person follows. */
+  managedGroupIds?: string[];
   staffId?: string;
   bio?: string;
   lastLogin?: string;
@@ -122,6 +137,16 @@ export interface WireItem {
   fetchedAt: string;
   /** Marked urgent/flash by the agency (detected at ingest). */
   flash?: boolean;
+  /** «رصد يدوي»: a TV / social / web observation entered by the monitoring desk (sourceId 'manual'). */
+  manual?: boolean;
+  /** Where a manual observation was seen (channel, platform). */
+  medium?: 'TV' | 'SOCIAL' | 'WEB' | 'OTHER';
+  createdById?: string;
+  createdByName?: string;
+  /** «تمت المتابعة», per colleague. */
+  handled?: { userId: string; userName: string; at: string }[];
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
 // New Type: Story (representing the overarching event or coverage)
@@ -156,6 +181,11 @@ export interface NewsWorkflowLog {
   };
   comment?: string;
   timestamp: string;
+  /**
+   * Review bookkeeping that does not change the status (fromStatus === toStatus):
+   * a quality pass, a reviewer claiming or releasing the story, a breaking request from the field.
+   */
+  action?: 'QUALITY_PASSED' | 'REVIEW_CLAIMED' | 'REVIEW_RELEASED' | 'BREAKING_REQUESTED';
 }
 
 export interface NewsItem {
@@ -204,6 +234,12 @@ export interface NewsItem {
   breakingUntil?: string;
   internalNotes?: string;
   workflowLogs: NewsWorkflowLog[];
+  /** «اجتازت التدقيق»: a quality reviewer passed this text (no publishing authority). See shared/newsWorkflow. */
+  qualityCheck?: import('../shared/newsWorkflow').NewsQualityCheck;
+  /** «أراجعها الآن»: the reviewer working on the story, so two reviewers do not take the same item. */
+  reviewClaim?: import('../shared/newsWorkflow').NewsReviewClaim;
+  /** Sent from the field as breaking; going on air stays the editors' decision (news.breaking_push). */
+  breakingRequest?: import('../shared/newsWorkflow').NewsBreakingRequest;
   viewsCount: number;
   createdAt: string;
   updatedAt: string;
@@ -471,6 +507,8 @@ export interface EditorialTask {
   relatedEntityTitle?: string;
   notes?: string;
   createdAt?: string;
+  /** Stamped by the server when the task is finished. */
+  completedAt?: string;
 }
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'PDF';
@@ -558,6 +596,10 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */
+  setup?: import('../shared/setup').SetupState;
+  /** Dropbox and the station's shared folder (see shared/storage). */
+  storage?: import('../shared/storage').StorageSettings;
   onAirDisplayMode?: 'OPERATIONAL' | 'TEXT';
   studioDisplayMode?: 'OPERATIONAL' | 'TEXT';
   allowOfflineScriptEdits?: boolean;
@@ -574,6 +616,16 @@ export interface SystemSettings {
   defaultNewsPriority?: NewsPriority;
   breakingDurationHours?: number;
   newsTemplates?: { id: string; name: string; body: string }[];
+  /** Stations sharing this newsroom: main station, branches and their links (see shared/stations). */
+  stations?: import('../shared/stations').Station[];
+  /** Removed stations, kept by name for the history of finished work (written by the server). */
+  stationsArchive?: import('../shared/stations').ArchivedStation[];
+  /** Groups of stations (regions) a general manager can follow (see shared/stations). */
+  stationGroups?: import('../shared/stations').StationGroup[];
+  /** Administrative departments: names, sub-units, heads and stations (see shared/departments). */
+  departments?: import('../shared/departments').Department[];
+  /** Kinds of production-card steps and their weights (see shared/productionCards). */
+  cardStepTypes?: import('../shared/productionCards').StepType[];
   /** Station-wide date/time conventions (see shared/dateFormat). */
   dateTime?: Partial<import('../shared/dateFormat').DateTimeSettings>;
 }

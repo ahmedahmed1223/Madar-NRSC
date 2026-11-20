@@ -23,10 +23,12 @@ import {
 import { demoBulletin, INITIAL_BULLETIN_FORMATS } from '../services/demoBulletins';
 import { demoBookings, demoDiary, INITIAL_RESOURCES } from '../services/demoPlanning';
 import { localDateString } from '../shared/dates';
+import { validZone } from '../shared/dateFormat';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { departmentIdOf, departmentName } from '../shared/departments';
-import { generatePassword, hashPassword } from './auth';
+import { generatePassword, hashPassword, validatePasswordStrength } from './auth';
+import { BUILT_IN_TEMPLATES } from '../shared/workflowTemplates';
 import { logger } from './logger';
 
 /** Reference data every installation needs. */
@@ -117,10 +119,13 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
 
   await ensureAdministrator(db, config);
   reconcileTwoFactorFlags(db);
+  normalizeStationZone(db);
   migrateRoleDefaults(db);
   migrateToDepartments(db);
   ensureSystemRoles(db);
+  applyDefaultScreens(db);
   grantNewPermissions(db);
+  seedWorkflowTemplates(db);
   if (demoAllowed) {
     await ensureDemoUsers(db, config);
     seedDemoBulletins(db);
@@ -195,7 +200,42 @@ const NEW_PERMISSION_GRANTS: Record<string, string[]> = {
   'diary.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
   'resources.book': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'REPORTER', 'MEDIA', 'CREW'],
   'resources.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'cards.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW', 'VIEWER'],
+  'cards.work': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
+  'cards.manage': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'workload.view': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER'],
+  'workload.view_all': ['SUPER_ADMIN', 'ADMIN'],
+  'messages.groups': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'JOURNALIST', 'PRODUCER', 'PRESENTER', 'REPORTER', 'MEDIA', 'CREW'],
+  // Deleting episodes left `episodes.edit` (preparers and directors keep editing, not deleting).
+  'episodes.delete': ['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'PRODUCER', 'MAIN_STATION_MANAGER'],
+  // Field reporters and the monitoring desk send breaking alerts for review; airing stays with editors.
+  'news.breaking_request': ['JOURNALIST', 'REPORTER', 'MONITOR', 'REPORTS_EDITOR'],
 };
+
+/**
+ * Roles stored before version 4 have no screen list. System roles get the default list of their
+ * role once; an administrator then adjusts it in the role editor. Custom roles are left as they are.
+ */
+function applyDefaultScreens(db: NewsroomDatabase) {
+  if (db.getMeta('role_screens_defaults') === '1') return;
+  db.transaction(() => {
+    for (const row of db.listCollection('roles')) {
+      const defaults = DEFAULT_ROLE_DEFINITIONS.find((r) => r.roleCode === row.d?.roleCode)?.screens;
+      if (row.d?.isSystemRole && defaults && !Array.isArray(row.d.screens)) db.writeRow('roles', row.id, { ...row.d, screens: defaults }, row.p, null);
+    }
+    db.setMeta('role_screens_defaults', '1');
+  });
+}
+
+/** Starter workflow templates («نشرة أخبار»، «تقرير ميداني»…), added once; administrators then edit or archive them. */
+function seedWorkflowTemplates(db: NewsroomDatabase) {
+  if (db.getMeta('workflow_templates_seeded') === '1') return;
+  db.transaction(() => {
+    const now = new Date().toISOString();
+    seedList(db, 'workflowTemplates', BUILT_IN_TEMPLATES.map((t) => ({ ...t, createdAt: now, updatedAt: now })));
+    db.setMeta('workflow_templates_seeded', '1');
+  });
+}
 
 /** System roles introduced after a database was created are added once. */
 function ensureSystemRoles(db: NewsroomDatabase) {
@@ -296,6 +336,15 @@ function migrateRoleDefaults(db: NewsroomDatabase) {
   });
 }
 
+/** Older seeds stored «Asia/Riyadh (GMT+3)», which is not a time zone: keep only the IANA name. */
+function normalizeStationZone(db: NewsroomDatabase) {
+  const row = db.getRow('settings', SINGLETON_ID);
+  const zone = row?.d?.defaultTimezone;
+  if (typeof zone !== 'string' || !/[\s(]/.test(zone.trim())) return;
+  const clean = validZone(zone);
+  if (clean) db.writeRow('settings', SINGLETON_ID, { ...row!.d, defaultTimezone: clean }, row!.p, null);
+}
+
 /** The user record's twoFactorEnabled flag must mirror real TOTP enrolment (never trust seeded/legacy values). */
 function reconcileTwoFactorFlags(db: NewsroomDatabase) {
   db.transaction(() => {
@@ -312,6 +361,8 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
 
   const email = (config.admin.email || 'admin@madar.local').toLowerCase();
   const generated = !config.admin.password;
+  const weak = config.admin.password ? validatePasswordStrength(config.admin.password) : null;
+  if (weak) throw new Error('ADMIN_PASSWORD must contain letters and digits (at least 10 characters)');
   const password = config.admin.password || generatePassword();
   const hash = await hashPassword(password);
 
@@ -333,7 +384,8 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
       };
       db.writeRow('users', userId, admin, -1, null);
     }
-    db.setPassword(userId, email, hash, generated);
+    // Whether generated or taken from ADMIN_PASSWORD (which stays in a file on disk), it is changed at first sign-in.
+    db.setPassword(userId, email, hash, true);
   });
 
   if (generated) {
@@ -343,7 +395,7 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
       password,
     });
   } else {
-    logger.info('initial administrator created', { email });
+    logger.info('initial administrator created from ADMIN_PASSWORD (change it at first login, then remove ADMIN_PASSWORD from the environment file)', { email });
   }
 }
 

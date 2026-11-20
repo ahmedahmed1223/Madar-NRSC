@@ -8,7 +8,8 @@ test('manual pagination replaces the previously restored anchor', async ({ brows
   const response = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: Array.from({ length: 15 }, (_, index) => ({ c: 'news', op: 'upsert', id: `anchor-review-${index}`, d: { ...sample, id: `anchor-review-${index}`, title: `Pagination fixture ${index}`, status: 'DRAFT', deletedAt: null } })) } });
   expect((await response.json()).results.every((result: any) => result.ok)).toBe(true);
   await openNav(page, 'الأخبار');
-  await page.getByText('تخصيص قائمة الأخبار', { exact: true }).click();
+  await page.locator('[aria-controls="news-advanced-filters"]').click();
+  await page.getByText('عرض القائمة: عدد النتائج والأعمدة', { exact: true }).click();
   await page.getByLabel('نتائج الصفحة', { exact: true }).selectOption('10');
   await page.locator('button[title="تحرير الخبر"]').first().click();
   await openNav(page, 'الأخبار');
@@ -142,4 +143,38 @@ test('Escape stops a stalled deletion and a lost delete acknowledgement reconcil
   await confirmDelete();
   await expect(row).toHaveCount(0);
   await close();
+});
+
+test('a linked broadcast deadline takes priority in the single review queue', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv');
+  try {
+    const { collections } = await (await page.request.get('/api/v1/data')).json();
+    const send = async (ops: object[]) => {
+      const response = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops } });
+      const { results } = await response.json();
+      expect(results.map((result: { ok: boolean }) => result.ok)).toEqual(ops.map(() => true));
+    };
+    const sample = collections.news[0].d;
+    const ids = ['deadline-review-known', 'deadline-review-unknown'];
+    await send(ids.map((id, index) => ({
+      c: 'news', op: 'upsert', id,
+      d: { ...sample, id, title: `Deadline queue ${index + 1}`, status: 'UNDER_REVIEW', priority: index === 0 ? 'LOW' : 'URGENT', workflowLogs: [], deletedAt: undefined, embargoUntil: undefined },
+    })));
+    await send([{ c: 'bulletins', op: 'upsert', id: 'deadline-review-bulletin', d: {
+      title: 'Review deadline bulletin', date: '2099-01-01', startTime: '18:00', plannedSeconds: 600, kind: 'MAIN', status: 'DRAFT', anchors: [],
+    } }]);
+    await send([{ c: 'bulletinStories', op: 'upsert', id: 'deadline-review-story', d: {
+      bulletinId: 'deadline-review-bulletin', newsId: ids[0], slug: 'Linked review story', type: 'READER', status: 'DRAFT', rank: 0, script: 'Linked copy',
+    } }]);
+    await openNav(page, 'الأخبار');
+    await page.getByRole('searchbox', { name: 'البحث في الأخبار' }).fill('Deadline queue');
+    await page.getByRole('tab', { name: /قيد المراجعة/ }).click();
+    const queue = page.getByRole('region', { name: 'طابور مراجعة الأخبار' });
+    await expect(queue).toHaveCount(1);
+    const rows = queue.getByRole('listitem');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).getByRole('button', { name: 'Deadline queue 1', exact: true })).toBeVisible();
+    await expect(rows.nth(0)).toContainText('Review deadline bulletin');
+    await expect(rows.nth(1)).toContainText('موعد البث غير محدد');
+  } finally { await close(); }
 });

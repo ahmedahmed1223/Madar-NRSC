@@ -22,6 +22,12 @@ const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأر
 
 const addDays = addDaysIso;
 
+/** «الخميس 19/11» for a YYYY-MM-DD day. */
+const dayLabel = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${DAY_NAMES[new Date(y, m - 1, d).getDay()]} ${d}/${m}`;
+};
+
 /** Weeks start on Saturday. */
 const weekStartOf = (date: string) => {
   const [y, m, d] = date.split('-').map(Number);
@@ -91,14 +97,14 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
           <span className="text-xs font-bold text-slate-700 px-2 tabular-nums" aria-live="polite">{`${arabicDate(days[0])} – ${arabicDate(days[6])}`}</span>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="الأسبوع التالي">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
+          <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className="min-h-11 sm:min-h-9 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
             هذا الأسبوع
           </button>
           {canManage && (
@@ -112,7 +118,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                 });
                 setMessage({ ok: true, text: n ? `نُسخت ${n} مناوبة إلى الأسبوع التالي` : 'لا شيء جديد للنسخ' });
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+              className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
             >
               <Copy className="w-3.5 h-3.5" />
               نسخ للأسبوع التالي
@@ -124,7 +130,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
       {message && (
         <div role="status" className={`p-3 rounded-xl text-xs font-bold flex justify-between ${message.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
           <span>{message.text}</span>
-          <button type="button" onClick={() => setMessage(null)} aria-label="إغلاق">
+          <button type="button" onClick={() => setMessage(null)} aria-label="إغلاق" className="-m-1 p-1 rounded-lg hover:bg-white/60">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -139,17 +145,20 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
           {DEPARTMENTS.map((d) => {
             const people = onDutyNow.filter((e) => e.departmentId === d.id);
+            const chosen = d.id === departmentId;
             return (
               <button
                 key={d.id}
                 type="button"
+                aria-pressed={chosen}
+                title={`عرض مناوبات ${d.name}`}
                 onClick={() => setDepartmentId(d.id)}
                 className={`text-right p-2.5 rounded-xl border text-xs transition-colors ${
-                  people.length ? 'bg-emerald-50/60 border-emerald-200 hover:bg-emerald-50' : 'bg-amber-50/60 border-amber-200 hover:bg-amber-50'
-                }`}
+                  chosen ? 'border-blue-500 ring-1 ring-blue-500' : people.length ? 'border-emerald-200' : 'border-slate-200'
+                } ${people.length ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'bg-white hover:bg-slate-50'}`}
               >
                 <span className="font-bold text-slate-800 block">{d.name}</span>
-                <span className={`block mt-0.5 truncate ${people.length ? 'text-emerald-800' : 'text-amber-700'}`}>
+                <span className={`block mt-0.5 truncate ${people.length ? 'text-emerald-800' : 'text-amber-800'}`}>
                   {people.length ? people.map((p) => p.userName).join('، ') : 'لا يوجد مناوب'}
                 </span>
               </button>
@@ -178,7 +187,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                 return (
                   <th key={d} scope="col" className={`p-3 text-center ${d === today ? 'text-blue-700' : ''}`}>
                     <span className="block font-bold">{DAY_NAMES[new Date(y, m - 1, dd).getDay()]}</span>
-                    <span className="block tabular-nums text-[10px] text-slate-500">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
+                    <span className="block tabular-nums text-2xs text-slate-500">{`${Number(d.slice(8))}/${Number(d.slice(5, 7))}`}</span>
                   </th>
                 );
               })}
@@ -189,7 +198,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
               <tr key={s.id} className="border-t border-slate-100 align-top">
                 <th scope="row" className="p-3 text-right">
                   <span className="block font-bold text-slate-800">{s.name}</span>
-                  <span className="block font-mono text-[10px] text-slate-500" dir="ltr">
+                  <span className="block font-mono text-2xs text-slate-500" dir="ltr">
                     {s.start} – {s.end}
                   </span>
                 </th>
@@ -221,7 +230,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                                 type="button"
                                 onClick={() => run(() => apiService.removeRosterEntry(e.id))}
                                 aria-label={`إزالة ${e.userName} من الوردية`}
-                                className="text-slate-500 hover:text-rose-600"
+                                className="-m-1 p-1 rounded text-slate-500 hover:text-rose-600 hover:bg-white"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -264,13 +273,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                             <button
                               type="button"
                               onClick={() => setAdding(key)}
-                              aria-label={`إضافة مناوب ${s.name} يوم ${date}`}
-                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
+                              aria-label={`إضافة مناوب ${s.name} يوم ${dayLabel(date)}`}
+                              className="inline-flex items-center justify-center gap-1 min-h-7 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-blue-600 hover:border-blue-300"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
                           ))}
-                        {!canManage && list.length === 0 && <span className="text-slate-300 text-center">—</span>}
+                        {!canManage && list.length === 0 && <span className="text-slate-500 text-center">—</span>}
                       </div>
                     </td>
                   );
@@ -280,7 +289,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
           </tbody>
         </table>
       </div>
-      {canManage && <p className="text-[11px] text-slate-500">اضغط على اسم المناوب لتعيينه مسؤولاً عن الوردية (يظهر بتاج).</p>}
+      {canManage && <p className="text-2xs text-slate-500">اضغط على اسم المناوب لتعيينه مسؤولاً عن الوردية (يظهر بتاج).</p>}
     </div>
   );
 };

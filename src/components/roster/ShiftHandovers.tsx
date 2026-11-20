@@ -56,7 +56,9 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
   const unknown = useRef<{ action: string; id: string; draft?: HandoverDraftInput; baseV?: number; lastReminderAt?: string } | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const reloadRef = useRef<HTMLButtonElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
+  const dialogWasOpen = useRef(false);
+  const dialogOpen = !!selected || !!draft;
+  const editingDraft = !!draft;
   const messageRef = useRef<HTMLParagraphElement>(null);
   const clearConfirmedDraft = useRef(false);
   const session = useFormDraft(`handover:${currentUser.id}:${selected?.id || 'new'}`, !!draft, { draft, baseV: baseV ?? null }, value => {
@@ -71,10 +73,11 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     return () => { controller.abort(); abortRef.current?.abort(); };
   }, [currentUser.id, canView, isOnline]);
   useLayoutEffect(() => {
-    if (pending) return;
-    if (selected || draft) (titleRef.current || reloadRef.current)?.focus({ preventScroll: true });
-    else if (openerRef.current?.isConnected) openerRef.current.focus();
-  }, [pending, draft?.id, selected?.id]);
+    if (dialogOpen && dialogWasOpen.current && !pending) {
+      (editingDraft ? titleRef.current : reloadRef.current)?.focus({ preventScroll: true });
+    }
+    dialogWasOpen.current = dialogOpen;
+  }, [dialogOpen, editingDraft, pending]);
   useLayoutEffect(() => { if (message && !pending) messageRef.current?.scrollIntoView({ block: 'nearest' }); }, [message, pending]);
   useLayoutEffect(() => {
     if (!pending && clearConfirmedDraft.current) { clearConfirmedDraft.current = false; session.clearDraft(); }
@@ -115,8 +118,13 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
         if (uncertain.id !== id || uncertain.action !== action) throw new Error('راجع نتيجة العملية السابقة قبل تنفيذ إجراء مختلف');
         try { row = await apiService.getShiftHandover(id, controller.signal); }
         catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+        let published = row?.d.state === 'PUBLISHED';
+        if (!row && action === 'publish') {
+          try { published = await apiService.isShiftHandoverPublished(id, controller.signal); }
+          catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+        }
         const confirmed = action === 'save' ? row && uncertain.draft && matchingHandoverDraft(row, uncertain.draft)
-          : action === 'publish' ? row?.d.state === 'PUBLISHED'
+          : action === 'publish' ? published
           : action === 'ack' ? row?.receipts.some(r => r.userId === currentUser.id)
           : action === 'delete' ? !row
           : row?.lastReminderAt && row.lastReminderAt !== uncertain.lastReminderAt;
@@ -152,7 +160,6 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     } finally { setPending(false); abortRef.current = null; }
   };
   const open = async (row: HandoverRow) => {
-    if (!selected && !draft) openerRef.current = document.activeElement as HTMLElement;
     setMessage(''); setConflict(false); unknown.current = null;
     try {
       const fresh = await apiService.getShiftHandover(row.id);
@@ -160,7 +167,7 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
       setDraft(fresh.d.state === 'DRAFT' && fresh.d.references.every(r => r.available) ? editable(fresh) : null);
     } catch (error: any) { setMessage(error.message); }
   };
-  const create = () => { openerRef.current = document.activeElement as HTMLElement; setMessage(''); setConflict(false); setSelected(null); setDraft(blank(currentUser)); setBaseV(undefined); unknown.current = null; };
+  const create = () => { setMessage(''); setConflict(false); setSelected(null); setDraft(blank(currentUser)); setBaseV(undefined); unknown.current = null; };
   const close = () => {
     if (pending) { abortRef.current?.abort(); return; }
     void session.close(() => { setSelected(null); setDraft(null); });
@@ -187,13 +194,13 @@ function ShiftHandoversContent({ currentUser, onNavigate }: { currentUser: User;
     {!selected && !draft && status}
     {!rows.length && <p className="text-sm text-slate-500 py-4">لا توجد تسليمات متاحة حالياً.</p>}
     <ul className="divide-y divide-slate-200">{rows.map(row => <li key={row.id} className="py-3 flex flex-wrap items-center gap-3"><button className="min-h-11 flex-1 min-w-0 text-right text-sm font-bold text-blue-700 break-words" onClick={() => open(row)}>{row.d.title}</button><div className="text-xs text-slate-600 break-words">{departmentName(row.d.departmentId)} · {row.d.recipientDate} · {shiftName(row.d.recipientShift)}<br />{row.d.authorName} · {row.d.state === 'DRAFT' ? 'مسودة خاصة' : `منشور · ${row.receipts.length} استلام`}</div></li>)}</ul>
-    <Modal isOpen={!!selected || !!draft} title={draft ? 'مسودة تسليم الوردية' : selected?.d.title || 'تسليم الوردية'} onClose={close} maxWidth="2xl">
+    <Modal isOpen={dialogOpen} initialFocusRef={editingDraft ? titleRef : reloadRef} title={draft ? 'مسودة تسليم الوردية' : selected?.d.title || 'تسليم الوردية'} onClose={close} maxWidth="2xl">
       <div className="space-y-4 min-w-0">{status}
         {session.recovered && <p role="status" className="text-sm text-amber-800">استُعيدت الحقول من هذا الجهاز؛ ليست تأكيداً للحفظ على الخادم.</p>}
         {session.error && draft && <p role="status" className="text-sm text-red-700">تعذر حفظ نسخة الاستعادة على الجهاز؛ أبقِ النافذة مفتوحة حتى تأكيد الحفظ.</p>}
         {draft ? <fieldset disabled={pending} className="space-y-3 min-w-0">
           <label className="block text-sm font-semibold">عنوان التسليم<input ref={titleRef} className={control} maxLength={120} value={draft.title} onChange={e => update({ title: e.target.value })} /></label>
-          <label className="block text-sm font-semibold">القسم<select className={control} value={draft.departmentId} onChange={e => update({ departmentId: e.target.value as any })}>{DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+          <label className="block text-sm font-semibold">القسم<select aria-label="القسم" className={control} value={draft.departmentId} onChange={e => update({ departmentId: e.target.value as any })}>{DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block text-sm font-semibold">تاريخ الوردية الصادرة<input className={control} type="date" value={draft.sourceDate} onChange={e => update({ sourceDate: e.target.value })} /></label>
             <label className="block text-sm font-semibold">الوردية الصادرة<select className={control} value={draft.sourceShift} onChange={e => update({ sourceShift: e.target.value as any })}>{SHIFTS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>

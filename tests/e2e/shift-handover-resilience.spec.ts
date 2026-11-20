@@ -213,3 +213,44 @@ test('a restored create conflict can explicitly load the current server version'
     await expect(page.getByLabel('ملاحظات القسم')).toHaveValue('Current server note');
   } finally { await close(); }
 });
+
+test('source-only author can confirm a lost publication response without resending', async ({ browser }) => {
+  const admin = await signIn(browser, 'admin@akhbar.tv');
+  const author = await signIn(browser, 'journalist@akhbar.tv');
+  const { page } = author;
+  try {
+    const { user } = await (await page.request.get('/api/v1/auth/me')).json();
+    const date = '2026-10-11';
+    const rosterId = `${date}:graphics:MORNING:${user.id}`;
+    const roster = await admin.page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [{
+      c: 'roster', op: 'upsert', id: rosterId,
+      d: { id: rosterId, date, departmentId: 'graphics', shift: 'MORNING', userId: user.id, userName: user.fullName },
+    }] } });
+    expect((await roster.json()).results[0].ok).toBe(true);
+    await page.goto('/roster/handover');
+    await page.getByRole('button', { name: 'إنشاء تسليم' }).click();
+    await page.getByLabel('عنوان التسليم').fill('Source-only confirmation');
+    await page.getByLabel('القسم', { exact: true }).selectOption('graphics');
+    await page.getByLabel('تاريخ الوردية الصادرة').fill(date);
+    await page.getByLabel('تاريخ الوردية المستلمة').fill(date);
+    await page.getByRole('button', { name: 'حفظ المسودة', exact: true }).click();
+    const publish = page.getByRole('button', { name: 'نشر التسليم', exact: true });
+    await expect(publish).toBeEnabled();
+    let writes = 0;
+    await page.route('**/api/v1/shift-handovers/*/publish', async route => {
+      writes++;
+      expect((await route.fetch()).ok()).toBe(true);
+      await route.abort('failed');
+    });
+    await publish.click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'نشر التسليم', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'لم يصل تأكيد الخادم' })).toBeVisible();
+    await publish.click();
+    await expect(page.getByRole('status').filter({ hasText: 'تأكدت نتيجة العملية السابقة' })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(writes).toBe(1);
+    const { rows } = await (await admin.page.request.get('/api/v1/shift-handovers')).json();
+    expect(rows.filter((row: any) => row.d.title === 'Source-only confirmation' && row.d.state === 'PUBLISHED')).toHaveLength(1);
+    await expect(page.getByRole('button', { name: 'Source-only confirmation', exact: true })).toHaveCount(0);
+  } finally { await author.close(); await admin.close(); }
+});

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatSecondsToTime, parseTimeToSeconds, recalculateRundown } from '../../src/shared/rundown';
 import { computeEffectivePermissions, DEFAULT_ROLE_DEFINITIONS, evaluatePermission } from '../../src/shared/rbac';
 import { newId } from '../../src/shared/ids';
-import { collectionForStorageKey, COLLECTION_NAMES, COLLECTIONS } from '../../src/shared/collections';
+import { collectionForStorageKey, COLLECTION_NAMES, COLLECTIONS, isOwnLock } from '../../src/shared/collections';
 import type { RundownSegment } from '../../src/types';
 
 const seg = (id: string, durationSeconds: number) => ({ id, durationSeconds }) as RundownSegment;
@@ -69,5 +69,16 @@ describe('ids and collections', () => {
     for (const name of COLLECTION_NAMES) {
       expect(collectionForStorageKey(COLLECTIONS[name].storageKey)).toBe(name);
     }
+  });
+});
+
+describe('edit lock ownership', () => {
+  it('treats a pending request as ours and a colleague’s lock as theirs', () => {
+    const base = { id: 'news:n1', collection: 'news' as const, entityId: 'n1' };
+    expect(isOwnLock({ ...base }, 'usr-1')).toBe(true);
+    expect(isOwnLock({ ...base, userId: 'usr-1' }, 'usr-1')).toBe(true);
+    expect(isOwnLock({ ...base, userId: 'usr-2' }, 'usr-1')).toBe(false);
+    expect(isOwnLock({ ...base, userId: 'usr-1' }, undefined)).toBe(false);
+    expect(isOwnLock(undefined, 'usr-1')).toBe(false);
   });
 });

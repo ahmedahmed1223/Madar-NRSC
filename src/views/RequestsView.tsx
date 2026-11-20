@@ -5,7 +5,7 @@ import { FilterTabs } from '../components/common/FilterTabs';
 import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, CheckCircle2, Inbox, Link2, Plus, Send, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Edit2, Link2, Plus, Trash2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -46,6 +46,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<DeptRequest | null>(null);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const focusedRequest = focusId && ENTITY_ID_PATTERN.test(focusId) ? requests.find(request => request.id === focusId && !request.deletedAt) : undefined;
@@ -96,10 +97,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             <ArrowLeftRight className="w-5 h-5 text-blue-600" />
             طلبات الأقسام
           </h1>
-          <p className="text-xs text-slate-500 mt-1">مونتاج، جرافيك، تجهيز استديو، صوت، إضاءة، أرشيف... كل طلب يصل للقسم المعني ويُتابَع حتى الإنجاز.</p>
+          <p className="text-xs text-slate-500 mt-1">مونتاج، جرافيك، تجهيز استديو، صوت، إضاءة، أرشيف… كل طلب يصل للقسم المعني ويُتابَع حتى الإنجاز.</p>
         </div>
         {canCreate && (
-          <button type="button" onClick={() => setFormOpen(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start">
+          <button type="button" onClick={() => { setEditing(null); setFormOpen(true); }} className="inline-flex items-center gap-1.5 min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start">
             <Plus className="w-4 h-4" />
             طلب جديد
           </button>
@@ -109,7 +110,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
       {message && (
         <div role="status" className={`p-3 rounded-xl text-xs font-bold flex justify-between ${message.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
           <span>{message.text}</span>
-          <button type="button" onClick={() => setMessage(null)} aria-label="إغلاق">
+          <button type="button" onClick={() => setMessage(null)} aria-label="إغلاق" className="-m-1 p-1 rounded-lg hover:bg-white/60">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -151,8 +152,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-xs text-slate-600 mr-auto">
-          <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
+        <label className="flex items-center gap-1.5 min-h-11 text-xs text-slate-600 mr-auto cursor-pointer">
+          <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="w-4 h-4 accent-blue-600" />
           عرض المنجز والمغلق
         </label>
       </div>
@@ -160,7 +161,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
       <div className="space-y-2">
         {list.length === 0 && (
           <p className="text-center text-xs text-slate-500 py-10 bg-white border border-dashed border-slate-300 rounded-2xl">
-            {tab === 'INBOX' ? `لا توجد طلبات مفتوحة لقسم ${departmentName(dept)}.` : 'لا توجد طلبات.'}
+            {tab === 'INBOX' ? `لا توجد طلبات مفتوحة لقسم ${departmentName(dept)}.` : showClosed ? 'لا توجد طلبات.' : 'لا توجد طلبات مفتوحة. فعّل «عرض المنجز والمغلق» لرؤية ما سبق.'}
           </p>
         )}
         {list.map((r) => {
@@ -170,29 +171,29 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
           const overdue = r.dueAt && !isRequestClosed(r.status) && new Date(r.dueAt).getTime() < Date.now();
           return (
             <article key={r.id} className={`bg-white border rounded-2xl p-4 space-y-2 ${r.priority === 'URGENT' && !isRequestClosed(r.status) ? 'border-red-300' : 'border-slate-200'}`}>
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="flex flex-wrap items-center gap-2 text-2xs">
                 <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-bold">{type?.name}</span>
                 <span className="text-slate-500">إلى: {departmentName(r.departmentId)}</span>
                 {r.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
                 <span className={`px-2 py-0.5 rounded-md border font-bold ${STATUS_STYLE[r.status]}`}>{requestStatusName(r.status)}</span>
-                {overdue && <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 font-bold">متأخر</span>}
+                {overdue && <span className="px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 font-bold">متأخر</span>}
                 <span className="text-slate-500 mr-auto">{when(r.createdAt)}</span>
               </div>
               <h2 className="text-sm font-bold text-slate-900">{r.title}</h2>
               {r.details && <p className="text-xs text-slate-600 whitespace-pre-line">{r.details}</p>}
               {r.lines && r.lines.length > 0 && (
-                <ul className="text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-0.5 font-bold text-slate-700">
+                <ul className="text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 pr-6 space-y-0.5 font-bold text-slate-700 list-disc marker:text-slate-400">
                   {r.lines.map((l, i) => (
-                    <li key={i}>▸ {l}</li>
+                    <li key={i} dir="auto">{l}</li>
                   ))}
                 </ul>
               )}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-slate-500">
                 <span>
                   من: {r.requesterName}
                   {r.requesterDepartmentId ? ` (${departmentName(r.requesterDepartmentId)})` : ''}
                 </span>
-                {r.addressedToName && !r.assigneeName && <span className="font-bold text-purple-700">موجّه إلى: {r.addressedToName}</span>}
+                {r.addressedToName && !r.assigneeName && <span className="font-bold text-violet-700">موجّه إلى: {r.addressedToName}</span>}
                 {r.assigneeName && <span>المنفذ: {r.assigneeName}</span>}
                 {r.dueAt && <span>مطلوب قبل: {when(r.dueAt)}</span>}
                 {r.link && (
@@ -206,11 +207,11 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   </button>
                 )}
               </div>
-              {r.resolution && <p className="text-[11px] text-rose-700">السبب: {r.resolution}</p>}
+              {r.resolution && <p className="text-2xs text-rose-700">السبب: {r.resolution}</p>}
 
               <div className="flex flex-wrap gap-2 pt-1">
                 {isHandler && r.status === 'OPEN' && (!r.addressedToId || r.addressedToId === currentUser.id || canManage) && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'استلمت الطلب')} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
+                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'استلمت الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
                     استلام الطلب
                   </button>
                 )}
@@ -218,14 +219,14 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   <button
                     type="button"
                     onClick={() => (r.type === 'MONTAGE' ? setDoneFor(r) : act(() => apiService.updateRequest(r.id, { status: 'DONE' }), 'أُنجز الطلب'))}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold"
+                    className="inline-flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     تم الإنجاز
                   </button>
                 )}
                 {isHandler && r.status === 'ACCEPTED' && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'OPEN' }), 'أُعيد الطلب للقائمة')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'OPEN' }), 'أُعيد الطلب للقائمة')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إعادته للقائمة
                   </button>
                 )}
@@ -236,18 +237,37 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                       const reason = await promptDialog({ title: 'رفض الطلب', label: 'سبب الرفض', required: true, multiline: true });
                       if (reason && reason.trim()) act(() => apiService.updateRequest(r.id, { status: 'REJECTED', resolution: reason.trim() }), 'رُفض الطلب');
                     }}
-                    className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 text-xs font-bold"
+                    className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 text-xs font-bold"
                   >
                     رفض
                   </button>
                 )}
                 {(isRequester || canManage) && !isRequestClosed(r.status) && (
-                  <button type="button" onClick={async () => (await confirmDialog('إلغاء هذا الطلب؟')) && act(() => apiService.updateRequest(r.id, { status: 'CANCELLED' }), 'أُلغي الطلب')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={async () => (await confirmDialog('إلغاء هذا الطلب؟')) && act(() => apiService.updateRequest(r.id, { status: 'CANCELLED' }), 'أُلغي الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إلغاء الطلب
                   </button>
                 )}
+                {isRequester && r.status === 'OPEN' && (
+                  <button type="button" onClick={() => { setEditing(r); setFormOpen(true); }} className="inline-flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                    <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    تعديل
+                  </button>
+                )}
+                {isRequester && r.status === 'OPEN' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await confirmDialog({ title: 'حذف الطلب', message: `حذف الطلب «${r.title}» نهائياً؟ لن يظهر لقسم ${departmentName(r.departmentId)} بعد الآن.`, confirmLabel: 'حذف الطلب', danger: true });
+                      if (ok) act(() => apiService.deleteRequest(r.id), 'حُذف الطلب');
+                    }}
+                    className="inline-flex items-center gap-1 min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-bold hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    حذف
+                  </button>
+                )}
                 {(isRequester || canManage) && r.status === 'DONE' && (
-                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'أُعيد فتح الطلب')} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
+                  <button type="button" onClick={() => act(() => apiService.updateRequest(r.id, { status: 'ACCEPTED' }), 'أُعيد فتح الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600">
                     إعادة فتح
                   </button>
                 )}
@@ -257,7 +277,12 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
         })}
       </div>
 
-      <RequestFormPage isOpen={formOpen} onClose={() => setFormOpen(false)} onCreated={(text) => setMessage({ ok: true, text })} />
+      <RequestFormPage
+        isOpen={formOpen}
+        editing={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onCreated={(text) => { setRequests(apiService.getRequests()); setMessage({ ok: true, text }); }}
+      />
 
       {doneFor && (
         <MediaPicker

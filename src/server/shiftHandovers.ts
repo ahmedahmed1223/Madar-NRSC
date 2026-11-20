@@ -90,6 +90,15 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     return { rows: db.listCollection('shiftHandovers').filter(row => handoverVisible(db, auth, row.d)).sort((a, b) => b.d.updatedAt.localeCompare(a.d.updatedAt)).map(row => projectHandover(db, auth, row)) };
   }));
   router.get('/:id', endpoint((auth, req) => ({ row: projectHandover(db, auth, accessibleHandover(db, auth, req.params.id)) })));
+  router.get('/:id/publication-status', endpoint((auth, req) => {
+    if (!auth.can('handover.view') || !auth.can('handover.publish')) deny();
+    const id = req.params.id;
+    if (!ENTITY_ID_PATTERN.test(id)) return notFound();
+    const row = db.getRow('shiftHandovers', id);
+    if (!row || row.d.authorId !== auth.user.id || !canSource(db, auth, row.d)) return notFound();
+    // The outgoing assignment can confirm its own write even without recipient read access.
+    return { published: row.d.state === 'PUBLISHED' };
+  }));
   router.post('/', endpoint((auth, req) => {
     const error = handoverDraftError(req.body);
     if (error) throw new HandoverError(400, error);

@@ -6,9 +6,10 @@ export interface WorkContext {
   definition: SavedNewsFilterDefinition;
   page: number;
   anchorId?: string;
+  anchorOffset?: number;
 }
 
-export const WORK_SECTION_KEYS = ['my-news', 'my-review', 'my-tasks', 'my-dept-requests', 'my-episodes', 'my-bulletins', 'my-sent-requests', 'my-plan', 'my-mentions'] as const;
+export const WORK_SECTION_KEYS = ['my-news', 'my-review', 'my-tasks', 'my-dept-requests', 'my-episodes', 'my-bulletins', 'my-sent-requests', 'my-plan', 'my-mentions', 'my-card-steps'] as const;
 export type WorkSectionKey = typeof WORK_SECTION_KEYS[number];
 export interface WorkSectionPreferences { order: WorkSectionKey[]; hidden: WorkSectionKey[] }
 
@@ -19,7 +20,12 @@ export function sanitizeWorkContext(value: unknown): WorkContext {
     definition: sanitizeNewsFilterDefinition(raw.definition),
     page: typeof raw.page === 'number' && Number.isInteger(raw.page) && raw.page >= 0 && raw.page <= 100000 ? raw.page : 0,
   };
-  if (typeof raw.anchorId === 'string' && ENTITY_ID_PATTERN.test(raw.anchorId)) context.anchorId = raw.anchorId;
+  if (typeof raw.anchorId === 'string' && ENTITY_ID_PATTERN.test(raw.anchorId)) {
+    context.anchorId = raw.anchorId;
+    if (typeof raw.anchorOffset === 'number' && Number.isInteger(raw.anchorOffset) && Math.abs(raw.anchorOffset) <= 2048) {
+      context.anchorOffset = raw.anchorOffset;
+    }
+  }
   return context;
 }
 

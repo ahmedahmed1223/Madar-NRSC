@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, AlertCircle, Info, X } from 'lucide-react';
 
 export interface ToastMessage {
@@ -29,31 +29,36 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   toast,
   onDismiss,
 }) => {
+  // Keyboard focus inside a toast keeps it until focus leaves. The pointer does not: a toast may
+  // appear over the control someone is about to press, and must clear on its own.
+  const [held, setHeld] = useState(false);
+  const duration = toast.duration ?? (toast.action ? 8000 : 4500);
   useEffect(() => {
+    if (held) return;
     const timer = setTimeout(() => {
       onDismiss(toast.id);
-    }, toast.duration ?? (toast.action ? 8000 : 4500));
+    }, duration);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.duration, toast.action, onDismiss]);
+  }, [toast.id, duration, onDismiss, held]);
 
   const styles = {
     success: {
-      bg: 'bg-emerald-950/90 border-emerald-500/40 text-emerald-100',
+      bg: 'border-emerald-500/40',
       icon: <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />,
       bar: 'bg-emerald-500',
     },
     error: {
-      bg: 'bg-rose-950/90 border-rose-500/40 text-rose-100',
+      bg: 'border-rose-500/50',
       icon: <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />,
       bar: 'bg-rose-500',
     },
     warning: {
-      bg: 'bg-amber-950/90 border-amber-500/40 text-amber-100',
+      bg: 'border-amber-500/40',
       icon: <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />,
       bar: 'bg-amber-500',
     },
     info: {
-      bg: 'bg-slate-900/90 border-blue-500/40 text-slate-100',
+      bg: 'border-blue-500/40',
       icon: <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />,
       bar: 'bg-blue-500',
     },
@@ -62,7 +67,9 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
   return (
     <div
       role={toast.type === 'error' ? 'alert' : 'status'}
-      className={`pointer-events-auto relative overflow-hidden backdrop-blur-md border rounded-xl p-3.5 shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${styles.bg}`}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+      className={`pointer-events-auto relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3.5 shadow-2xl ${styles.bg}`}
     >
       <div className="flex items-start gap-3">
         {styles.icon}
@@ -77,7 +84,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
               toast.action!.run();
               onDismiss(toast.id);
             }}
-            className="shrink-0 px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+            className="shrink-0 min-h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
           >
             {toast.action.label}
           </button>
@@ -85,14 +92,14 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className="text-slate-500 hover:text-white p-1 rounded-md transition-colors"
+          className="shrink-0 min-w-8 min-h-8 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white rounded-md transition-colors"
           aria-label="إغلاق"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10 overflow-hidden">
-        <div className={`h-full ${styles.bar} animate-toast-progress`} />
+        <div className={`h-full ${styles.bar} ${held ? '' : 'animate-toast-progress'}`} style={{ animationDuration: `${duration}ms` }} />
       </div>
     </div>
   );

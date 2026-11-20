@@ -60,9 +60,9 @@ function rejectUpload(req: Request, error: UploadError): Promise<never> {
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
  */
-export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string): Promise<UploadRecord> {
+export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, allowed: Record<string, string> = ALLOWED_UPLOAD_TYPES): Promise<UploadRecord> {
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-  const ext = ALLOWED_UPLOAD_TYPES[mimeType];
+  const ext = Object.prototype.hasOwnProperty.call(allowed, mimeType) ? allowed[mimeType] : undefined;
   if (!ext) {
     return rejectUpload(req, new UploadError(415, 'نوع الملف غير مدعوم'));
   }
@@ -144,6 +144,8 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
 export function removeUpload(db: NewsroomDatabase, dataDir: string, uploadId: string) {
   const record = db.getUpload(uploadId);
   if (!record) return;
+  // Brought in from Dropbox/Drive/the shared folder: nothing on the server's disk.
+  if (!record.storedName) return db.deleteUpload(uploadId);
   fs.rm(path.join(uploadsDir(dataDir), record.storedName), { force: true }, (err) => {
     if (err) logger.warn('failed to delete upload file', { id: uploadId, error: String(err) });
   });

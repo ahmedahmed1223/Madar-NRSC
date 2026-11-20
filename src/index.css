@@ -1,10 +1,33 @@
 @import "tailwindcss";
+@import "./styles/fonts.css";
+@import "./styles/theme-light.css";
 @import "./styles/theme-dark.css";
 
 /* A calm «live» pulse: slow and never fading below 60%, used only on small live dots/icons. */
 @theme {
-  /* Muted text one step darker than Tailwind's slate-500 so it reads at 4.5:1 on the page grey. */
-  --color-slate-500: oklch(50% 0.046 257.417);
+  /* Corners closer to broadcast graphics than to Tailwind's soft defaults (DESIGN.md). */
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.875rem;
+  /*
+   * Timecodes and IDs stay monospaced, but Arabic letters inside them take the UI's Arabic face
+   * instead of a system monospace fallback (DejaVu, Courier New) that draws Arabic poorly.
+   */
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'IBM Plex Sans Arabic', 'Courier New', monospace;
+  /*
+   * Type scale. Arabic letterforms need more size and leading than Latin at the same nominal
+   * size, so the small steps the interface lives on sit one pixel above Tailwind's defaults,
+   * with room for dots and marks above and below the line.
+   */
+  --text-3xs: 0.6875rem; /* 11px: counters inside badges */
+  --text-3xs--line-height: 1rem;
+  --text-2xs: 0.75rem; /* 12px: metadata, table captions, chips */
+  --text-2xs--line-height: 1.125rem;
+  --text-xs: 0.8125rem; /* 13px: labels, dense lists, buttons */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem; /* 15px: body text and form fields */
+  --text-sm--line-height: 1.5rem;
   --animate-pulse: live-pulse 2.6s ease-in-out infinite;
   @keyframes live-pulse {
     0%,
@@ -18,6 +41,40 @@
 }
 
 @layer base {
+  /*
+   * Interface size. Every measure in the app is in rem, so the root size scales text, spacing and
+   * controls together, like the browser's zoom. On screens with room the base is one step larger
+   * than the browser default; each colleague may change it for their device («حجم الخط»).
+   */
+  html {
+    font-size: 100%;
+  }
+  @media (min-width: 40rem) {
+    html {
+      font-size: 106.25%;
+    }
+  }
+  html[data-text-scale='compact'] {
+    font-size: 100%;
+  }
+  html[data-text-scale='large'] {
+    font-size: 118.75%;
+  }
+  html[data-text-scale='larger'] {
+    font-size: 131.25%;
+  }
+  @media (max-width: 39.99rem) {
+    html[data-text-scale='compact'] {
+      font-size: 93.75%;
+    }
+    html[data-text-scale='large'] {
+      font-size: 112.5%;
+    }
+    html[data-text-scale='larger'] {
+      font-size: 125%;
+    }
+  }
+
   /* Long text everywhere: resizable by height, scrolls inside itself, never taller than the screen. */
   textarea {
     resize: vertical;
@@ -26,7 +83,7 @@
   }
 
   :root {
-    --font-sans: 'IBM Plex Sans Arabic', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-sans: 'IBM Plex Sans Arabic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* One clear keyboard-focus ring everywhere (mouse clicks do not show it). */
@@ -67,19 +124,27 @@
   textarea {
     font-family: inherit;
     border-color: var(--color-slate-300);
-    border-radius: 0.75rem; /* rounded-xl */
+    border-radius: var(--radius-xl);
     transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
   }
 
-  /* Consistent Focus Ring on all inputs, selects, and textareas */
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):focus,
+  /*
+   * One focus ring on every input, select and textarea, in the signal colour. A field that sits
+   * inside its own focused frame (the search box of the command palette) opts out with .input-bare.
+   */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not(.input-bare):focus,
   select:focus,
-  textarea:focus {
+  textarea:not(.input-bare):focus {
     outline: none !important;
-    border-color: #3b82f6 !important; /* blue-500 */
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+    border-color: var(--color-blue-500) !important;
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-blue-500) 28%, transparent) !important;
+  }
+  .input-bare {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   /* Native Checkbox and Radio styling */
@@ -119,8 +184,31 @@
 }
 
 @media print {
-  header, nav, aside, button, .no-print {
-    display: none !important;
+  /*
+   * Printing («طباعة / حفظ PDF») prints the whole page content, not one clipped screen:
+   * the app's fixed-height shell and its scroll container grow with the content, the app chrome
+   * (rail, top bar, connection banner, breaking ticker, toasts, overlays) is left out, and
+   * headings, names and the chosen filters stay on the sheet.
+   */
+  @page {
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-body,
+  .app-scroll {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .app-shell,
+  .app-body,
+  .app-scroll {
+    display: block !important;
   }
 
   body {
@@ -129,21 +217,99 @@
     font-size: 11pt !important;
   }
 
+  /* App chrome: everything around the page content. */
+  .app-shell > :not(.app-body),
+  .app-body > :not(.app-scroll),
+  .app-scroll > :not(#app-main),
+  .app-topbar,
+  .no-print,
+  #app-main [role='tablist'],
+  #app-main nav {
+    display: none !important;
+  }
+
+  #app-main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Nothing inside the page clips or scrolls on paper. */
+  #app-main :is(.overflow-auto, .overflow-x-auto, .overflow-y-auto, .overflow-hidden, .overflow-x-hidden) {
+    overflow: visible !important;
+  }
+  #app-main :is([class*='max-h-'], [class*='h-[']) {
+    max-height: none !important;
+  }
+  #app-main .truncate,
+  #app-main [class*='line-clamp'] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    -webkit-line-clamp: unset !important;
+  }
+  #app-main table {
+    min-width: 0 !important;
+  }
+  #app-main .sticky {
+    position: static !important;
+  }
+
+  /* Buttons that are pure controls are left out ... */
+  #app-main button:not(.print-text) {
+    display: none !important;
+  }
+  /* ... but names and figures shown as buttons (in tables, lists, or marked .print-text) print as text. */
+  #app-main :is(td, th, li, dd, [role='cell'], [role='rowheader']) button:not([aria-label]:has(> svg:only-child)) {
+    display: inline !important;
+  }
+  #app-main :is(td, th, li, dd, [role='cell'], [role='rowheader']) button,
+  #app-main button.print-text {
+    background: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #000000 !important;
+    text-decoration: none !important;
+    min-height: 0 !important;
+  }
+  #app-main :is(td, th, li, dd) button:not(.print-text) {
+    padding: 0 !important;
+  }
+
+  .print-only {
+    display: revert !important;
+  }
+
+  /* Tables: the header repeats on each page and a row never splits across pages. */
   table {
     border-collapse: collapse !important;
     width: 100% !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr,
+  li,
+  [role='row'],
+  .print-keep {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   th, td {
     border: 1px solid #94a3b8 !important;
     padding: 6px 8px !important;
   }
-
-  .print-only {
-    display: block !important;
-  }
 }
-
 
 /* Night mode: modal backdrops stay dark instead of following the remapped greys. */
 :root.dark :is(.bg-slate-900\/60, .bg-slate-900\/80, .bg-slate-900\/90, .bg-slate-950\/40, .bg-slate-950\/60, .bg-slate-950\/80, .bg-slate-950\/90):not(.theme-fixed, .theme-fixed *) {
@@ -168,13 +334,13 @@
   pointer-events: none;
 }
 :is(.rich-editor, .rich-content) > * + * { margin-top: 0.75em; }
-:is(.rich-editor, .rich-content) h2 { font-size: 1.3em; font-weight: 800; color: var(--color-slate-900); margin-top: 1.1em; }
+:is(.rich-editor, .rich-content) h2 { font-size: 1.3em; font-weight: 700; color: var(--color-slate-900); margin-top: 1.1em; }
 :is(.rich-editor, .rich-content) h3 { font-size: 1.12em; font-weight: 700; color: var(--color-slate-900); margin-top: 1em; }
 :is(.rich-editor, .rich-content) ul { list-style: disc; padding-inline-start: 1.5em; }
 :is(.rich-editor, .rich-content) ol { list-style: decimal; padding-inline-start: 1.5em; }
 :is(.rich-editor, .rich-content) li + li { margin-top: 0.25em; }
 :is(.rich-editor, .rich-content) blockquote {
-  border-inline-start: 4px solid var(--color-blue-500);
+  border-inline-start: 1px solid var(--color-blue-500);
   background: var(--color-slate-50);
   padding: 0.6em 1em;
   border-radius: 0.5rem;
@@ -198,18 +364,85 @@ body.dnd-dragging * {
 }
 .dnd-source {
   opacity: 0.4;
-  outline: 2px dashed rgb(37 99 235 / 0.5);
+  outline: 2px dashed color-mix(in oklch, var(--color-blue-600) 50%, transparent);
   outline-offset: -2px;
 }
 .dnd-over {
-  background-color: rgb(239 246 255 / 0.7);
-  box-shadow: inset 0 0 0 2px rgb(37 99 235 / 0.35);
+  background-color: color-mix(in oklch, var(--color-blue-50) 70%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--color-blue-600) 35%, transparent);
 }
 /*
  * Reduced motion (device setting or «تقليل الحركة» in the appearance menu): stop animations
  * outright. Only shortening them would replay an endless pulse thousands of times a second,
  * which flickers instead of calming.
  */
+/* The thin bar under a toast empties over the time the toast stays (it stops while the toast is held). */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.animate-toast-progress {
+  animation: toast-progress linear forwards;
+  transform-origin: right center;
+}
+
+/*
+ * The strap: the signature of the «مدار» identity (DESIGN.md). The screen title is drawn as an
+ * on-air lower third: an ink band with a short signal tab at its start edge. A long title breaks
+ * the band per line, as a two-line lower third does.
+ */
+#app-main h1:not(.no-strap),
+h1.form-page-title {
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+#app-main h1:not(.no-strap),
+.strap {
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background: var(--color-slate-900);
+  color: var(--color-slate-50);
+  padding: 0.2em 0.7em 0.25em 0.6em;
+  border-radius: 2px;
+  box-shadow: inset -0.375rem 0 0 var(--color-blue-500);
+  padding-inline-start: 0.95em;
+  line-height: 1.85;
+  font-weight: 700;
+}
+#app-main h1:not(.no-strap) svg,
+.strap svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  color: var(--color-blue-300);
+  margin-inline-end: 0.4em;
+}
+:root.dark #app-main h1:not(.no-strap),
+:root.dark .strap {
+  box-shadow: inset -0.375rem 0 0 var(--color-blue-600);
+}
+:root.dark #app-main h1:not(.no-strap) svg,
+:root.dark .strap svg {
+  color: var(--color-blue-600);
+}
+@media print {
+  /* On paper the strap is plain bold text, and the page is white whatever the theme. */
+  #app-main h1:not(.no-strap),
+  #app-main h1,
+  .strap {
+    display: block;
+    background: none !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  html,
+  body,
+  #app-main {
+    background: #fff !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -236,6 +469,24 @@ html.reduce-motion .animate-spin {
   animation: spin 1.5s linear infinite !important;
 }
 
+/* A flex summary loses the browser's disclosure marker; draw one so it reads as expandable. */
+details > summary.flex::after {
+  content: '';
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: 0.6rem;
+  margin-block-end: 0.2rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+details[open] > summary.flex::after {
+  margin-block-end: -0.2rem;
+  transform: rotate(-135deg);
+}
+
 /* Touch controls retain their visual size with a finger-sized hit area. */
 @media (pointer: coarse) {
   main button:not([data-compact]),
@@ -252,4 +503,23 @@ html.reduce-motion .animate-spin {
     display: inline-block;
     padding-block: 0.4rem;
   }
+  /* The rail's screens and section headings, and its close button, on a phone or tablet. */
+  aside[aria-label='القائمة الرئيسية'] button {
+    min-height: 44px;
+  }
+}
+
+/* The active screen in the rail: a lower-third strap with the signal tab at its start edge. */
+.nav-item-active {
+  background: oklch(100% 0 0 / 0.09);
+  box-shadow: inset -0.25rem 0 0 var(--color-blue-400);
+}
+
+/* Interactive tour: the screen dims except a window around the control being explained. */
+.tour-hole {
+  box-shadow: 0 0 0 9999px oklch(16% 0.038 266 / 0.55), 0 0 0 2px var(--color-blue-400);
+  transition: top 180ms ease-out, left 180ms ease-out, width 180ms ease-out, height 180ms ease-out;
+}
+:root.dark .tour-hole {
+  box-shadow: 0 0 0 9999px oklch(8% 0.02 266 / 0.7), 0 0 0 2px var(--color-blue-600);
 }

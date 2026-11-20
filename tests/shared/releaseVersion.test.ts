@@ -11,6 +11,7 @@ describe('release version', () => {
     expect(lock.version).toBe(pkg.version);
     expect(lock.packages[''].version).toBe(pkg.version);
     expect(server).toContain(`export const APP_VERSION = '${pkg.version}';`);
+    expect(readFileSync('src/server/databaseRecovery.ts', 'utf8')).toContain(`version: '${pkg.version}'`);
     expect(RELEASES[0].version).toBe(pkg.version);
     expect(RELEASES[0].items.length).toBeGreaterThan(0);
     expect(new Set(RELEASES.map(release => release.version)).size).toBe(RELEASES.length);

@@ -47,6 +47,24 @@ it('requires explicit source authorization and view permission, including missin
   expect((await post(author, '/roster-authorized/publish', { baseV: 1 })).status).toBe(403);
   server.db.writeRow('users', authorId, user.d, user.p, null);
 });
+it('lets a cross-department source author confirm publication without revealing the record', async () => {
+  const id = 'cross-source-publication';
+  const rosterId = 'cross-source-assignment';
+  server.db.writeRow('roster', rosterId, { id: rosterId, date: '2026-10-11', shift: 'MORNING', departmentId: 'graphics', userId: authorId }, 0, null);
+  try {
+    const created = await post(author, '', draft(id, { departmentId: 'graphics' }));
+    expect(created.status).toBe(200);
+    const statusUrl = `/api/v1/shift-handovers/${id}/publication-status`;
+    expect((await author.get(statusUrl)).body).toEqual({ published: false });
+    expect((await post(author, `/${id}/publish`, { baseV: created.body.row.v })).status).toBe(200);
+    expect((await author.get(`/api/v1/shift-handovers/${id}`)).status).toBe(404);
+    expect((await author.get(statusUrl)).body).toEqual({ published: true });
+    expect((await recipient.get(statusUrl)).status).toBe(404);
+  } finally {
+    server.db.deleteRow('roster', rosterId, null);
+  }
+  expect((await author.get(`/api/v1/shift-handovers/${id}/publication-status`)).status).toBe(404);
+});
 it('publishes immutably and creates an explicitly linked correction with its own author', async () => {
   const created = await post(author, '', draft('published'));
   expect(created.status).toBe(200);

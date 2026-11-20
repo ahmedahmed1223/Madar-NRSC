@@ -1,23 +1,16 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { DEPARTMENTS, departmentIdOf } from '../../shared/departments';
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  MessageSquare,
-  Radio,
-  Send,
-  X,
-  AlertTriangle,
-  User,
-  Tv,
-  Users,
-  Bell,
-  CheckCheck,
-} from 'lucide-react';
+import { Radio, Send, X } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
-import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
+import { intercomCommand, intercomState, navigateTo, routeChanged } from '../../services/uiEvents';
 import type { ChatMessage } from '../../shared/collections';
+import { isPrivateChannel, parseChannel, unreadByChannel } from '../../shared/chat';
+
+/** The quick drawer carries the open channels; private conversations live on the «المراسلات» screen. */
+const openChannelMessages = () => apiService.getMessages().filter((m) => ['general', 'department', 'legacy'].includes(parseChannel(m.channel)?.kind || ''));
 
 type Channel = string;
 
@@ -54,7 +47,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     ...DEPARTMENTS.filter((d) => d.id === myDept),
     ...DEPARTMENTS.filter((d) => d.id !== myDept),
   ];
-  const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => apiService.getMessages());
+  const [messages, setMessages] = useState<(ChatMessage & { isUrgent?: boolean })[]>(() => openChannelMessages());
   const [inputText, setInputText] = useState('');
   const [isUrgentCue, setIsUrgentCue] = useState(false);
   const [lastSeen, setLastSeen] = useState(() => (currentUser ? readLastSeen(currentUser.id) : ''));
@@ -64,7 +57,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   useEffect(
     () =>
       dataStore.subscribe((evt) => {
-        if (evt.type === 'data-changed' && evt.collections.includes('messages')) setMessages(apiService.getMessages());
+        if (evt.type === 'data-changed' && evt.collections.includes('messages')) setMessages(openChannelMessages());
       }),
     []
   );
@@ -115,7 +108,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     if (!inputText.trim()) return;
     try {
       apiService.sendMessage(activeChannel, inputText.trim(), isUrgentCue);
-      setMessages(apiService.getMessages());
+      setMessages(openChannelMessages());
       setInputText('');
       setIsUrgentCue(false);
       setSendError(null);
@@ -124,6 +117,8 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
     }
   };
 
+  // Direct and group conversations live on the «المراسلات» screen; the drawer points at what waits there.
+  const privateUnread = currentUser ? [...unreadByChannel(apiService.getMessages(), apiService.getChatReads(), currentUser.id)].filter(([channel]) => isPrivateChannel(channel)).reduce((sum, [, n]) => sum + n, 0) : 0;
   const channelFilteredMessages = messages.filter((m) => channelOf(m) === activeChannel);
   const unreadIn = (id: string) => messages.filter((m) => channelOf(m) === id && m.userId !== currentUser?.id && (m.timestamp || '') > lastSeen).length;
 
@@ -139,10 +134,14 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 <Radio className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-white">المحادثة الداخلية بين الأقسام</h3>
-                <span className="text-[10px] text-slate-500">رسائل فورية تصل لكل الزملاء المتصلين</span>
+                <h3 className="text-xs font-bold text-white">المحادثة الداخلية بين الأقسام</h3>
+                <span className="text-2xs text-slate-400">رسائل فورية تصل لكل الزملاء المتصلين</span>
               </div>
             </div>
+
+            <button type="button" onClick={() => navigateTo.emit('/messages')} className="min-h-9 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white whitespace-nowrap">
+              الرسائل الخاصة{privateUnread > 0 ? ` (${privateUnread})` : ''}
+            </button>
 
             <button
               type="button"
@@ -155,7 +154,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
           </div>
 
           {/* Channels: general + one per department (yours first) */}
-          <div className="p-2 bg-slate-900/60 border-b border-slate-800 flex gap-1 overflow-x-auto text-[11px]" role="tablist" aria-label="قنوات المحادثة">
+          <div className="p-2 bg-slate-900/60 border-b border-slate-800 flex gap-1 overflow-x-auto text-2xs" role="tablist" aria-label="قنوات المحادثة">
             {channels.map((c) => (
               <button
                 key={c.id}
@@ -188,10 +187,10 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                     : 'bg-slate-900 border-slate-800 text-slate-200'
                 }`}
               >
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-2xs">
                   <div className="flex items-center gap-1.5">
                     {msg.isUrgent && (
-                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-black rounded text-[10px]">
+                      <span className="px-1.5 py-0.2 bg-red-600 text-white font-bold rounded text-2xs">
                         عاجل
                       </span>
                     )}
@@ -210,8 +209,8 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
           {/* Message Input & Urgent On-Air Trigger */}
           <form onSubmit={handleSendMessage} className="p-3 bg-slate-900 border-t border-slate-800 space-y-2">
-            {sendError && <p className="text-[11px] text-red-400 font-bold px-1">{sendError}</p>}
-            <div className="flex items-center justify-between text-[11px] px-1">
+            {sendError && <p className="text-2xs text-red-400 font-bold px-1">{sendError}</p>}
+            <div className="flex items-center justify-between text-2xs px-1">
               <label className="flex items-center gap-1.5 text-red-400 cursor-pointer select-none font-bold">
                 <input
                   type="checkbox"

@@ -7,11 +7,15 @@ import {
   EDIT_LOCK_TTL_MS,
   HISTORY_COLLECTIONS,
   LOCKABLE_COLLECTIONS,
+  MERGE_COLLECTIONS,
+  MERGE_HISTORY_KEEP,
   isLockActive,
   lockIdFor,
   ENTITY_ID_PATTERN,
   EntityRow,
   LOG_BOOTSTRAP_LIMIT,
+  MESSAGE_BOOTSTRAP_LIMIT,
+  MESSAGE_BOOTSTRAP_SCAN,
   SINGLETON_ID,
   SyncOp,
   SyncOpResult,
@@ -32,6 +36,12 @@ import { statusLabel } from '../shared/labels';
 import { localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
+import { mergeCardChanges, stepTypesOf } from '../shared/productionCards';
+import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsOf, stationsArchiveOf, stationsOf } from '../shared/stations';
+import { applyDepartmentSettings, departmentHead } from '../shared/departments';
+import { roleAuditEntries, settingsAuditEntries, userAuditEntries, type AuditEntryDraft } from '../shared/auditTrail';
+import { cardNotices, stampCard, type CardNoticeContext } from './cards';
+import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -272,11 +282,37 @@ export class SyncService {
     writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
   }
 
+  /** Colleagues as card notices need them: station, role, department and what they may do on cards. */
+  private cardPeople(settings: any): CardNoticeContext {
+    const roles = this.listData('roles') as RoleDefinition[];
+    const people = this.listData('users')
+      .filter((u: any) => u && u.isActive !== false && !u.deletedAt)
+      .map((u: any) => ({
+        id: u.id,
+        stationId: u.stationId,
+        managedStationIds: u.managedStationIds,
+        managedGroupIds: u.managedGroupIds,
+        role: u.role,
+        departmentId: departmentIdOf(u),
+        canManage: evaluatePermission(u, 'cards.manage', roles),
+        canWork: evaluatePermission(u, 'cards.work', roles),
+      }));
+    return { people, stations: stationsOf(settings) };
+  }
+
+  /** A deleted card leaves no unread notices behind: they point at nothing. */
+  private settleCardNotifications(cardId: string) {
+    const link = `/cards/${cardId}`;
+    for (const row of this.db.listCollection('notifications')) {
+      if (row.d && row.d.linkUrl === link && !row.d.isRead) this.db.writeRow('notifications', row.id, { ...row.d, isRead: true }, row.p, null);
+    }
+  }
+
   /** Server-side audit trail for the main records: who created, changed status, deleted or restored what. */
   private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
     const NAMES: Partial<Record<CollectionName, string>> = {
       news: 'NEWS', stories: 'STORY', programs: 'PROGRAM', episodes: 'EPISODE', bulletins: 'BULLETIN', guests: 'GUEST',
-        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', bulletinFormats: 'BULLETIN_FORMAT', settings: 'SETTINGS',
+        media: 'MEDIA', tasks: 'TASK', diary: 'DIARY', bookings: 'BOOKING', resources: 'RESOURCE', requests: 'REQUEST', productionCards: 'PRODUCTION_CARD', bulletinFormats: 'BULLETIN_FORMAT',
     };
     const entity = NAMES[collection];
     if (!entity || !after) return;
@@ -284,12 +320,7 @@ export class SyncService {
     let action = '';
     let severity = 'INFO';
     let details = '';
-    if (collection === 'settings') {
-      const keys = ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'dateTime', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'newsTemplates'];
-      const changes = keys.filter(key => JSON.stringify(before?.[key]) !== JSON.stringify(after[key])).map(key => ({ field: key, before: before?.[key] ?? null, after: after[key] ?? null }));
-      if (!changes.length) return;
-      [action, details] = ['SETTINGS_UPDATE', JSON.stringify(changes)];
-    } else if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
+    if (!before) [action, details] = ['CREATE', `إنشاء: ${title}`];
     else if (after.deletedAt && !before.deletedAt) [action, severity, details] = ['DELETE', 'WARNING', `نقل إلى المحذوفات: ${title}`];
     else if (!after.deletedAt && before.deletedAt) [action, details] = ['RESTORE', `استعادة: ${title}`];
     else if (before.status !== after.status && after.status) {
@@ -305,6 +336,35 @@ export class SyncService {
       this.db.positionBounds('auditLogs').min - 1,
       null
     );
+  }
+
+  private writeAudit(entries: AuditEntryDraft[], auth: AuthContext, ip?: string) {
+    for (const entry of entries) {
+      const id = newId('aud');
+      this.db.writeRow(
+        'auditLogs',
+        id,
+        { id, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, ...entry, ipAddress: ip ?? 'unknown', timestamp: new Date().toISOString() },
+        this.db.positionBounds('auditLogs').min - 1,
+        null
+      );
+    }
+  }
+
+  /**
+   * Server-side audit of administration: accounts (role, exceptions, suspension, station,
+   * department), roles (permissions and screens), settings, stations, departments and the live lock,
+   * each with a readable «before ← after». Written after the change was accepted, in the same transaction.
+   */
+  private auditAdministration(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
+    const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+    const ctx = () => ({ roles: this.listData('roles') as RoleDefinition[], stations: stationsOf(settings), groups: stationGroupsOf(settings) });
+    if (collection === 'users') this.writeAudit(userAuditEntries(before, after, ctx()), auth, ip);
+    else if (collection === 'roles') this.writeAudit(roleAuditEntries(before, after), auth, ip);
+    else if (collection === 'settings' && after) this.writeAudit(settingsAuditEntries(before, after), auth, ip);
+    else if (collection === 'broadcastState' && !!before?.liveLock !== !!after?.liveLock) {
+      this.writeAudit([{ actionType: after?.liveLock ? 'BROADCAST_LOCK' : 'BROADCAST_UNLOCK', targetEntity: 'BROADCAST', targetId: 'live-lock', severity: 'WARNING', details: after?.liveLock ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر' }], auth, ip);
+    }
   }
 
   /** Who can give this sign-off (for notifications). */
@@ -344,6 +404,49 @@ export class SyncService {
     }
   }
 
+  /**
+   * What the server decides about a message: who may read a private one (the two people of a
+   * direct conversation, or the group's members at this moment) and the facts of each attached
+   * file, which must be an upload of the sender.
+   */
+  private stampMessage(message: any, auth: AuthContext): ChatMessage {
+    const channel = parseChannel(message.channel)!;
+    const to =
+      channel.kind === 'dm'
+        ? channel.userIds
+        : channel.kind === 'group'
+          ? (this.db.getRow('conversations', channel.id)?.d as Conversation | undefined)?.memberIds
+          : undefined;
+    const attachments = ((message.attachments as { id: string }[] | undefined) || []).map(({ id }) => {
+      const upload = this.db.getUpload(id);
+      if (!upload || upload.uploadedBy !== auth.user.id) throw new SyncReject('INVALID', 'المرفق غير موجود أو ليس من رفعك');
+      return { id, name: upload.originalName, mimeType: upload.mimeType, size: upload.sizeBytes };
+    });
+    const { attachments: _a, to: _t, ref, ...rest } = message;
+    return {
+      ...rest,
+      text: String(message.text).trim(),
+      isUrgent: message.isUrgent === true || undefined,
+      ...(attachments.length ? { attachments } : {}),
+      ...(ref ? { ref: { kind: ref.kind, id: ref.id, title: String(ref.title).trim() } } : {}),
+      ...(to ? { to: [...to] } : {}),
+    };
+  }
+
+  /** People of a private conversation hear about a new message: once per conversation until they read it, and always when it is urgent. */
+  private notifyMessage(message: ChatMessage) {
+    if (!message.to) return;
+    const channel = parseChannel(message.channel)!;
+    const linkUrl = `/messages/${encodeURIComponent(message.channel)}`;
+    const waiting = new Set(this.listData('notifications').filter((n: any) => n.linkUrl === linkUrl && !n.isRead).map((n: any) => n.userId));
+    const group = channel.kind === 'group' ? (this.db.getRow('conversations', channel.id)?.d as Conversation | undefined)?.name : undefined;
+    const body = message.text || (message.attachments?.length ? `أرسل ${message.attachments.length === 1 ? 'ملفاً' : 'ملفات'}: ${message.attachments.map((a) => a.name).join('، ')}` : '');
+    for (const userId of message.to) {
+      if (userId === message.userId || (waiting.has(userId) && !message.isUrgent)) continue;
+      this.notify(userId, group ? `${group}: ${message.userName}` : `رسالة من ${message.userName}`, body.slice(0, 200), linkUrl, 'message', message.isUrgent === true);
+    }
+  }
+
   /** Mentioned colleagues, and the story's author, hear about a new comment. */
   private notifyComment(c: TeamComment, auth: AuthContext) {
     const recipients = new Map<string, string>();
@@ -353,7 +456,6 @@ export class SyncService {
       if (authorId && !recipients.has(authorId)) recipients.set(authorId, `تعليق جديد من ${c.authorName} على خبرك`);
     }
     recipients.delete(auth.user.id);
-    const now = new Date().toISOString();
     for (const [userId, title] of recipients) {
       writeNotification(this.db, { userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, linkUrl: commentLink(c.target), category: 'mention', type: 'SYSTEM' });
     }
@@ -373,6 +475,9 @@ export class SyncService {
         .filter((u: any) => u.isActive !== false && departmentIdOf(u) === after.departmentId)
         .map((u: any) => u.id);
       (onDuty.length ? onDuty : members).forEach((id) => recipients.add(id));
+      // The head of the department (or of the department above it) always hears about new requests.
+      const head = departmentHead(after.departmentId);
+      if (head && this.db.getRow('users', head)?.d?.isActive !== false) recipients.add(head);
       title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}طلب ${type?.name || ''} جديد`;
     } else if (before.status !== after.status) {
       recipients.add(after.requesterId);
@@ -382,7 +487,6 @@ export class SyncService {
       return;
     }
     recipients.delete(auth.user.id);
-    const now = new Date().toISOString();
     for (const userId of recipients) {
       writeNotification(this.db, {
         userId,
@@ -398,6 +502,22 @@ export class SyncService {
 
   /** The writer hears when an editor sends a story back, approves, publishes or rejects it. */
   private notifyNewsWorkflow(before: any, after: any, auth: AuthContext) {
+    // A quality pass reaches the approvers: the story is ready for their decision.
+    const passes = (logs: any[] | undefined) => (logs || []).filter((l: any) => l?.action === 'QUALITY_PASSED').length;
+    if (before && passes(after.workflowLogs) > passes(before.workflowLogs) && after.status === 'UNDER_REVIEW') {
+      const roles = auth.roles;
+      for (const row of this.db.listCollection('users')) {
+        const u = row.d;
+        if (!u || u.id === auth.user.id || u.isActive === false || u.deletedAt || !evaluatePermission(u, 'news.approve', roles)) continue;
+        writeNotification(this.db, {
+          userId: u.id,
+          title: `اجتاز التدقيق وينتظر الاعتماد — ${auth.user.fullName}`,
+          message: `«${after.title}»`,
+          linkUrl: `/news/${after.id}`,
+          category: 'news',
+        });
+      }
+    }
     if (!before || before.status === after.status || !after.authorId || after.authorId === auth.user.id) return;
     const note = [...(after.workflowLogs || [])].reverse().find((l: any) => l.toStatus === after.status)?.comment;
     const titles: Record<string, string> = {
@@ -455,12 +575,23 @@ export class SyncService {
     });
   }
 
+  /** Departments, station groups and the station archive follow the stored settings (shared helpers read them). */
+  private applySettings() {
+    const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+    applyDepartmentSettings(settings);
+    rememberStationSettings(settings);
+  }
+
   bootstrap(auth: AuthContext) {
+    this.applySettings();
     const rev = this.db.currentRev();
     const collections: Partial<Record<CollectionName, EntityRow[]>> = {};
     for (const name of COLLECTION_NAMES) {
       let rows: EntityRow[];
-      if (APPEND_ONLY_COLLECTIONS.has(name)) {
+      if (name === 'messages') {
+        // The newest messages this user may read; most rows of a busy newsroom are other people's conversations.
+        rows = this.db.listCollection(name, { limit: MESSAGE_BOOTSTRAP_SCAN }).filter((r) => canRead(auth, name, r.d)).slice(0, MESSAGE_BOOTSTRAP_LIMIT);
+      } else if (APPEND_ONLY_COLLECTIONS.has(name)) {
         // Logs are ordered newest first (lowest position); only ship the recent window.
         rows = this.db.listCollection(name, { limit: LOG_BOOTSTRAP_LIMIT });
       } else if (name === 'news' && this.newsActiveDays > 0) {
@@ -483,7 +614,12 @@ export class SyncService {
     return {
       rev,
       reset: false as const,
-      changes: rows.filter((r) => this.visible(auth, r)),
+      changes: rows.flatMap((r): EntityRow[] => {
+        if (this.visible(auth, r)) return [r];
+        // Someone removed from a group stops seeing it: their browser is told the row is gone
+        // (only its random id travels), instead of keeping a group they can no longer write to.
+        return r.c === 'conversations' ? [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }] : [];
+      }),
     };
   }
 
@@ -492,7 +628,9 @@ export class SyncService {
    * runs in its own transaction; one rejected op never blocks the others.
    */
   apply(auth: AuthContext, ops: SyncOp[], ip?: string): SyncOpResult[] {
+    this.applySettings();
     const results = ops.map((op) => this.applyOne(auth, op, ip));
+    if (ops.some((op) => op?.c === 'settings')) this.applySettings();
     if (results.some((r) => r.ok)) changeBus.emit('rev', this.db.currentRev());
     return results;
   }
@@ -552,6 +690,7 @@ export class SyncService {
           const uploadId = collection === 'media' ? uploadIdFromMedia(before) : null;
           if (uploadId) removeUpload(this.db, this.dataDir, uploadId);
           const row = this.db.deleteRow(collection, id, auth.user.id)!;
+          this.auditAdministration(collection, before, null, auth, ip);
           return { ok: true, row } as SyncOpResult;
         }
 
@@ -560,7 +699,14 @@ export class SyncService {
         if (size > MAX_ENTITY_BYTES) return { ok: false, code: 'INVALID', message: 'حجم السجل يتجاوز الحد المسموح' } as SyncOpResult;
 
         const kind: WriteKind = current ? 'update' : 'create';
-        if (current && op.baseV !== undefined && op.baseV !== current.v) {
+        // A card written from an older version (offline, or while a colleague saved) is merged when
+        // the two sides touched different things; the merged card then passes the usual rules.
+        let incoming: any = op.d;
+        if (current && op.baseV !== undefined && op.baseV !== current.v && MERGE_COLLECTIONS.has(collection)) {
+          const base = this.db.getHistoryVersion(collection, id, op.baseV);
+          incoming = base ? mergeCardChanges(base, op.d as any, current.d) : null;
+        }
+        if (current && op.baseV !== undefined && op.baseV !== current.v && !(MERGE_COLLECTIONS.has(collection) && incoming)) {
           return {
             ok: false,
             code: 'CONFLICT',
@@ -573,7 +719,7 @@ export class SyncService {
           return { ok: false, code: 'CONFLICT', message: 'السجل موجود مسبقاً', current } as SyncOpResult;
         }
 
-        let after: any = { ...op.d };
+        let after: any = { ...incoming };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
         if (collection === 'savedNewsFilters') {
@@ -611,7 +757,9 @@ export class SyncService {
         if (collection === 'cues') after = stampCue(before, after, auth);
           if (collection === 'tasks') {
             const member = this.db.getRow('users', String(after.assigneeId))?.d;
-            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName };
+            const finished = after.status === 'DONE' || after.status === 'COMPLETED';
+            // Completion time is the server's, so output can be measured per period.
+            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || new Date().toISOString() : undefined };
           }
           if (collection === 'reviewThreads') {
             const now = new Date().toISOString();
@@ -660,14 +808,51 @@ export class SyncService {
             after = { ...after, name: typeof after.name === 'string' ? after.name.trim() : after.name, createdAt: before?.createdAt ?? now, updatedAt: now };
           }
           if (collection === 'notificationPrefs') after = { ...after, updatedAt: new Date().toISOString() };
+        if (collection === 'users') {
+          // Sign-in time is the server's record (set at login), never the browser's: empty until the first sign-in.
+          if (before?.lastLogin) after.lastLogin = before.lastLogin;
+          else delete after.lastLogin;
+        }
+        if (collection === 'settings') {
+          // Removed stations keep their name in the archive (history of finished work); browsers cannot rewrite it.
+          after.stationsArchive = archiveRemovedStations(stationsOf(before), stationsOf(after), stationsArchiveOf(before));
+          if (!after.stationsArchive.length) delete after.stationsArchive;
+        }
 
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
+        if (collection === 'messages') after = this.stampMessage(after, auth);
+        if (collection === 'conversations') {
+          const now = new Date().toISOString();
+          after = { ...after, name: String(after.name).trim(), ownerId: before?.ownerId || auth.user.id, ownerName: before?.ownerName || auth.user.fullName, createdAt: before?.createdAt || now, updatedAt: now };
+        }
+        if (collection === 'chatReads') after = { id, userId: auth.user.id, seen: after.seen, updatedAt: new Date().toISOString() };
+        if (collection === 'workflowTemplates' && !after.deletedAt) {
+          const now = new Date().toISOString();
+          after = { ...after, name: String(after.name).trim(), builtIn: before?.builtIn === true || undefined, createdById: before?.createdById ?? auth.user.id, createdByName: before?.createdByName ?? auth.user.fullName, createdAt: before?.createdAt ?? now, updatedAt: now };
+        }
+        if (collection === 'productionCards' && !after.deletedAt) {
+          // Stamped after the policy so the rules compare exactly what the browser sent.
+          const users = new Map<string, any>(this.listData('users').map((u: any) => [u.id, u]));
+          // Library items attached to a card must exist; their titles go into the trail.
+          const mediaTitle = (mediaId: string) => {
+            const item = this.db.getRow('media', mediaId)?.d;
+            return item && !item.deletedAt ? String(item.title || item.originalName || item.fileName || 'ملف') : undefined;
+          };
+          const attached = new Set(before?.mediaIds || []);
+          if ((after.mediaIds || []).some((mid: string) => !attached.has(mid) && !mediaTitle(mid))) throw new SyncReject('INVALID', 'الملف المرفق غير موجود في مكتبة الوسائط');
+          after = stampCard(before, after, auth.user, users, stepTypesOf(this.db.getRow('settings', SINGLETON_ID)?.d), auth.can('cards.manage'), { mediaTitle });
+        }
         if (collection === 'users') {
           // 2FA status is owned by the server (enrolment endpoints), never by the client.
           after.twoFactorEnabled = !!this.db.getCredentials(id)?.totpEnabled;
-          const invalid = this.validateUser(id, after);
+          // A station removed later does not block other edits to its former members.
+          const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+          const stationUnknown = after.stationId && after.stationId !== before?.stationId && !stationsOf(settings).some((s) => s.id === after.stationId);
+          const scopeChanged = JSON.stringify([after.managedStationIds ?? null, after.managedGroupIds ?? null]) !== JSON.stringify([before?.managedStationIds ?? null, before?.managedGroupIds ?? null]);
+          const scopeInvalid = scopeChanged ? managedScopeError(after, stationsOf(settings), stationGroupsOf(settings)) : null;
+          const invalid = stationUnknown ? 'المحطة المختارة غير موجودة' : scopeInvalid || this.validateUser(id, after);
           if (invalid) return { ok: false, code: 'INVALID', message: invalid, current } as SyncOpResult;
         }
 
@@ -683,6 +868,9 @@ export class SyncService {
 
         if (current && HISTORY_COLLECTIONS.has(collection)) {
           this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
+        }
+        if (current && MERGE_COLLECTIONS.has(collection)) {
+          this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName, MERGE_HISTORY_KEEP);
         }
         if (collection === 'bookings' && !after.deletedAt) {
           // Checked inside the write transaction so two desks cannot book the same slot at once.
@@ -701,6 +889,13 @@ export class SyncService {
 
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+        if (collection === 'productionCards' && !after.deletedAt) {
+          const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
+          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(settings), this.cardPeople(settings))) {
+            this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent);
+          }
+        }
+        if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) this.settleCardNotifications(id);
           if (collection === 'tasks' && !after.deletedAt) {
             const assigned = after.assigneeId && after.assigneeId !== before?.assigneeId;
             const deadline = before && after.dueDate !== before.dueDate;
@@ -708,11 +903,13 @@ export class SyncService {
             const recipients = new Set<string>();
             if ((assigned || deadline) && after.assigneeId) recipients.add(after.assigneeId);
             if (status && after.creatorId) recipients.add(after.creatorId);
-            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, '/tasks', 'assignment');
+            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment');
           }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
+        if (collection === 'messages' && !before) this.notifyMessage(after);
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
         this.auditLifecycle(collection, before, after, auth, ip);
+        this.auditAdministration(collection, before, after, auth, ip);
         if (collection === 'news' && !after.deletedAt) this.notifyNewsWorkflow(before, after, auth);
         if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
         if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);
@@ -746,9 +943,28 @@ export class SyncService {
         // Category renames are propagated by the server (system write): the renamer may lack
         // rights on every story, and stories may be locked by their editors.
         if (collection === 'categories' && before && before.nameAr !== after.nameAr) {
-          for (const newsRow of this.db.listCollection('news')) {
-            if (newsRow.d?.categoryId === id && newsRow.d.categoryName !== after.nameAr) {
-              this.db.writeRow('news', newsRow.id, { ...newsRow.d, categoryName: after.nameAr }, newsRow.p, null);
+          for (const target of ['news', 'stories'] as const) {
+            for (const ref of this.db.listCollection(target)) {
+              if (ref.d?.categoryId === id && ref.d.categoryName !== after.nameAr) {
+                this.db.writeRow(target, ref.id, { ...ref.d, categoryName: after.nameAr }, ref.p, null);
+              }
+            }
+          }
+        }
+        // Source renames follow the same rule: news and agency wires carry the name for display.
+        if (collection === 'sources' && before && before.name !== after.name && typeof after.name === 'string') {
+          for (const target of ['news', 'wires'] as const) {
+            for (const ref of this.db.listCollection(target)) {
+              if (ref.d?.sourceId === id && ref.d.sourceName !== after.name) {
+                this.db.writeRow(target, ref.id, { ...ref.d, sourceName: after.name }, ref.p, null);
+              }
+            }
+          }
+        }
+        if (collection === 'programTypes' && before && before.nameAr !== after.nameAr && typeof after.nameAr === 'string') {
+          for (const ref of this.db.listCollection('programs')) {
+            if (ref.d?.typeId === id && ref.d.typeName !== after.nameAr) {
+              this.db.writeRow('programs', ref.id, { ...ref.d, typeName: after.nameAr }, ref.p, null);
             }
           }
         }

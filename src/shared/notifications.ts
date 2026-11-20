@@ -9,9 +9,10 @@ export const NOTIFICATION_CATEGORIES = [
   { id: 'assignment', name: 'التكليفات والمهام', hint: 'مهمة أو تغطية أو حجز مسند إليك' },
   { id: 'request', name: 'طلبات الأقسام', hint: 'طلب جديد لقسمك أو تغيّر حالة طلبك' },
   { id: 'mention', name: 'الإشارات والتعليقات', hint: 'أشار إليك زميل أو علّق على مادتك' },
+  { id: 'message', name: 'الرسائل المباشرة والمجموعات', hint: 'رسالة من زميل أو في مجموعة أنت عضو فيها' },
   { id: 'news', name: 'سير عمل الأخبار', hint: 'إعادة خبرك للتعديل أو اعتماده' },
   { id: 'bulletin', name: 'النشرات', hint: 'قصة جاهزة للاعتماد أو أعيدت إليك' },
-  { id: 'wire', name: 'البرقيات العاجلة وكلمات المتابعة', hint: 'برقية عاجلة أو تحوي كلمة تتابعها' },
+  { id: 'wire', name: 'المواد العاجلة وكلمات المتابعة', hint: 'مادة عاجلة أو تحوي كلمة تتابعها' },
   { id: 'booking', name: 'حجز الموارد', hint: 'حجز استوديو أو كاميرا أو طاقم باسمك' },
   { id: 'diary', name: 'أجندة التغطية', hint: 'حدث في الأجندة أسند إليك أو تغيّر موعده' },
   { id: 'system', name: 'تنبيهات عامة', hint: 'رسائل الإدارة والنظام' },
@@ -44,6 +45,7 @@ export const DEFAULT_CHANNELS: Record<NotificationCategory, { email: boolean; pu
   assignment: { email: true, push: true },
   request: { email: false, push: true },
   mention: { email: false, push: true },
+  message: { email: false, push: true },
   news: { email: false, push: true },
   bulletin: { email: false, push: true },
   wire: { email: false, push: true },
@@ -87,7 +89,7 @@ export function prefsError(p: any, userId: string): string | null {
   }
   if (!Array.isArray(p.watchWords) || p.watchWords.length > MAX_WATCH_WORDS) return `كلمات المتابعة قائمة بحد أقصى ${MAX_WATCH_WORDS} كلمة`;
   if (p.watchWords.some((w: unknown) => typeof w !== 'string' || !w.trim() || w.length > 60)) return 'كل كلمة متابعة نص قصير (حتى 60 حرفاً)';
-  if (typeof p.flashAlerts !== 'boolean') return 'خيار البرقيات العاجلة غير صالح';
+  if (typeof p.flashAlerts !== 'boolean') return 'خيار المواد العاجلة غير صالح';
   for (const k of ['quietFrom', 'quietTo']) if (p[k] !== undefined && p[k] !== '' && !HHMM.test(p[k])) return 'ساعات الهدوء بصيغة HH:MM';
   return null;
 }

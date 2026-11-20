@@ -4,7 +4,7 @@ import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
 import { CueAlertOverlay } from './components/common/CueAlertOverlay';
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import {
   NewsItem, Story,
   Program,
@@ -26,7 +26,7 @@ import { apiService } from './services/api';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
 import { registerServiceWorker } from './services/push';
-import { Sidebar } from './components/layout/Sidebar';
+import { Sidebar, personalBadgeCounts } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
 import { CommandPalette } from './components/layout/CommandPalette';
@@ -46,11 +46,13 @@ const MediaLibraryView = lazyWithRetry(() => import('./views/MediaLibraryView').
 const ReportsView = lazyWithRetry(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
 const AuditLogsView = lazyWithRetry(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
 const UsersView = lazyWithRetry(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
+import type { SettingsSection } from './views/SettingsView';
 const SettingsView = lazyWithRetry(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
 const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
+const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
@@ -61,6 +63,9 @@ const ProgramDetailView = lazyWithRetry(() => import('./views/ProgramDetailView'
 const StoriesView = lazyWithRetry(() => import('./views/StoriesView').then((m) => ({ default: m.StoriesView })));
 const DiaryView = lazyWithRetry(() => import('./views/DiaryView').then((m) => ({ default: m.DiaryView })));
 const BookingsView = lazyWithRetry(() => import('./views/BookingsView').then((m) => ({ default: m.BookingsView })));
+const ProductionCardsView = lazyWithRetry(() => import('./views/ProductionCardsView').then((m) => ({ default: m.ProductionCardsView })));
+const MessagesView = lazyWithRetry(() => import('./views/MessagesView').then((m) => ({ default: m.MessagesView })));
+const WorkloadView = lazyWithRetry(() => import('./views/WorkloadView').then((m) => ({ default: m.WorkloadView })));
 const NotificationSettingsView = lazyWithRetry(() => import('./views/NotificationSettingsView').then((m) => ({ default: m.NotificationSettingsView })));
 
 import { ToastContainer, ToastMessage } from './components/common/Toast';
@@ -69,7 +74,9 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
-import { routeChanged } from './services/uiEvents';
+import { navigateTo, routeChanged, setupCommand } from './services/uiEvents';
+import { TourHost } from './components/help/TourHost';
+import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 
 interface AppProps {
@@ -271,10 +278,20 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   // --- NEWS ACTIONS ---
   /** Returns the saved story, or null when the save was refused. `stay` keeps the editor open. */
+  /** No connection: the news write is kept on this device (awaitWrite answers at once, `queued`). */
+  const queuedOffline = async (newsId: string) => {
+    const state = dataStore.syncState();
+    if (state.browserOnline && state.online) return false;
+    // A short wait: only the immediate «queued» answer counts here; confirmSaved does the real wait.
+    return !!(await dataStore.awaitWrite('news', newsId, 1)).queued;
+  };
+
   const handleSaveNews = async (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): Promise<NewsItem | null> => {
     try {
       const saved = apiService.saveNews(newsData, currentUser);
       refreshData();
+      // Offline the write waits on this device; the editor says so once (no «تعذر الحفظ»).
+      if (await queuedOffline(saved.id)) return null;
       // «تم الحفظ» only once the server has stored it (the sync layer reports refusals).
       if (!await confirmSaved('news', saved.id, `تم حفظ الخبر: «${saved.title?.slice(0, 40)}»`)) return null;
       setSelectedNewsItem(saved);
@@ -293,6 +310,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
       refreshData();
+      if (await queuedOffline(newsId)) return false;
       return await confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
     } catch (err: any) {
       addToast({
@@ -314,7 +332,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       addToast({
         type: 'warning',
         title: 'حذف الخبر',
-        message: 'تم نقل الخبر إلى الأرشيف (Soft Delete)',
+        message: 'نُقل الخبر إلى سلة المحذوفات؛ يستعيده من يملك صلاحية الحذف.',
       });
     } catch (err: any) {
       addToast({
@@ -422,7 +440,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       summary: (wire.summary || '').slice(0, 400),
       content: `${paragraphs}<p><em>المصدر: ${escape(wire.sourceName)}</em></p>`,
       sourceId: known?.id,
-      internalNotes: `محرر من برقية ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
+      internalNotes: `محرر من مادة ${wire.sourceName} (${new Date(wire.publishedAt).toLocaleString(appLocale(), zoneOptions())})${wire.link ? `\n${wire.link}` : ''}`,
     });
     setActiveNav('news-editor');
   };
@@ -465,7 +483,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       refreshData();
       addToast(
         on
-          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة 4 ساعات` }
+          ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة ${apiService.getSettings().breakingDurationHours ?? 4} ساعات` }
           : { type: 'info', title: 'أُوقف الخبر العاجل', message: 'أُزيل الخبر من شريط العاجل' }
       );
     } catch (err: any) {
@@ -578,23 +596,25 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       apiService.deleteStory(id, currentUser);
       refreshData();
       addToast({
-        title: 'تمت أرشفة القصة',
-        message: 'تم نقل التغطية إلى الأرشيف بنجاح',
+        title: 'حُذفت التغطية',
+        message: 'تم حذف التغطية؛ بقيت أخبارها في قائمة الأخبار.',
         type: 'info',
       });
-    } catch {
-      // ignore
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'تعذر حذف التغطية', message: err?.message || 'رفض الخادم العملية' });
     }
   };
 
   // --- MEDIA ACTIONS ---
-  const handleUploadMedia = (mediaData: Partial<MediaAsset>) => {
+  /** True once the server has stored the new library item; the upload page stays open otherwise. */
+  const handleUploadMedia = async (mediaData: Partial<MediaAsset>): Promise<boolean> => {
     try {
-      apiService.saveMediaAsset(mediaData, currentUser);
+      const saved = apiService.saveMediaAsset(mediaData, currentUser);
       refreshData();
-      addToast({ type: 'success', title: 'تمت إضافة المادة', message: 'حُفظت المادة في مكتبة الوسائط' });
+      return await confirmSaved('media', saved.id, 'حُفظت المادة في مكتبة الوسائط');
     } catch (err: any) {
       addToast({ type: 'error', title: 'تعذر حفظ المادة', message: err.message || 'حدث خطأ' });
+      return false;
     }
   };
 
@@ -604,22 +624,20 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   // --- SETTINGS ACTIONS ---
-  const handleSaveCategory = (cat: Partial<Category>) => {
+  /** True once the server has stored the category (a refusal is announced by the sync layer). */
+  const handleSaveCategory = async (cat: Partial<Category>): Promise<boolean> => {
     try {
       const isNew = !cat.id;
       const saved = apiService.saveCategory(cat);
       refreshData();
-      addToast({
-        title: isNew ? 'تمت إضافة القسم بنجاح' : 'تم تحديث بيانات ولون القسم',
-        message: `تم حفظ وتطبيق قسم "${saved.nameAr}" على غرفة الأخبار ولوحة التحكم`,
-        type: 'success',
-      });
+      return await confirmSaved('categories', saved.id, isNew ? `أُضيف القسم «${saved.nameAr}»` : `حُفظ القسم «${saved.nameAr}»`);
     } catch (err: any) {
       addToast({
         title: 'خطأ في حفظ القسم',
-        message: err.message || 'تعذر حفظ القسم الصحفي',
+        message: err.message || 'تعذر حفظ التصنيف',
         type: 'error',
       });
+      return false;
     }
   };
 
@@ -681,6 +699,14 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
+  useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
+  const [setupOpen, setSetupOpen] = useState(false);
+  /** Settings opened on a section from another screen (e.g. «المصادر» → feed settings); cleared on leaving. */
+  const [settingsTarget, setSettingsTarget] = useState<{ section: SettingsSection; sourceId?: string } | null>(null);
+  useEffect(() => {
+    if (activeNav !== 'settings') setSettingsTarget(null);
+  }, [activeNav]);
+  useEffect(() => setupCommand.on(() => setSetupOpen(true)), []);
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
@@ -746,10 +772,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   useEffect(() => {
     document.title = screenTitle(activeNav, routeItemTitle);
   }, [activeNav, routeItemTitle]);
+  // A role opens only its own screens, whether reached from the sidebar, a link or the address bar.
+  const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav);
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
-    <div className="h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">
+    <div className="app-shell h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">
       <a
         href="#app-main"
         onClick={(e) => {
@@ -771,7 +799,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         <BreakingNewsTicker items={breakingNewsItems} onOpenNews={(newsId) => newsId && handleEditNewsClick(newsId)} />
       )}
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="app-body flex flex-1 overflow-hidden relative">
         {/* Main Application Sidebar */}
         <Sidebar
           activeNav={activeNav}
@@ -787,15 +815,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             setFocusId(null);
             setIsMobileSidebarOpen(false);
           }}
-          badgeCounts={{
-            news: (newsList || []).filter((n) => n.status === 'UNDER_REVIEW').length,
-            tasks: (tasks || []).filter((t) => t.status === 'TODO' || t.status === 'IN_PROGRESS').length,
-            episodes: (episodes || []).filter((e) => e.status === 'READY_FOR_BROADCAST').length,
-          }}
+          badgeCounts={personalBadgeCounts(currentUser, newsList, tasks, episodes)}
         />
 
         {/* Center Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
+        <div className="app-scroll flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
           {/* Topbar */}
           <Topbar
             currentUser={currentUser}
@@ -830,6 +854,16 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             <Suspense
               fallback={<div className="py-24 text-center text-sm font-semibold text-slate-500">جارٍ التحميل...</div>}
             >
+            {!screenAllowed && (
+              <div className="max-w-xl mx-auto text-center space-y-3 py-20">
+                <h1 className="text-lg font-bold text-slate-900">هذه الصفحة ليست ضمن صفحات دورك</h1>
+                <p className="text-sm text-slate-600">تُحدَّد صفحات كل دور من «المستخدمون والصلاحيات». إن احتجت إليها في عملك فاطلبها من مدير النظام.</p>
+                <button type="button" onClick={() => setActiveNav('dashboard')} className="min-h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-bold">
+                  العودة إلى الرئيسية
+                </button>
+              </div>
+            )}
+            {screenAllowed && (<>
             {activeNav === 'dashboard' && (
               <DashboardView
                 newsList={newsList}
@@ -856,9 +890,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onCreateEpisode={() => {
                   setFilterProgramId(null);
                   setActiveNav('episodes');
+                  // The episodes screen opens its form directly.
+                  setOpenNewEpisode((n) => n + 1);
                 }}
                 onNavigate={(view: any) => {
-                  if (typeof view === 'string' && view.startsWith('/')) { openLink(view); return; }
+                  if (String(view).includes('/')) { openLink(String(view).startsWith('/') ? String(view) : `/${view}`); return; }
                   setFocusId(null);
                   const map: Record<string, string> = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking' };
                   if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
@@ -908,7 +944,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onConvert={handleConvertWire}
                 onOpenNews={handleEditNewsClick}
-                onOpenSettings={() => setActiveNav('settings')}
+                onOpenSettings={(section, sourceId) => {
+                  setSettingsTarget(section ? { section: section as SettingsSection, sourceId } : null);
+                  setActiveNav('settings');
+                }}
                 onOpenAlerts={() => setActiveNav('alerts')}
                 focusWireId={focusId}
               />
@@ -953,6 +992,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 nextReviewId={nextReviewId}
                 reviewing={reviewQueueIds.includes(editorNewsItem?.id || '')}
                 onNextReview={id => handleEditNewsClick(id, true)}
+                reviewQueue={reviewQueueIds}
               />
             )}
 
@@ -1049,6 +1089,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onSaveTask={handleSaveTask}
                 onDeleteTask={handleDeleteTask}
+                onOpenLink={openLink}
               />
             )}
 
@@ -1057,6 +1098,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 episodes={episodes}
                 programs={programs}
                 onSelectEpisode={handleSelectEpisode}
+                onOpenBulletin={(id) => openBulletin(id)}
+                onOpenBulletins={() => openBulletin(null)}
               />
             )}
 
@@ -1066,6 +1109,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 currentUser={currentUser}
                 onUploadMedia={handleUploadMedia}
                 onDeleteMedia={handleDeleteMedia}
+                focusId={focusId}
               />
             )}
 
@@ -1102,7 +1146,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                           aria-selected={activeNav === t.id}
                           onClick={() => setActiveNav(t.id)}
                           className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-colors ${
-                            activeNav === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            activeNav === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                           }`}
                         >
                           {t.label}
@@ -1121,6 +1165,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveSource={handleSaveSource}
                 onDeleteSource={handleDeleteSource}
                 onOpenUsers={() => setActiveNav('users')}
+                initialSection={settingsTarget?.section}
+                focusSourceId={settingsTarget?.sourceId}
               />
             )}
 
@@ -1166,17 +1212,41 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
             )}
 
+            {activeNav === 'guide' && <GuideView currentUser={currentUser} focusId={focusId} onFocus={setFocusId} />}
+
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
+
+            {activeNav === 'messages' && <MessagesView currentUser={currentUser} users={allUsers} channel={focusId} onChannel={setFocusId} onOpenLink={openLink} />}
+
+            {activeNav === 'cards' && (
+              <ProductionCardsView currentUser={currentUser} users={allUsers} focusId={focusId} onFocus={setFocusId} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
+            )}
+
+            {activeNav === 'workload' && (
+              <WorkloadView
+                currentUser={currentUser}
+                users={allUsers}
+                onOpen={(ref) => {
+                  if (ref.nav === 'news-editor') handleEditNewsClick(ref.id);
+                  else if (ref.nav === 'cards') openLink(`/cards/${ref.id}`);
+                  else openLink(`/${ref.nav}`);
+                }}
+              />
+            )}
 
             {activeNav === 'requests' && (
               <RequestsView currentUser={currentUser} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} focusId={focusId} focusSegmentId={requestSegmentId} onClearFocus={() => { setRequestSegmentId(undefined); setFocusId(null); }} />
             )}
+            </>)}
             </Suspense>
             </ViewErrorBoundary>
           </main>
           <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-12 w-full empty:hidden" />
         </div>
       </div>
+
+      <TourHost currentUser={currentUser} />
+      {RbacService.hasPermission(currentUser, 'system.settings') && <SetupWizard isOpen={setupOpen} onClose={() => setSetupOpen(false)} currentUser={currentUser} />}
 
       {/* Global Command Palette (Ctrl + K) */}
       <CommandPalette
@@ -1188,6 +1258,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           setActiveNav(nav);
         }}
         onQuickCreateNews={handleCreateNewNewsClick}
+        onOpenLink={openLink}
         newsList={newsList}
         programs={programs}
         episodes={episodes}
@@ -1197,6 +1268,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         onSelectProgram={handleSelectProgram}
         onSelectGuest={() => setActiveNav('guests')}
         onSelectTask={() => setActiveNav('tasks')}
+        currentUser={currentUser}
       />
 
       {/* Global Toast Notifications */}

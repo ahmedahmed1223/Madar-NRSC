@@ -10,7 +10,8 @@ import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
-import { departmentIdOf, isDepartmentId } from '../shared/departments';
+import { departmentIdOf, departmentsError, departmentsOf, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
+import { DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
 import { canControlOnAir } from '../shared/onair';
 import { bulletinError, findShow, formatError, isApprover, nextApprovalStep, canActOnStep, approvalStepName, plainText, storyError, storyStatusError } from '../shared/bulletins';
 import { rosterEntryError } from '../shared/roster';
@@ -18,7 +19,13 @@ import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
-import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, transitionDenial } from '../shared/newsWorkflow';
+import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
+import { templateChangeError } from '../shared/workflowTemplates';
+import { screensError } from '../shared/screens';
+import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
+import { stationsOf } from '../shared/stations';
+import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, reviewBookkeepingDenial, transitionDenial } from '../shared/newsWorkflow';
+import { handledChangeError, manualWireError } from '../shared/wires';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -47,7 +54,21 @@ const require =
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
 
-const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId'] as const;
+const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'stationId', 'managedStationIds', 'managedGroupIds'] as const;
+
+/** Codes of the built-in roles: a user's `role` is always one of them; custom roles go through `customRoleId`. */
+const systemRoleCodes = (roles: any[]) => new Set<string>([...DEFAULT_ROLE_DEFINITIONS.map((r) => r.roleCode), ...roles.filter((r) => r?.isSystemRole).map((r) => r.roleCode)]);
+
+/** The role fields of a user write: `role` must be a system role, `customRoleId` an existing custom role. */
+function userRoleError(before: any, after: any, list: PolicyInput['list']): string | null {
+  const roles = list?.('roles') || [];
+  if ((!before || changed(before, after, 'role')) && !systemRoleCodes(roles).has(after?.role)) return 'الدور غير معروف؛ تُسند الأدوار المخصصة باختيارها من القائمة (customRoleId)';
+  if (after?.customRoleId !== undefined && after.customRoleId !== null && after.customRoleId !== '' && (!before || changed(before, after, 'customRoleId'))) {
+    const role = roles.find((r: any) => r?.id === after.customRoleId);
+    if (!role || role.isSystemRole) return 'الدور المخصص غير موجود';
+  }
+  return null;
+}
 
 function changed(before: any, after: any, field: string) {
   return JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after?.[field] ?? null);
@@ -102,6 +123,10 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
     return 'صلاحياتك لا تسمح بتعديل هذا الخبر';
   }
 
+  // Quality pass, review claim and breaking requests: review rights, checked on their own.
+  const bookkeeping = reviewBookkeepingDenial(can, { id: me, name: auth.user.fullName }, kind === 'create' ? null : before, after);
+  if (bookkeeping) return bookkeeping;
+
   if (!!before?.isBreaking !== !!after?.isBreaking && !auth.can('news.breaking_push')) {
     return 'صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها';
   }
@@ -129,9 +154,13 @@ const WORKFLOW_FIELDS = new Set([
   'breakingUntil',
   'slug',
   'scheduledDate',
+  // Review bookkeeping (see reviewBookkeepingDenial): reviewers record these without edit rights.
+  'qualityCheck',
+  'reviewClaim',
+  'breakingRequest',
 ]);
 
-const usersPolicy: Policy = ({ auth, kind, before, after }) => {
+const usersPolicy: Policy = ({ auth, kind, before, after, list }) => {
   const self = auth.user.id;
   const targetId = (after ?? before)?.id;
   const actorIsSuper = auth.user.role === 'SUPER_ADMIN';
@@ -143,11 +172,14 @@ const usersPolicy: Policy = ({ auth, kind, before, after }) => {
     if (targetId === self) return 'لا يمكن حذف الحساب النشط حالياً';
     return auth.can('users.suspend_delete') ? null : DENIED;
   }
+  const roleError = userRoleError(kind === 'create' ? null : before, after, list);
+  if (roleError) return roleError;
   if (kind === 'create') {
     if (!auth.can('users.create')) return DENIED;
     const privileged =
-      ['ADMIN', 'SUPER_ADMIN'].includes(after?.role) || (after?.customPermissions?.length ?? 0) > 0 || !!after?.customRoleId;
-    if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
+      ['ADMIN', 'SUPER_ADMIN'].includes(after?.role) || (after?.customPermissions?.length ?? 0) > 0 || !!after?.customRoleId ||
+      (after?.managedStationIds?.length ?? 0) > 0 || (after?.managedGroupIds?.length ?? 0) > 0;
+    if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو مخصص أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
     return null;
   }
   const privilegedChange = PRIVILEGED_USER_FIELDS.some((f) => changed(before, after, f));
@@ -179,13 +211,19 @@ const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     if (notHeld.length) return `لا يمكنك منح صلاحيات لا تملكها: ${notHeld.join('، ')}`;
   }
   if (kind === 'delete') return before?.isSystemRole ? 'لا يمكن حذف الأدوار الأساسية للنظام' : null;
+  const badScreens = screensError(after?.screens);
+  if (badScreens) return badScreens;
   if (before && (before.isSystemRole !== after?.isSystemRole || (before.isSystemRole && before.roleCode !== after?.roleCode))) {
     return 'لا يمكن تغيير رمز أو صفة دور أساسي';
   }
-  if (kind === 'create') {
-    if (after?.isSystemRole) return 'لا يمكن إنشاء دور أساسي جديد';
-    const duplicate = (list?.('roles') || []).some((r) => r.roleCode === after?.roleCode);
-    if (duplicate) return 'يوجد دور بنفس الرمز مسبقاً';
+  if (kind === 'create' && after?.isSystemRole) return 'لا يمكن إنشاء دور أساسي جديد';
+  // A code is a role's identity in every user record: never empty, never shared, on create as on update.
+  if (kind === 'create' || before?.roleCode !== after?.roleCode) {
+    const code = typeof after?.roleCode === 'string' ? after.roleCode : '';
+    if (!code.trim()) return 'رمز الدور مطلوب';
+    if (!/^[A-Z][A-Z0-9_]{1,39}$/.test(code)) return 'رمز الدور: حروف إنجليزية كبيرة وأرقام وشرطة سفلية (_) فقط';
+    const taken = DEFAULT_ROLE_DEFINITIONS.some((r) => r.roleCode === code) || (list?.('roles') || []).some((r) => r.id !== after.id && r.roleCode === code);
+    if (taken) return 'يوجد دور بنفس الرمز مسبقاً';
   }
   return null;
 };
@@ -211,8 +249,12 @@ const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     }
   }
   if (kind === 'create') return auth.can('episodes.create') ? null : 'صلاحياتك لا تسمح بإنشاء الحلقات';
+  // Deleting (or restoring) an episode is its own permission: preparing or directing one is not enough.
   if (kind === 'delete' || isSoftDelete(before, after)) {
-    return any(auth, 'programs.manage', 'episodes.edit') ? null : 'صلاحياتك لا تسمح بحذف الحلقات';
+    return auth.can('episodes.delete') ? null : 'حذف الحلقات للمنتج ومدير البرامج (صلاحية «حذف الحلقات»)';
+  }
+  if (before?.deletedAt && !after?.deletedAt) {
+    return auth.can('episodes.delete') ? null : 'صلاحياتك لا تسمح باستعادة الحلقات المحذوفة';
   }
   if (any(auth, 'episodes.edit')) return null;
   // Narrower roles may only touch the parts of the episode their permission covers.
@@ -276,7 +318,11 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
     const isOwner = [before?.ownerId, before?.uploadedById].includes(auth.user.id);
     return auth.can('media.delete') || (isOwner && auth.can('media.upload')) ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
   }
-  return auth.can('media.upload') ? null : 'صلاحياتك لا تسمح برفع الوسائط';
+  if (!auth.can('media.upload')) return 'صلاحياتك لا تسمح برفع الوسائط';
+  // Approving a video for air (or withdrawing that approval) is an editorial decision.
+  const approvalChanged = (before?.videoStatus === 'APPROVED') !== (after?.videoStatus === 'APPROVED');
+  if (approvalChanged && !(auth.can('news.approve') || auth.can('media.delete'))) return 'اعتماد الفيديو للبث لمن يملك صلاحية الاعتماد';
+  return null;
 };
 
 const notificationsPolicy: Policy = ({ auth, kind, before }) => {
@@ -331,8 +377,46 @@ const bookingsPolicy: Policy = ({ auth, kind, before, after }) => {
   return bookingError(after);
 };
 
+const activeUserIds = (list: PolicyInput['list']) => new Set<string>((list?.('users') || []).filter((u: any) => u.isActive !== false && !u.deletedAt).map((u: any) => u.id));
+
 /** Logs are append-only: identity fields are stamped by the server, edits are rejected. */
 const logPolicy: Policy = ({ kind }) => (kind === 'create' ? null : 'السجلات غير قابلة للتعديل أو الحذف');
+
+/** The audit trail is written by the server alone (sync.ts, app.ts): a browser cannot add, edit or remove entries. */
+const auditLogPolicy: Policy = () => 'سجل التدقيق يكتبه الخادم وحده';
+
+/**
+ * Shared settings: validation, plus the parts that would orphan records — a station still holding
+ * colleagues or open card steps is removed through «حذف المحطة» (which moves them), and a
+ * department still in use is archived, not deleted.
+ */
+const settingsPolicy: Policy = (input) => {
+  const base = require('system.settings')(input);
+  if (base) return base;
+  const { kind, before, after, list } = input;
+  if (kind === 'delete') return 'لا يمكن حذف إعدادات النظام';
+  const invalid = settingsError(after);
+  if (invalid) return invalid;
+  const users = (list?.('users') || []).filter((u: any) => u && !u.deletedAt);
+  const removedStations = stationsOf(before).filter((s) => !stationsOf(after).some((x) => x.id === s.id));
+  for (const station of removedStations) {
+    const members = users.filter((u: any) => u.stationId === station.id).length;
+    const openSteps = (list?.('productionCards') || [])
+      .filter((c: any) => c && !c.deletedAt && c.status === 'OPEN')
+      .reduce((n: number, c: any) => n + (c.steps || []).filter((st: any) => st.stationId === station.id && isStepOpen(st)).length, 0);
+    if (members || openSteps) return `في محطة «${station.name}» ${members} من الزملاء و${openSteps} مهمة مفتوحة؛ احذفها من الإعدادات مع اختيار محطة بديلة تنتقل إليها`;
+  }
+  const userIds = users.map((u: any) => u.id);
+  const departmentsInvalid = after?.departments !== undefined ? departmentsError(after.departments, { stationIds: stationsOf(after).map((s) => s.id), userIds }) : null;
+  if (departmentsInvalid) return departmentsInvalid;
+  const usage = (id: string) =>
+    users.filter((u: any) => departmentIdOf(u) === id).length +
+    (list?.('roster') || []).filter((r: any) => r && !r.deletedAt && r.departmentId === id).length +
+    (list?.('requests') || []).filter((r: any) => r && !r.deletedAt && r.departmentId === id && !['DONE', 'REJECTED', 'CANCELLED'].includes(r.status)).length;
+  const inUse = removedDepartmentsInUse(departmentsOf(before), departmentsOf(after), usage)[0];
+  if (inUse) return `القسم «${inUse.name}» مستخدم (${inUse.uses})؛ أرشفه بدلاً من حذفه`;
+  return null;
+};
 
 export const POLICIES: Record<CollectionName, Policy> = {
   shiftHandovers: () => 'تسليم الوردية يستخدم المسار المخصص فقط',
@@ -373,8 +457,16 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (after.enabled && other.length >= 2000) return 'الحد الأقصى 2000 اسم مفعّل';
     return null;
   },
-  programTypes: require('system.settings'),
-  settings: input => require('system.settings')(input) || (input.kind === 'delete' ? 'لا يمكن حذف إعدادات النظام' : settingsError(input.after)),
+  programTypes: (input) => {
+    const base = require('system.settings')(input);
+    if (base) return base;
+    const { kind, before, after, list } = input;
+    if (!before || !(kind === 'delete' || isSoftDelete(before, after))) return null;
+    // A type still used by a programme cannot go (its programmes would lose their type).
+    const inUse = (list?.('programs') || []).filter((p: any) => !p.deletedAt && p.typeId === before.id).length;
+    return inUse ? `لا يمكن حذف نوع البرنامج لأن ${inUse} من البرامج تستخدمه؛ غيّر نوعها أولاً` : null;
+  },
+  settings: settingsPolicy,
   notifications: notificationsPolicy,
   broadcastState: require('rundown.lock_override'),
   reviewThreads: ({ auth, kind, before, after, list }) => {
@@ -461,7 +553,19 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (after?.deletedAt) return null;
     return rosterEntryError(after);
   },
-  wires: () => 'البرقيات تُجلب من خلاصات الوكالات على الخادم ولا تُعدّل يدوياً',
+  // Agency items come from the feeds; the desk adds manual observations and marks what it followed up.
+  wires: ({ auth, kind, before, after }) => {
+    if (!auth.can('news.view') && !auth.can('news.create')) return DENIED;
+    if (kind === 'delete' || isSoftDelete(before, after)) {
+      return before?.manual && (before.createdById === auth.user.id || auth.can('system.settings')) ? null : 'مواد الوكالات لا تُحذف يدوياً؛ يحذف مادة الرصد كاتبها';
+    }
+    if (kind === 'create') {
+      if (!auth.can('news.create')) return 'إضافة رصد يدوي لمن يكتب الأخبار';
+      if (after?.createdById !== auth.user.id || after?.createdByName !== auth.user.fullName) return 'بيانات كاتب الرصد غير صالحة';
+      return manualWireError(after);
+    }
+    return handledChangeError(before, after, auth.user.id);
+  },
   offlineAirSessions: () => 'السجل المحلي يستورد عبر المسار المخصص ولا يعدل أو يحذف',
   editLocks: ({ auth, kind, before, after }) => {
     const target = after ?? before;
@@ -484,14 +588,21 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (kind !== 'delete' && !canHold) return DENIED;
     return null;
   },
-  messages: ({ kind, after }) => {
+  messages: ({ auth, kind, after, list }) => {
     if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
-    if (!(after?.channel === 'general' || isDepartmentId(after?.channel) || ['STUDIO_PCR', 'NEWSROOM', 'FIELD'].includes(after?.channel))) return 'قناة غير معروفة';
-    if (typeof after?.text !== 'string' || !after.text.trim() || after.text.length > 2000) return 'نص الرسالة غير صالح';
-    return null;
+    return sendError(after, auth.user.id, {
+      users: activeUserIds(list),
+      stations: new Set(stationsOf(list?.('settings')[0]).map((s) => s.id)),
+      conversations: list?.('conversations') || [],
+    });
   },
+  conversations: ({ auth, kind, before, after, list }) => {
+    if (kind === 'delete' || isSoftDelete(before, after)) return before?.ownerId === auth.user.id ? null : 'يحذف المجموعة منشئها';
+    return conversationChangeError(before, after, auth.user.id, auth.can('messages.groups'), activeUserIds(list));
+  },
+  chatReads: ({ auth, kind, before, after }) => (kind === 'delete' ? (before?.userId === auth.user.id ? null : DENIED) : chatReadsError(after, auth.user.id)),
   activityLogs: logPolicy,
-  auditLogs: logPolicy,
+  auditLogs: auditLogPolicy,
   notificationPrefs: notificationPrefsPolicy,
   savedNewsFilters: ({ auth, kind, before, after, list }) => {
     if (before && before.ownerId !== auth.user.id) return DENIED;
@@ -505,6 +616,21 @@ export const POLICIES: Record<CollectionName, Policy> = {
   diary: diaryPolicy,
   resources: resourcesPolicy,
   bookings: bookingsPolicy,
+  productionCards: ({ auth, kind, before, after, list }) => {
+    const canManage = auth.can('cards.manage');
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
+    const ctx = cardContextOf(list?.('settings')[0], list?.('users') || []);
+    if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
+      if (!canManage) return 'حذف التكليفات واستعادتها لمسؤولي التكليف';
+      // A branch deletes or restores only the cards it governs (its own and those of the branches it follows).
+      return !before || canGovernCard(before, actor, ctx.stations) ? null : GOVERN_DENIED;
+    }
+    return cardChangeError(before, after, actor, ctx);
+  },
+  workflowTemplates: ({ auth, kind, before, after }) => {
+    if (kind === 'delete') return auth.can('cards.manage') ? null : 'قوالب سير العمل لمسؤولي التكليف';
+    return templateChangeError(before, after, auth.can('cards.manage'));
+  },
 };
 
 /** Read filter per collection; returning false hides the row from the user. */
@@ -530,6 +656,15 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'notifications':
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
     case 'notificationPrefs':
+      return data?.userId === auth.user.id;
+    case 'productionCards':
+    case 'workflowTemplates':
+      return auth.can('cards.view');
+    case 'messages':
+      return canReadMessage(data, auth.user.id);
+    case 'conversations':
+      return Array.isArray(data?.memberIds) && data.memberIds.includes(auth.user.id);
+    case 'chatReads':
       return data?.userId === auth.user.id;
     default:
       return true;

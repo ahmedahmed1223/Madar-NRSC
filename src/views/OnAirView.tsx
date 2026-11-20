@@ -9,7 +9,7 @@ import { confirmDialog } from '../services/dialogs';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Radio, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Megaphone, MonitorPlay, Play, Square } from 'lucide-react';
 import type { Episode, User } from '../types';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
@@ -17,7 +17,11 @@ import { useLiveData } from '../hooks/useLiveData';
 import { DEPARTMENTS, departmentName } from '../shared/departments';
 import { canControlOnAir, CUE_PRESETS, Cue, formatClock, liveTiming } from '../shared/onair';
 import { episodeReadiness } from '../shared/production';
-import { localDateString } from '../shared/dates';
+import { stationTimeZone } from '../shared/dates';
+import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
+import { DriftIndicator } from '../components/onair/DriftIndicator';
+import { countLabel } from '../shared/arabicPlural';
+import { EP_NOUNS } from '../shared/episodeNouns';
 
 interface OnAirViewProps {
   currentUser: User;
@@ -30,9 +34,16 @@ interface OnAirViewProps {
 /** On-air control and the As-Run log (what actually aired). */
 export const OnAirView: React.FC<OnAirViewProps> = (props) => {
   const [tab, setTab] = useState<'CONTROL' | 'ASRUN'>('CONTROL');
+  const canControl = canControlOnAir(props.currentUser, (p) => RbacService.hasPermission(props.currentUser, p));
   return (
     <div className="space-y-4">
-      <div role="tablist" className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">وضع الهواء</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          {canControl ? 'أنت تتحكم في البث: الانتقال بين الفقرات يظهر فوراً لدى الاستديو والملقن وكل الأقسام.' : 'متابعة مباشرة لما على الهواء (التحكم للمخرج والكنترول).'}
+        </p>
+      </div>
+      <div role="tablist" aria-label="وضع الهواء" className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
         {([
           ['CONTROL', 'التحكم بالبث'],
           ['ASRUN', 'سجل البث الفعلي'],
@@ -52,7 +63,11 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
-  const today = localDateString();
+  // The station's clock and date, whatever zone this computer runs in.
+  const stationZone = stationTimeZone(apiService.getSettings()?.defaultTimezone);
+  const nowMs = Date.now();
+  const wall = stationWall(nowMs, stationZone);
+  const today = wall.date;
   // Programme episodes and news bulletins both run here.
   const episodes = apiService.getAirShows().filter((e) => !e.deletedAt);
   const states = apiService.getOnAirStates();
@@ -78,6 +93,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const live = state?.status === 'LIVE';
   const pastShow = !!episode && episode.broadcastDate < today && !live;
   const timing = liveTiming(state, episode);
+  const showLength = programmeSeconds(episode as any);
+  const untilStart = episode && !live && state?.status !== 'ENDED' ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const isBulletin = (episode as any)?.kind === 'bulletin';
   // A bulletin is ready when every story on air is approved; an episode when every department delivered.
   const readiness = !episode
@@ -143,7 +160,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       confirmLabel: 'بث المحتوى السابق', cancelLabel: 'إلغاء', danger: true,
     }))) return;
     if (isBulletin && readiness && !readiness.ready) { setError(`النشرة غير جاهزة: ${readiness.blockers[0]?.detail || 'لا قصص للبث'}`); return; }
-    if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (${readiness.blockers.length} عنصر). بدء البث رغم ذلك؟`))) return;
+    if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}). بدء البث رغم ذلك؟`))) return;
     run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id));
   };
 
@@ -155,18 +172,10 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Radio className={`w-5 h-5 ${live ? 'text-red-600 animate-pulse' : 'text-slate-500'}`} />
-            وضع الهواء
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {canControl ? 'أنت تتحكم في البث: الانتقال بين الفقرات يظهر فوراً لدى الاستديو والملقن وكل الأقسام.' : 'متابعة مباشرة لما على الهواء (التحكم للمخرج والكنترول).'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <label htmlFor="onair-show" className="text-xs font-semibold text-slate-600">الحلقة أو النشرة:</label>
+          <select id="onair-show" value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="min-h-10 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full sm:w-auto sm:max-w-md">
             <option value="">{candidates.length ? 'اختر الحلقة أو النشرة' : 'لا توجد حلقات قادمة'}</option>
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>
@@ -176,8 +185,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             ))}
           </select>
           {episode && (
-            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold">
-              <MonitorPlay className="w-4 h-4" />
+            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="min-h-10 inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700">
+              <MonitorPlay className="w-4 h-4" aria-hidden />
               شاشة الاستديو
             </button>
           )}
@@ -196,42 +205,57 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
           <section className="theme-fixed bg-slate-950 text-white rounded-2xl p-5 space-y-4 border border-slate-800" aria-live="polite">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
+                <span className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-bold ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
                   {live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'لم يبدأ'}
                 </span>
                 <span className="text-sm font-bold">
                   {episode.programName} — {episode.title}
                 </span>
               </div>
-              {timing && (
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <span>على الهواء: {formatClock(timing.onAirSeconds)}</span>
-                  <span className={timing.drift > 5 ? 'text-red-400' : timing.drift < -5 ? 'text-sky-300' : 'text-emerald-300'}>
-                    {timing.drift > 5 ? `متأخر ${formatClock(timing.drift)}` : timing.drift < -5 ? `متقدم ${formatClock(-timing.drift)}` : 'في الموعد'}
-                  </span>
-                </div>
-              )}
+              <div aria-live="off" className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-bold text-slate-200 tabular-nums">
+                <span title={stationZone ? `بتوقيت المحطة (${stationZone})` : 'بتوقيت هذا الجهاز'}>
+                  الساعة <span className="text-white text-base">{wall.clock}</span>
+                </span>
+                {timing ? (
+                  <>
+                    <span>على الهواء <span className="text-white text-base">{formatClock(timing.onAirSeconds)}</span></span>
+                    {showLength > 0 && (
+                      <span>المتبقي للبرنامج <span className="text-white text-base">{formatClock(Math.max(0, showLength - timing.onAirSeconds))}</span></span>
+                    )}
+                  </>
+                ) : (
+                  untilStart !== null && untilStart > 0 && untilStart < 24 * 3600 && (
+                    <span>حتى الهواء <span className="text-white text-base">{formatClock(untilStart)}</span></span>
+                  )
+                )}
+              </div>
             </div>
+            {timing && live && (
+              <div className="flex flex-wrap items-center gap-3">
+                <DriftIndicator drift={timing.drift} />
+                <span className="text-xs text-slate-300">مقارنةً بخطة الرانداون</span>
+              </div>
+            )}
 
             {timing?.current ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 space-y-1">
-                  <span className="text-[11px] text-slate-500">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
-                  <h2 className="text-2xl sm:text-3xl font-black leading-tight">{timing.current.title}</h2>
-                  <p className="text-xs text-slate-500">
+                  <span className="text-xs font-bold text-slate-300">الفقرة الحالية ({timing.index + 1} من {rundown.length})</span>
+                  <h2 className="text-2xl sm:text-3xl font-bold leading-tight">{timing.current.title}</h2>
+                  <p className="text-sm text-slate-300">
                     {timing.current.presenterName || ''}
                     {segmentGuests(timing.current).length ? ` · ${segmentGuests(timing.current).map((g) => g.guestName).join('، ')}` : ''}
                   </p>
                 </div>
                 <div className="text-center">
-                  <span className="text-[11px] text-slate-500 block">المتبقي</span>
-                  <span className={`text-5xl font-black font-mono ${remainingCls}`} dir="ltr">
+                  <span className="text-xs font-bold text-slate-300 block">المتبقي للفقرة</span>
+                  <span className={`text-5xl font-bold tabular-nums ${remainingCls}`} dir="ltr">
                     {formatClock(timing.remaining)}
                   </span>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا توجد فقرات في الرانداون.'}</p>
+              <p className="text-sm text-slate-300">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا يمكن بدء البث قبل إضافة فقرة واحدة على الأقل إلى الرانداون.'}</p>
             )}
 
             <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
@@ -245,7 +269,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             {canControl && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {!live ? (
-                  <button type="button" onClick={start} disabled={!rundown.length} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
+                  <button type="button" onClick={start} disabled={!rundown.length} title={rundown.length ? undefined : 'أضف فقرة إلى الرانداون أولاً'} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
                     <Play className="w-4 h-4" />
                     {state?.status === 'ENDED' ? 'إعادة بدء البث' : 'بدء البث'}
                   </button>
@@ -269,7 +293,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     </button>
                   </>
                 )}
-                {live && <span className="text-[11px] text-slate-500 self-center">المسطرة أو ← للتالي، → للسابق</span>}
+                {live && <span className="text-xs text-slate-300 self-center">المسافة أو ← للتالي، → للسابق</span>}
               </div>
             )}
           </section>
@@ -299,7 +323,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         {actual !== null && <span className={actual > (seg.durationSeconds || 0) ? ' text-red-600' : ' text-emerald-700'}> / {formatClock(actual)}</span>}
                       </span>
                       {canControl && live && !isCurrent && (
-                        <button type="button" onClick={async () => (await confirmDialog(`الانتقال إلى «${seg.title}»؟`)) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold hover:bg-slate-50">
+                        <button type="button" onClick={async () => (await confirmDialog(`الانتقال إلى «${seg.title}»؟`)) && goTo(i)} className="px-2 py-1 rounded-lg border border-slate-200 text-2xs font-bold hover:bg-slate-50">
                           انتقال
                         </button>
                       )}
@@ -307,6 +331,12 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   );
                 })}
               </ol>
+              {rundown.length === 0 && (
+                <div className="p-8 text-center space-y-1">
+                  <p className="text-sm font-bold text-slate-700">لا فقرات في هذا الرانداون بعد</p>
+                  <p className="text-xs text-slate-500">أضف الفقرات من مساحة عمل الحلقة أو من رانداون النشرة، ثم عد هنا لبدء البث.</p>
+                </div>
+              )}
             </section>
 
             {/* Alerts to departments */}
@@ -318,7 +348,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               {canControl || RbacService.hasPermission(currentUser, 'tasks.intercom_broadcast') ? (
                 <>
                   <div className="flex flex-wrap gap-1" role="group" aria-label="الأقسام المستهدفة">
-                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${cueTargets.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'}`}>
+                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'}`}>
                       الجميع
                     </button>
                     {DEPARTMENTS.map((d) => (
@@ -327,7 +357,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         type="button"
                         aria-pressed={cueTargets.includes(d.id)}
                         onClick={() => setCueTargets((t) => (t.includes(d.id) ? t.filter((x) => x !== d.id) : [...t, d.id]))}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {d.name}
                       </button>
@@ -335,7 +365,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {CUE_PRESETS.map((p) => (
-                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`px-2 py-2 rounded-lg text-[11px] font-bold border text-right ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`px-2 py-2 rounded-lg text-2xs font-bold border text-right ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                         {p.message}
                       </button>
                     ))}
@@ -352,7 +382,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </form>
                   <div className="space-y-1.5">
                     {myCues.map((c) => (
-                      <div key={c.id} className="text-[11px] p-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <div key={c.id} className="text-2xs p-2 rounded-lg bg-slate-50 border border-slate-100">
                         <strong className="text-slate-800">{c.message}</strong>
                         <span className="text-slate-500"> → {c.targetDepartmentIds.length ? c.targetDepartmentIds.map(departmentName).join('، ') : 'الجميع'}</span>
                         <span className="block text-emerald-700">{c.acks.length ? `استلم: ${c.acks.map((a) => a.userName).join('، ')}` : 'لم يستلمه أحد بعد'}</span>

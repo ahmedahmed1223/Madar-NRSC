@@ -19,7 +19,7 @@ export interface RouteState {
 }
 
 /** Screens whose list highlights an item given in the address. */
-const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'tasks', 'requests']);
+const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'cards', 'messages', 'tasks', 'requests', 'media', 'guide']);
 
 const clean = (id: string) => encodeURIComponent(id);
 
@@ -59,7 +59,7 @@ export function parsePath(pathname: string): { view: string; id: string | null }
 
 const TITLES: Record<string, string> = {
   dashboard: 'الرئيسية',
-  wires: 'البرقيات',
+  wires: 'المصادر',
   news: 'الأخبار',
   'news-editor': 'محرر الخبر',
   breaking: 'العاجل',
@@ -75,6 +75,9 @@ const TITLES: Record<string, string> = {
   'on-air': 'وضع الهواء',
   'studio-screen': 'شاشة الاستديو',
   media: 'مكتبة الوسائط',
+  messages: 'المراسلات',
+  cards: 'التكليفات',
+  workload: 'متابعة الفرق والتكاليف',
   requests: 'طلبات الأقسام',
   tasks: 'المهام',
   bookings: 'حجز الموارد',
@@ -85,8 +88,9 @@ const TITLES: Record<string, string> = {
   settings: 'الإعدادات',
   database: 'قاعدة البيانات',
   tests: 'الاختبارات',
-  alerts: 'تنبيهات البرقيات',
+  alerts: 'تنبيهات المصادر',
   help: 'المساعدة',
+  guide: 'دليل الاستخدام',
   'whats-new': 'ما الجديد',
 };
 

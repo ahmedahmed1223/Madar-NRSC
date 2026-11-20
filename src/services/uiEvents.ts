@@ -27,7 +27,14 @@ function channel<T>() {
 
 /** Fired whenever the visible screen (address) changes. */
 export const routeChanged = channel<string>();
+/** Asks the app to open an address ("/messages", "/cards/<id>") from a component outside the screen tree. */
+export const navigateTo = channel<string>();
 /** Asks the chat drawer to open, close or toggle. */
 export const intercomCommand = channel<'open' | 'close' | 'toggle'>();
 /** The chat drawer reports whether it is open and how many messages are unread. */
 export const intercomState = channel<{ open: boolean; unread: number }>();
+
+/** Starts an interactive tour by id (see src/content/tours.ts). */
+export const tourCommand = channel<string>();
+/** Opens the administrator's quick-setup wizard. */
+export const setupCommand = channel<'open'>();

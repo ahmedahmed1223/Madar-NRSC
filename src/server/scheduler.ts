@@ -5,7 +5,8 @@ import type { NewsroomDatabase } from './db';
 import { changeBus } from './sync';
 import { logger } from './logger';
 import { localDateString } from '../shared/dates';
-import { BulletinFormat, bulletinFromFormat, isScheduledOn, scheduledBulletinId } from '../shared/bulletins';
+import { Bulletin, BulletinFormat, bulletinFromFormat, isScheduledOn, scheduledBulletinId } from '../shared/bulletins';
+import { scheduledBulletinExists } from '../shared/bulletinReadiness';
 
 const SYSTEM_ACTOR = { id: 'system', name: 'النشر المجدول', role: 'SUPER_ADMIN' as const };
 
@@ -94,16 +95,19 @@ export function createScheduledBulletins(db: NewsroomDatabase, now = new Date())
   const created: string[] = [];
   const days = [0, 1].map((d) => localDateString(new Date(now.getTime() + d * 86400_000)));
   db.transaction(() => {
+    // A day already holding this format's bulletin (made by hand, imported or seeded) is not given a second one.
+    const existing = db.listCollection('bulletins').map((r) => r.d as Bulletin).filter(Boolean);
     for (const row of db.listCollection('bulletinFormats')) {
       const f = row.d as BulletinFormat;
       if (!f || f.deletedAt || !f.autoCreate) continue;
       for (const date of days) {
         if (!isScheduledOn(f, date)) continue;
         const id = scheduledBulletinId(f.id, date);
-        if (db.getRow('bulletins', id)) continue;
+        if (db.getRow('bulletins', id) || scheduledBulletinExists(f, date, existing)) continue;
         const { bulletin, stories } = bulletinFromFormat(f, date, id, newId, now.toISOString());
         db.writeRow('bulletins', id, bulletin, db.positionBounds('bulletins').max + 1, null);
         stories.forEach((s) => db.writeRow('bulletinStories', s.id, s, db.positionBounds('bulletinStories').max + 1, null));
+        existing.push(bulletin);
         created.push(id);
       }
     }

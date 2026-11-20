@@ -6,6 +6,7 @@ export interface SavedNewsFilterDefinition {
   activeTab: 'ALL' | 'BREAKING' | 'TRASH' | NewsStatus;
   searchQuery: string;
   selectedCategory: string;
+  selectedSource?: string;
   selectedPriority: string;
   onlyMine: boolean;
   authorId: string;
@@ -56,6 +57,7 @@ function validField(key: string, value: unknown): boolean {
     case 'onlyMine': return typeof value === 'boolean';
     case 'searchQuery': return typeof value === 'string' && value.length <= 200;
     case 'selectedCategory': return typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\u0000-\u001f<>]/.test(value);
+    case 'selectedSource':
     case 'authorId': return typeof value === 'string' && ENTITY_ID_PATTERN.test(value);
     case 'fromDate':
     case 'toDate': return validDay(value);
@@ -65,8 +67,9 @@ function validField(key: string, value: unknown): boolean {
 
 export function newsFilterDefinitionError(value: unknown): string | null {
   if (!isFilterObject(value)) return 'تعريف الفلتر غير صالح';
-  if (Object.keys(value).some(key => !fields.includes(key))) return 'تعريف الفلتر يحتوي حقولاً غير مدعومة';
+  if (Object.keys(value).some(key => !fields.includes(key) && key !== 'selectedSource')) return 'تعريف الفلتر يحتوي حقولاً غير مدعومة';
   for (const key of fields) if (!validField(key, value[key])) return `قيمة حقل الفلتر غير صالحة: ${key}`;
+  if (value.selectedSource !== undefined && !validField('selectedSource', value.selectedSource)) return 'معرّف المصدر غير صالح';
   if (value.fromDate && value.toDate && String(value.fromDate) > String(value.toDate)) return 'تاريخ البداية يجب ألا يتجاوز تاريخ النهاية';
   return null;
 }
@@ -77,6 +80,7 @@ export function sanitizeNewsFilterDefinition(value: unknown): SavedNewsFilterDef
   for (const key of fields) {
     if (validField(key, value[key])) Object.assign(next, { [key]: value[key] });
   }
+  if (typeof value.selectedSource === 'string' && ENTITY_ID_PATTERN.test(value.selectedSource)) next.selectedSource = value.selectedSource;
   if (next.fromDate && next.toDate && next.fromDate > next.toDate) {
     next.fromDate = '';
     next.toDate = '';
