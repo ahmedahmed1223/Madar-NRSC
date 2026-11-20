@@ -55,14 +55,14 @@ export async function withStableBackup<T>(db: NewsroomDatabase, fileName: string
 
 export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tempRoot: string): Promise<BackupRehearsal> {
   return withStableBackup(db, fileName, tempRoot, async (source, sha256) => {
-    const probe = new Database(source, { readonly: true, fileMustExist: true });
+    const probe = new Database(source, { fileMustExist: true });
     try {
       if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
       db.checkBackupSchema(probe);
       const rows = probe.prepare('SELECT collection, COUNT(*) AS count FROM entities WHERE deleted = 0 GROUP BY collection').all() as { collection: string; count: number }[];
       const counts: Record<string, number> = {};
       for (const row of rows) if (db.isKnownCollection(row.collection)) counts[row.collection] = row.count;
-      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '4.1.1', compatible: true, counts,
+      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '4.1.2', compatible: true, counts,
         mediaVerified: false };
     } finally { probe.close(); }
   });

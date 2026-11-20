@@ -67,15 +67,18 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
         </div>
 
         {/* Headline Text */}
-        <div
-          onClick={() => activeItem.newsId && onOpenNews?.(activeItem.newsId)}
-          className={`truncate text-white text-xs sm:text-sm font-bold flex-1 transition-opacity duration-300 ${
-            activeItem.newsId ? 'cursor-pointer hover:underline' : ''
-          }`}
-          title={activeItem.title}
-        >
-          {activeItem.title}
-        </div>
+        {activeItem.newsId && onOpenNews ? (
+          <button
+            type="button"
+            onClick={() => activeItem.newsId && onOpenNews(activeItem.newsId)}
+            className="min-w-0 min-h-8 truncate text-start text-white text-xs sm:text-sm font-bold flex-1 hover:underline focus-visible:outline-2 focus-visible:outline-white"
+            title={activeItem.title}
+          >
+            {activeItem.title}
+          </button>
+        ) : (
+          <span className="min-w-0 truncate text-white text-xs sm:text-sm font-bold flex-1" title={activeItem.title}>{activeItem.title}</span>
+        )}
 
         {(() => {
           const itemTime = 'time' in activeItem ? activeItem.time : 'startedAt' in activeItem ? activeItem.startedAt : null;

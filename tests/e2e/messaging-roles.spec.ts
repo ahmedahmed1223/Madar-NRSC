@@ -22,7 +22,7 @@ const overflows = (page: Page) => page.evaluate(() => document.documentElement.s
 test.describe.configure({ mode: 'serial' });
 
 test('colleagues write to each other, attach a file and point at a story; nobody else reads it', async ({ browser }) => {
-  const editor = await signIn(browser, 'editor@akhbar.tv');
+  const editor = await signIn(browser, 'editor@akhbar.tv', { viewport: { width: 1600, height: 900 } });
   await openNav(editor.page, 'المراسلات');
   await editor.page.getByRole('button', { name: 'رسالة جديدة' }).click();
   await editor.page.getByRole('searchbox', { name: 'بحث عن زميل' }).fill('طارق');
@@ -30,6 +30,11 @@ test('colleagues write to each other, attach a file and point at a story; nobody
   await expect(editor.page).toHaveURL(/\/messages\/dm/);
   const thread = editor.page.getByRole('region', { name: /محادثة طارق الهاشمي/ });
   await expect(thread.getByText('لا رسائل بعد')).toBeVisible();
+  await thread.getByLabel('نص الرسالة').fill('مسودة للمراجعة');
+  const nav = editor.page.getByRole('navigation', { name: 'المحادثات' });
+  await nav.getByRole('button', { name: /^عام/ }).click();
+  await nav.getByRole('button', { name: /^طارق الهاشمي/ }).click();
+  await expect(thread.getByLabel('نص الرسالة')).toHaveValue('مسودة للمراجعة');
 
   // A reference to a story and a document go with the message.
   await thread.getByRole('button', { name: 'إشارة إلى خبر أو مادة' }).click();
@@ -39,7 +44,13 @@ test('colleagues write to each other, attach a file and point at a story; nobody
   await picker.getByRole('listitem').first().getByRole('button').click();
   await expect(picker).toHaveCount(0);
   await expect(thread.getByRole('button', { name: 'إزالة الإشارة' })).toBeVisible();
+  const uploadPath = '**/api/v1/chat/upload';
+  await editor.page.route(uploadPath, (route) => route.fulfill({ status: 503, json: { error: 'تعذر رفع المرفق' } }), { times: 1 });
   await editor.page.locator('input[type=file]').setInputFiles({ name: 'ملاحظات التحرير.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') });
+  const retry = thread.getByRole('button', { name: 'إعادة رفع ملاحظات التحرير.pdf' });
+  await expect(retry).toBeVisible();
+  await expect(thread.getByRole('button', { name: 'إرسال', exact: true })).toBeDisabled();
+  await retry.click();
   await expect(thread.getByText('جاهز')).toBeVisible();
   await thread.getByLabel('نص الرسالة').fill('راجع هذا الخبر قبل النشرة من فضلك');
   await thread.getByLabel('نص الرسالة').press('Enter');
@@ -52,6 +63,11 @@ test('colleagues write to each other, attach a file and point at a story; nobody
   // The journalist is told while working elsewhere, opens it from the toast and follows the reference.
   const journalist = await signIn(browser, 'journalist@akhbar.tv');
   await expect(journalist.page.getByRole('button', { name: /^المراسلات/ })).toContainText('1');
+  await openNav(journalist.page, 'المراسلات');
+  const unreadOnly = journalist.page.getByRole('button', { name: /^غير مقروءة/ });
+  await unreadOnly.click();
+  await expect(unreadOnly).toHaveAttribute('aria-pressed', 'true');
+  await expect(journalist.page.getByRole('navigation', { name: 'المحادثات' }).getByRole('button', { name: /^سارة عبد العزيز/ })).toBeVisible();
   await thread.getByLabel('نص الرسالة').fill('والأمر عاجل');
   await thread.getByLabel(/رسالة عاجلة/).check();
   await thread.getByLabel('نص الرسالة').press('Enter');
@@ -142,44 +158,53 @@ test('a role opens only the screens of its job', async ({ browser }) => {
   const res = await (await admin.page.request.post('/api/v1/data/sync', { headers: H, data: { ops: [{ c: 'users', op: 'upsert', id: 'usr-7', d: { ...media.d, role: 'MONTAGE' }, baseV: media.v }] } })).json();
   expect(res.results[0].ok).toBe(true);
 
-  // The administrator narrows the role further in the role editor.
-  await admin.page.goto('/users');
-  await admin.page.getByRole('tab', { name: /الأدوار/ }).or(admin.page.getByRole('button', { name: /الأدوار والصلاحيات|الأدوار/ })).first().click();
-  await admin.page.getByText('موظف مونتاج').first().scrollIntoViewIfNeeded();
-  const roles = (await (await admin.page.request.get('/api/v1/data')).json()).collections.roles;
-  const montage = roles.find((r: any) => r.d.roleCode === 'MONTAGE');
-  expect(montage.d.screens).toContain('media');
-  expect(montage.d.screens).not.toContain('guests');
-  expect(admin.errors).toEqual([]);
-  await admin.close();
+  try {
+    // The administrator narrows the role further in the role editor.
+    await admin.page.goto('/users');
+    await admin.page.getByRole('tab', { name: /الأدوار/ }).or(admin.page.getByRole('button', { name: /الأدوار والصلاحيات|الأدوار/ })).first().click();
+    await admin.page.getByText('موظف مونتاج').first().scrollIntoViewIfNeeded();
+    const roles = (await (await admin.page.request.get('/api/v1/data')).json()).collections.roles;
+    const montage = roles.find((r: any) => r.d.roleCode === 'MONTAGE');
+    expect(montage.d.screens).toContain('media');
+    expect(montage.d.screens).not.toContain('guests');
+    expect(admin.errors).toEqual([]);
 
-  const editorRole = await signIn(browser, 'media@akhbar.tv');
-  const nav = editorRole.page.locator('aside nav');
-  await expect(nav.getByRole('button', { name: /مكتبة الوسائط/ })).toBeVisible();
-  await expect(nav.getByRole('button', { name: /طلبات الأقسام/ })).toBeVisible();
-  await expect(nav.getByRole('button', { name: /التكليفات/ })).toBeVisible();
-  await expect(nav.getByRole('button', { name: /الضيوف/ })).toHaveCount(0);
-  await expect(nav.getByRole('button', { name: /المصادر/ })).toHaveCount(0);
-  await expect(nav.getByRole('button', { name: /المستخدمون/ })).toHaveCount(0);
-  // The address bar does not get around it, and the search does not offer it.
-  await editorRole.page.goto('/guests');
-  await expect(editorRole.page.getByRole('heading', { name: 'هذه الصفحة ليست ضمن صفحات دورك' })).toBeVisible();
-  await editorRole.page.getByRole('button', { name: 'العودة إلى الرئيسية' }).click();
-  await expect(editorRole.page).toHaveURL(/\/$/);
-  const indicators = editorRole.page.getByRole('region', { name: 'مؤشرات غرفة الأخبار اليوم' });
-  for (const screen of ['news', 'breaking', 'episodes', 'tasks']) {
-    if (!montage.d.screens.includes(screen)) {
-      const labels: Record<string, string> = { news: 'أخبار', breaking: 'العاجل على الشريط', episodes: 'حلقات', tasks: 'مهام مفتوحة' };
-      await expect(indicators.getByRole('button', { name: new RegExp(`^${labels[screen]}`) })).toHaveCount(0);
+    const editorRole = await signIn(browser, 'media@akhbar.tv');
+    const nav = editorRole.page.locator('aside nav');
+    await expect(nav.getByRole('button', { name: /مكتبة الوسائط/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /طلبات الأقسام/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /التكليفات/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /الضيوف/ })).toHaveCount(0);
+    await expect(nav.getByRole('button', { name: /المصادر/ })).toHaveCount(0);
+    await expect(nav.getByRole('button', { name: /المستخدمون/ })).toHaveCount(0);
+    // The address bar does not get around it, and the search does not offer it.
+    await editorRole.page.goto('/guests');
+    await expect(editorRole.page.getByRole('heading', { name: 'هذه الصفحة ليست ضمن صفحات دورك' })).toBeVisible();
+    await editorRole.page.getByRole('button', { name: 'العودة إلى الرئيسية' }).click();
+    await expect(editorRole.page).toHaveURL(/\/$/);
+    const indicators = editorRole.page.getByRole('region', { name: 'مؤشرات غرفة الأخبار اليوم' });
+    for (const screen of ['news', 'breaking', 'episodes', 'tasks']) {
+      if (!montage.d.screens.includes(screen)) {
+        const labels: Record<string, string> = { news: 'أخبار', breaking: 'العاجل على الشريط', episodes: 'حلقات', tasks: 'مهام مفتوحة' };
+        await expect(indicators.getByRole('button', { name: new RegExp(`^${labels[screen]}`) })).toHaveCount(0);
+      }
     }
+    await editorRole.page.keyboard.press('Control+k');
+    const dialog = editorRole.page.getByRole('dialog', { name: 'البحث الموحد' });
+    await dialog.getByRole('combobox', { name: /بحث في الأخبار/ }).fill('الضيوف');
+    await expect(dialog.getByRole('listbox').getByRole('option', { name: /^الضيوف/ })).toHaveCount(0);
+    await editorRole.page.keyboard.press('Escape');
+    expect(editorRole.errors).toEqual([]);
+    await editorRole.close();
+  } finally {
+    const latest = (await (await admin.page.request.get('/api/v1/data')).json()).collections.users;
+    const current = latest.find((row: any) => row.id === media.id);
+    const restore = await admin.page.request.post('/api/v1/data/sync', { headers: H, data: {
+      ops: [{ c: 'users', op: 'upsert', id: current.id, d: { ...current.d, role: media.d.role }, baseV: current.v }],
+    } });
+    expect((await restore.json()).results[0]).toMatchObject({ ok: true });
+    await admin.close();
   }
-  await editorRole.page.keyboard.press('Control+k');
-  const dialog = editorRole.page.getByRole('dialog', { name: 'البحث الموحد' });
-  await dialog.getByRole('combobox', { name: /بحث في الأخبار/ }).fill('الضيوف');
-  await expect(dialog.getByRole('listbox').getByRole('option', { name: /^الضيوف/ })).toHaveCount(0);
-  await editorRole.page.keyboard.press('Escape');
-  expect(editorRole.errors).toEqual([]);
-  await editorRole.close();
 });
 
 test('the administrator follows the system and ends a colleague\'s sessions', async ({ browser }) => {

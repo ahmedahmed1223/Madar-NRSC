@@ -60,7 +60,8 @@ function rejectUpload(req: Request, error: UploadError): Promise<never> {
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
  */
-export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, allowed: Record<string, string> = ALLOWED_UPLOAD_TYPES): Promise<UploadRecord> {
+export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, options: { allowed?: Record<string, string>; scope?: 'chat' } = {}): Promise<UploadRecord> {
+  const allowed = options.allowed ?? ALLOWED_UPLOAD_TYPES;
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = Object.prototype.hasOwnProperty.call(allowed, mimeType) ? allowed[mimeType] : undefined;
   if (!ext) {
@@ -127,6 +128,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
           mimeType,
           sizeBytes: size,
           uploadedBy: userId,
+          scope: options.scope ?? 'media',
           createdAt: new Date().toISOString(),
         };
         db.insertUpload(record);

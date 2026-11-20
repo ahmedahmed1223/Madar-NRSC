@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers';
+import { DEMO_PASSWORD, signIn } from './helpers';
 import { createRequire } from 'module';
 import fs from 'fs';
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -82,8 +82,11 @@ test('database manager creates, verifies and downloads a selected snapshot and s
     await expect(dialog.getByLabel('رمز المصادقة الثنائية')).toBeVisible();
     await page.keyboard.press('Escape');
     await page.unroute('**/api/v1/db/stats');
+    await row.getByRole('button', { name: 'تنزيل النسخة', exact: true }).click();
+    const downloadDialog = page.getByRole('dialog', { name: 'تأكيد تنزيل ملف النسخة الاحتياطية' });
+    await downloadDialog.getByLabel('كلمة المرور الحالية').fill(DEMO_PASSWORD);
     const snapshotDownload = page.waitForEvent('download');
-    await row.getByRole('link', { name: 'تحميل النسخة' }).click();
+    await downloadDialog.getByRole('button', { name: 'تأكيد الهوية والتنزيل' }).click();
     expect((await snapshotDownload).suggestedFilename()).toMatch(/^newsroom_backup_.*\.sqlite$/);
     await tabs.getByRole('tab', { name: 'آخر أخطاء الخادم' }).click();
     await expect(page.getByRole('heading', { name: 'آخر أخطاء الخادم' })).toBeVisible();

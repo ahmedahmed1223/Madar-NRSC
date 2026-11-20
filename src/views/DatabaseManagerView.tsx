@@ -71,7 +71,7 @@ export const DatabaseManagerView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
-  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const [isPreparingOperation, setIsPreparingOperation] = useState(false);
   const [activeQuery, setActiveQuery] = useState(QUERY_PRESETS[0].sql);
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<SqlQueryResult | null>(null);
@@ -137,11 +137,11 @@ export const DatabaseManagerView: React.FC = () => {
   const endOperation = () => {
     setOperation(null);
     setIsResetting(false);
-    setIsRestoringBackup(false);
+    setIsPreparingOperation(false);
   };
 
   const handleReset = async () => {
-    if (operation || isResetting || isRestoringBackup) return;
+    if (operation || isResetting || isPreparingOperation) return;
     setIsResetting(true);
     const current = await loadStats();
     // The dialog is modal; the opener stays enabled underneath so focus can return to it.
@@ -180,12 +180,12 @@ export const DatabaseManagerView: React.FC = () => {
     finally { setVerifying(null); }
   };
 
-  const handleRestoreBackup = async (fileName: string) => {
-    if (operation || isResetting || isRestoringBackup) return;
-    setIsRestoringBackup(true);
+  const prepareOperation = async (action: 'restore' | 'download' | 'export', fileName?: string) => {
+    if (operation || isResetting || isPreparingOperation) return;
+    setIsPreparingOperation(true);
     const ok = await loadStats();
-    setIsRestoringBackup(false);
-    if (ok) setOperation({ action: 'restore', fileName });
+    setIsPreparingOperation(false);
+    if (ok) setOperation({ action, fileName });
   };
   const handleRehearse = async (fileName: string) => {
     if (rehearsalGuard.current) return;
@@ -245,10 +245,11 @@ export const DatabaseManagerView: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={isCreatingBackup || isRestoringBackup} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"><ShieldCheck size={18} aria-hidden="true" />{isCreatingBackup ? 'جارٍ إنشاء النسخة الكاملة…' : 'نسخة احتياطية كاملة الآن'}</button>
+          <button type="button" disabled={isCreatingBackup || isPreparingOperation} onClick={() => void handleCreateBackup()} className="inline-flex items-center gap-2 px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"><ShieldCheck size={18} aria-hidden="true" />{isCreatingBackup ? 'جارٍ إنشاء النسخة الكاملة…' : 'نسخة احتياطية كاملة الآن'}</button>
           <button
             type="button"
-            onClick={() => !operation && setOperation({ action: 'export' })}
+            disabled={isPreparingOperation}
+            onClick={() => void prepareOperation('export')}
             className="inline-flex items-center gap-2 px-4 min-h-11 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-bold"
             title="ملف القاعدة وحده (بلا الملفات المرفوعة)؛ يطلب تأكيد هويتك"
           >
@@ -259,7 +260,7 @@ export const DatabaseManagerView: React.FC = () => {
             <button
               type="button"
               onClick={handleReset}
-              disabled={isResetting || isRestoringBackup || isCreatingBackup}
+              disabled={isResetting || isPreparingOperation || isCreatingBackup}
               className="inline-flex items-center gap-2 px-4 min-h-11 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-800 text-sm font-bold disabled:opacity-50"
             >
               <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} aria-hidden="true" />
@@ -373,27 +374,28 @@ export const DatabaseManagerView: React.FC = () => {
 
               <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
                 {filteredTables.map((table) => (
-                  <div
+                  <button
                     key={table.name}
+                    type="button"
                     onClick={() => handleInspectTable(table.name)}
-                    className="p-3 rounded-xl border border-slate-100 hover:border-blue-200 bg-slate-50/50 hover:bg-blue-50/40 cursor-pointer transition-all flex items-center justify-between group"
+                    className="w-full min-h-11 text-start p-3 rounded-xl border border-slate-100 hover:border-blue-200 bg-slate-50/50 hover:bg-blue-50/40 focus-visible:ring-2 focus-visible:ring-blue-500 transition-all flex items-center justify-between group"
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
                           {table.name}
                         </span>
                         <span className="text-2xs px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-mono">
                           {table.rowCount} صف
                         </span>
-                      </div>
-                      <div className="text-2xs text-slate-500 truncate mt-1">
+                      </span>
+                      <span className="block text-2xs text-slate-500 truncate mt-1">
                         {table.columns.slice(0, 4).join(', ')}
                         {table.columns.length > 4 && ` +${table.columns.length - 4}`}
-                      </div>
-                    </div>
+                      </span>
+                    </span>
                     <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-600 transition-transform group-hover:-translate-x-0.5 shrink-0" />
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -644,11 +646,11 @@ export const DatabaseManagerView: React.FC = () => {
                         <td className="py-3 px-4 text-left">
                           <div className="flex items-center justify-end gap-2">
                             <button type="button" aria-label="تجربة الاستعادة" title="تجربة الاستعادة" disabled={!!rehearsing || !!verifying || isCreatingBackup || !!operation} onClick={() => void handleRehearse(b.fileName)} className="p-3 border rounded-md disabled:opacity-50"><Play size={18} className={rehearsing === b.fileName ? 'animate-pulse' : ''}/></button>
-                            <button type="button" aria-label="فحص سلامة النسخة" title="فحص سلامة النسخة" disabled={!!verifying || isRestoringBackup} onClick={() => void handleVerifyBackup(b.fileName)} className="p-3 border rounded-md disabled:opacity-50"><ShieldCheck size={18} className={verifying === b.fileName ? 'animate-pulse' : ''}/></button>
+                            <button type="button" aria-label="فحص سلامة النسخة" title="فحص سلامة النسخة" disabled={!!verifying || isPreparingOperation} onClick={() => void handleVerifyBackup(b.fileName)} className="p-3 border rounded-md disabled:opacity-50"><ShieldCheck size={18} className={verifying === b.fileName ? 'animate-pulse' : ''}/></button>
                             <button
                               type="button"
-                              onClick={() => handleRestoreBackup(b.fileName)}
-                              aria-busy={isRestoringBackup}
+                              onClick={() => void prepareOperation('restore', b.fileName)}
+                              aria-busy={isPreparingOperation}
                               disabled={isResetting || isCreatingBackup || !!verifying}
                               className="px-3 min-h-11 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 rounded-lg text-2xs font-bold transition-colors border border-amber-500/30 disabled:opacity-50"
                             >
@@ -656,7 +658,8 @@ export const DatabaseManagerView: React.FC = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => !operation && setOperation({ action: 'download', fileName: b.fileName })}
+                              disabled={isPreparingOperation}
+                              onClick={() => void prepareOperation('download', b.fileName)}
                               aria-label="تنزيل النسخة"
                               className="p-3 min-h-11 min-w-11 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
                               title="تنزيل (يطلب تأكيد هويتك)"

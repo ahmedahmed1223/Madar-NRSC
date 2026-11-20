@@ -64,6 +64,7 @@ NODE_ENV=production ADMIN_EMAIL=... ADMIN_PASSWORD=... npm start
 15. **تحذيرات النشر:** عند الإقلاع وفي «الإعدادات ← مراقبة النظام» يحذّر الخادم من `COOKIE_SECURE=false` وغياب `APP_URL` أو `TZ` والحسابات على كلمة المرور التجريبية.
 
 جميع المتغيرات موثقة في [`.env.example`](.env.example)، والتشغيل اليومي في [`docs/PRODUCTION_OPERATIONS.md`](docs/PRODUCTION_OPERATIONS.md).
+توضح [مراجعة التشغيل والأداء](docs/OPERATIONS_REVIEW.md) نتائج قياس SQLite، وترقية النسخ الاحتياطية، والتحقق من صلاحيات الملفات والإجراءات.
 
 ## الأوامر
 

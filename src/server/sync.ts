@@ -935,8 +935,12 @@ export class SyncService {
           const uploadId = uploadIdFromMedia(after);
           if (uploadId && uploadId !== uploadIdFromMedia(before)) {
             const upload = this.db.getUpload(uploadId);
-            if (!upload) throw new SyncReject('INVALID', 'الملف المرفوع غير موجود');
+            if (!upload || upload.scope === 'chat') throw new SyncReject('INVALID', 'الملف المرفوع غير متاح لمكتبة الوسائط');
             if (upload.uploadedBy !== auth.user.id && !auth.can('media.delete')) throw new SyncReject('FORBIDDEN', 'لا يمكنك إرفاق ملف رفعه مستخدم آخر');
+            if (upload.scope === 'legacy') {
+              if (upload.uploadedBy !== auth.user.id) throw new SyncReject('FORBIDDEN', 'الملف القديم متاح لمن رفعه');
+              this.db.publishLegacyUpload(uploadId, auth.user.id);
+            }
           }
         }
 

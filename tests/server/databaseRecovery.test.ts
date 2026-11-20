@@ -26,6 +26,33 @@ it('rehearses an isolated copy without changing live data or revision', async ()
   expect(fs.readdirSync(path.join(server.dir, 'rehearsals'))).toEqual([]);
 });
 
+it('rehearses and restores schema 5 while classifying old uploads', async () => {
+  const id = 'legacy-attachment';
+  server.db.insertUpload({
+    id, storedName: 'example.png', originalName: 'example.png', mimeType: 'image/png',
+    createdAt: new Date().toISOString(), sizeBytes: 1, uploadedBy: 'usr-3',
+  });
+  server.db.writeRow('messages', 'legacy-message', { id: 'legacy-message', attachments: [{ id }] }, 0, null);
+  const snapshot = await server.db.createBackup();
+  const source = path.join(server.db.backupsDir, snapshot.fileName);
+  const probe = new Database(source);
+  try {
+    probe.exec('DROP INDEX idx_news_archive_updated; DROP INDEX idx_message_channel_timestamp; ALTER TABLE uploads DROP COLUMN scope; DELETE FROM schema_migrations WHERE version = 6;');
+  } finally {
+    probe.close();
+  }
+  const original = fs.readFileSync(source);
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const rehearsal = await admin.post('/api/v1/db/backups/rehearse').set('X-NRCS-Client', 'web').send({ fileName: snapshot.fileName });
+  expect(rehearsal.status).toBe(200);
+  expect(server.db.getUpload(id)?.scope).toBe('media');
+  expect(fs.readFileSync(source)).toEqual(original);
+  await server.db.restoreBackup(snapshot.fileName, 20, rehearsal.body.data.sha256);
+  expect(server.db.getUpload(id)?.scope).toBe('chat');
+  expect(server.db.isHealthy()).toBe(true);
+  expect(fs.readFileSync(source)).toEqual(original);
+});
+
 it('rejects corrupt, incompatible, missing and traversal snapshots without public internals', async () => {
   const admin = await loginAgent(server.app, 'admin@akhbar.tv');
   const snapshot = await server.db.createBackup();

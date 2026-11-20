@@ -242,14 +242,12 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
               className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col hover:shadow-md transition-all group"
             >
               {/* Cover image & badges */}
-              <div
-                className="theme-fixed relative h-44 overflow-hidden bg-slate-900 cursor-pointer"
-                onClick={() => onSelectProgram && onSelectProgram(prog.id)}
-                title="فتح ملف البرنامج"
-              >
+              <div className="theme-fixed relative h-44 overflow-hidden bg-slate-900">
                 <img
                   src={prog.coverImageUrl}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
@@ -266,6 +264,12 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                     {prog.broadcastTime} | {minutesLabel((prog.durationMinutes || 0) * 60)}
                   </span>
                 </div>
+                {onSelectProgram && <button
+                  type="button"
+                  aria-label={`فتح ملف البرنامج: ${prog.name}`}
+                  onClick={() => onSelectProgram(prog.id)}
+                  className="absolute inset-0 h-full w-full focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white"
+                />}
               </div>
 
               {/* Content Details */}

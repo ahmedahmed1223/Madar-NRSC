@@ -2,8 +2,9 @@ import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { CollectionName, EntityRow, SETTLED_NEWS_STATUSES, isCollectionName } from '../shared/collections';
+import { CollectionName, EntityRow, isCollectionName } from '../shared/collections';
 import { logger } from './logger';
+import { ARCHIVE_FILTER, MIGRATIONS, SETTLED_SQL } from './dbMigrations';
 import { withStableBackup } from './databaseRecovery';
 
 export interface DbBackupFileInfo {
@@ -35,6 +36,7 @@ export interface UploadRecord {
   createdAt: string;
   /** The server's own copy was removed; the file is read from a copy elsewhere. */
   localEvicted?: boolean;
+  scope?: 'media' | 'chat' | 'legacy';
 }
 
 export interface SessionRecord {
@@ -55,151 +57,7 @@ interface RawEntityRow {
   deleted: number;
 }
 
-const SETTLED_SQL = SETTLED_NEWS_STATUSES.map((s) => `'${s}'`).join(', ');
-
 const BACKUP_NAME_PATTERN = /^newsroom_backup_[0-9TZ\-]+(?:_[a-z]+)?\.sqlite$/;
-
-/** Tables from the pre-SQLite-backend prototype; they never held authoritative data. */
-const LEGACY_TABLES = ['news', 'programs', 'episodes', 'rundown_segments', 'guests', 'tasks', 'media_assets', 'audit_logs', 'system_settings'];
-
-const MIGRATIONS: { version: number; sql: string }[] = [
-  {
-    version: 1,
-    sql: `
-      ${LEGACY_TABLES.map((t) => `DROP TABLE IF EXISTS ${t};`).join('\n')}
-
-      CREATE TABLE IF NOT EXISTS meta (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-      INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0');
-      INSERT OR IGNORE INTO meta (key, value) VALUES ('tombstone_floor', '0');
-
-      CREATE TABLE IF NOT EXISTS entities (
-        collection TEXT NOT NULL,
-        id TEXT NOT NULL,
-        data TEXT NOT NULL,
-        position REAL NOT NULL DEFAULT 0,
-        version INTEGER NOT NULL DEFAULT 1,
-        rev INTEGER NOT NULL,
-        deleted INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        updated_by TEXT,
-        PRIMARY KEY (collection, id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_entities_rev ON entities (rev);
-      CREATE INDEX IF NOT EXISTS idx_entities_collection ON entities (collection, deleted, position);
-
-      CREATE TABLE IF NOT EXISTS user_credentials (
-        user_id TEXT PRIMARY KEY,
-        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        password_hash TEXT NOT NULL,
-        must_change_password INTEGER NOT NULL DEFAULT 0,
-        failed_attempts INTEGER NOT NULL DEFAULT 0,
-        locked_until TEXT,
-        password_changed_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        last_seen_at TEXT NOT NULL,
-        ip TEXT,
-        user_agent TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
-    `,
-  },
-  {
-    version: 2,
-    sql: `
-      ALTER TABLE user_credentials ADD COLUMN totp_secret TEXT;
-      ALTER TABLE user_credentials ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE user_credentials ADD COLUMN totp_last_counter INTEGER NOT NULL DEFAULT 0;
-
-      CREATE TABLE IF NOT EXISTS uploads (
-        id TEXT PRIMARY KEY,
-        stored_name TEXT NOT NULL,
-        original_name TEXT NOT NULL,
-        mime_type TEXT NOT NULL,
-        size_bytes INTEGER NOT NULL,
-        uploaded_by TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-    `,
-  },
-  {
-    version: 3,
-    sql: `
-      CREATE TABLE IF NOT EXISTS entity_history (
-        collection TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        version INTEGER NOT NULL,
-        data TEXT NOT NULL,
-        changed_by TEXT,
-        changed_by_name TEXT,
-        changed_at TEXT NOT NULL,
-        PRIMARY KEY (collection, entity_id, version)
-      );
-    `,
-  },
-  {
-    version: 4,
-    sql: `
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
-        endpoint TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        p256dh TEXT NOT NULL,
-        auth TEXT NOT NULL,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        last_ok_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions (user_id);
-    `,
-  },
-  {
-    version: 5,
-    sql: `
-      -- 1 once the server's own copy was removed (the file lives in Dropbox or the shared folder).
-      ALTER TABLE uploads ADD COLUMN local_evicted INTEGER NOT NULL DEFAULT 0;
-      -- Copies of an upload kept elsewhere (Dropbox, the station's shared folder) and their state.
-      CREATE TABLE IF NOT EXISTS upload_copies (
-        upload_id TEXT NOT NULL,
-        target TEXT NOT NULL,
-        state TEXT NOT NULL,
-        remote_path TEXT,
-        error TEXT,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        next_attempt_at TEXT,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (upload_id, target)
-      );
-      CREATE INDEX IF NOT EXISTS idx_upload_copies_state ON upload_copies (target, state);
-      -- Files the bridge found in the shared folder (searchable from the library).
-      CREATE TABLE IF NOT EXISTS share_index (
-        path TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        size_bytes INTEGER NOT NULL DEFAULT 0,
-        modified_at TEXT,
-        seen_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_share_index_name ON share_index (name);
-      -- Files requested from the shared folder through the bridge.
-      CREATE TABLE IF NOT EXISTS share_fetches (
-        upload_id TEXT PRIMARY KEY,
-        state TEXT NOT NULL,
-        error TEXT,
-        requested_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `,
-  },
-];
 
 export interface UploadCopyRow {
   uploadId: string;
@@ -274,15 +132,19 @@ export class NewsroomDatabase {
   }
 
   private migrate() {
-    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
+    this.applyMigrations(this.db);
+  }
+
+  private applyMigrations(database: Database.Database) {
+    database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
     const applied = new Set(
-      (this.db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]).map((r) => r.version)
+      (database.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]).map((r) => r.version)
     );
     for (const m of MIGRATIONS) {
       if (applied.has(m.version)) continue;
-      this.db.transaction(() => {
-        this.db.exec(m.sql);
-        this.db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(m.version, new Date().toISOString());
+      database.transaction(() => {
+        database.exec(m.sql);
+        database.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(m.version, new Date().toISOString());
       })();
       logger.info('database migration applied', { version: m.version });
     }
@@ -379,12 +241,11 @@ export class NewsroomDatabase {
     const textFilter = q
       ? `AND (json_extract(data, '$.title') LIKE @like ESCAPE '\\' OR json_extract(data, '$.summary') LIKE @like ESCAPE '\\' OR json_extract(data, '$.content') LIKE @like ESCAPE '\\')`
       : '';
-    const where = `collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') IN (${SETTLED_SQL})
-      AND json_extract(data, '$.deletedAt') IS NULL AND updated_at < @before ${textFilter}`;
+    const where = `${ARCHIVE_FILTER} AND updated_at < @before ${textFilter}`;
     const params = { before: beforeIso, like, limit, offset };
-    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities WHERE ${where}`).get(params) as { n: number }).n;
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities INDEXED BY idx_news_archive_updated WHERE ${where}`).get(params) as { n: number }).n;
     const rows = this.db
-      .prepare(`SELECT id, data, updated_at FROM entities WHERE ${where} ORDER BY updated_at DESC LIMIT @limit OFFSET @offset`)
+      .prepare(`SELECT id, data, updated_at FROM entities INDEXED BY idx_news_archive_updated WHERE ${where} ORDER BY updated_at DESC, id LIMIT @limit OFFSET @offset`)
       .all(params) as { id: string; data: string; updated_at: string }[];
     const items = rows.map((r) => {
       const d = JSON.parse(r.data);
@@ -400,6 +261,14 @@ export class NewsroomDatabase {
       };
     });
     return { total, items };
+  }
+
+  listNewsArchive(beforeIso: string): { id: string; d: any; updatedAt: string }[] {
+    const rows = this.db.prepare(`
+      SELECT id, data, updated_at FROM entities INDEXED BY idx_news_archive_updated
+      WHERE ${ARCHIVE_FILTER} AND updated_at < ? ORDER BY updated_at DESC, id
+    `).all(beforeIso) as { id: string; data: string; updated_at: string }[];
+    return rows.map((row) => ({ id: row.id, d: JSON.parse(row.data), updatedAt: row.updated_at }));
   }
 
   countCollection(collection: CollectionName): number {
@@ -616,9 +485,9 @@ export class NewsroomDatabase {
   insertUpload(u: UploadRecord) {
     this.db
       .prepare(
-        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at, local_evicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at, local_evicted, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt, u.localEvicted ? 1 : 0);
+      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt, u.localEvicted ? 1 : 0, u.scope ?? 'media');
   }
 
   getUpload(id: string): UploadRecord | null {
@@ -633,7 +502,12 @@ export class NewsroomDatabase {
       uploadedBy: r.uploaded_by,
       createdAt: r.created_at,
       localEvicted: r.local_evicted === 1,
+      scope: r.scope,
     };
+  }
+
+  publishLegacyUpload(id: string, uploaderId: string) {
+    this.db.prepare("UPDATE uploads SET scope = 'media' WHERE id = ? AND scope = 'legacy' AND uploaded_by = ?").run(id, uploaderId);
   }
 
   /** The server holds the file again (fetched from the shared folder). */
@@ -1149,7 +1023,14 @@ export class NewsroomDatabase {
 
   checkBackupSchema(probe: Database.Database) {
     const versions = (probe.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as { version: number }[]).map(row => row.version);
-    if (JSON.stringify(versions) !== JSON.stringify(MIGRATIONS.map(m => m.version))) throw new Error('Incompatible snapshot');
+    if (versions.length < 5 || versions.length > MIGRATIONS.length || versions.some((version, i) => version !== MIGRATIONS[i].version)) {
+      throw new Error('Incompatible snapshot');
+    }
+    if (versions.length < MIGRATIONS.length) {
+      // The caller owns a temporary copy. Keep all migrated pages in the file we may publish.
+      probe.pragma('journal_mode = DELETE');
+      this.applyMigrations(probe);
+    }
     const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
     for (const { name } of tables) {
       const escaped = name.replace(/"/g, '""');
@@ -1163,7 +1044,7 @@ export class NewsroomDatabase {
   async restoreBackup(fileName: string, retention = 20, expectedHash?: string, beforeReplace?: () => void) {
     await withStableBackup(this, fileName, path.join(this.dataDir, 'rehearsals'), async (source, sha256) => {
     if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
-    const probe = new Database(source, { readonly: true, fileMustExist: true });
+    const probe = new Database(source, { fileMustExist: true });
     try {
       if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
       this.checkBackupSchema(probe);

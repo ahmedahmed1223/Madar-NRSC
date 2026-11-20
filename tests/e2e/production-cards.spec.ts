@@ -94,10 +94,25 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await steps.nth(0).getByLabel('الوقت المقدر (دقيقة)').fill('120');
   await steps.nth(1).getByLabel('المكلف').selectOption('u:usr-3');
   await steps.nth(3).getByLabel('المكلف').selectOption(`s:${istanbul}`);
-  await editor.page.getByRole('button', { name: 'إنشاء التكليف', exact: true }).click();
+  let confirmWrite = () => {};
+  const confirmation = new Promise<void>((resolve) => { confirmWrite = resolve; });
+  const syncPath = '**/api/v1/data/sync';
+  await editor.page.route(syncPath, async (route) => {
+    if (route.request().postDataJSON().ops.some((op: any) => op.c === 'productionCards' && op.d?.title === TITLE)) await confirmation;
+    await route.continue();
+  });
+  try {
+    await editor.page.getByRole('button', { name: 'إنشاء التكليف', exact: true }).click();
+    await expect(editor.page.getByRole('button', { name: 'جارٍ حفظ التكليف…' })).toBeDisabled();
+    await expect(editor.page.getByLabel('عنوان المادة *')).toHaveValue(TITLE);
+    await expect(editor.page.getByText('أُنشئ التكليف ووصل التنبيه للمعنيين')).toHaveCount(0);
+  } finally {
+    confirmWrite();
+  }
 
   // The new card leads «كل البطاقات»; it has its own address, and Back returns to the list.
   await expect(editor.page.getByText('أُنشئ التكليف ووصل التنبيه للمعنيين')).toBeVisible();
+  await editor.page.unroute(syncPath);
   await editor.page.getByRole('button', { name: new RegExp(TITLE) }).first().click();
   await expect(editor.page.getByRole('heading', { name: TITLE })).toBeVisible();
   await expect(editor.page).toHaveURL(/\/cards\/crd-/);

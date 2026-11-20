@@ -63,7 +63,7 @@ import { searchArchive } from './archiveSearch';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.1.1';
+export const APP_VERSION = '4.1.2';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -520,10 +520,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.get('/api/v1/media/files/:id', requirePermission('media.view'), wrap(async (req, res) => {
     const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
-    if (!record) throw new HttpError(404, 'الملف غير موجود');
-    // Served as an inert document: never executed, never sniffed, cached privately.
+    if (!record || record.scope === 'chat' || (record.scope === 'legacy' && record.uploadedBy !== req.auth!.user.id)) {
+      throw new HttpError(404, 'الملف غير موجود');
+    }
+    // Prevent execution and recheck authorization before reusing a cached asset.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
-    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Cache-Control', record.scope === 'legacy' ? 'private, no-store' : 'private, no-cache');
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
     // From the server's disk, else from Dropbox/Google Drive/the shared folder (see storage.ts).
     await sendStoredFile(db, config, req, res, record, HttpError);
@@ -536,7 +538,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     requireAuth,
     wrap(async (req, res) => {
       try {
-        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id, CHAT_UPLOAD_TYPES);
+        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id, { allowed: CHAT_UPLOAD_TYPES, scope: 'chat' });
         res.status(201).json({ success: true, data: { id: record.id, name: record.originalName, mimeType: record.mimeType, size: record.sizeBytes } });
       } catch (err) {
         if (err instanceof UploadError) throw new HttpError(err.status, err.message);
@@ -555,7 +557,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     // Inert: never executed or sniffed; documents a browser cannot show are downloaded.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Disposition', `${isInlineChatType(record.mimeType) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(record.originalName)}`);
     res.type(record.mimeType);
     res.sendFile(filePath, { dotfiles: 'allow' });

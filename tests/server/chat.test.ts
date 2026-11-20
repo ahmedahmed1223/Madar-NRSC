@@ -158,6 +158,8 @@ describe('files in messages', () => {
     expect(up.status).toBe(201);
     expect(up.body.data).toMatchObject({ name: 'محضر الاجتماع.docx', size: Buffer.byteLength('محتوى') });
     const id = up.body.data.id;
+    expect(server.db.getUpload(id)?.scope).toBe('chat');
+    expect((await reporter.get(`/api/v1/media/files/${id}`)).status).toBe(404);
     expect((await upload(journalist, 'x.exe', 'application/x-msdownload', 'MZ')).status).toBe(415);
 
     // Someone else cannot attach a file they did not upload.
@@ -171,6 +173,8 @@ describe('files in messages', () => {
     expect(mine.status).toBe(200);
     expect(mine.headers['content-disposition']).toContain('attachment');
     expect(mine.headers['x-content-type-options']).toBe('nosniff');
+    expect(mine.headers['cache-control']).toContain('no-store');
+    expect((await editor.get(`/api/v1/media/files/${id}`)).status).toBe(404);
     expect((await reporter.get(`/api/v1/chat/files/${id}`)).status).toBe(404);
     expect((await reporter.get('/api/v1/chat/files/..%2Fsecret')).status).toBe(404);
   });

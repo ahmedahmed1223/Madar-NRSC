@@ -1,5 +1,4 @@
 import type { NewsroomDatabase } from './db';
-import { SETTLED_NEWS_STATUSES } from '../shared/collections';
 import { buildVocabulary, createSearchIndex, didYouMean, parseQuery } from '../shared/arabicSearch';
 
 /**
@@ -21,17 +20,15 @@ export interface ArchiveItem {
 
 interface ArchiveRow {
   id: string;
-  v: number;
   d: any;
+  updatedAt: string;
 }
 
-const SETTLED = new Set<string>(SETTLED_NEWS_STATUSES);
 const htmlText = (html: unknown) => String(html || '').replace(/<[^>]*>/g, ' ');
 
-// Normalised text is kept per row id + version, so repeated searches only parse JSON.
+// The shared bounded text cache remains valid across database restores.
 const index = createSearchIndex<ArchiveRow>({
   id: (r) => r.id,
-  version: (r) => r.v,
   title: (r) => [r.d.title, r.d.shortTitle],
   body: (r) => [r.d.keywords, r.d.summary, r.d.locationName, htmlText(r.d.content)],
 });
@@ -44,7 +41,7 @@ const toItem = (r: ArchiveRow): ArchiveItem => ({
   categoryName: r.d.categoryName || '',
   authorName: r.d.authorName || '',
   publishDate: r.d.publishDate || null,
-  updatedAt: r.d.__updatedAt || r.d.updatedAt || '',
+  updatedAt: r.updatedAt,
 });
 
 export function searchArchive(
@@ -56,23 +53,10 @@ export function searchArchive(
 ): { total: number; items: ArchiveItem[]; suggestion?: string } {
   const q = query.trim();
   if (!q || parseQuery(q).empty) return db.searchNewsArchive(beforeIso, q, limit, offset);
-  // The archive window: settled stories whose row was not touched since `beforeIso`. The row's own
-  // updated_at is what the SQL search compares, so read it from the unfiltered listing.
-  const settledIds = new Map<string, string>();
-  for (let page = 0; ; page++) {
-    const chunk = db.searchNewsArchive(beforeIso, '', 1000, page * 1000);
-    chunk.items.forEach((i) => settledIds.set(i.id, i.updatedAt));
-    if (chunk.items.length < 1000) break;
-  }
-  if (!settledIds.size) return { total: 0, items: [] };
-  const rows: ArchiveRow[] = [];
-  for (const row of db.listCollection('news')) {
-    if (!settledIds.has(row.id) || !row.d || row.d.deletedAt || !SETTLED.has(row.d.status)) continue;
-    rows.push({ id: row.id, v: row.v, d: { ...row.d, __updatedAt: settledIds.get(row.id) } });
-  }
-  const hits = index
-    .search(rows, q)
-    .sort((a, b) => b.score - a.score || toItem(b.item).updatedAt.localeCompare(toItem(a.item).updatedAt));
+  // The database supplies newest first. The relevance sort preserves that order on ties.
+  const rows = db.listNewsArchive(beforeIso);
+  if (!rows.length) return { total: 0, items: [] };
+  const hits = index.search(rows, q);
   const result: { total: number; items: ArchiveItem[]; suggestion?: string } = {
     total: hits.length,
     items: hits.slice(offset, offset + limit).map((h) => toItem(h.item)),

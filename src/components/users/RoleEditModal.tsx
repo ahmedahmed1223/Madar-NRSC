@@ -8,7 +8,7 @@ import {
 } from '../../services/rbacService';
 import { ASSIGNABLE_SCREENS, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
 import { screenPermission } from '../../shared/commandPalette';
-import { Shield, Check, CheckSquare, Square } from 'lucide-react';
+import { Shield, Check } from 'lucide-react';
 
 interface RoleEditModalProps {
   isOpen: boolean;
@@ -311,38 +311,31 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
               }[perm.riskLevel];
 
               return (
-                <div
+                <label
                   key={perm.code}
-                  onClick={() => togglePermission(perm.code)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-600 ${
                     isSelected
                       ? 'bg-white border-blue-400 shadow-xs ring-1 ring-blue-300/50'
                       : 'bg-white/60 border-slate-200 hover:bg-white'
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5">
-                      {isSelected ? (
-                        <CheckSquare className="w-4 h-4 text-blue-600" />
-                      ) : (
-                        <Square className="w-4 h-4 text-slate-500" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
+                  <span className="flex items-start gap-3">
+                    <input type="checkbox" checked={isSelected} onChange={() => togglePermission(perm.code)} aria-label={perm.nameAr} className="mt-0.5 size-4 shrink-0 accent-blue-600" />
+                    <span>
+                      <span className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-800">{perm.nameAr}</span>
                         <span className="text-2xs text-slate-500 font-mono" dir="ltr">
                           ({perm.code})
                         </span>
-                      </div>
-                      <p className="text-2xs text-slate-500 mt-0.5">{perm.description}</p>
-                    </div>
-                  </div>
+                      </span>
+                      <span className="block text-2xs text-slate-500 mt-0.5">{perm.description}</span>
+                    </span>
+                  </span>
 
                   <span className={`text-2xs font-bold px-2 py-0.5 rounded-md border shrink-0 ${riskColor}`}>
                     {riskLabel}
                   </span>
-                </div>
+                </label>
               );
             })}
           </div>

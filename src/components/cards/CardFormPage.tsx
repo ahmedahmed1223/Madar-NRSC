@@ -8,6 +8,7 @@ import { CARD_KINDS, CARD_STEP_PRESETS, COMPLEXITIES, MAX_CARD_STEPS, stepTypesO
 import { stationScope, stationsOf } from '../../shared/stations';
 import type { User } from '../../types';
 import { INPUT, LABEL } from './cardUi';
+import { useConfirmedCardSave } from './useConfirmedCardSave';
 
 interface CardFormPageProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   const [steps, setSteps] = useState<CardStep[]>([]);
   const [links, setLinks] = useState<CardLink[]>([]);
   const [target, setTarget] = useState<CardTarget | undefined>();
-  const [error, setError] = useState<string | null>(null);
+  const { save, saving, error, reset, pending } = useConfirmedCardSave();
 
   const newStep = (type: string): CardStep => ({ id: newId('stp'), type, status: 'TODO', complexity: 1 });
 
@@ -56,7 +57,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
     setAirAt(localInput(card?.airAt));
     setSteps(card?.steps || CARD_STEP_PRESETS[1].types.filter((t) => stepTypes.some((x) => x.id === t)).map(newStep));
     setLinks(card?.links || []);
-    setError(null);
+    reset();
     // The form is filled once when it opens; later edits belong to the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, card?.id]);
@@ -100,12 +101,10 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
     else patchStep(id, { assigneeId: undefined, assigneeName: undefined, stationId: undefined });
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    try {
-      const saved = apiService.saveCard({
-        ...(card || { id: newId('crd'), status: 'OPEN' as const, log: [] }),
+    const saved = await save((id) => ({
+        ...(card || { id, status: 'OPEN' as const, log: [] }),
         title: title.trim(),
         kind,
         brief: brief.trim() || undefined,
@@ -116,17 +115,17 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         target,
         steps,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url),
-      });
+    }));
+    if (saved) {
       onSaved(saved, card ? 'حُفظ التكليف' : 'أُنشئ التكليف ووصل التنبيه للمعنيين');
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'تعذر حفظ التكليف');
     }
   };
 
   return (
-    <FormPage isOpen={isOpen} onClose={onClose} title={card ? 'تعديل التكليف' : 'تكليف حر جديد'} subtitle="تكليف واحد يرافق المادة بين المحطات والأقسام" maxWidth="4xl">
+    <FormPage isOpen={isOpen} onClose={() => { if (pending.current) return false; onClose(); }} title={card ? 'تعديل التكليف' : 'تكليف حر جديد'} subtitle="تكليف واحد يرافق المادة بين المحطات والأقسام" maxWidth="4xl">
       <form onSubmit={submit} className="space-y-5 text-xs">
+        <fieldset disabled={saving} className="min-w-0 space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
             <label htmlFor="card-title" className={LABEL}>عنوان المادة *</label>
@@ -296,8 +295,9 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         {error && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-700 font-bold">{error}</p>}
         <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl">إلغاء</button>
-          <button type="submit" className="px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl">{card ? 'حفظ التكليف' : 'إنشاء التكليف'}</button>
+          <button type="submit" className="min-h-11 px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50">{saving ? 'جارٍ حفظ التكليف…' : card ? 'حفظ التكليف' : 'إنشاء التكليف'}</button>
         </div>
+        </fieldset>
       </form>
     </FormPage>
   );
