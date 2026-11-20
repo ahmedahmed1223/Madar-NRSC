@@ -6,6 +6,8 @@ import { CollectionName, EntityRow, isCollectionName } from '../shared/collectio
 import { logger } from './logger';
 import { ARCHIVE_FILTER, MIGRATIONS, SETTLED_SQL } from './dbMigrations';
 import { withStableBackup } from './databaseRecovery';
+import { archiveTerms, prepareArchiveText, rankArchiveText } from './archiveIndex';
+import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
 
 export interface DbBackupFileInfo {
   fileName: string;
@@ -55,6 +57,15 @@ interface RawEntityRow {
   version: number;
   rev: number;
   deleted: number;
+}
+
+interface NewsReportGroup {
+  stationId: string | null;
+  categoryId: string | null;
+  status: string | null;
+  total: number;
+  approvalCount: number;
+  approvalMs: number;
 }
 
 const BACKUP_NAME_PATTERN = /^newsroom_backup_[0-9TZ\-]+(?:_[a-z]+)?\.sqlite$/;
@@ -113,6 +124,8 @@ export class NewsroomDatabase {
   readonly filePath: string;
   readonly backupsDir: string;
   private db!: Database.Database;
+  private archiveVocabularyCache?: { revision: number; before: string; vocabulary: Vocabulary };
+  private newsReportCache = { revision: -1, periods: new Map<string | null, NewsReportGroup[]>() };
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -123,6 +136,8 @@ export class NewsroomDatabase {
   }
 
   private open() {
+    this.archiveVocabularyCache = undefined;
+    this.newsReportCache = { revision: -1, periods: new Map() };
     this.db = new Database(this.filePath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
@@ -136,6 +151,9 @@ export class NewsroomDatabase {
   }
 
   private applyMigrations(database: Database.Database) {
+    database.function('nrcs_archive_prepare', { deterministic: true }, prepareArchiveText);
+    database.function('nrcs_archive_terms', { deterministic: true }, archiveTerms);
+    database.function('nrcs_archive_rank', { deterministic: true }, rankArchiveText);
     database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
     const applied = new Set(
       (database.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]).map((r) => r.version)
@@ -263,12 +281,83 @@ export class NewsroomDatabase {
     return { total, items };
   }
 
-  listNewsArchive(beforeIso: string): { id: string; d: any; updatedAt: string }[] {
+  rankNewsArchive(before: string, query: string, match: string, limit: number, offset: number) {
+    const from = match
+      ? 'news_archive_fts JOIN news_archive_index AS a ON a.key = news_archive_fts.rowid'
+      : 'news_archive_index AS a';
+    const row = this.db.prepare(`
+      WITH ranked AS MATERIALIZED (
+        SELECT e.id, e.updated_at, nrcs_archive_rank(@query, a.prepared) AS score
+        FROM ${from} JOIN entities AS e ON e.collection = 'news' AND e.id = a.id
+        WHERE e.updated_at < @before ${match ? 'AND news_archive_fts MATCH @match' : ''}
+      )
+      SELECT (SELECT COUNT(*) FROM ranked WHERE score IS NOT NULL) AS total,
+        (SELECT json_group_array(json_object('id', page.id, 'data', e.data, 'updatedAt', page.updated_at)
+                 ORDER BY page.score DESC, page.updated_at DESC, page.id)
+         FROM (
+           SELECT id, updated_at, score FROM ranked WHERE score IS NOT NULL
+           ORDER BY score DESC, updated_at DESC, id LIMIT @limit OFFSET @offset
+         ) AS page JOIN entities AS e ON e.collection = 'news' AND e.id = page.id) AS items
+    `).get({ before, query, match, limit, offset }) as { total: number; items: string };
+    const items = JSON.parse(row.items) as { id: string; data: string; updatedAt: string }[];
+    return { total: row.total, items: items.map(({ id, data, updatedAt }) => ({ id, d: JSON.parse(data), updatedAt })) };
+  }
+
+  archiveVocabulary(before: string): Vocabulary {
+    const revision = this.currentRev();
+    const cached = this.archiveVocabularyCache;
+    if (cached?.revision === revision) {
+      if (before === cached.before) return cached.vocabulary;
+      const [from, to] = [before, cached.before].sort();
+      const crossed = this.db.prepare(`
+        SELECT 1 FROM entities INDEXED BY idx_news_archive_updated
+        WHERE ${ARCHIVE_FILTER} AND updated_at >= ? AND updated_at < ? LIMIT 1
+      `).get(from, to);
+      if (!crossed) {
+        cached.before = before;
+        return cached.vocabulary;
+      }
+    }
     const rows = this.db.prepare(`
-      SELECT id, data, updated_at FROM entities INDEXED BY idx_news_archive_updated
-      WHERE ${ARCHIVE_FILTER} AND updated_at < ? ORDER BY updated_at DESC, id
-    `).all(beforeIso) as { id: string; data: string; updated_at: string }[];
-    return rows.map((row) => ({ id: row.id, d: JSON.parse(row.data), updatedAt: row.updated_at }));
+      SELECT json_array(json_extract(data, '$.title'), json_extract(data, '$.summary'), json_extract(data, '$.keywords')) AS words
+      FROM entities INDEXED BY idx_news_archive_updated WHERE ${ARCHIVE_FILTER} AND updated_at < ?
+    `).all(before) as { words: string }[];
+    const words = rows.flatMap(({ words }) => (JSON.parse(words) as (string | string[] | null)[]).flat().filter((word): word is string => typeof word === 'string'));
+    const vocabulary = buildVocabulary(words);
+    this.archiveVocabularyCache = { revision, before, vocabulary };
+    return vocabulary;
+  }
+
+  newsReportGroups(since?: string) {
+    const revision = this.currentRev();
+    const cutoff = since ?? null;
+    const cache = this.newsReportCache;
+    if (cache.revision !== revision) {
+      cache.revision = revision;
+      cache.periods.clear();
+    }
+    const cached = cache.periods.get(cutoff);
+    if (cached) return cached;
+
+    // Only the unfiltered groups are shared. The report service applies each reader's scope.
+    const groups = this.db.prepare(`
+      WITH report_news AS (
+        SELECT json_extract(u.data, '$.stationId') AS stationId,
+          json_extract(n.data, '$.categoryId') AS categoryId, json_extract(n.data, '$.status') AS status,
+          ROUND((julianday(json_extract(n.data, '$.approvedAt')) - julianday(json_extract(n.data, '$.createdAt'))) * 86400000) AS durationMs
+        FROM entities AS n
+        LEFT JOIN entities AS u ON u.collection = 'users' AND u.deleted = 0 AND u.id = json_extract(n.data, '$.authorId')
+        WHERE n.collection = 'news' AND n.deleted = 0 AND COALESCE(json_extract(n.data, '$.deletedAt'), '') = ''
+          AND (@since IS NULL OR julianday(COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt'))) >= julianday(@since))
+      )
+      SELECT stationId, categoryId, status, COUNT(*) AS total,
+        COUNT(CASE WHEN durationMs >= 0 THEN 1 END) AS approvalCount,
+        COALESCE(SUM(CASE WHEN durationMs >= 0 THEN durationMs END), 0) AS approvalMs
+      FROM report_news GROUP BY stationId, categoryId, status
+    `).all({ since: cutoff }) as NewsReportGroup[];
+    if (cache.periods.size >= 8) cache.periods.delete(cache.periods.keys().next().value!);
+    cache.periods.set(cutoff, groups);
+    return groups;
   }
 
   countCollection(collection: CollectionName): number {

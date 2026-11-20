@@ -1,5 +1,6 @@
 import type { NewsroomDatabase } from './db';
-import { buildVocabulary, createSearchIndex, didYouMean, parseQuery } from '../shared/arabicSearch';
+import { didYouMean, parseQuery } from '../shared/arabicSearch';
+import { archiveMatch } from './archiveIndex';
 
 /**
  * Archive search with the same Arabic matching as the newsroom screens (hamza/ة/ى variants,
@@ -24,15 +25,6 @@ interface ArchiveRow {
   updatedAt: string;
 }
 
-const htmlText = (html: unknown) => String(html || '').replace(/<[^>]*>/g, ' ');
-
-// The shared bounded text cache remains valid across database restores.
-const index = createSearchIndex<ArchiveRow>({
-  id: (r) => r.id,
-  title: (r) => [r.d.title, r.d.shortTitle],
-  body: (r) => [r.d.keywords, r.d.summary, r.d.locationName, htmlText(r.d.content)],
-});
-
 const toItem = (r: ArchiveRow): ArchiveItem => ({
   id: r.id,
   title: r.d.title || '',
@@ -53,18 +45,14 @@ export function searchArchive(
 ): { total: number; items: ArchiveItem[]; suggestion?: string } {
   const q = query.trim();
   if (!q || parseQuery(q).empty) return db.searchNewsArchive(beforeIso, q, limit, offset);
-  // The database supplies newest first. The relevance sort preserves that order on ties.
-  const rows = db.listNewsArchive(beforeIso);
-  if (!rows.length) return { total: 0, items: [] };
-  const hits = index.search(rows, q);
+  const ranked = db.rankNewsArchive(beforeIso, q, archiveMatch(q), limit, offset);
   const result: { total: number; items: ArchiveItem[]; suggestion?: string } = {
-    total: hits.length,
-    items: hits.slice(offset, offset + limit).map((h) => toItem(h.item)),
+    total: ranked.total,
+    items: ranked.items.map(toItem),
   };
-  if (hits.length <= 2 && offset === 0) {
-    const vocab = buildVocabulary(rows.flatMap((r) => [r.d.title, r.d.summary, ...(Array.isArray(r.d.keywords) ? r.d.keywords : [])]));
-    const fixed = didYouMean(q, vocab);
-    if (fixed && index.count(rows, fixed) > hits.length) result.suggestion = fixed;
+  if (ranked.total <= 2 && offset === 0) {
+    const fixed = didYouMean(q, db.archiveVocabulary(beforeIso));
+    if (fixed && db.rankNewsArchive(beforeIso, fixed, archiveMatch(fixed), 0, 0).total > ranked.total) result.suggestion = fixed;
   }
   return result;
 }

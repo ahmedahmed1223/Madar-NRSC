@@ -6,6 +6,8 @@ const LEGACY_TABLES = ['news', 'programs', 'episodes', 'rundown_segments', 'gues
 export const SETTLED_SQL = SETTLED_NEWS_STATUSES.map((s) => `'${s}'`).join(', ');
 export const ARCHIVE_FILTER = `collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') IN (${SETTLED_SQL})
   AND json_extract(data, '$.deletedAt') IS NULL`;
+const NEW_ARCHIVE = `NEW.collection = 'news' AND NEW.deleted = 0
+  AND json_extract(NEW.data, '$.status') IN (${SETTLED_SQL}) AND json_extract(NEW.data, '$.deletedAt') IS NULL`;
 
 export const MIGRATIONS: { version: number; sql: string }[] = [
   {
@@ -173,6 +175,41 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         FROM entities AS message, json_each(message.data, '$.attachments') AS attachment
         WHERE message.collection = 'messages' AND message.deleted = 0
       );
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      CREATE TABLE news_archive_index (
+        key INTEGER PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        prepared BLOB NOT NULL
+      );
+      CREATE VIRTUAL TABLE news_archive_fts USING fts5(
+        terms, content='', tokenize='trigram'
+      );
+      CREATE TRIGGER news_archive_index_insert AFTER INSERT ON news_archive_index BEGIN
+        INSERT INTO news_archive_fts(rowid, terms) VALUES (NEW.key, nrcs_archive_terms(NEW.prepared));
+      END;
+      CREATE TRIGGER news_archive_index_delete AFTER DELETE ON news_archive_index BEGIN
+        INSERT INTO news_archive_fts(news_archive_fts, rowid, terms) VALUES ('delete', OLD.key, nrcs_archive_terms(OLD.prepared));
+      END;
+      INSERT INTO news_archive_index(id, prepared)
+        SELECT id, nrcs_archive_prepare(data) FROM entities WHERE ${ARCHIVE_FILTER};
+      CREATE TRIGGER news_archive_entity_insert AFTER INSERT ON entities
+      WHEN ${NEW_ARCHIVE} BEGIN
+        INSERT INTO news_archive_index(id, prepared) VALUES (NEW.id, nrcs_archive_prepare(NEW.data));
+      END;
+      CREATE TRIGGER news_archive_entity_update AFTER UPDATE OF data, deleted, collection, id ON entities
+      WHEN OLD.collection = 'news' OR NEW.collection = 'news' BEGIN
+        DELETE FROM news_archive_index WHERE OLD.collection = 'news' AND id = OLD.id;
+        INSERT INTO news_archive_index(id, prepared)
+          SELECT NEW.id, nrcs_archive_prepare(NEW.data) WHERE ${NEW_ARCHIVE};
+      END;
+      CREATE TRIGGER news_archive_entity_delete AFTER DELETE ON entities
+      WHEN OLD.collection = 'news' BEGIN
+        DELETE FROM news_archive_index WHERE id = OLD.id;
+      END;
     `,
   },
 ];

@@ -629,7 +629,13 @@ export class SyncService {
    */
   apply(auth: AuthContext, ops: SyncOp[], ip?: string): SyncOpResult[] {
     this.applySettings();
-    const results = ops.map((op) => this.applyOne(auth, op, ip));
+    const results = ops.map((op): SyncOpResult => {
+      const result = this.applyOne(auth, op, ip);
+      if (result.ok === false && result.current && !this.visible(auth, result.current)) {
+        return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' };
+      }
+      return result;
+    });
     if (ops.some((op) => op?.c === 'settings')) this.applySettings();
     if (results.some((r) => r.ok)) changeBus.emit('rev', this.db.currentRev());
     return results;

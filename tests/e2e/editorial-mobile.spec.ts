@@ -71,9 +71,10 @@ test('a mobile approver can take over an existing review from additional actions
     const created = await writer.page.request.post('/api/v1/data/sync', {
       headers: { 'X-NRCS-Client': 'web' },
       data: { ops: [{ c: 'news', op: 'upsert', id, d: {
-        ...collections.news[0].d, id, authorId: user.id, title: 'خبر لتجربة تسليم المراجعة',
+        id, authorId: user.id, title: 'خبر لتجربة تسليم المراجعة',
         content: 'هذا نص تحريري كامل لتجربة تولي مراجعة الخبر من قائمة الإجراءات على الهاتف.',
-        status: 'UNDER_REVIEW', deletedAt: undefined, embargoUntil: undefined, reviewClaim: undefined, workflowLogs: [],
+        categoryId: collections.categories[0].id, sourceId: collections.sources[0].id,
+        priority: 'NORMAL', status: 'UNDER_REVIEW', isBreaking: false, keywords: [], workflowLogs: [],
       } }] },
     });
     expect((await created.json()).results[0]).toMatchObject({ ok: true });

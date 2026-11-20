@@ -17,10 +17,10 @@ export const isCardBlocked = (card: ProductionCard) => card.status === 'OPEN' &&
  * Stations a manager follows: everyone for central management (no station), the main station
  * and administrators; a branch manager follows their own station and those linked with it.
  */
-export function managerScope(user: { role?: string; stationId?: string | null; managedStationIds?: string[]; managedGroupIds?: string[] }, stations: Station[], seesAll = false): Set<string> {
+export function managerScope(user: { role?: string; stationId?: string | null; managedStationIds?: string[]; managedGroupIds?: string[] }, stations: Station[], seesAll = false, groups?: StationGroup[]): Set<string> {
   if (seesAll || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'MAIN_STATION_MANAGER') return new Set(stations.map((s) => s.id));
   // The shared scope rule (own station, links, managed stations and station groups).
-  const scope = new Set(stationScope(stations, { stationId: user.stationId, managedStationIds: user.managedStationIds, managedGroupIds: user.managedGroupIds }));
+  const scope = stationScope(stations, { stationId: user.stationId, managedStationIds: user.managedStationIds, managedGroupIds: user.managedGroupIds }, groups);
   // A manager of several stations (e.g. a general manager) follows each of them too.
   for (const id of Array.isArray(user.managedStationIds) ? user.managedStationIds : []) if (stations.some((s) => s.id === id)) scope.add(id);
   return scope;

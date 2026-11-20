@@ -68,4 +68,16 @@ describe('news archive window', () => {
     const archive = await reporter.get('/api/v1/archive/news');
     expect(archive.body.data.items.map((i: any) => i.id)).not.toContain('nws-old-pub');
   });
+
+  it('keeps the indexed text current across edits and removals, and totals empty pages', async () => {
+    const reporter = await loginAgent(server.app, 'reporter@akhbar.tv');
+    const lookup = (q: string, page = 1) => reporter.get('/api/v1/archive/news').query({ q, page });
+    putNews('nws-indexed-edit', { status: 'PUBLISHED', title: 'عنوان تفرداوي' }, 120);
+    expect((await lookup('تفرداوي', 2)).body.data).toMatchObject({ total: 1, items: [] });
+    putNews('nws-indexed-edit', { status: 'PUBLISHED', title: 'عنوان عقيلي' }, 120);
+    expect((await lookup('تفرداوي')).body.data.total).toBe(0);
+    expect((await lookup('عقيلي')).body.data.items.map((row: any) => row.id)).toEqual(['nws-indexed-edit']);
+    server.db.deleteRow('news', 'nws-indexed-edit', null);
+    expect((await lookup('عقيلي')).body.data.total).toBe(0);
+  });
 });

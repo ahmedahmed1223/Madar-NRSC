@@ -61,6 +61,9 @@ import { removeStation, StationRemovalError, stationUsage } from './stationRemov
 import { applyDepartmentSettings } from '../shared/departments';
 import { rememberStationSettings } from '../shared/stations';
 import { searchArchive } from './archiveSearch';
+import { summarizeNewsReport } from './newsReport';
+import { canOpenScreen } from '../shared/screens';
+import { findUserRole } from '../shared/rbac';
 import { createAppUpdates } from './appUpdates';
 import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
@@ -745,12 +748,26 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- News archive (settled news outside the synced working set) ------------
 
+  app.get('/api/v1/reports/news', requirePermission('news.view'), (req, res) => {
+    const auth = req.auth!;
+    if (!canOpenScreen('reports', findUserRole(auth.user, auth.roles), auth.can, auth.user.role === 'SUPER_ADMIN')) {
+      throw new HttpError(403, 'لا تملك صلاحية عرض التقارير');
+    }
+    const { since, station = 'ALL', category = 'ALL' } = req.query;
+    if (typeof station !== 'string' || station.length > 210 || typeof category !== 'string' || category.length > 200
+        || (since !== undefined && (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(since) || !Number.isFinite(Date.parse(since))))) {
+      throw new HttpError(400, 'فلاتر التقرير غير صالحة');
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ data: summarizeNewsReport(db, auth, { since: typeof since === 'string' ? since : undefined, station, category }) });
+  });
+
   const archiveCutoff = () =>
     new Date(Date.now() - (config.newsActiveDays > 0 ? config.newsActiveDays : 36500) * 24 * 60 * 60 * 1000).toISOString();
 
   app.get('/api/v1/archive/news', requirePermission('news.view'), (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
-    const page = Math.max(1, Math.min(1000, Number(req.query.page) || 1));
+    const page = Math.max(1, Math.min(1000, Math.trunc(Number(req.query.page) || 1)));
     const pageSize = 25;
     const result = searchArchive(db, archiveCutoff(), q, pageSize, (page - 1) * pageSize);
     res.json({ success: true, data: { ...result, page, pageSize, activeDays: config.newsActiveDays } });

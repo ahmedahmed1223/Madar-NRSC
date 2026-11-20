@@ -67,6 +67,22 @@ describe('direct messages', () => {
     expect((await sync(editor, [{ c: 'messages', op: 'upsert', id: 'msg-dm-1', d: { ...row.d, text: 'معدّلة' }, baseV: row.v }])).body.results[0].ok).toBe(false);
     expect((await sync(editor, [{ c: 'messages', op: 'delete', id: 'msg-dm-1' }])).body.results[0].ok).toBe(false);
   });
+
+  it('does not attach private records to rejected synchronization results', async () => {
+    const row = server.db.getRow('messages', 'msg-dm-1')!;
+    const ops = [
+      { c: 'messages', op: 'delete', id: row.id },
+      { c: 'messages', op: 'upsert', id: row.id, baseV: row.v - 1, d: { channel, text: 'مسودة محلية' } },
+    ];
+    const rejected = (await sync(reporter, ops)).body.results;
+    expect(rejected).toHaveLength(2);
+    for (const result of rejected) {
+      expect(result).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+      expect(result.current).toBeUndefined();
+    }
+    const permittedConflict = (await sync(editor, [ops[1]])).body.results[0];
+    expect(permittedConflict).toMatchObject({ ok: false, code: 'CONFLICT', current: { id: row.id, v: row.v } });
+  });
 });
 
 describe('groups', () => {

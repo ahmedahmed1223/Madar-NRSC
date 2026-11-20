@@ -56,6 +56,10 @@ Start the same application version and test login, media access and a newsroom w
 Record recovery duration and the timestamp of the newest recovered write. A real cloud
 delivery and recovery drill are still required before claiming production readiness.
 
+Schema migration 7 builds the Arabic news archive index on first start. Rehearse the
+upgrade on an isolated copy and measure the startup time and disk growth for your archive.
+After restoring a full bundle, verify archive search, reports and a restored attachment.
+
 ## Shutdown And Traffic
 
 On termination, readiness becomes 503, new API requests receive 503 with Retry-After,

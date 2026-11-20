@@ -7,11 +7,14 @@ import { stationName, stationsOf } from '../shared/stations';
 import { managerScope, stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
 import { productionSummary } from '../shared/workload';
 import { stepTypesOf } from '../shared/productionCards';
-import { localDateString } from '../shared/dates';
+import { addDaysIso, fromLocalInputValue, localDateString } from '../shared/dates';
 import { when } from '../components/cards/cardUi';
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { apiFetch } from '../services/http';
+import { useLiveData } from '../hooks/useLiveData';
+import type { NewsReport } from '../shared/newsReport';
 import { BarChart3, Clock, Tv, FileText, Users, Calendar, Printer, Download } from 'lucide-react';
-import { NewsItem, Episode, Guest, Category } from '../types';
+import { Episode, Guest, Category } from '../types';
 
 const PERIODS = [
   { id: 'today', name: 'اليوم' },
@@ -45,14 +48,12 @@ const Metric: React.FC<{ label: string; scope: string; icon: React.ElementType; 
 );
 
 interface ReportsViewProps {
-  newsList: NewsItem[];
   episodes: Episode[];
   guests: Guest[];
   categories: Category[];
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
-  newsList = [],
   episodes = [],
   guests = [],
   categories = [],
@@ -69,43 +70,50 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const stations = allStations.filter((s) => scope.has(s.id));
   const groups = stationGroupsOf(settings).filter((g) => g.stationIds.some((id) => scope.has(id)));
   const seesAll = stations.length === allStations.length;
-  const stationOfUser = useMemo(() => new Map(apiService.getUsers().map((u) => [u.id, u.stationId])), [newsList]);
   const inStation = stationFilterMatcher(selectedStation, groups);
-  /** A story belongs to its writer's station. */
-  const newsStation = (n: NewsItem) => stationOfUser.get(n.authorId);
-  const inScope = (n: NewsItem) => seesAll || scope.has(newsStation(n) || '');
   const stationLabel = selectedStation === 'ALL' ? (seesAll ? 'كل المحطات' : 'محطاتي') : selectedStation.startsWith('group:') ? groups.find((g) => `group:${g.id}` === selectedStation)?.name || '' : stationName(allStations, selectedStation);
 
-  // Filter news based on selected category
-
-  // Start of the selected reporting window (local time); null means no limit.
+  const today = localDateString();
+  // Start of the selected reporting window in the configured time basis.
   const periodStart = useMemo(() => {
     if (selectedPeriod === 'all') return null;
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    if (selectedPeriod === 'week') d.setDate(d.getDate() - 6);
-    if (selectedPeriod === 'month') d.setDate(d.getDate() - 29);
-    return d;
-  }, [selectedPeriod]);
+    const lookback = selectedPeriod === 'week' ? 6 : selectedPeriod === 'month' ? 29 : 0;
+    return new Date(fromLocalInputValue(`${addDaysIso(today, -lookback)}T00:00`));
+  }, [selectedPeriod, today]);
   const periodLabel = { today: 'اليوم', week: 'آخر 7 أيام', month: 'آخر 30 يوماً', all: 'كل الفترات' }[selectedPeriod];
 
   const inPeriod = (value?: string) => {
     if (!periodStart) return true;
     if (!value) return false;
-    const t = new Date(value.length === 10 ? `${value}T00:00:00` : value).getTime();
+    const t = Date.parse(value.length === 10 ? fromLocalInputValue(`${value}T00:00`) : value);
     return Number.isFinite(t) && t >= periodStart.getTime();
   };
 
-  const filteredNews = useMemo(() => {
-    return newsList.filter((item) => {
-      if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) {
-        return false;
-      }
-      if (!inScope(item) || !inStation(newsStation(item))) return false;
-      return inPeriod(item.updatedAt || item.createdAt);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newsList, selectedCategory, periodStart, selectedStation, stationOfUser]);
+  const since = periodStart?.toISOString();
+  const params = new URLSearchParams({ category: selectedCategory, station: selectedStation });
+  if (since) params.set('since', since);
+  const reportUrl = `/api/v1/reports/news?${params}`;
+  const reportRevision = useLiveData(['news', 'users', 'settings'], 60_000);
+  const [attempt, setAttempt] = useState(0);
+  const [reportState, setReportState] = useState<{ url: string; data?: NewsReport; error?: string }>();
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiFetch<{ data: NewsReport }>(reportUrl, { signal: controller.signal, cache: 'no-store' })
+      .then(({ data }) => {
+        if (!controller.signal.aborted) setReportState({ url: reportUrl, data });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setReportState({
+          url: reportUrl, error: error instanceof Error ? error.message : 'تعذّر تحميل التقرير.',
+        });
+      });
+    return () => controller.abort();
+  }, [reportUrl, reportRevision, attempt]);
+  const currentReport = reportState?.url === reportUrl ? reportState : undefined;
+  const report = currentReport?.data;
+  const { total: newsTotal, published: publishedCount, approved: approvedCount, review: reviewCount, drafts: draftCount } =
+    report?.totals ?? { total: 0, published: 0, approved: 0, review: 0, drafts: 0 };
+  const avgApprovalMinutes = report?.avgApprovalMinutes ?? null;
 
   // Per station: the stories its writers worked on in the period, and the production cards it finished.
   const periodRange = useMemo(() => ({ from: periodStart ? periodStart.getTime() : 0, to: Date.now() + 1 }), [periodStart]);
@@ -113,16 +121,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const stationBreakdown = stations
     .filter((st) => inStation(st.id))
     .map((st) => {
-      const own = newsList.filter((n) => newsStation(n) === st.id && (selectedCategory === 'ALL' || n.categoryId === selectedCategory) && inPeriod(n.updatedAt || n.createdAt));
+      const own = report?.byStation[st.id];
       const cards = production.byStation.find((r) => r.stationId === st.id);
       return {
         id: st.id,
         name: st.name,
-        total: own.length,
-        published: own.filter((n) => n.status === 'PUBLISHED').length,
-        approved: own.filter((n) => n.status === 'APPROVED').length,
-        review: own.filter((n) => n.status === 'UNDER_REVIEW').length,
-        drafts: own.filter((n) => n.status === 'DRAFT').length,
+        total: own?.total ?? 0,
+        published: own?.published ?? 0,
+        approved: own?.approved ?? 0,
+        review: own?.review ?? 0,
+        drafts: own?.drafts ?? 0,
         cards: cards?.cards || 0,
         cardSteps: cards?.steps || 0,
       };
@@ -143,23 +151,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return { onTime, total: withRundown.length };
   }, [periodEpisodes]);
 
-  // Average minutes from creation to approval for approved/published items in the window.
-  const avgApprovalMinutes = useMemo(() => {
-    const durations = filteredNews
-      .filter((n) => n.approvedAt && n.createdAt)
-      .map((n) => (new Date(n.approvedAt!).getTime() - new Date(n.createdAt).getTime()) / 60000)
-      .filter((m) => Number.isFinite(m) && m >= 0);
-    if (durations.length === 0) return null;
-    return Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
-  }, [filteredNews]);
-
-  // Same period as the other indicators (the category filter is ignored in the per-category list by design).
-  const newsInPeriod = newsList.filter((n) => inPeriod(n.updatedAt || n.createdAt));
-  const publishedCount = (filteredNews || []).filter((n) => n.status === 'PUBLISHED').length;
-  const draftCount = (filteredNews || []).filter((n) => n.status === 'DRAFT').length;
-  const reviewCount = (filteredNews || []).filter((n) => n.status === 'UNDER_REVIEW').length;
-  const approvedCount = (filteredNews || []).filter((n) => n.status === 'APPROVED').length;
-
   const totalEpisodes = periodEpisodes.length;
   const readyEpisodes = periodEpisodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length;
   const completedEpisodes = periodEpisodes.filter((e) => e.status === 'BROADCASTED').length;
@@ -169,11 +160,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const preparedAt = when(new Date().toISOString());
 
   const handlePrint = () => {
-    window.print();
+    if (report) window.print();
   };
 
   const handleExportCsv = () => {
-    // Same filters as the screen: the period and the selected category.
+    if (!report) return;
     const categoryLabel = selectedCategory === 'ALL' ? 'كل التصنيفات' : categories.find((c) => c.id === selectedCategory)?.nameAr || selectedCategory;
     const approvalLabel = avgApprovalMinutes === null ? 'لا توجد أخبار معتمدة' : countOf(avgApprovalMinutes, { ...AR.minute, zero: 'أقل من دقيقة' });
     const csvRows: unknown[][] = [
@@ -183,7 +174,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ['الفترة', periodLabel],
       ['تصنيف الأخبار', categoryLabel],
       ['المحطة', stationLabel],
-      ['إجمالي الأخبار المرشحة', filteredNews.length],
+      ['إجمالي الأخبار المرشحة', newsTotal],
       ['الأخبار المنشورة', publishedCount],
       ['الأخبار المعتمدة', approvedCount],
       ['أخبار قيد المراجعة', reviewCount],
@@ -221,7 +212,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <button
             type="button"
             onClick={handleExportCsv}
-            className="flex items-center gap-2 min-h-11 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
+            disabled={!report}
+            className="flex items-center gap-2 min-h-11 px-4 py-2 disabled:opacity-50 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold"
           >
             <Download className="w-4 h-4" />
             <span>تصدير تقرير CSV</span>
@@ -229,7 +221,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-2 min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+            disabled={!report}
+            className="flex items-center gap-2 min-h-11 px-4 py-2 disabled:opacity-50 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
           >
             <Printer className="w-4 h-4" />
             <span>طباعة التقرير</span>
@@ -295,7 +288,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             onChange={(e) => setSelectedCategory(e.target.value)}
             className={REPORT_FILTER}
           >
-            <option value="ALL">كل التصنيفات ({newsList.length})</option>
+            <option value="ALL">كل التصنيفات</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nameAr}
@@ -305,14 +298,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       </div>
 
+      {currentReport?.error && (
+        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          {currentReport.error}{' '}
+          <button type="button" onClick={() => setAttempt((value) => value + 1)} className="min-h-11 px-2 font-bold underline">
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {!report && !currentReport?.error && <p role="status" className="text-sm text-slate-600">جارٍ تحميل أرقام التقرير من الخادم…</p>}
+      {report && <>
       {/* Top Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         <Metric
           label="معدل نشر الأخبار"
           scope={periodLabel}
           icon={FileText}
-          value={`${filteredNews.length > 0 ? Math.round((publishedCount / filteredNews.length) * 100) : 0}%`}
-          note={filteredNews.length > 0 ? `نُشر ${publishedCount} من ${filteredNews.length}` : 'لا أخبار في هذه الفترة'}
+          value={`${newsTotal > 0 ? Math.round((publishedCount / newsTotal) * 100) : 0}%`}
+          note={newsTotal > 0 ? `نُشر ${publishedCount} من ${newsTotal}` : 'لا أخبار في هذه الفترة'}
         />
         <Metric
           label="جاهزية الحلقات للبث"
@@ -344,8 +347,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </h2>
           <div className="space-y-3">
             {categories.map((cat) => {
-              const count = newsInPeriod.filter((n) => n.categoryId === cat.id).length;
-              const pct = newsInPeriod.length > 0 ? Math.round((count / newsInPeriod.length) * 100) : 0;
+              const count = Object.hasOwn(report.byCategory, cat.id) ? report.byCategory[cat.id] : 0;
+              const pct = report.categoryTotal > 0 ? Math.round((count / report.categoryTotal) * 100) : 0;
 
               return (
                 <div key={cat.id} className="space-y-1">
@@ -428,6 +431,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <p className="text-2xs text-slate-500">يُنسب الخبر إلى محطة كاتبه. الحلقات لا تُنسب إلى محطة، فأرقامها تخص كل المحطات.</p>
         </section>
       )}
+      </>}
     </div>
   );
 };

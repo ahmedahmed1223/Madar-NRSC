@@ -1125,7 +1125,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'reports' && (
               <ReportsView
-                newsList={newsList}
                 episodes={episodes}
                 guests={guests}
                 categories={categories}
