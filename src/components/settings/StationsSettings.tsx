@@ -46,8 +46,8 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
   // A message about an earlier attempt goes as soon as the form changes again.
   useEffect(() => {
     setError('');
-    setSaved(false);
-  }, [stations, groups, types]);
+    if (dirty) setSaved(false);
+  }, [stations, groups, types, dirty]);
 
   const reload = () => {
     const settings = apiService.getSettings();
@@ -56,6 +56,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
     setGroups(next.groups);
     setTypes(next.types);
     setBaseline(JSON.stringify(next));
+    setSaved(false);
   };
 
   const patch = (id: string, changes: Partial<Station>) => setStations((list) => list.map((s) => (s.id === id ? { ...s, ...changes } : s)));
@@ -134,8 +135,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
       setGroups(cleanGroups);
       setTypes(cleanTypes);
       setBaseline(JSON.stringify({ stations: cleanStations, groups: cleanGroups, types: cleanTypes }));
-      // Set after the state updates above (which clear old messages).
-      setTimeout(() => setSaved(true));
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر حفظ الإعدادات');
     } finally {

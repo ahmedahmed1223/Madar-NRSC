@@ -65,10 +65,16 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
   const bankOf = (id: string) => allGuests.find((g) => g.id === id);
 
   const saveGuard = useRef(false);
-  const saveList = async (next: any[]) => {
+  const saveList = async (next: any[], nextRundown?: RundownSegment[]) => {
     if (saveGuard.current) return false;
     saveGuard.current = true;
-    try { return await onSaveEpisode({ id: episode.id, guests: next.map(clean) }); }
+    try {
+      return await onSaveEpisode({
+        id: episode.id,
+        guests: next.map(clean),
+        ...(nextRundown && { rundown: nextRundown }),
+      });
+    }
     finally { saveGuard.current = false; }
   };
 
@@ -122,16 +128,16 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
     const backup = bankOf(g.backupGuestId);
     if (!backup) return;
     if (!(await confirmDialog(`استبدال ${g.guestName} بالبديل ${backup.fullName} في كل فقراته؟`))) return;
-    onUpdateRundown(
-      rundown.map((s) =>
-        segmentGuests(s).some((x) => x.guestId === guestKey(g))
-          ? withSegmentGuests(
-              s,
-              segmentGuests(s).map((x) => (x.guestId === guestKey(g) ? { ...x, guestId: backup.id, guestName: backup.fullName } : x))
-            )
-          : s
-      )
-    );
+    const nextRundown = rundown.map((segment) => {
+      const guests = segmentGuests(segment);
+      if (!guests.some((entry) => entry.guestId === guestKey(g))) return segment;
+      const replacements = guests.some((entry) => entry.guestId === backup.id)
+        ? guests.filter((entry) => entry.guestId !== guestKey(g))
+        : guests.map((entry) => entry.guestId === guestKey(g)
+          ? { ...entry, guestId: backup.id, guestName: backup.fullName }
+          : entry);
+      return withSegmentGuests(segment, replacements);
+    });
     const next = list.map((x) => (guestKey(x) === guestKey(g) ? { ...x, bookingStatus: 'DECLINED', arrivalStatus: 'PENDING' } : x));
     if (!next.some((x) => guestKey(x) === backup.id)) {
       next.push({
@@ -147,8 +153,9 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
         briefPoints: g.briefPoints,
       });
     }
-    saveList(next);
-    flash(`أصبح ${backup.fullName} ضيف الفقرات بدلاً من ${g.guestName}؛ تابع تأكيد حجزه.`);
+    if (await saveList(next, nextRundown)) {
+      flash(`أصبح ${backup.fullName} ضيف الفقرات بدلاً من ${g.guestName}؛ تابع تأكيد حجزه.`);
+    }
   };
 
   const addToSegment = (key: string, name: string, segId: string, role: GuestRole) => {

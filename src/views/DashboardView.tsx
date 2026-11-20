@@ -133,9 +133,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
   const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
   const domain = sectionOrderFor(currentUser)[1];
-  const showQueues = can('news.create') || can('news.review');
-  const showSchedule = can('programs.view') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
-  const showGuests = can('guests.view') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
+  const showQueues = canOpen('news') && (can('news.create') || canReview);
+  const showSchedule = canOpen('episodes') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
+  const showGuests = canOpen('guests') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
   const setup = useSetupReminder(currentUser);
   const sideOnly = !showSchedule && !showQueues;
   const openApprovedMaterial = (id: string) => {
@@ -170,7 +170,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Fast Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Only actions this user may take: a button that answers "not allowed" is noise. */}
-          {RbacService.hasPermission(currentUser, 'news.create') && <button
+          {canOpen('news') && can('news.create') && <button
             type="button"
             onClick={onCreateNews}
             className="flex items-center gap-1.5 px-4 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors"
@@ -178,7 +178,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Plus className="w-4 h-4" />
             خبر صحفي جديد
           </button>}
-          {RbacService.hasPermission(currentUser, 'episodes.create') && <button
+          {canOpen('episodes') && can('episodes.create') && <button
             type="button"
             onClick={onCreateEpisode}
             className="flex items-center gap-1.5 px-4 min-h-10 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-colors"
@@ -231,7 +231,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       />
 
       {/* Critical/Breaking News Banner */}
-      {criticalNews.length > 0 && (
+      {canOpen('news') && criticalNews.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 shadow-sm animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start md:items-center gap-3">
             <div className="p-2 bg-red-600 rounded-full text-white shadow-sm shrink-0">
@@ -264,7 +264,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           { label: 'العاجل على الشريط', period: 'الآن', value: activeBreakingCount, note: `من ${breakingNews.length} عاجل مسجل`, go: 'BREAKING_NEWS' as AppView, tone: activeBreakingCount ? 'text-red-700' : 'text-slate-900' },
           { label: 'حلقات', period: 'اليوم', value: todayEpisodes.length, note: `${countLabel(upcomingEpisodes.length, { zero: 'لا حلقات قادمة', one: 'حلقة قادمة واحدة', two: 'حلقتان قادمتان', few: 'حلقات قادمة', many: 'حلقة قادمة' })} · ${countLabel(programs.length, { zero: 'لا برامج', one: 'برنامج واحد', two: 'برنامجان', few: 'برامج', many: 'برنامجاً' })}`, go: 'EPISODES' as AppView, tone: 'text-slate-900' },
           { label: 'مهام مفتوحة', period: 'الآن', value: openTasks.length, note: `${overdueTasks} متأخرة · من ${tasks.length} في كل الفترات`, go: 'TASKS' as AppView, tone: overdueTasks ? 'text-amber-700' : 'text-slate-900' },
-        ].map((cell) => (
+        ].filter((cell) => {
+          const destinations = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking', EPISODES: 'episodes', TASKS: 'tasks' };
+          return canOpen(destinations[cell.go as keyof typeof destinations]);
+        }).map((cell) => (
           <button key={cell.label} type="button" onClick={() => onNavigate(cell.go)} className="text-right p-4 hover:bg-slate-50 focus-visible:bg-slate-50 transition-colors min-w-0">
             <span className="block text-xs font-semibold text-slate-600">{cell.label} <span className="font-normal text-slate-500">({cell.period})</span></span>
             <span className={`block font-mono text-3xl font-bold tabular-nums leading-tight mt-1 ${cell.tone}`}>{cell.value}</span>
@@ -298,38 +301,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-3">
               {upcomingEpisodes.length === 0 && <p className="text-xs text-slate-500 text-center py-6">لا حلقات قادمة مجدولة.</p>}
               {upcomingEpisodes.slice(0, 3).map((ep) => (
-                <div
+                <button
                   key={ep.id}
+                  type="button"
                   onClick={() => onSelectEpisode(ep.id)}
-                  className="p-4 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  className="w-full text-start p-4 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/20 focus-visible:ring-2 focus-visible:ring-blue-500 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="block space-y-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-bold text-slate-800 text-sm">{ep.title}</span>
                       <Badge variant="primary" size="sm">
                         {ep.programName}
                       </Badge>
                       <span className="text-xs text-slate-500 whitespace-nowrap">الحلقة <span className="font-mono tabular-nums">{ep.episodeNumber}</span></span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                    </span>
+                    <span className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       <span>تقديم: <strong className="text-slate-700">{ep.presenterName}</strong></span>
                       <span>•</span>
                       <span>إنتاج: <strong className="text-slate-700">{ep.producerName}</strong></span>
                       <span>•</span>
                       <span>الاستوديو: <strong className="text-slate-700">{ep.studioName}</strong></span>
-                    </div>
-                  </div>
+                    </span>
+                  </span>
 
-                  <div className="flex items-center gap-4 self-end sm:self-center shrink-0">
-                    <div className="text-left text-xs">
+                  <span className="flex items-center gap-4 self-end sm:self-center shrink-0">
+                    <span className="text-left text-xs">
                       <span className="text-slate-500 block text-2xs whitespace-nowrap">{arabicDate((ep.broadcastDate || '').slice(0, 10))}</span>
                       <strong className="text-slate-800 font-bold font-mono tabular-nums whitespace-nowrap" dir="ltr">{ep.startTime}–{ep.endTime}</strong>
-                    </div>
+                    </span>
                     <span className="px-3 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 whitespace-nowrap">
                       فتح الرانداون
                     </span>
-                  </div>
-                </div>
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -459,13 +463,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   const catColor = cat?.colorCode || cat?.color || '#2563eb';
 
                   return (
-                    <div
+                    <button
                       key={news.id}
+                      type="button"
                       onClick={() => onSelectNews(news.id)}
-                      className="p-3 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                      className="w-full text-start p-3 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
                     >
-                      <div className="space-y-1.5 truncate">
-                        <div className="flex items-center gap-2">
+                      <span className="block space-y-1.5 truncate">
+                        <span className="flex items-center gap-2">
                           {news.priority === 'CRITICAL' && (
                             <Badge variant="danger" size="sm" dot>خطير</Badge>
                           )}
@@ -473,8 +478,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <Badge variant="danger" size="sm">عاجل</Badge>
                           )}
                           <span className="text-sm font-bold text-slate-800 truncate group-hover:text-blue-700 transition-colors">{news.title}</span>
-                        </div>
-                        <div className="text-2xs text-slate-500 flex items-center gap-2 flex-wrap">
+                        </span>
+                        <span className="text-2xs text-slate-500 flex items-center gap-2 flex-wrap">
                           <span
                             className="px-2 py-0.5 rounded-md text-2xs font-bold border flex items-center gap-1.5 shrink-0"
                             style={{
@@ -490,13 +495,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
                           <span>آخر تحديث {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                      </div>
+                        </span>
+                      </span>
 
-                      <div className="shrink-0 self-end sm:self-center">
+                      <span className="shrink-0 self-end sm:self-center">
                          <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-blue-600 transition-colors" />
-                      </div>
-                    </div>
+                      </span>
+                    </button>
                   );
                 })
               ) : (
@@ -518,7 +523,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Right Column: Editorial Tasks & Guest Directory Preview (side by side when they are all there is) */}
         <div className={sideOnly ? `grid grid-cols-1 gap-6 items-start ${showGuests ? 'lg:grid-cols-2' : ''}` : 'space-y-6'}>
           {/* Urgent Editorial Tasks */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          {canOpen('tasks') && <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-5 h-5 text-amber-700" />
@@ -570,7 +575,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Quick Guests Directory Access */}
           {showGuests && (

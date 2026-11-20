@@ -10,6 +10,57 @@ async function rows(page: Page) {
   return (await response.json()).collections;
 }
 
+test('substituting a guest updates the booking and rundown in one confirmed save', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'producer@akhbar.tv');
+  let release = () => {};
+  try {
+    const data = await rows(page);
+    const seed = data.episodes.find((row: any) => row.d.rundown?.some((segment: any) => segment.guests?.length));
+    const segment = seed.d.rundown.find((entry: any) => entry.guests?.length);
+    const original = segment.guests[0];
+    const backup = data.guests.find((entry: any) => entry.id !== original.guestId && !seed.d.guests.some((guest: any) => guest.guestId === entry.id)).d;
+    const id = 'journey-guest-substitution';
+    const setup = await page.request.post('/api/v1/data/sync', { headers, data: { ops: [{
+      c: 'episodes', op: 'upsert', id, d: { ...seed.d, id, status: 'PLANNING',
+        guests: seed.d.guests.map((guest: any) => guest.guestId === original.guestId
+          ? { ...guest, bookingStatus: 'DECLINED', arrivalStatus: 'PENDING', backupGuestId: backup.id }
+          : guest),
+      },
+    }] } });
+    expect((await setup.json()).results[0].ok).toBe(true);
+    await page.goto(`/episodes/${id}`);
+    await page.getByRole('button', { name: 'متابعة الضيوف' }).click();
+    const guest = page.getByRole('article', { name: `الضيف ${original.guestName}`, exact: true });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const writes: any[] = [];
+    await page.route(syncPath, async route => {
+      const ops = route.request().postDataJSON().ops.filter((op: any) => op.c === 'episodes' && op.id === id);
+      if (ops.length) {
+        writes.push(...ops);
+        await gate;
+      }
+      await route.continue();
+    });
+    await guest.getByRole('button', { name: 'استبدال بالبديل' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'تأكيد', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].d.guests).toEqual(expect.arrayContaining([expect.objectContaining({ guestId: backup.id, bookingStatus: 'CONTACTED' })]));
+    expect(writes[0].d.rundown.find((entry: any) => entry.id === segment.id).guests.map((entry: any) => entry.guestId)).toContain(backup.id);
+    const success = page.getByText('تابع تأكيد حجزه.', { exact: false });
+    await expect(success).toHaveCount(0);
+    release();
+    await expect(success).toBeVisible();
+    const saved = (await rows(page)).episodes.find((row: any) => row.id === id).d;
+    expect(saved.guests.find((entry: any) => entry.guestId === original.guestId).bookingStatus).toBe('DECLINED');
+    expect(saved.rundown.find((entry: any) => entry.id === segment.id).guests.map((entry: any) => entry.guestId)).not.toContain(original.guestId);
+    expect(writes).toHaveLength(1);
+  } finally {
+    release();
+    await page.unroute(syncPath);
+    await close();
+  }
+});
+
 test('mobile producer follows the preparation checklist and confirms the linked studio booking', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'producer@akhbar.tv', { viewport: { width: 390, height: 844 } });
   let release = () => {};

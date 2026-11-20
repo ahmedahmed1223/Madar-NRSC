@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers';
 
-test('a mobile reporter can retry a file and send the same field report with the confirmed attachment', async ({ browser }) => {
+test('a mobile reporter can retry a file and pass the same report through a shift handover', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'reporter@akhbar.tv', { viewport: { width: 390, height: 844 } });
   let rejectFirst!: () => void;
   const firstUpload = new Promise<void>(resolve => { rejectFirst = resolve; });
@@ -42,11 +42,61 @@ test('a mobile reporter can retry a file and send the same field report with the
     await expect(page.getByRole('link', { name: 'field', exact: true })).toBeVisible();
     expect(attempts).toBe(2);
     await page.getByRole('button', { name: 'إرسال العاجل للمراجعة' }).click();
+    let storyId = '';
     await expect.poll(async () => {
       const { collections } = await (await page.request.get('/api/v1/data')).json();
-      const item = collections.news.find((row: any) => row.d.title === title)?.d;
-      return { status: item?.status, attachments: item?.mediaIds?.length };
-    }).toEqual({ status: 'UNDER_REVIEW', attachments: 1 });
+      const matches = collections.news.filter((row: any) => row.d.title === title);
+      storyId = matches[0]?.id ?? '';
+      return { count: matches.length, status: matches[0]?.d.status, attachments: matches[0]?.d.mediaIds?.length };
+    }).toEqual({ count: 1, status: 'UNDER_REVIEW', attachments: 1 });
+    const editor = await signIn(browser, 'editor@akhbar.tv');
+    try {
+      const { collections } = await (await editor.page.request.get('/api/v1/data')).json();
+      expect(collections.news.find((row: any) => row.id === storyId)?.d).toMatchObject({
+        title, status: 'UNDER_REVIEW',
+      });
+      await editor.page.goto(`/news/${storyId}`);
+      await expect(editor.page.getByRole('link', { name: 'field', exact: true })).toBeVisible();
+      const incoming = await signIn(browser, 'admin@akhbar.tv');
+      try {
+        const date = '2026-10-12';
+        const { user } = await (await incoming.page.request.get('/api/v1/auth/me')).json();
+        const rosterId = `${date}:newsroom:EVENING:${user.id}`;
+        const roster = await incoming.page.request.post('/api/v1/data/sync', {
+          headers: { 'X-NRCS-Client': 'web' },
+          data: { ops: [{ c: 'roster', op: 'upsert', id: rosterId, d: {
+            id: rosterId, date, departmentId: 'newsroom', shift: 'EVENING', userId: user.id, userName: user.fullName,
+          } }] },
+        });
+        expect((await roster.json()).results[0].ok).toBe(true);
+        await editor.page.goto('/roster?tab=handover');
+        await editor.page.getByRole('button', { name: 'إنشاء تسليم' }).click();
+        const handoverTitle = `تسليم للمراجعة — ${title}`;
+        await editor.page.getByLabel('عنوان التسليم').fill(handoverTitle);
+        await editor.page.getByLabel('تاريخ الوردية الصادرة').fill(date);
+        await editor.page.getByLabel('تاريخ الوردية المستلمة').fill(date);
+        await editor.page.getByLabel('الوردية المستلمة', { exact: true }).selectOption('EVENING');
+        await editor.page.getByLabel('ملاحظات القسم').fill('راجع النص والمرفق قبل اختيار الفقرة للنشرة');
+        await editor.page.getByLabel('اختيار مرجع').selectOption(`news:${storyId}`);
+        await editor.page.getByRole('button', { name: 'إضافة المرجع' }).click();
+        await editor.page.getByRole('button', { name: 'حفظ المسودة', exact: true }).click();
+        await expect(editor.page.getByRole('status').filter({ hasText: 'حُفظت المسودة' })).toBeVisible();
+        await editor.page.getByRole('button', { name: 'نشر التسليم', exact: true }).click();
+        await editor.page.getByRole('alertdialog').getByRole('button', { name: 'نشر التسليم', exact: true }).click();
+        await expect(editor.page.getByRole('status').filter({ hasText: 'نُشر التسليم' })).toBeVisible();
+        await incoming.page.goto('/roster?tab=handover');
+        await incoming.page.getByRole('button', { name: handoverTitle, exact: true }).click();
+        await incoming.page.getByRole('button', { name: 'تأكيد الاستلام', exact: true }).click();
+        await expect(incoming.page.getByRole('status').filter({ hasText: 'تأكد استلام الوردية' })).toBeVisible();
+        await incoming.page.getByRole('button', { name: title, exact: true }).click();
+        await expect(incoming.page).toHaveURL(new RegExp(`/news/${storyId}$`));
+        await expect(incoming.page.getByRole('link', { name: 'field', exact: true })).toBeVisible();
+      } finally {
+        await incoming.close();
+      }
+    } finally {
+      await editor.close();
+    }
   } finally {
     rejectFirst();
     await close();

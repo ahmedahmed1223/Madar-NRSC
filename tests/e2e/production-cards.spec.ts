@@ -38,13 +38,17 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
   await form.getByLabel('اسم المحطة 4').fill('عمّان');
   await form.getByRole('listitem').filter({ has: page.getByLabel('اسم المحطة 2') }).getByLabel('المحطة الرئيسية').check();
   const gaza = form.getByRole('listitem').filter({ has: page.getByLabel('اسم المحطة 1') });
-  await gaza.getByLabel('تعمل مع كل المحطات').uncheck();
+  await gaza.getByLabel('مفتوحة لكل المحطات غير المقيّدة').uncheck();
   await gaza.getByRole('group', { name: 'المحطات المرتبطة بمحطة غزة' }).getByLabel('إسطنبول').check();
   await expect(gaza.getByText('تتابع وتكلّف: بيروت، إسطنبول')).toBeVisible();
   await form.getByRole('button', { name: 'حفظ' }).click();
-  await expect(form.getByText('حُفظت المحطات وأنواع المهام')).toBeVisible();
+  await expect(form.getByRole('status')).toHaveText('حُفظت المحطات والمجموعات وأنواع المهام');
+  await expect.poll(async () => {
+    const { collections } = await (await page.request.get('/api/v1/data')).json();
+    return (collections.settings[0].d.stations ?? []).map((station: { name: string }) => station.name);
+  }).toContain('عمّان');
 
-  // Two main stations are refused before anything is sent.
+  // Verify that the confirmed settings survive a reload.
   await page.reload();
   await page.getByText('المحطات والتكليفات').first().click();
   await expect(page.getByLabel('اسم المحطة 4')).toHaveValue('عمّان');
@@ -57,8 +61,9 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
   await page.goto('/users');
   await page.getByPlaceholder(/ابحث بالاسم/).fill('reporter@akhbar.tv');
   await page.getByTitle('تعديل المستخدم').first().click();
-  await page.getByLabel('المحطة', { exact: true }).selectOption(id('غزة'));
-  await page.getByRole('button', { name: 'حفظ التعديلات' }).click();
+  const userForm = page.getByRole('region', { name: /تعديل حساب/ });
+  await userForm.getByLabel('المحطة', { exact: true }).selectOption(id('غزة'));
+  await userForm.getByRole('button', { name: 'حفظ التعديلات' }).click();
   await expect.poll(async () => (await (await page.request.get('/api/v1/data')).json()).collections.users.find((u: any) => u.id === 'usr-6').d.stationId).toBe(id('غزة'));
 
   // The rest through the API, as an import would.
@@ -74,7 +79,7 @@ test('an administrator manages stations and puts colleagues in them', async ({ b
 test('a chief editor creates a card across stations and the reporter hands it on from a phone', async ({ browser }) => {
   const editor = await signIn(browser, 'editor@akhbar.tv');
   await openNav(editor.page, 'التكليفات');
-  await editor.page.getByRole('button', { name: 'بطاقة جديدة' }).click();
+  await editor.page.getByRole('button', { name: 'تكليف حر', exact: true }).click();
   await editor.page.getByLabel('عنوان المادة *').fill(TITLE);
   await editor.page.getByLabel('نوع المادة').selectOption('REPORT');
   await editor.page.getByLabel('المطلوب إنجازه').fill('شهادة شاهد عيان مع صور الموقع، مدة دقيقتين.');
@@ -89,10 +94,10 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await steps.nth(0).getByLabel('الوقت المقدر (دقيقة)').fill('120');
   await steps.nth(1).getByLabel('المكلف').selectOption('u:usr-3');
   await steps.nth(3).getByLabel('المكلف').selectOption(`s:${istanbul}`);
-  await editor.page.getByRole('button', { name: 'إنشاء البطاقة' }).click();
+  await editor.page.getByRole('button', { name: 'إنشاء التكليف', exact: true }).click();
 
   // The new card leads «كل البطاقات»; it has its own address, and Back returns to the list.
-  await expect(editor.page.getByText('أُنشئت البطاقة ووصل التكليف للمعنيين')).toBeVisible();
+  await expect(editor.page.getByText('أُنشئ التكليف ووصل التنبيه للمعنيين')).toBeVisible();
   await editor.page.getByRole('button', { name: new RegExp(TITLE) }).first().click();
   await expect(editor.page.getByRole('heading', { name: TITLE })).toBeVisible();
   await expect(editor.page).toHaveURL(/\/cards\/crd-/);
@@ -114,7 +119,7 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await expect(reporter.page.getByText('بدأ العمل على المهمة')).toBeVisible();
   await reporter.page.getByRole('button', { name: 'تم الإنجاز' }).click();
   await reporter.page.getByLabel('ملاحظة التسليم: ما اكتمل وما ينقص؟').fill('رُفعت الشهادة مع صور الموقع. ينقص تأكيد اسم الشاهد.');
-  await reporter.page.getByLabel('الوقت الفعلي (دقيقة)').fill('95');
+  await reporter.page.getByLabel('وقت هذه الجلسة (دقيقة)').fill('95');
   await reporter.page.getByRole('button', { name: 'تأكيد الإنجاز والتسليم' }).click();
   await expect(reporter.page.getByText('أُنجز 1 من 7')).toBeVisible();
   // Someone else's step offers the reporter no action.
@@ -133,9 +138,8 @@ test('a chief editor creates a card across stations and the reporter hands it on
   await journalist.page.goto(notes[0].linkUrl);
   await expect(journalist.page.getByRole('heading', { name: TITLE })).toBeVisible();
   await journalist.page.getByRole('button', { name: 'متعطلة' }).click();
-  const dialog = journalist.page.getByRole('dialog').or(journalist.page.getByRole('alertdialog'));
-  await dialog.getByRole('textbox').fill('المصدر لا يرد على الهاتف');
-  await dialog.getByRole('button').last().click();
+  await journalist.page.getByLabel('ما سبب التعطل وما المطلوب لحله؟').fill('المصدر لا يرد على الهاتف');
+  await journalist.page.getByRole('button', { name: 'تسجيل التعطل', exact: true }).click();
   await expect(journalist.page.getByText('سبب التعطل: المصدر لا يرد على الهاتف')).toBeVisible();
   expect(journalist.errors).toEqual([]);
   await journalist.close();
@@ -160,11 +164,12 @@ test('the editor follows the day, the workload, an employee record and the hando
     expect(await violations(page)).toEqual([]);
 
     await page.goto('/workload');
-    const stationsTable = page.getByRole('table').first();
+    const stationsTable = page.getByRole('region', { name: /جدول مقارنة المحطات/ }).getByRole('table');
     await expect(stationsTable.getByRole('rowheader', { name: 'غزة' })).toBeVisible();
     await expect(stationsTable.getByRole('rowheader', { name: 'عمّان' })).toBeVisible();
     expect(await violations(page)).toEqual([]);
-    await page.getByRole('button', { name: 'ليلى النجار' }).click();
+    await page.getByRole('button', { name: /^المراسلون الميدانيون/ }).click();
+    await page.getByRole('button', { name: 'ليلى النجار', exact: true }).click();
     await expect(page.getByRole('heading', { name: /ملف إنجاز: ليلى النجار/ })).toBeVisible();
     await expect(page.getByRole('button', { name: new RegExp(TITLE) })).toBeVisible();
     await expect(page.getByText('1 س 35 د').first()).toBeVisible();
@@ -172,6 +177,7 @@ test('the editor follows the day, the workload, an employee record and the hando
     await page.getByRole('tab', { name: /تسليم المناوبة/ }).click();
     await expect(page.getByRole('heading', { name: /متعطل أو متأخر/ })).toBeVisible();
     await expect(page.getByText('المصدر لا يرد على الهاتف').first()).toBeVisible();
+    await page.getByLabel('المحطة', { exact: true }).selectOption({ label: 'غزة' });
     await expect(page.getByText('ينقص تأكيد اسم الشاهد').first()).toBeVisible();
     expect(await violations(page)).toEqual([]);
     await context.close();
@@ -186,7 +192,7 @@ test('colleagues without supervision rights see only their own record', async ({
   await expect(reporter.page.getByText('توزيع الأعباء')).toHaveCount(0);
   expect(await overflows(reporter.page)).toBe(false);
   await reporter.page.goto('/cards');
-  await expect(reporter.page.getByRole('button', { name: 'بطاقة جديدة' })).toHaveCount(0);
+  await expect(reporter.page.getByRole('button', { name: 'تكليف حر', exact: true })).toHaveCount(0);
   expect(await overflows(reporter.page)).toBe(false);
   expect(reporter.errors).toEqual([]);
   await reporter.close();

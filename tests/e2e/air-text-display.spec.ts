@@ -34,8 +34,21 @@ test('text-only bulletin airs and follows saved script with configurable screen 
     const confirmation = page.getByRole('alertdialog');
     if (await confirmation.isVisible()) await confirmation.getByRole('button', { name: /تأكيد|بث المحتوى السابق/ }).click();
     await expect(page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
-    await openNav(page, 'شاشة الاستديو');
-    await page.getByLabel('الحلقة', { exact: true }).selectOption(id);
-    await expect(page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
+    const presenter = await signIn(browser, 'presenter@akhbar.tv');
+    try {
+      const crew = await signIn(browser, 'crew@akhbar.tv');
+      try {
+        for (const colleague of [presenter, crew]) {
+          await openNav(colleague.page, 'شاشة الاستديو');
+          await colleague.page.getByLabel('الحلقة', { exact: true }).selectOption(id);
+          await expect(colleague.page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
+        }
+        await expect(page.getByRole('region', { name: 'نص المذيع على الهواء' })).toContainText(script);
+      } finally {
+        await crew.close();
+      }
+    } finally {
+      await presenter.close();
+    }
   } finally { await close(); }
 });

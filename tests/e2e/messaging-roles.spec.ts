@@ -166,6 +166,13 @@ test('a role opens only the screens of its job', async ({ browser }) => {
   await expect(editorRole.page.getByRole('heading', { name: 'هذه الصفحة ليست ضمن صفحات دورك' })).toBeVisible();
   await editorRole.page.getByRole('button', { name: 'العودة إلى الرئيسية' }).click();
   await expect(editorRole.page).toHaveURL(/\/$/);
+  const indicators = editorRole.page.getByRole('region', { name: 'مؤشرات غرفة الأخبار اليوم' });
+  for (const screen of ['news', 'breaking', 'episodes', 'tasks']) {
+    if (!montage.d.screens.includes(screen)) {
+      const labels: Record<string, string> = { news: 'أخبار', breaking: 'العاجل على الشريط', episodes: 'حلقات', tasks: 'مهام مفتوحة' };
+      await expect(indicators.getByRole('button', { name: new RegExp(`^${labels[screen]}`) })).toHaveCount(0);
+    }
+  }
   await editorRole.page.keyboard.press('Control+k');
   const dialog = editorRole.page.getByRole('dialog', { name: 'البحث الموحد' });
   await dialog.getByRole('combobox', { name: /بحث في الأخبار/ }).fill('الضيوف');

@@ -5,13 +5,15 @@ import { build } from 'esbuild';
 
 await build({ entryPoints: ['tests/e2e/offline-test-entry.ts'], bundle: true, format: 'esm', platform: 'browser', outfile: 'dist/offline-store-test.js' });
 
-const dataDir = path.resolve('tests/e2e/.data');
+const port = Number(process.env.E2E_PORT || 3990);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid E2E_PORT');
+const dataDir = path.resolve('tests/e2e/.data', String(port));
 fs.rmSync(dataDir, { recursive: true, force: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 // Run in this process so browser-test teardown does not leave a child holding its pipes open.
 Object.assign(process.env, {
-    PORT: process.env.E2E_PORT || '3990',
+    PORT: String(port),
     DATA_DIR: dataDir,
     NODE_ENV: 'production',
     SESSION_SECRET: 'e2e-session-secret-0123456789abcdef0123456789',

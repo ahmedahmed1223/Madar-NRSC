@@ -37,6 +37,26 @@ const template: WorkflowTemplate = {
 };
 
 describe('workflow templates', () => {
+  it.each(['wft-bulletin', 'wft-episode', 'wft-field'])('adapts %s to a small or specialized team', (id) => {
+    const builtIn = BUILT_IN_TEMPLATES.find((entry) => entry.id === id)!;
+    const dueAt = '2026-11-20T18:00:00Z';
+    const deskStep = builtIn.steps.find((step) => step.rule.kind === 'DEPARTMENT')!;
+    if (deskStep.rule.kind !== 'DEPARTMENT') throw new Error('Expected a departmental step');
+    const lead: Candidate = { id: 'lead', name: 'المسؤول', stationId: 'gaza', load: 0 };
+    const specialist: Candidate = { ...lead, id: 'specialist', departmentId: deskStep.rule.departmentId };
+    const small = cardFromTemplate(builtIn, {
+      title: builtIn.name, stationId: 'gaza', dueAt,
+      picks: Object.fromEntries(builtIn.steps.map((step) => [step.id, lead.id])),
+    }, [lead]);
+    const specialized = cardFromTemplate(builtIn, {
+      title: builtIn.name, stationId: 'gaza', dueAt,
+    }, [lead, specialist]);
+    expect(small.steps.every((step) => step.assigneeId === lead.id)).toBe(true);
+    expect(specialized.steps[builtIn.steps.indexOf(deskStep)].assigneeId).toBe(specialist.id);
+    expect(small.steps.map((step) => step.dueAt)).toEqual(specialized.steps.map((step) => step.dueAt));
+    expect(small.steps.every((step) => step.dueAt && Date.parse(step.dueAt) <= Date.parse(dueAt))).toBe(true);
+  });
+
   it('validates templates and keeps them with supervisors', () => {
     expect(templateError(template)).toBeNull();
     expect(templateError({ ...template, name: ' ' })).toContain('اسم القالب');

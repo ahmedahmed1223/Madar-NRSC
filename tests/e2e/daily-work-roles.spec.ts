@@ -2,6 +2,20 @@ import { expect, test } from '@playwright/test';
 import { signIn } from './helpers';
 import { REQUEST_TYPES } from '../../src/shared/production';
 
+test('the editorial dashboard opens a story by keyboard', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'editor@akhbar.tv');
+  try {
+    await page.getByRole('button', { name: 'مسودات قيد العمل', exact: false }).first().click();
+    const story = page.getByRole('button', { name: /بطولات التنس العالمية/ });
+    await expect(story).toBeVisible();
+    await story.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/news\/nws-5(?:[/?#]|$)/);
+  } finally {
+    await close();
+  }
+});
+
 for (const width of [390, 1440]) {
   test(`personal sections can be arranged and hidden (${width}px)`, async ({ browser }) => {
     const { page, close } = await signIn(browser, 'journalist@akhbar.tv', { viewport: { width, height: 900 } });
@@ -53,7 +67,13 @@ test('custom permission overrides determine work sections instead of the default
     await expect(journalist.page.getByTestId('my-review')).toBeVisible();
     await journalist.close();
   } finally {
-    await change(original.d, updated.results[0].row.v);
+    const latest = await (await administrator.page.request.get('/api/v1/data')).json();
+    const current = latest.collections.users.find((row: any) => row.id === original.id);
+    const restored = await (await change({
+      ...current.d,
+      customPermissions: original.d.customPermissions ?? [],
+    }, current.v)).json();
+    expect(restored.results[0]).toMatchObject({ ok: true });
     await administrator.close();
   }
 });
