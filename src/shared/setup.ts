@@ -1,11 +1,12 @@
 /**
- * The administrator's quick setup: six steps that take a fresh installation to a working
+ * The administrator's quick setup takes a fresh installation to a working
  * newsroom. A step counts as done when the system shows it (stations configured, categories,
  * a team), or when the administrator confirmed it in the wizard.
  */
 
 export const SETUP_STEPS = [
   { id: 'organization', title: 'المؤسسة', hint: 'اسم المؤسسة والقناة والمنطقة الزمنية' },
+  { id: 'administrator', title: 'حساب المسؤول', hint: 'مراجعة حساب الإدارة أو إنشاء حساب مؤسسي' },
   { id: 'stations', title: 'المحطات', hint: 'المحطة الرئيسية والفروع وارتباطها' },
   { id: 'categories', title: 'تصنيفات الأخبار', hint: 'تصنيف المواد الإخبارية (غير الأقسام الإدارية)' },
   { id: 'team', title: 'الفريق', hint: 'حسابات الزملاء وأدوارهم ومحطاتهم' },
@@ -50,6 +51,7 @@ export function setupProgress(facts: SetupFacts): Record<SetupStepId, boolean> {
   const confirmed = new Set(facts.setup?.confirmed || []);
   return {
     organization: confirmed.has('organization'),
+    administrator: confirmed.has('administrator'),
     stations: facts.stationsConfigured || confirmed.has('stations'),
     categories: facts.categories > 0,
     team: facts.teamMembers > 1 || confirmed.has('team'),

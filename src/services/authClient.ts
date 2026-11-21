@@ -7,6 +7,7 @@ export interface SessionInfo {
   user: User;
   permissions: string[];
   mustChangePassword: boolean;
+  setupReviewId?: string;
   /** Days before trashed items are purged by the server (0 = kept forever). */
   trashRetentionDays?: number;
 }
@@ -35,7 +36,7 @@ export const authClient = {
         session = null;
         return null;
       }
-      session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
+      session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays, setupReviewId: res.setupReviewId };
       return session;
     } catch {
       session = null;
@@ -50,8 +51,13 @@ export const authClient = {
       method: 'POST',
       json: totp ? { email, password, totp } : { email, password },
     });
-    session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays };
+    session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays, setupReviewId: res.setupReviewId };
     return session;
+  },
+
+  async setupReviewShown(id: string) {
+    await apiFetch('/api/v1/admin/setup/review-shown', { method: 'POST', json: { id } });
+    if (session?.setupReviewId === id) session = { ...session, setupReviewId: undefined };
   },
 
   async logout(): Promise<boolean> {

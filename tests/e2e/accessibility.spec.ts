@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createRequire } from 'module';
 import fs from 'fs';
-import { DEMO_PASSWORD, leaveEditors } from './helpers';
+import { DEMO_PASSWORD, enterWorkspace, leaveEditors } from './helpers';
 
 /**
  * WCAG 2.x A/AA checks (axe-core) on every main screen, by day, by night and on a phone.
@@ -28,7 +28,7 @@ async function audit(browser: Browser, opts: { colorScheme: 'light' | 'dark'; wi
   await page.fill('#login-email', 'admin@akhbar.tv');
   await page.fill('#login-password', DEMO_PASSWORD);
   await page.click('button[type=submit]');
-  await expect(page.locator('main')).toBeVisible();
+  await enterWorkspace(page);
   const data = await page.evaluate(async () => (await (await fetch('/api/v1/data', { headers: { 'X-NRCS-Client': 'web' } })).json()));
   const first = (c: string) => data.collections?.[c]?.[0]?.id;
   const deep = [`news/${first('news')}`, `episodes/${first('episodes')}`, `bulletins/${first('bulletins')}`, `programs/${first('programs')}`];

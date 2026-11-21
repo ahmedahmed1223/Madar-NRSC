@@ -76,7 +76,7 @@ import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.3.0';
+export const APP_VERSION = '4.3.1';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -334,6 +334,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     user,
     mustChangePassword,
     permissions,
+    setupReviewId: permissions.includes('system.settings') ? db.getMeta('setup_review') || undefined : undefined,
   });
 
   app.post(
@@ -1222,13 +1223,46 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   );
 
   // Demo data: what is left of it, and removing it for good.
+  app.post('/api/v1/admin/setup/administrator', requirePermission('system.settings'), requirePermission('users.create'), requirePermission('users.manage_roles_permissions'), wrap(async (req, res) => {
+    const actor = req.auth!.user;
+    const { role, password } = req.body || {};
+    if (actor.role !== 'SUPER_ADMIN' && actor.role !== 'ADMIN') throw new HttpError(403, 'يتطلب إنشاء مسؤول حساب إدارة');
+    if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') throw new HttpError(400, 'حدد دور المسؤول');
+    if (role === 'SUPER_ADMIN' && actor.role !== 'SUPER_ADMIN') throw new HttpError(403, 'يتطلب إنشاء مدير عام صلاحية مدير عام');
+    const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim() : '';
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!fullName || fullName.length > 120 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'أدخل اسم المسؤول وبريداً إلكترونياً صالحاً');
+    const weak = validatePasswordStrength(password);
+    if (weak) throw new HttpError(400, weak);
+    const hash = await hashPassword(password);
+    const id = newId('usr');
+    db.transaction(() => {
+      if (db.findUserIdByEmail(email) || db.getCredentialsByEmail(email)) throw new HttpError(409, 'البريد الإلكتروني مستخدم لحساب آخر');
+      const user: User = { id, fullName, email, role, avatarUrl: '/icon.svg', jobTitle: 'مسؤول النظام', department: 'غرفة التحرير', departmentId: 'newsroom', isActive: true, createdAt: new Date().toISOString() };
+      db.writeRow('users', id, user, db.positionBounds('users').max + 1, actor.id);
+      db.setPassword(id, email, hash, true);
+      markTemporaryPassword(db, id, config.tempPasswordHours);
+      audit(actor, 'USER_CREATED', 'USER', id, 'SECURITY', `إنشاء حساب مسؤول من معالج الإعداد (${role})`, req.ip);
+    });
+    res.status(201).json({ success: true });
+  }));
+
+  app.post('/api/v1/admin/setup/review-shown', requirePermission('system.settings'), (req, res) => {
+    const id = req.body?.id;
+    if (typeof id !== 'string' || !id) throw new HttpError(400, 'معرّف مراجعة الإعداد مطلوب');
+    db.transaction(() => {
+      if (db.getMeta('setup_review') === id) db.setMeta('setup_review', '');
+    });
+    res.json({ success: true });
+  });
+
   app.get('/api/v1/admin/demo-data', requirePermission('system.settings'), (req, res) => {
     const inventory = demoInventory(db);
     res.json({
       success: true,
       data: {
         counts: Object.fromEntries(Object.entries(inventory).map(([c, ids]) => [c, ids!.length])),
-        users: demoUsersPresent(db, req.auth!.user.id),
+        users: req.auth!.can('users.suspend_delete') ? demoUsersPresent(db, req.auth!.user.id) : [],
         removed: db.getMeta('demo_removed') === '1',
       },
     });
@@ -1239,12 +1273,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     requirePermission('system.settings'),
     wrap(async (req, res) => {
       if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
+      if (req.body?.includeUsers === true && !req.auth!.can('users.suspend_delete')) throw new HttpError(403, 'يتطلب حذف الحسابات التجريبية صلاحية حذف المستخدمين');
       await db.createBackup('prerestore', config.backupRetention);
       const removed = removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
       const total = Object.values(removed).reduce((a, b) => a + b, 0);
       audit(req.auth!.user, 'DEMO_DATA_REMOVED', 'DATABASE', 'newsroom', 'SECURITY', `حذف البيانات التجريبية (${total} سجلاً)`, req.ip);
       changeBus.emit('rev', db.currentRev());
-      res.json({ success: true, data: { removed, total } });
+      res.json({ success: true, data: { removed, total, setupReviewId: total ? db.getMeta('setup_review') : undefined } });
     })
   );
 

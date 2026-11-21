@@ -23,6 +23,7 @@ import {
 } from './types';
 import { RbacService } from './services/rbacService';
 import { apiService } from './services/api';
+import { authClient } from './services/authClient';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
 import { registerServiceWorker } from './services/push';
@@ -711,13 +712,16 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   routePathRef.current = routePath;
   useEffect(() => routeChanged.emit(routePath), [routePath]);
   useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
-  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState<'open' | { reviewId: string } | null>(() => {
+    const reviewId = authClient.getSession()?.setupReviewId;
+    return reviewId ? { reviewId } : null;
+  });
   /** Settings opened on a section from another screen (e.g. «المصادر» → feed settings); cleared on leaving. */
   const [settingsTarget, setSettingsTarget] = useState<{ section: SettingsSection; sourceId?: string } | null>(null);
   useEffect(() => {
     if (activeNav !== 'settings') setSettingsTarget(null);
   }, [activeNav]);
-  useEffect(() => setupCommand.on(() => setSetupOpen(true)), []);
+  useEffect(() => setupCommand.on(setSetupOpen), []);
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
@@ -1269,7 +1273,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       </div>
 
       <TourHost currentUser={currentUser} />
-      {RbacService.hasPermission(currentUser, 'system.settings') && <SetupWizard isOpen={setupOpen} onClose={() => setSetupOpen(false)} currentUser={currentUser} />}
+      {setupOpen && RbacService.hasPermission(currentUser, 'system.settings') && (
+        <SetupWizard isOpen reviewId={setupOpen === 'open' ? undefined : setupOpen.reviewId} onClose={() => setSetupOpen(null)} currentUser={currentUser} />
+      )}
 
       {/* Global Command Palette (Ctrl + K) */}
       <CommandPalette

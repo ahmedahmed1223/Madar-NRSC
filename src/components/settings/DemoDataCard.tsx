@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { notify } from '../../services/notify';
+import { setupCommand } from '../../services/uiEvents';
 
 const LABELS: Record<string, string> = {
   news: 'أخبار',
@@ -51,9 +52,10 @@ export const DemoDataCard: React.FC = () => {
   const remove = async () => {
     setBusy(true);
     try {
-      const { total: n } = await apiService.removeDemoData(includeUsers, confirm.trim());
+      const { total: n, setupReviewId } = await apiService.removeDemoData(includeUsers, confirm.trim());
       notify({ type: 'success', title: 'حُذفت البيانات التجريبية', message: `حُذف ${n} سجلاً، وحُفظت نسخة احتياطية قبل الحذف.` });
       setConfirm('');
+      if (setupReviewId) setupCommand.emit({ reviewId: setupReviewId });
       await load();
     } catch (e: any) {
       notify({ type: 'error', title: 'تعذر الحذف', message: e?.message });
@@ -72,14 +74,14 @@ export const DemoDataCard: React.FC = () => {
       {!info && !error && <p className="text-xs text-slate-500">جارٍ الفحص...</p>}
       {info && nothingLeft && (
         <p className="text-xs text-emerald-700 font-bold flex items-center gap-1.5">
-          <CheckCircle2 className="w-4 h-4" /> لا توجد بيانات تجريبية؛ النظام يحوي بياناتكم فقط{info.removed ? ' ولن تُضاف البيانات التجريبية مجدداً' : ''}.
+          <CheckCircle2 className="w-4 h-4" /> لا توجد أمثلة أو حسابات تجريبية متاحة للحذف من حسابك{info.removed ? '، ولن تُضاف الأمثلة مجدداً' : ''}.
         </p>
       )}
       {info && !nothingLeft && (
         <div className="space-y-3 text-xs">
           <p className="text-slate-600 leading-relaxed">
             يحذف الأخبار والبرامج والحلقات والضيوف والنشرات والحجوزات وغيرها من الأمثلة التي جاءت مع النظام للتجربة فقط. لا يُحذف أي شيء أنشأه فريقكم، ولا الأقسام والمصادر والأدوار.
-            تُحفظ نسخة احتياطية تلقائياً قبل الحذف، ولن تُضاف البيانات التجريبية مرة أخرى.
+            تُحفظ نسخة احتياطية قبل الحذف. بعدها يفتح معالج الإعداد لمراجعة إعدادات المؤسسة، وتبقى القيم الحالية محفوظة حتى تعدّلها.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(info.counts)
@@ -95,7 +97,7 @@ export const DemoDataCard: React.FC = () => {
               <input type="checkbox" checked={includeUsers} onChange={(e) => setIncludeUsers(e.target.checked)} className="mt-0.5 accent-rose-600" />
               <span>
                 حذف حسابات المستخدمين التجريبيين أيضاً ({info.users.length}): {info.users.map((u) => u.fullName).join('، ')}.
-                <span className="block text-2xs mt-0.5">حسابك الحالي لا يُحذف. تأكد أن لديك حساب مدير حقيقي قبل حذفها.</span>
+                <span className="block text-2xs mt-0.5">يبقى الحساب الذي تستخدمه الآن. لحذف المدير العام التجريبي، سجّل الدخول بحساب مدير عام مؤسسي ثم نفّذ الحذف.</span>
               </span>
             </label>
           )}

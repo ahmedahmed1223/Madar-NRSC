@@ -88,7 +88,7 @@ test('the administrator sets the system up from the quick-setup wizard', async (
   await steps.getByRole('button', { name: /الفريق/ }).click();
   await page.getByLabel('الاسم الكامل *').fill('منى الخطيب');
   await page.getByLabel('البريد الإلكتروني *').fill('mona.setup@akhbar.tv');
-  await page.getByLabel('الدور').selectOption('MONTAGE');
+  await page.getByLabel('الدور').selectOption({ label: 'موظف مونتاج' });
   await page.getByLabel('المحطة').selectOption({ label: 'غزة' });
   const password = await page.getByLabel('كلمة المرور الأولى').inputValue();
   await page.getByRole('button', { name: 'إضافة الزميل' }).click();

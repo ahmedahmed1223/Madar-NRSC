@@ -37,4 +37,4 @@ export const intercomState = channel<{ open: boolean; unread: number }>();
 /** Starts an interactive tour by id (see src/content/tours.ts). */
 export const tourCommand = channel<string>();
 /** Opens the administrator's quick-setup wizard. */
-export const setupCommand = channel<'open'>();
+export const setupCommand = channel<'open' | { reviewId: string }>();

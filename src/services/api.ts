@@ -1915,8 +1915,8 @@ export class ApiService {
     return res.data;
   }
 
-  static async removeDemoData(includeUsers: boolean, confirm: string): Promise<{ removed: Record<string, number>; total: number }> {
-    const res = await apiFetch<{ data: { removed: Record<string, number>; total: number } }>('/api/v1/admin/demo-data/remove', { method: 'POST', json: { includeUsers, confirm } });
+  static async removeDemoData(includeUsers: boolean, confirm: string) {
+    const res = await apiFetch<{ data: { removed: Record<string, number>; total: number; setupReviewId?: string } }>('/api/v1/admin/demo-data/remove', { method: 'POST', json: { includeUsers, confirm } });
     await dataStore.pull();
     return res.data;
   }

@@ -94,7 +94,14 @@ function seedList(db: NewsroomDatabase, collection: CollectionName, items: any[]
 export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
   db.transaction(() => {
     BASE_COLLECTIONS.forEach(([c, items]) => seedList(db, c, items));
-    if (!db.getRow('settings', SINGLETON_ID)) db.writeRow('settings', SINGLETON_ID, INITIAL_SETTINGS, 0, null);
+    const settings = db.getRow('settings', SINGLETON_ID);
+    if (!settings) {
+      db.writeRow('settings', SINGLETON_ID, INITIAL_SETTINGS, 0, null);
+      db.setMeta('setup_review', newId('setup'));
+    } else if (db.getMeta('setup_review') === null && db.getMeta('demo_removed') === '1' && !settings.d.setup) {
+      // Installations cleaned before automatic setup existed get one opportunity to review.
+      db.setMeta('setup_review', newId('setup'));
+    }
     if (!db.getRow('broadcastState', SINGLETON_ID)) db.writeRow('broadcastState', SINGLETON_ID, { liveLock: false }, 0, null);
   });
 
@@ -438,10 +445,11 @@ export function demoInventory(db: NewsroomDatabase): Partial<Record<CollectionNa
   return out;
 }
 
-export function demoUsersPresent(db: NewsroomDatabase, exceptUserId?: string): { id: string; fullName: string; email: string }[] {
-  return DEMO_USER_IDS.filter((id) => id !== exceptUserId)
+export function demoUsersPresent(db: NewsroomDatabase, actingUserId: string): { id: string; fullName: string; email: string }[] {
+  const canRemoveSuper = db.getRow('users', actingUserId)?.d.role === 'SUPER_ADMIN';
+  return DEMO_USER_IDS.filter((id) => id !== actingUserId)
     .map((id) => db.getRow('users', id)?.d)
-    .filter(Boolean)
+    .filter(u => u && (u.role !== 'SUPER_ADMIN' || canRemoveSuper))
     .map((u: any) => ({ id: u.id, fullName: u.fullName, email: u.email }));
 }
 
@@ -466,6 +474,7 @@ export function removeDemoData(db: NewsroomDatabase, opts: { includeUsers: boole
       }
     }
     db.setMeta('demo_removed', '1');
+    if (Object.keys(removed).length) db.setMeta('setup_review', newId('setup'));
   });
   return removed;
 }

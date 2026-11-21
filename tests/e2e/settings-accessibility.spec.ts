@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { DEMO_PASSWORD, openSettingsSection } from './helpers';
+import { DEMO_PASSWORD, enterWorkspace, openSettingsSection } from './helpers';
 
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 test('new settings sections are accessible on desktop and mobile in both themes', async ({ browser }) => {
@@ -12,7 +12,7 @@ test('new settings sections are accessible on desktop and mobile in both themes'
   await page.fill('#login-email', 'admin@akhbar.tv');
   await page.fill('#login-password', DEMO_PASSWORD);
   await page.click('button[type=submit]');
-  await expect(page.locator('main')).toBeVisible();
+  await enterWorkspace(page);
   await page.goto('/settings');
   await page.addScriptTag({ content: axeSource });
   for (const width of [1440, 390]) {

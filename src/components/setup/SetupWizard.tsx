@@ -12,11 +12,12 @@ import { RbacService } from '../../services/rbacService';
 import { navigateTo, tourCommand } from '../../services/uiEvents';
 import { SINGLETON_ID } from '../../shared/collections';
 import { DEPARTMENTS, departmentName } from '../../shared/departments';
-import { validZone } from '../../shared/dateFormat';
+import { sanitizeDateSettings, validZone, type HourCycle, type TimeBasis } from '../../shared/dateFormat';
 import { SETUP_STEPS, setupDoneCount, setupProgress, setupSkipped, type SetupState, type SetupStepId } from '../../shared/setup';
 import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
 import { confirmDialog } from '../../services/dialogs';
 import { stationsOf } from '../../shared/stations';
+import { AdministratorSetup } from './AdministratorSetup';
 
 const INPUT = 'w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
 const LABEL = 'block text-sm font-bold text-slate-700 mb-1';
@@ -74,16 +75,17 @@ async function saveSetup(change: (setup: SetupState) => SetupState, extra: Recor
 
 interface SetupWizardProps {
   isOpen: boolean;
+  reviewId?: string;
   onClose: () => void;
   currentUser: User;
 }
 
 /**
- * The administrator's quick setup: six steps from a fresh installation to a working newsroom.
+ * The administrator's quick setup takes a fresh installation to a working newsroom.
  * Every step saves for real; the progress follows what the system shows, so leaving halfway and
  * coming back later resumes where the work stands.
  */
-export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, currentUser }) => {
+export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, reviewId, onClose, currentUser }) => {
   const { settings, facts } = useFacts(isOpen, currentUser);
   const progress = setupProgress(facts);
   const skipped = setupSkipped(facts);
@@ -93,12 +95,14 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (isOpen) {
-      setStepId(firstOpen);
+      setStepId(reviewId ? 'organization' : firstOpen);
       setMessage(null);
+      // A lost acknowledgement leaves the review available on the next sign-in.
+      if (reviewId) void authClient.setupReviewShown(reviewId).catch(() => undefined);
     }
     // Opens on the first step still to do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, reviewId]);
 
   const index = SETUP_STEPS.findIndex((s) => s.id === stepId);
   const go = (offset: number) => {
@@ -122,15 +126,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
   const confirmStep = (id: SetupStepId) => saveSetup((s) => ({ ...s, confirmed: [...new Set([...(s.confirmed || []), id])] }));
 
   // --- Organization ---
-  const [org, setOrg] = useState({ organizationName: '', organizationNameEn: '', primaryChannelName: '', defaultTimezone: 'Asia/Gaza' });
+  const readOrg = () => {
+    const { hourCycle, timeBasis } = sanitizeDateSettings(settings.dateTime);
+    return { organizationName: settings.organizationName || '', organizationNameEn: settings.organizationNameEn || '', primaryChannelName: settings.primaryChannelName || '', defaultTimezone: validZone(settings.defaultTimezone) || 'Asia/Gaza', hourCycle, timeBasis };
+  };
+  const [org, setOrg] = useState(readOrg);
+  const [originalOrg, setOriginalOrg] = useState(readOrg);
   useEffect(() => {
     if (!isOpen) return;
-    setOrg({
-      organizationName: settings.organizationName || '',
-      organizationNameEn: settings.organizationNameEn || '',
-      primaryChannelName: settings.primaryChannelName || '',
-      defaultTimezone: validZone(settings.defaultTimezone) || 'Asia/Gaza',
-    });
+    const initial = readOrg();
+    setOrg(initial);
+    setOriginalOrg(initial);
     // Filled when the wizard opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -229,6 +235,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
               );
             })}
           </ol>
+          <button type="button" disabled={busy} onClick={onClose} className="mt-3 min-h-10 px-3 text-sm text-slate-700 underline underline-offset-4">
+            {settings.setup?.completedAt ? 'إغلاق المعالج' : 'إكمال الإعداد لاحقاً'}
+          </button>
         </nav>
 
         <section aria-labelledby="setup-step-title" className="min-w-0 space-y-5">
@@ -247,16 +256,22 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                 e.preventDefault();
                 void run(async () => {
                   if (!org.organizationName.trim()) throw new Error('اسم المؤسسة مطلوب');
-                  await saveSetup((s) => ({ ...s, confirmed: [...new Set([...(s.confirmed || []), 'organization' as const])] }), {
-                    organizationName: org.organizationName.trim(),
-                    organizationNameEn: org.organizationNameEn.trim(),
-                    primaryChannelName: org.primaryChannelName.trim(),
-                    defaultTimezone: org.defaultTimezone,
-                  });
+                  const changes: Record<string, unknown> = {};
+                  for (const field of ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone'] as const) {
+                    if (org[field] !== originalOrg[field]) changes[field] = org[field].trim();
+                  }
+                  if (org.hourCycle !== originalOrg.hourCycle || org.timeBasis !== originalOrg.timeBasis) {
+                    const dateTime = sanitizeDateSettings(apiService.getSettings().dateTime);
+                    if (org.hourCycle !== originalOrg.hourCycle) dateTime.hourCycle = org.hourCycle;
+                    if (org.timeBasis !== originalOrg.timeBasis) dateTime.timeBasis = org.timeBasis;
+                    changes.dateTime = dateTime;
+                  }
+                  await saveSetup((s) => ({ ...s, confirmed: [...new Set([...(s.confirmed || []), 'organization' as const])] }), changes);
+                  setOriginalOrg(org);
                 }, 'حُفظت بيانات المؤسسة.');
               }}
             >
-              <p className="text-sm text-slate-600">تظهر في الشريط الجانبي وصفحة الدخول والتقارير المطبوعة. المنطقة الزمنية تضبط ساعة المحطة وكل المواعيد.</p>
+              <p className="text-sm text-slate-600">راجع اسم المؤسسة والقناة كما سيظهران للفريق. يمكنك تعديل القيم المعروضة، ثم اختيار «حفظ والمتابعة». المنطقة الزمنية تضبط ساعة المحطة والمواعيد.</p>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="setup-org" className={LABEL}>اسم المؤسسة *</label>
@@ -279,9 +294,15 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
                   </select>
                 </div>
               </div>
-              <StepActions busy={busy} onBack={index > 0 ? () => go(-1) : undefined} primary="حفظ والمتابعة" onSkip={() => go(1)} />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <label className={LABEL}>عرض الساعة<select className={INPUT} value={org.hourCycle} onChange={e => setOrg({ ...org, hourCycle: e.target.value as HourCycle })}><option value="h23">24 ساعة</option><option value="h12">12 ساعة</option></select></label>
+                <label className={LABEL}>توقيت المواعيد<select className={INPUT} value={org.timeBasis} onChange={e => setOrg({ ...org, timeBasis: e.target.value as TimeBasis })}><option value="device">توقيت جهاز الموظف</option><option value="station">توقيت المحطة لجميع الموظفين</option></select></label>
+              </div>
+              <StepActions busy={busy} primary="حفظ والمتابعة" onSkip={() => go(1)} />
             </form>
           )}
+
+          {stepId === 'administrator' && <AdministratorSetup currentUser={currentUser} busy={busy} onBack={() => go(-1)} onSkip={() => go(1)} onContinue={() => void run(() => confirmStep('administrator'), 'سُجّلت مراجعة حساب المسؤول.')} />}
 
           {stepId === 'stations' && (
             <div className="space-y-2">
@@ -458,6 +479,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onClose, curre
 
           {stepId === 'finish' && (
             <div className="space-y-4 max-w-2xl">
+              <p className="text-sm text-slate-700">المؤسسة <b>{settings.organizationName}</b> · القناة <b>{settings.primaryChannelName || 'غير محددة'}</b> · المنطقة الزمنية <bdi>{settings.defaultTimezone}</bdi></p>
               <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white">
                 {SETUP_STEPS.filter((s) => s.id !== 'finish').map((s) => (
                   <CheckRow key={s.id} ok={progress[s.id]} skipped={skipped[s.id]} title={s.title} hint={s.hint} onOpen={() => setStepId(s.id)} />

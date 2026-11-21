@@ -28,11 +28,19 @@ export async function signIn(browser: Browser, email: string, opts: { viewport?:
   await page.fill('#login-email', email);
   await page.fill('#login-password', DEMO_PASSWORD);
   await page.click('button[type=submit]');
-  await expect(page.locator('main')).toBeVisible();
+  await enterWorkspace(page);
   return { page, errors, close: async () => {
     await leaveEditors(page);
     await context.close();
   } };
+}
+
+export async function enterWorkspace(page: Page) {
+  const main = page.locator('main');
+  await expect(main).toBeAttached();
+  const setup = page.getByRole('region', { name: 'الإعداد السريع للنظام' });
+  if (await setup.isVisible()) await setup.getByRole('button', { name: 'رجوع', exact: true }).click();
+  await expect(main).toBeVisible();
 }
 
 /** Let the normal UI unmount and confirm lock release before destroying the browser context. */
