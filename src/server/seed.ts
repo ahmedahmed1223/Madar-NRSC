@@ -407,7 +407,7 @@ const DEMO_USER_IDS = INITIAL_USERS.map((u) => u.id);
 export function demoInventory(db: NewsroomDatabase): Partial<Record<CollectionName, string[]>> {
   const today = localDateString();
   const planned: [CollectionName, { id: string }[]][] = [
-    ...DEMO_COLLECTIONS,
+    ...DEMO_COLLECTIONS.filter(([collection]) => collection !== 'bulletinFormats'),
     ['resources', INITIAL_RESOURCES],
     ['diary', demoDiary(today)],
     ['bookings', demoBookings(today)],
@@ -418,17 +418,23 @@ export function demoInventory(db: NewsroomDatabase): Partial<Record<CollectionNa
     (out[c] ||= []).push(id);
   };
   for (const [c, items] of planned) items.forEach((it) => it && typeof it.id === 'string' && add(c, it.id));
-  // The demo bulletin and anything generated from the demo formats.
-  const formatIds = new Set(INITIAL_BULLETIN_FORMATS.map((f) => f.id));
-  const bulletinIds = db
-    .listCollection('bulletins')
-    .filter((r) => r.id === 'bul-demo-main' || formatIds.has(r.d?.formatId))
-    .map((r) => r.id);
-  bulletinIds.forEach((id) => add('bulletins', id));
-  const bulletinSet = new Set(bulletinIds);
-  db.listCollection('bulletinStories')
-    .filter((r) => bulletinSet.has(r.d?.bulletinId))
-    .forEach((r) => add('bulletinStories', r.id));
+  const demo = demoBulletin(today);
+  const sample = db.getRow('bulletins', demo.bulletin.id);
+  const seededStoryIds = new Set(demo.stories.map(({ id }) => id));
+  const sampleStories = db.listCollection('bulletinStories').filter((row) => row.d?.bulletinId === demo.bulletin.id);
+  // A sample used for editorial work and the materials attached to it must stay together.
+  const removeSample = sample?.v === 1 && sampleStories.every((row) => seededStoryIds.has(row.id) && row.v === 1);
+  if (removeSample) {
+    add('bulletins', demo.bulletin.id);
+    sampleStories.forEach(({ id }) => add('bulletinStories', id));
+  }
+
+  const formatsInUse = new Set(db.listCollection('bulletins')
+    .filter(({ id }) => !removeSample || id !== demo.bulletin.id)
+    .map(({ d }) => d?.formatId));
+  for (const { id } of INITIAL_BULLETIN_FORMATS) {
+    if (!formatsInUse.has(id) && db.getRow('bulletinFormats', id)?.v === 1) add('bulletinFormats', id);
+  }
   return out;
 }
 

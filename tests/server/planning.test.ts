@@ -175,12 +175,25 @@ describe('demo data removal', () => {
     // Something a person created must survive.
     const mine = { id: 'nws-real-1', title: 'خبر حقيقي', content: '', status: 'DRAFT', authorId: 'usr-1', createdAt: now, updatedAt: now };
     server.db.writeRow('news', mine.id, mine, 0, null);
+    const sample = row('bulletins', 'bul-demo-main').d;
+    const story = row('bulletinStories', 'bst-demo-1').d;
+    server.db.writeRow('bulletins', 'bul-real', { ...sample, id: 'bul-real', title: 'نشرة الفريق' }, 1, 'usr-1');
+    server.db.writeRow('bulletinStories', 'bst-real', { ...story, id: 'bst-real', bulletinId: 'bul-real' }, 1, 'usr-1');
+    server.db.writeRow('bulletinStories', 'bst-team', { ...story, id: 'bst-team', slug: 'مادة أضافها الفريق' }, 2, 'usr-1');
+    const dormantFormat = row('bulletinFormats', 'fmt-hourly');
+    server.db.writeRow('bulletinFormats', dormantFormat.id, { ...dormantFormat.d, name: 'قالب الفريق' }, dormantFormat.p, 'usr-1');
     expect((await admin.post('/api/v1/admin/demo-data/remove').set(H).send({})).status).toBe(400);
     const res = await admin.post('/api/v1/admin/demo-data/remove').set(H).send({ confirm: 'حذف', includeUsers: false });
     expect(res.status).toBe(200);
     expect(res.body.data.total).toBeGreaterThan(10);
     expect(server.db.getRow('news', 'nws-1')).toBeNull();
     expect(server.db.getRow('news', 'nws-real-1')).not.toBeNull();
+    expect(row('bulletins', 'bul-real').d.title).toBe('نشرة الفريق');
+    expect(row('bulletinStories', 'bst-real').d.bulletinId).toBe('bul-real');
+    expect(row('bulletinStories', 'bst-team').d.bulletinId).toBe('bul-demo-main');
+    expect(row('bulletinStories', 'bst-demo-1').d.bulletinId).toBe('bul-demo-main');
+    expect(row('bulletinFormats', 'fmt-main').d.name).toBeTruthy();
+    expect(row('bulletinFormats', 'fmt-hourly').d.name).toBe('قالب الفريق');
     expect(server.db.getRow('users', 'usr-3')).not.toBeNull();
     expect(server.db.getMeta('demo_removed')).toBe('1');
     const after = await admin.get('/api/v1/admin/demo-data').set(H);

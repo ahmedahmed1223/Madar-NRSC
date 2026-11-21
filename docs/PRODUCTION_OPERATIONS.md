@@ -101,9 +101,20 @@ and the latest stable GitHub release. Once the server is running a newer build, 
 Only system-settings managers can request deployment. Accepting a request records the dispatch,
 while the running version confirms deployment after the external system finishes. The external
 system owns backup, maintenance timing, stopping the server and validating readiness after start.
-For Compose, build the exact release from a clean checkout, keep the persistent data volumes,
-and verify both `/api/ready` and the version at `/api/health` after replacement. Verify the backup
-and pause deployment if any on-air session starts after the initial in-app check.
+Before replacing the app, verify a full backup (SQLite and uploads) stored outside the running
+container, preserve the deployment environment and secrets, and keep the same `DATA_DIR` backed
+by the same durable storage. For Compose, build the exact release from a clean checkout and keep
+the existing data and backup volumes. Keep the Compose project name stable, and avoid `down -v`.
+After replacement, verify `/api/ready` and the version at `/api/health`, then sign in to check an
+existing record, an attachment and a saved setting. Pause deployment if an on-air session starts
+after the initial in-app check.
+
+Cloud Run's writable container filesystem is temporary. Verify the deployment's storage setup
+before replacing any revision. SQLite runs in WAL mode and requires a local filesystem shared by
+connections on one host. Cloud Run's NFS mount does not support file locking. Keep this SQLite
+deployment on a single host with durable local storage if the Cloud Run environment only provides
+temporary storage or network mounts. Preserve a full backup outside the service before moving any
+existing installation.
 
 ## Deployment Checklist
 
