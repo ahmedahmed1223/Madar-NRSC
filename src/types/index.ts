@@ -14,6 +14,7 @@ export type UserRole =
   | 'REPORTER'
   | 'MEDIA'
   | 'CREW'
+  | 'SUPPORT_SERVICES'
   | 'VIEWER'
   | 'MAIN_STATION_MANAGER'
   | 'GENERAL_MANAGER'
@@ -502,13 +503,16 @@ export interface EditorialTask {
   status: TaskStatus;
   startDate?: string;
   dueDate?: string;
-  relatedEntityType?: 'NEWS' | 'EPISODE' | 'PROGRAM' | 'GENERAL' | 'BULLETIN' | 'BULLETIN_STORY';
+  relatedEntityType?: 'NEWS' | 'EPISODE' | 'PROGRAM' | 'GENERAL' | 'BULLETIN' | 'BULLETIN_STORY' | 'MESSAGE';
   relatedEntityId?: string;
   relatedEntityTitle?: string;
   notes?: string;
   createdAt?: string;
   /** Stamped by the server when the task is finished. */
   completedAt?: string;
+  blockedReason?: string;
+  execution?: import('../shared/taskWorkflow').TaskExecution;
+  statusHistory?: import('../shared/taskWorkflow').TaskStatusRecord[];
 }
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'PDF';
@@ -596,6 +600,7 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  taskWorkflow?: import('../shared/taskWorkflow').TaskWorkflowRules;
   /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */
   setup?: import('../shared/setup').SetupState;
   /** Dropbox and the station's shared folder (see shared/storage). */

@@ -10,6 +10,11 @@ import { Program, ProgramType, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { ProductionNameField } from '../components/common/ProductionNameField';
 import { ProgramTeamField } from '../components/programs/ProgramTeamField';
+import { arabicDate, stationTimeZone } from '../shared/dates';
+import { nextProgrammeEpisodes } from '../shared/productionPreflight';
+import { apiService } from '../services/api';
+import { navigateTo } from '../services/uiEvents';
+import { useLiveData } from '../hooks/useLiveData';
 
 interface ProgramsViewProps {
   programs: Program[];
@@ -42,8 +47,10 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const canManage = RbacService.hasPermission(currentUser, 'programs.manage');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
+  const [layout, setLayout] = useState<'list' | 'cards'>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
+  useLiveData(['episodes', 'settings'], 60_000);
 
   // Form states
   const [name, setName] = useState('');
@@ -163,6 +170,9 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     }
     return true;
   });
+  const upcoming = layout === 'list' && RbacService.canOpenScreen(currentUser, 'episode-workspace')
+    ? nextProgrammeEpisodes(apiService.getEpisodes(), Date.now(), stationTimeZone(apiService.getSettings().defaultTimezone))
+    : new Map();
 
   return (
     <div className="space-y-6">
@@ -181,7 +191,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
         <button
           type="button"
           onClick={handleOpenAddModal}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
+          className="min-h-11 flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           إضافة برنامج جديد
@@ -190,12 +200,13 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             id="programs-search-input"
             type="search"
+            aria-label="بحث عن برنامج"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم، مقدم البرنامج، أو المنتج..."
@@ -207,7 +218,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+              className="absolute left-0 top-1/2 -translate-y-1/2 grid min-h-11 min-w-11 place-items-center text-slate-600"
               aria-label="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -231,10 +242,41 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             ))}
           </select>
         </div>
+        <div role="group" aria-label="عرض البرامج" className="flex gap-1 sm:ms-auto">
+          <button type="button" aria-pressed={layout === 'list'} onClick={() => setLayout('list')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${layout === 'list' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>القائمة</button>
+          <button type="button" aria-pressed={layout === 'cards'} onClick={() => setLayout('cards')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${layout === 'cards' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>البطاقات</button>
+        </div>
       </div>
 
-      {/* Programs Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {layout === 'list' && <ul aria-label="قائمة البرامج" className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3">
+        {filteredPrograms.map(program => {
+          const episode = upcoming.get(program.id);
+          return <li key={program.id} className="grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <h2><button type="button" onClick={() => (onSelectProgram ?? onSelectProgramEpisodes)(program.id)} aria-label={`فتح ملف البرنامج: ${program.name}`} className="min-h-11 text-right text-base font-bold text-blue-700 hover:underline break-words">{program.name}</button></h2>
+              <p className="text-xs text-slate-700">{program.typeName}{program.studioName ? ` · ${program.studioName}` : ''}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-700">الحلقة القادمة</p>
+              {episode ? <>
+                <button type="button" onClick={() => navigateTo.emit(`/episodes/${encodeURIComponent(episode.id)}`)} className="min-h-11 text-start text-sm font-semibold text-blue-700 hover:underline break-words">{episode.title}</button>
+                <p className="text-xs text-slate-700 tabular-nums">{arabicDate(episode.broadcastDate)} · {episode.startTime}</p>
+              </> : <p className="text-sm text-slate-700 mt-1">لا توجد حلقة قادمة مجدولة</p>}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-700">المنتج</p>
+              <p className="text-sm text-slate-900 mt-1 break-words">{episode?.producerName || program.producerName || 'غير مسند'}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {canManage && <button type="button" onClick={() => handleOpenEditModal(program)} className="min-h-11 text-xs font-semibold text-blue-700 hover:underline" aria-label={`تعديل بيانات البرنامج: ${program.name}`}>تعديل</button>}
+                {canManage && onDeleteProgram && <button type="button" onClick={async () => { if (await confirmDialog(`هل أنت متأكد من حذف البرنامج: "${program.name}"؟`)) onDeleteProgram(program.id); }} className="min-h-11 text-xs font-semibold text-rose-700 hover:underline" aria-label={`حذف البرنامج: ${program.name}`}>حذف</button>}
+              </div>
+            </div>
+          </li>;
+        })}
+        {!filteredPrograms.length && <li className="py-5 text-sm text-slate-700">لا توجد برامج مطابقة للبحث.</li>}
+      </ul>}
+
+      {layout === 'cards' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPrograms.map((prog) => {
           return (
             <div
@@ -351,7 +393,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* Program Add / Edit Modal */}
       <FormPage

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { createApp } from '../../src/server/app';
 import { NewsroomDatabase } from '../../src/server/db';
-import { deliverBackup } from '../../src/server/backupDelivery';
+import { createFullBackup, deliverBackup, lastVerifiedExternalBackup } from '../../src/server/backupDelivery';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
 let destination: string;
@@ -64,4 +64,22 @@ it('never reports a complete bundle when a referenced upload is missing', async 
   const backup = await server.db.createBackup('auto');
   await expect(deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 })).rejects.toThrow();
   expect(await fs.readdir(destination)).toEqual([]);
+});
+
+it('records only verified external delivery for the same configured destination', async () => {
+  const config = { backupDirectory: destination, backupRetention: 2 };
+  expect(lastVerifiedExternalBackup(server.db, config)).toBeNull();
+  const created = await createFullBackup(server.db, config);
+  expect(lastVerifiedExternalBackup(server.db, config)).toEqual({ at: expect.any(String), fileName: created.file.fileName, targets: ['directory'] });
+  expect(lastVerifiedExternalBackup(server.db, { ...config, backupDirectory: path.join(destination, 'new-target') })).toBeNull();
+  expect(lastVerifiedExternalBackup(server.db, {})).toBeNull();
+});
+
+it('does not call a bundle complete when a referenced upload exists only in its original storage', async () => {
+  server.db.insertUpload({ id: 'externally-stored', storedName: 'external.txt', originalName: 'external.txt',
+    mimeType: 'text/plain', sizeBytes: 10, uploadedBy: 'usr-1', createdAt: new Date().toISOString(), localEvicted: true });
+  const config = { backupDirectory: destination, backupRetention: 2 };
+  const created = await createFullBackup(server.db, config);
+  expect(created.filesKeptElsewhere).toBe(1);
+  expect(lastVerifiedExternalBackup(server.db, config)).toBeNull();
 });

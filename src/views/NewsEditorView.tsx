@@ -68,6 +68,8 @@ import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitio
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
+import { wordDiff, type DiffRun } from '../shared/textDiff';
+import { plainText } from '../shared/bulletins';
 
 const WORKFLOW_ACTION_LABELS: Record<string, string> = {
   QUALITY_PASSED: 'اجتازت التدقيق',
@@ -182,6 +184,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [isCgModalOpen, setIsCgModalOpen] = useState(false);
   const [isAiCopilotOpen, setIsAiCopilotOpen] = useState(false);
   const [hasEmergencyDraft, setHasEmergencyDraft] = useState(false);
+  const [draftComparison, setDraftComparison] = useState<{ key: string; fields: { label: string; runs: DiffRun[] }[] }>();
   const [draftVersionChanged, setDraftVersionChanged] = useState(false);
   const [copiedPrompter, setCopiedPrompter] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
@@ -335,6 +338,23 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       // ignore
     }
     setHasEmergencyDraft(false);
+    setDraftComparison(undefined);
+  };
+
+  const compareEmergencyDraft = () => {
+    const raw = localStorage.getItem(draftKey);
+    if (!raw) return;
+    try {
+      const draft = JSON.parse(raw);
+      const fields = [
+        { label: 'العنوان', runs: wordDiff(title, typeof draft.title === 'string' ? draft.title : title) },
+        { label: 'المقدمة', runs: wordDiff(summary, typeof draft.summary === 'string' ? draft.summary : summary) },
+        { label: 'النص', runs: wordDiff(plainText(content), plainText(typeof draft.content === 'string' ? draft.content : content)) },
+      ].filter(({ runs }) => runs.some(({ kind }) => kind !== 'same'));
+      setDraftComparison({ key: draftKey, fields });
+    } catch {
+      setDraftComparison(undefined);
+    }
   };
 
   // Offer a local draft only if it was based on the server version now loaded and holds different text.
@@ -398,6 +418,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.embargoNote !== undefined) setEmbargoNote(parsed.embargoNote);
         if (parsed.tagInput !== undefined) setTagInput(parsed.tagInput);
         setHasEmergencyDraft(false);
+        setDraftComparison(undefined);
       }
     } catch {
       // ignore
@@ -920,6 +941,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button type="button" onClick={compareEmergencyDraft} className="min-h-11 px-3 rounded-lg border border-amber-300 bg-white text-xs font-bold text-amber-900">
+              قارن النصين
+            </button>
             <button
               type="button"
               onClick={handleRestoreEmergencyDraft}
@@ -936,6 +960,17 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               حذف النسخة المحلية
             </button>
           </div>
+          {draftComparison?.key === draftKey && <div className="basis-full rounded-lg border border-amber-200 bg-white p-3 text-sm text-slate-900" aria-live="polite">
+            <p className="mb-2 text-xs text-slate-600">النص المشطوب من النسخة المفتوحة، والمميّز بالأخضر من المسودة المحلية.</p>
+            {!draftComparison.fields.length && <p>العنوان والمقدمة والنص متطابقة. قد تختلف حقول أخرى.</p>}
+            {draftComparison.fields.map(({ label, runs }) => <section key={label} className="mb-3 last:mb-0">
+              <h3 className="mb-1 font-semibold">{label}</h3>
+              <p>{runs.map(({ kind, text }, index) => kind === 'del'
+                ? <del key={index} className="bg-red-50 text-red-800">{text}{' '}</del>
+                : kind === 'add' ? <ins key={index} className="bg-emerald-50 text-emerald-800">{text}{' '}</ins>
+                  : <React.Fragment key={index}>{text}{' '}</React.Fragment>)}</p>
+            </section>)}
+          </div>}
         </div>
       )}
 
@@ -2265,6 +2300,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         isOpen={isAiCopilotOpen && canEditContent}
         onClose={() => setIsAiCopilotOpen(false)}
         currentTitle={title}
+        currentShortTitle={shortTitle}
         currentSummary={summary}
         currentContent={content}
         onApplyChanges={handleApplyAiChanges}

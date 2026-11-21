@@ -57,6 +57,25 @@ export function studioConflictsFor<T extends SchedulableEpisode>(candidate: Sche
   });
 }
 
+/** First opening in the same studio that fits the candidate's existing duration. */
+export function suggestedStudioStart(candidate: SchedulableEpisode, all: readonly SchedulableEpisode[]): { date: string; startTime: string } | null {
+  const window = isScheduled(candidate) ? episodeWindow(candidate) : null;
+  if (!window) return null;
+  const studio = normStudio(candidate.studioName);
+  const otherWindows = all
+    .filter(other => other.id !== candidate.id && isScheduled(other) && normStudio(other.studioName) === studio)
+    .map(episodeWindow).filter(other => other !== null).sort((a, b) => a.start - b.start);
+  const duration = window.end - window.start;
+  let start = window.start;
+  for (const other of otherWindows) {
+    if (other.start >= start + duration) break;
+    start = Math.max(start, other.end);
+  }
+  if (start === window.start) return null;
+  const instant = new Date(start * 60_000).toISOString();
+  return { date: instant.slice(0, 10), startTime: instant.slice(11, 16) };
+}
+
 /** Ids of every episode that shares a studio with an overlapping booking. */
 export function findStudioConflicts(all: SchedulableEpisode[]): Set<string> {
   const ids = new Set<string>();

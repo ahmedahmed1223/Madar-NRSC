@@ -7,6 +7,8 @@ import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, department
 import { validatePasswordStrength } from '../../shared/passwords';
 import { stationGroupsOf } from '../../shared/stations';
 import { RoleDefinition } from '../../services/rbacService';
+import { evaluatePermission } from '../../shared/rbac';
+import { canOpenScreen, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
 import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
 import { PermissionOverridesSection } from './PermissionOverridesSection';
@@ -370,6 +372,20 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في التكليفات. تُدار المحطات من الإعدادات.</p>
           </div>
         </div>
+
+        {selectedRole && <details className="rounded-xl border border-slate-200 p-3">
+          <summary className="min-h-9 cursor-pointer py-1 text-sm font-bold text-slate-900">معاينة مساحة العمل لهذا الحساب</summary>
+          {!isActive ? <p className="text-sm text-slate-600">الحساب موقوف.</p> : <>
+            <p className="mb-2 text-xs text-slate-600">{selectedRole.nameAr} · {stations.find((station) => station.id === stationId)?.name || 'بلا محطة معيّنة'}. تشمل المعاينة صلاحيات الدور والاستثناءات المدخلة.</p>
+            <ul className="divide-y divide-slate-100 text-xs">
+              {SCREEN_GROUPS.map(({ label, navs }) => {
+                const open = navs.filter((nav) => canOpenScreen(nav, selectedRole,
+                  (permission) => evaluatePermission({ role, customRoleId, isActive, customPermissions }, permission, roles), role === 'SUPER_ADMIN'));
+                return open.length > 0 && <li key={label} className="py-2"><strong className="me-2">{label}</strong>{open.map(screenLabel).join('، ')}</li>;
+              })}
+            </ul>
+          </>}
+        </details>}
 
         {isGeneralManager && (
           <fieldset className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3" disabled={!canManageOverrides}>

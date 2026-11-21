@@ -9,7 +9,7 @@ export function offlineDraftTarget(db: NewsroomDatabase, auth: AuthContext, coll
   if (collection !== 'episodes' && collection !== 'bulletinStories') throw new OfflineAirError(400, 'نوع المسودة غير صالح');
   const row = db.getRow(collection, id);
   if (!row || row.d.deletedAt) throw new OfflineAirError(404, 'المادة حذفت أو لم تعد متاحة');
-  if (!canRead(auth, collection, row.d)) throw new OfflineAirError(403, 'لا تملك صلاحية قراءة المادة');
+  if (!canRead(auth, collection, row.d, (parent, parentId) => db.getRow(parent, parentId)?.d)) throw new OfflineAirError(403, 'لا تملك صلاحية قراءة المادة');
   return row;
 }
 export function applyOfflineDraft(db: NewsroomDatabase, sync: SyncService, auth: AuthContext, body: unknown, ip?: string) {

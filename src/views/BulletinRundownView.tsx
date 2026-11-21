@@ -273,6 +273,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       .map(story => ({ story, origin }))).sort((a, b) => picked.indexOf(a.story.id) - picked.indexOf(b.story.id))
     : [];
   const copyDuration = copySelection.reduce((total, { story }) => total + storyTiming(story).total, 0);
+  const materialSource = (story: BulletinStory) => story.newsId ? `news:${story.newsId}` : story.wireId ? `wire:${story.wireId}` : `story:${story.sourceStoryId || story.id}`;
+  const targetSources = new Set(all.filter(story => !story.killed).map(materialSource));
+  const selectedSourceCounts = new Map<string, number>();
+  for (const { story } of copySelection) {
+    const key = materialSource(story);
+    selectedSourceCounts.set(key, (selectedSourceCounts.get(key) || 0) + 1);
+  }
   const inBulletin = new Set(all.map((s) => s.newsId).filter(Boolean));
 
   const pullNews = (n: NewsItem) => {
@@ -414,6 +421,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               </p>
             </div>
           </div>
+        </div>
+        <ReadinessPanel issues={readinessIssues} stories={all} users={users} onOpen={setEditing} airStoryCount={air.length} timingText={`مدة القصص ${mmss(timing.total)} من ${mmss(timing.planned)} · ${delta.text}`} />
           <div className="flex flex-wrap items-center gap-1.5">
             {canManage && (
               <button
@@ -449,12 +458,11 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             )}
             <AssignmentForm bulletin={bulletin} stories={all} />
             {canRunAir && (
-              <button type="button" onClick={() => onOpenOnAir(bulletin.id)} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold">
+              <button type="button" onClick={() => onOpenOnAir(bulletin.id)} className="flex items-center gap-1 min-h-11 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-blue-700 text-xs font-bold">
                 <Radio className="w-4 h-4" /> وضع الهواء
               </button>
             )}
           </div>
-        </div>
 
         {/* Timing strip */}
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 bg-white border border-slate-200 text-slate-900 rounded-xl p-3 font-mono text-center" aria-label="توقيت النشرة">
@@ -489,7 +497,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
             placeholder="بحث في القصص…"
             className="min-h-11 sm:min-h-0 px-2.5 py-1 border border-slate-200 rounded-lg text-2xs bg-white w-40"
           />
-          <div role="group" aria-label="تصفية حسب الحالة" className="flex gap-1">
+          <div role="group" aria-label="تصفية حسب الحالة" className="flex flex-wrap gap-1">
             {([
               ['ALL', 'الكل'],
               ['READY', 'بانتظار الاعتماد'],
@@ -552,7 +560,6 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
         </div>
       </div>
 
-      <ReadinessPanel issues={readinessIssues} stories={all} users={users} onOpen={setEditing} />
       <ProductionFollowUp entityId={bulletin.id} kind="BULLETIN" storyIds={new Set(all.map(story => story.id))} user={currentUser} />
       {message && (
         <p role="status" className={`text-xs font-bold rounded-xl p-2.5 border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
@@ -937,10 +944,13 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           {!!copySelection.length && (
             <section aria-label="معاينة القصص المحددة" className="rounded-lg border border-slate-200 p-3 space-y-2 text-xs">
               <p className="font-bold text-slate-800">المدة المضافة {mmss(copyDuration)} · المدة بعد الإضافة {mmss(air.reduce((total, story) => total + storyTiming(story).total, 0) + copyDuration)}</p>
+              <p className="text-slate-700">تُضاف النسخ كمسودات في النشرة الحالية.</p>
               <ol className="list-decimal ps-5">
                 {copySelection.map(({ story, origin }) => (
                   <li key={story.id} className="break-words">
                     {story.slug} · {origin.title}
+                    {targetSources.has(materialSource(story)) && <span className="ms-2 font-semibold text-amber-800">لها مادة من المصدر نفسه في النشرة</span>}
+                    {(selectedSourceCounts.get(materialSource(story)) || 0) > 1 && <span className="ms-2 font-semibold text-amber-800">مصدر مكرر في التحديد</span>}
                     <button type="button" aria-label={`إلغاء اختيار ${story.slug}`} onClick={() => setPicked(current => current.filter(id => id !== story.id))} className="min-h-11 px-2 text-blue-700 hover:underline">إلغاء الاختيار</button>
                   </li>
                 ))}

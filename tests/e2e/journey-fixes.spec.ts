@@ -111,7 +111,27 @@ test('task creation preserves the draft on refusal and a later status move waits
     release();
     await expect(status).toBeEnabled();
     await expect(status).toHaveValue('IN_PROGRESS');
-    expect((await bootstrap()).collections.tasks.find((row: any) => row.id === proposedId).d.status).toBe('IN_PROGRESS');
+    const active = (await bootstrap()).collections.tasks.find((row: any) => row.id === proposedId).d;
+    expect(active.status).toBe('IN_PROGRESS');
+    expect(active.execution.runningSince).toBe(active.execution.startedAt);
+    const task = page.getByRole('row').filter({ hasText: title });
+    await expect(task.getByText(/^مدة التنفيذ/)).toBeVisible();
+
+    await status.selectOption('BLOCKED');
+    const interruption = page.getByRole('dialog', { name: 'إيقاف المهمة' });
+    await interruption.getByLabel('سبب التوقف', { exact: true }).fill('بانتظار تأكيد المصدر');
+    await interruption.getByRole('button', { name: 'حفظ الحالة', exact: true }).click();
+    await expect(status).toBeEnabled();
+    await expect(status).toHaveValue('BLOCKED');
+    await expect(task.getByText('سبب التوقف: بانتظار تأكيد المصدر')).toBeVisible();
+    const blocked = (await bootstrap()).collections.tasks.find((row: any) => row.id === proposedId).d;
+    expect(blocked.blockedReason).toBe('بانتظار تأكيد المصدر');
+    expect(blocked.execution.runningSince).toBeUndefined();
+    const period = page.getByRole('combobox', { name: 'موعد التسليم', exact: true });
+    await period.selectOption('TODAY');
+    await expect(task).toHaveCount(0);
+    await period.selectOption('ALL');
+    await expect(task).toBeVisible();
   } finally {
     release();
     await page.unroute(path);

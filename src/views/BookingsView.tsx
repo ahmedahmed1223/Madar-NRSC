@@ -89,7 +89,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
           </h1>
           <p className="text-xs text-slate-500 mt-1">الاستوديوهات والكاميرات ووحدات البث وغرف المونتاج والطواقم على جدول اليوم؛ لا يقبل النظام حجزين متعارضين للمورد نفسه.</p>
         </div>
-        <div role="group" aria-label="تاريخ الحجوزات وإجراءاتها" className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
+        <div role="group" aria-label="تاريخ الحجوزات وإجراءاتها" className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 xl:flex xl:flex-wrap">
           <button type="button" onClick={() => setDay(shiftDay(day, -1))} className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50" aria-label="اليوم السابق">
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -299,7 +299,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
         </Modal>
       )}
 
-      {editing && <BookingForm isOpen onClose={() => setEditing(null)} currentUser={currentUser} users={users} booking={editing} />}
+      {editing && <BookingForm isOpen onClose={() => setEditing(null)} currentUser={currentUser} users={users} booking={editing} confirmOnSave reconfirmOnReschedule />}
       {managing && <ResourcesManager onClose={() => setManaging(false)} resources={resources} />}
     </div>
   );

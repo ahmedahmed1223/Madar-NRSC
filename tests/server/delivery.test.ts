@@ -74,9 +74,10 @@ describe('notification delivery', () => {
     expect(stats.push).toBe(1);
 
     status = 410;
-    writeNotification(server.db, { userId: 'usr-6', title: 'عاجل 2', message: '', category: 'wire', urgent: true });
+    writeNotification(server.db, { userId: 'usr-6', title: 'عاجل 2', message: '', category: 'wire', urgent: true, senderId: 'usr-1' });
     await deliverPending(server.db, server.config);
     expect(server.db.listPushSubscriptions('usr-6')).toHaveLength(0);
+    expect(server.db.listCollection('notifications').some(row => row.d.userId === 'usr-1' && row.d.title === 'تعذّر توصيل أحد تنبيهاتك')).toBe(true);
   });
 
   it('builds a safe Arabic e-mail with a deep link', () => {

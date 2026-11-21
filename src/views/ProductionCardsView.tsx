@@ -8,6 +8,7 @@ import { RbacService } from '../services/rbacService';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { CardDetail } from '../components/cards/CardDetail';
+import { CardTimingValues } from '../components/cards/CardTimingValues';
 import { CardFormPage } from '../components/cards/CardFormPage';
 import { TemplatesPanel } from '../components/cards/TemplatesPanel';
 import { TemplateFormPage } from '../components/cards/TemplateFormPage';
@@ -40,6 +41,8 @@ import {
   type ProductionCard,
 } from '../shared/productionCards';
 import { stationName, stationsOf } from '../shared/stations';
+import { assignedWorkOnly } from '../shared/assignedWork';
+import { CARD_WORK_PERIODS, matchesCardWorkPeriod, type CardWorkPeriod } from '../shared/cardWorkPeriod';
 
 interface ProductionCardsViewProps {
   currentUser: User;
@@ -55,12 +58,15 @@ type Tab = 'MINE' | 'TODAY' | 'ALL' | 'TEMPLATES' | 'REPORTS';
 const OPEN_STATES: CardState[] = ['BLOCKED', 'LATE', 'IN_PROGRESS', 'NEW', 'READY'];
 
 const SELECT = 'min-h-11 min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white';
+const isWithinPeriod = (period: CardWorkPeriod, today: string, dates: (string | undefined)[]) => period === 'ALL'
+  || matchesCardWorkPeriod(period, today, dates.flatMap(date => date && Number.isFinite(Date.parse(date)) ? [stationDay(date)] : []));
 
 /**
  * Assignments («التكليفات», stored as production cards) shared between stations: my steps, the
  * board for today, every assignment, the workflow templates they are created from, and reports.
  */
 export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode }) => {
+  const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
   const canManage = RbacService.hasPermission(currentUser, 'cards.manage');
   const actor = apiService.cardActor();
   const [cards, setCards] = useState<ProductionCard[]>(() => apiService.getCards());
@@ -70,7 +76,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [settings, setSettings] = useState(() => apiService.getSettings());
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
-  const [tab, setTab] = useState<Tab>(canManage ? 'TODAY' : 'MINE');
+  const [tab, setTab] = useState<Tab>(assignedOnly ? 'ALL' : canManage ? 'TODAY' : 'MINE');
+  const [period, setPeriod] = useState<CardWorkPeriod>(assignedOnly ? 'TODAY' : 'ALL');
   const [query, setQuery] = useState('');
   const [station, setStation] = useState('ALL');
   const stationGroups = useMemo(() => stationGroupsOf(settings), [settings]);
@@ -104,15 +111,17 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   }, [focusId, cards]);
   const opened = focusId ? cards.find((c) => c.id === focusId) || null : null;
   const openCards = useMemo(() => cards.filter((c) => c.status === 'OPEN'), [cards]);
+  const today = stationDay(now);
 
   const mySteps = useMemo(() => {
     const rows: { card: ProductionCard; step: CardStep; claimable: boolean }[] = [];
     for (const card of openCards) {
       for (const step of card.steps) {
         if (!isStepOpen(step)) continue;
+        if (!isWithinPeriod(period, today, [step.dueAt, card.dueAt, card.airAt])) continue;
         if (step.assigneeId === currentUser.id) rows.push({ card, step, claimable: false });
         // Only steps that are this colleague's kind of work are offered (the server applies the same rule).
-        else if ((step.stationId || step.departmentId) && canClaimStep(step, actor)) rows.push({ card, step, claimable: true });
+        else if (!assignedOnly && (step.stationId || step.departmentId) && canClaimStep(step, actor)) rows.push({ card, step, claimable: true });
       }
     }
     // Work sent back for rework comes first, then blockers and delays, then the rest; offers last.
@@ -120,9 +129,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
     return rows.sort((a, b) => rank(a) - rank(b) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'));
     // actor is rebuilt on every render from the same user and permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCards, currentUser.id, currentUser.stationId, now]);
+  }, [openCards, currentUser.id, currentUser.stationId, now, period, today, assignedOnly]);
 
-  const today = stationDay(now);
   const board = useMemo(() => {
     const airing = openCards.filter((c) => c.airAt && stationDay(c.airAt) === today).sort((a, b) => a.airAt!.localeCompare(b.airAt!));
     const needDecision = openCards.filter((c) => cardState(c, now) === 'BLOCKED' || isCardLate(c, now)).sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || (a.airAt || a.dueAt || '9').localeCompare(b.airAt || b.dueAt || '9'));
@@ -137,12 +145,13 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       cards
         .filter((c) => (stateFilter === 'OPEN' ? c.status === 'OPEN' : cardStates(c, now).includes(stateFilter)))
         .filter((c) => kind === 'ALL' || c.kind === kind)
+        .filter((c) => isWithinPeriod(period, today, [c.dueAt, c.airAt, ...c.steps.filter(step => step.status !== 'SKIPPED' && (!assignedOnly || step.assigneeId === currentUser.id)).map(step => step.dueAt)]))
         .filter((c) => station === 'ALL' || inStation(c.ownerStationId) || c.steps.some((s) => inStation(s.stationId)))
         .filter((c) => matchesQuery(query, c.title, c.brief, c.ownerName, c.target?.title, c.templateName, c.steps.map((s) => s.assigneeName || '')))
         .sort((a, b) => OPEN_STATES.indexOf(cardState(a, now)) - OPEN_STATES.indexOf(cardState(b, now)) || (b.updatedAt || '').localeCompare(a.updatedAt || '')),
-    [cards, stateFilter, kind, station, query, now, inStation]
+    [cards, stateFilter, kind, station, query, now, inStation, period, today, assignedOnly, currentUser.id]
   );
-  const page = useIncremental(filtered, 40, `${stateFilter}|${kind}|${station}|${query}`);
+  const page = useIncremental(filtered, 40, `${stateFilter}|${kind}|${station}|${period}|${query}`);
 
   const openTarget = (card: ProductionCard) => {
     if (card.target?.kind === 'news') onOpenNews(card.target.id);
@@ -170,13 +179,15 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
           <span className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
             {waiting && card.status === 'OPEN' && (
               <span>
-                بانتظار: {stepTypeName(stepTypes, waiting.type)} — {stepAssigneeLabel(waiting, stations)}
+                 الخطوة التالية: {stepTypeName(stepTypes, waiting.type)} · {stepAssigneeLabel(waiting, stations)}
               </span>
             )}
-            {card.dueAt && <span>التسليم {when(card.dueAt)}</span>}
+             {card.status === 'OPEN' && (waiting?.dueAt || card.dueAt) && <span>موعد الخطوة: {when(waiting?.dueAt || card.dueAt)}</span>}
+             {card.target?.title && <span className="break-words">مادة البث: {card.target.title}</span>}
             <span>القرار: {card.ownerName || '—'}</span>
             {card.templateName && <span>القالب: {card.templateName}</span>}
           </span>
+          <CardTimingValues card={card} now={now} />
           {extra}
         </button>
       </li>
@@ -237,13 +248,14 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       <>
         {opened ? (
           <CardDetail
+            now={now}
             card={opened}
             onClose={() => onFocus(null)}
             onEdit={(card) => {
               setEditing(card);
               setFormOpen(true);
             }}
-            onOpenTarget={openTarget}
+            onOpenTarget={assignedOnly ? undefined : openTarget}
             onSaveAsTemplate={canManage ? saveAsTemplate : undefined}
           />
         ) : (
@@ -270,7 +282,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
             <ClipboardList className="w-5 h-5 text-blue-600" />
             التكليفات
           </h1>
-          <p className="text-xs text-slate-500 mt-1">تكليف واحد يرافق كل مادة بين المحطات والأقسام: المطلوب، المسؤول عن كل مهمة، مواعيد التسليم والبث، وما اكتمل وما ينقص.</p>
+          <p className="text-xs text-slate-500 mt-1">{assignedOnly ? 'افتح تكليفاتك لمعرفة المطلوب ومواعيد التسليم وتحديث خطواتك.' : 'تابع التكليفات المشتركة بين المحطات والأقسام ومواعيد التسليم والبث.'}</p>
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-2 self-start">
@@ -305,16 +317,23 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         tabs={[
           // The count matches the rows shown: my steps and the ones offered to me.
           { id: 'MINE', label: 'مهامي', count: mySteps.length, tone: 'blue' },
-          { id: 'TODAY', label: 'متابعة اليوم', count: board.needDecision.length, tone: 'amber' },
-          { id: 'ALL', label: 'كل التكليفات', count: openCards.length, tone: 'slate' },
-          { id: 'TEMPLATES', label: 'القوالب', count: templates.filter((t) => !t.archived).length, tone: 'violet', secondary: true },
+          ...(!assignedOnly ? [{ id: 'TODAY' as const, label: 'متابعة اليوم', count: board.needDecision.length, tone: 'amber' as const }] : []),
+          { id: 'ALL', label: assignedOnly ? 'تكليفاتي' : 'كل التكليفات', count: openCards.length, tone: 'slate' },
+          ...(!assignedOnly ? [{ id: 'TEMPLATES' as const, label: 'القوالب', count: templates.filter((t) => !t.archived).length, tone: 'violet' as const, secondary: true }] : []),
           ...(canManage ? [{ id: 'REPORTS' as Tab, label: 'التقارير', tone: 'slate' as const, secondary: true }] : []),
         ]}
       />
 
+      {(tab === 'MINE' || tab === 'ALL') && <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+        <label htmlFor="card-work-period">فترة التكليفات</label>
+        <select id="card-work-period" value={period} onChange={event => setPeriod(event.target.value as CardWorkPeriod)} className={SELECT}>
+          {CARD_WORK_PERIODS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
+      </div>}
+
       {tab === 'MINE' && (
         <section className="space-y-2" aria-label="مهامي">
-          {mySteps.length === 0 && empty('لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي تكليف يظهر هنا.')}
+          {mySteps.length === 0 && empty(period === 'ALL' ? 'لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي تكليف يظهر هنا.' : 'لا مهام مفتوحة تطابق هذه الفترة.')}
           <ul className="space-y-2">
             {mySteps.map(({ card, step, claimable }) => (
               <li key={`${card.id}:${step.id}`}>
@@ -334,7 +353,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                   <span className="block text-sm font-bold text-slate-900">{card.title}</span>
                   {step.title && <span className="block text-xs text-slate-600">{step.title}</span>}
                   {step.returnedReason && !claimable && <span className="block text-xs font-bold text-violet-800">أعادها {step.returnedByName || 'زميل'}: {step.returnedReason}</span>}
-                  {currentStep(card)?.id !== step.id && <span className="block text-2xs text-slate-500">العمل الآن عند: {stepTypeName(stepTypes, currentStep(card)!.type)} ({stepAssigneeLabel(currentStep(card)!, stations)})</span>}
+                   {step.blockedReason && step.status === 'BLOCKED' && <span className="block break-words text-xs text-rose-800">سبب التعطل: {step.blockedReason}</span>}
+                   {card.target?.title && <span className="block break-words text-xs text-slate-600">مادة البث: {card.target.title}</span>}
                 </button>
               </li>
             ))}
@@ -342,7 +362,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         </section>
       )}
 
-      {tab === 'TODAY' && (
+      {tab === 'TODAY' && !assignedOnly && (
         <div className="space-y-5">
           <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             {[
@@ -402,6 +422,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                           <td role="cell" className="sm:p-3 font-bold tabular-nums whitespace-nowrap">{timeOnly(card.airAt)}</td>
                           <td role="cell" className="sm:p-3 min-w-0 [overflow-wrap:anywhere]">
                             <button type="button" onClick={() => onFocus(card.id)} className="min-h-11 sm:min-h-8 font-bold max-sm:text-sm text-blue-700 hover:underline text-right">{card.title}</button>
+                            <CardTimingValues card={card} now={now} />
                           </td>
                           <td role="cell" className="max-sm:col-span-full sm:p-3">
                             <span className="flex flex-wrap gap-1">
@@ -459,7 +480,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
         </section>
       )}
 
-      {tab === 'TEMPLATES' && (
+      {tab === 'TEMPLATES' && !assignedOnly && (
         <TemplatesPanel
           templates={templates}
           cards={cards}

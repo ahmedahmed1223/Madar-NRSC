@@ -15,7 +15,7 @@ export interface Department {
   archived?: boolean;
   /** Sub-unit of another department (e.g. «المونتاج» under «الإنتاج»). */
   parentId?: string;
-  /** Head of the department: hears about requests sent to it. */
+  /** Head of the department: follows department work and hears about its requests. */
   headUserId?: string;
   /** Stations that have this department; absent or empty = every station. */
   stationIds?: string[];
@@ -95,6 +95,33 @@ export function departmentHead(id: string | null | undefined, list: readonly Dep
   return undefined;
 }
 
+/** Active departments led directly or through a parent when the child has no head of its own. */
+export function departmentsLedBy(userId: string, list: readonly Department[]): Department[] {
+  const active = list.filter(department => !department.archived);
+  return active.filter(department => departmentHead(department.id, active) === userId);
+}
+
+/** Resolve active staff within a head's departments and inherited station restrictions. */
+export function departmentWorkScope(headId: string, departments: readonly Department[]) {
+  const led = departmentsLedBy(headId, departments);
+  const ledById = new Map(led.map(department => [department.id, department]));
+  const active = new Map(departments.filter(department => !department.archived).map(department => [department.id, department]));
+  return {
+    led,
+    departmentFor(user: { departmentId?: string; department?: string; stationId?: string | null; isActive?: boolean; deletedAt?: string | null }) {
+      if (user.isActive === false || user.deletedAt) return undefined;
+      const id = findDepartmentId(user, departments);
+      const department = id ? ledById.get(id) : undefined;
+      const visited = new Set<string>();
+      for (let current = department; current; current = current.parentId ? active.get(current.parentId) : undefined) {
+        if (visited.has(current.id) || (current.stationIds?.length && (!user.stationId || !current.stationIds.includes(user.stationId)))) return undefined;
+        visited.add(current.id);
+      }
+      return department;
+    },
+  };
+}
+
 /** Sub-units directly under `id` (top-level departments for no id). */
 export const departmentChildren = (id: string | undefined, list: readonly Department[] = known) => list.filter((d) => (d.parentId || undefined) === id);
 
@@ -150,11 +177,19 @@ const LEGACY: Record<string, string> = {
   'إدارة البث والعمليات': 'control',
 };
 
-/** Department of a user record, understanding legacy free-text values. */
+function legacyDepartmentId(department: string | undefined, list: readonly Department[]): DepartmentId | undefined {
+  const name = department?.trim();
+  return name ? LEGACY[name] || list.find(item => item.name === name)?.id : undefined;
+}
+
+/** Resolve explicit or recognized legacy membership, without a default department. */
+export function findDepartmentId(user: { departmentId?: string; department?: string } | null | undefined, list: readonly Department[] = known): DepartmentId | undefined {
+  const id = user?.departmentId || legacyDepartmentId(user?.department, list);
+  return list.some(department => department.id === id) ? id : undefined;
+}
+
+/** Department of a user record, with the original newsroom fallback for display and routing. */
 export function departmentIdOf(user: { departmentId?: string; department?: string } | null | undefined): DepartmentId {
-  if (isDepartmentId(user?.departmentId)) return user!.departmentId as DepartmentId;
-  const legacy = user?.department ? LEGACY[user.department.trim()] : undefined;
-  if (legacy) return legacy;
-  const byName = known.find((d) => d.name === user?.department?.trim());
-  return byName?.id || 'newsroom';
+  if (user?.departmentId && isDepartmentId(user.departmentId)) return user.departmentId;
+  return legacyDepartmentId(user?.department, known) || 'newsroom';
 }

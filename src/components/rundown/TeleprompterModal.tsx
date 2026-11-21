@@ -1,4 +1,6 @@
 import { useLiveData } from '../../hooks/useLiveData';
+import { useAirConnection } from '../../hooks/useAirConnection';
+import { AirSourceStatus } from '../onair/AirSourceStatus';
 import { apiService } from '../../services/api';
 import { PronunciationPanel } from './PronunciationPanel';
 import { matchingPronunciations } from '../../shared/pronunciation';
@@ -54,6 +56,7 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [followDirector, setFollowDirector] = useState(true);
   const liveVersion = useLiveData(['onAir', 'pronunciationTerms'], 0);
+  const connected = useAirConnection();
   const liveSegmentId = episodeId ? apiService.getOnAir(episodeId) : null;
   const followId = liveSegmentId?.status === 'LIVE' ? liveSegmentId.currentSegmentId : null;
   useEffect(() => {
@@ -415,6 +418,11 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
                   <h1 className="text-2xl sm:text-4xl font-bold text-white">
                     {activeSegment.title}
                   </h1>
+                  <div className="mt-2 space-y-1 text-slate-200">
+                    <AirSourceStatus connected={connected} />
+                    <p className="text-sm">{followDirector && followId ? 'القراءة تتابع اختيار المخرج' : 'موضع القراءة على هذا الجهاز'}</p>
+                    {segments[currentSegmentIndex + 1] && <p className="text-sm break-words">التالي · {segments[currentSegmentIndex + 1].title} · {segmentClock(segments[currentSegmentIndex + 1].durationSeconds || 0)}</p>}
+                  </div>
                   {activeSegment.presenterName && (
                     <div className="text-sm text-slate-500 mt-2">
                       مقدم الفقرة: <span className="text-slate-200 font-semibold">{activeSegment.presenterName}</span>

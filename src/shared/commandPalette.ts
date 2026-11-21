@@ -80,6 +80,7 @@ export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'help', label: 'المساعدة', keywords: 'دليل' },
   { nav: 'guide', label: 'دليل الاستخدام', keywords: 'دليل شرح تعليمات كيف' },
   { nav: 'whats-new', label: 'ما الجديد', keywords: 'الاصدار' },
+  { nav: 'personal-notes', label: 'ملاحظاتي', keywords: 'ملاحظات شخصية دفتر notes' },
 ];
 
 /** Permission a screen needs, shared by the sidebar and the search. */

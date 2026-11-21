@@ -59,6 +59,9 @@ it('does not aggregate other stations for a restricted editor or allow a hidden 
   expect(response.status).toBe(200);
   expect(response.body.data).toMatchObject({ totals: { total: 2 }, byCategory: { 'report-fixture': 2 } });
   expect(response.body.data.byStation.beirut).toBeUndefined();
+  const source = await editor.get('/api/v1/reports/news').query({ category: 'report-fixture', station: 'group:all-test', records: 'PUBLISHED' });
+  expect(source.status).toBe(200);
+  expect(source.body.data.rows.map((row: { id: string }) => row.id)).toEqual(['report-archive']);
   const viewer = await loginAgent(server.app, 'trainee@akhbar.tv');
   expect((await viewer.get('/api/v1/reports/news')).status).toBe(403);
 });

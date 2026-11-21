@@ -54,6 +54,22 @@ describe('news archive window', () => {
     expect(miss.body.data.suggestion).toBeTruthy();
   });
 
+  it('applies author station and publication dates before paginating archive results', async () => {
+    const author = server.db.getRow('users', 'usr-2')!;
+    server.db.writeRow('users', author.id, { ...author.d, stationId: 'station-test' }, author.p, null);
+    putNews('nws-station-matching', { status: 'PUBLISHED', title: 'مراجعة الأرشيف الخاصة', authorId: author.id, publishDate: '2025-06-12' }, 180);
+    putNews('nws-station-older', { status: 'PUBLISHED', title: 'مراجعة الأرشيف الخاصة', authorId: author.id, publishDate: '2025-05-12' }, 180);
+    putNews('nws-station-other', { status: 'PUBLISHED', title: 'مراجعة الأرشيف الخاصة', authorId: 'usr-1', publishDate: '2025-06-12' }, 180);
+    const reporter = await loginAgent(server.app, 'reporter@akhbar.tv');
+    for (const q of ['', 'مراجعة الأرشيف']) {
+      const result = await reporter.get('/api/v1/archive/news').query({ q, from: '2025-06-01', to: '2025-06-30', station: 'station-test' });
+      expect(result.status).toBe(200);
+      expect(result.body.data.total).toBe(1);
+      expect(result.body.data.items.map(({ id }: { id: string }) => id)).toEqual(['nws-station-matching']);
+    }
+    expect((await reporter.get('/api/v1/archive/news').query({ from: '2025-02-30' })).status).toBe(400);
+  });
+
   it('only editors can bring a story back, and it then syncs to everyone', async () => {
     const reporter = await loginAgent(server.app, 'reporter@akhbar.tv');
     const denied = await reporter.post('/api/v1/archive/news/nws-old-pub/reactivate').set(H);

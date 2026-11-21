@@ -64,12 +64,26 @@ describe('AI provider requests', () => {
     await runCopilot(config(), { mode: 'HEADLINES', instruction, content });
     const editing = geminiGenerate.mock.calls[0][0].contents as string;
     expect(editing).toContain(`التوجيه التحريري: ${'أ'.repeat(800)}\n`);
-    expect(editing).toContain(`المتن: ${'ب'.repeat(12_000)}`);
+    expect(editing).toContain(`المتن: ${'ب'.repeat(1600)}`);
+    expect(editing).not.toContain('ب'.repeat(1601));
     expect(editing).not.toMatch(/مرجع خاص|سياق زائد|<p>/);
     await runCopilot(config(), { mode: 'QUESTIONS', instruction, title: 'موضوع التخطيط' });
     const planning = geminiGenerate.mock.calls[1][0].contents as string;
     expect(planning).toContain('موضوع التخطيط');
     expect(planning).not.toContain('التوجيه التحريري');
+  });
+
+  it('keeps the title and summary outside proofreading and excludes body text from summarized headlines', async () => {
+    geminiGenerate.mockResolvedValue({ text: JSON.stringify({ paragraphs: ['تصويب'], headlines: [{ title: 'عنوان بديل' }] }) });
+    const source = { title: 'عنوان خاص', summary: 'ملخص خاص', content: 'متن خاص', tone: 'URGENT' };
+    await runCopilot(config(), { ...source, mode: 'PROOFREAD' });
+    const proofread = geminiGenerate.mock.calls[0][0].contents as string;
+    expect(proofread).toContain(source.content);
+    expect(proofread).not.toMatch(/عنوان خاص|ملخص خاص|عاجل ومكثف/);
+    await runCopilot(config(), { ...source, mode: 'HEADLINES' });
+    const headlines = geminiGenerate.mock.calls[1][0].contents as string;
+    expect(headlines).toContain(source.summary);
+    expect(headlines).not.toContain(source.content);
   });
 
   it.each(['IDEAS', 'QUESTIONS', 'GUESTS'] as const)('sends only the explicit topic and title for %s', async (mode) => {

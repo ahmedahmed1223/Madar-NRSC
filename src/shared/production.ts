@@ -89,6 +89,8 @@ export interface DeptRequest {
   resultMediaId?: string;
   resolution?: string;
   dueAt?: string;
+  proposedDueAt?: string | null;
+  proposedById?: string;
   createdAt: string;
   updatedAt: string;
   history?: { status: RequestStatus; byId: string; byName: string; at: string; note?: string }[];
@@ -116,11 +118,22 @@ export function requestChangeError(before: DeptRequest | null, after: DeptReques
   if (typeof after.title !== 'string' || !after.title.trim()) return 'عنوان الطلب مطلوب';
   if (!REQUEST_STATUSES.some((s) => s.id === after.status)) return 'حالة الطلب غير معروفة';
 
-  if (!before) return after.status === 'OPEN' ? null : 'الطلب الجديد يبدأ بحالة «جديد»';
+  if (!before) return after.status === 'OPEN' && !after.proposedDueAt ? null : 'الطلب الجديد يبدأ بحالة «جديد» ويمكن اقتراح موعد بديل بعد إرساله';
 
   const isRequester = before.requesterId === actor.id;
   const isHandler = actor.departmentId === before.departmentId || actor.canManage;
   if (before.type !== after.type || before.requesterId !== after.requesterId) return 'لا يمكن تغيير نوع الطلب أو صاحبه';
+
+  if (!same(before.proposedDueAt, after.proposedDueAt)) {
+    if (isRequestClosed(before.status) || before.status !== after.status) return 'يُناقش الموعد البديل عندما يكون الطلب مفتوحًا';
+    if (after.proposedDueAt) {
+      const proposed = typeof after.proposedDueAt === 'string' ? Date.parse(after.proposedDueAt) : NaN;
+      if (!isHandler || isRequester) return 'القسم المنفذ هو من يقترح الموعد البديل';
+      if (!Number.isFinite(proposed) || proposed <= Date.now() || proposed === Date.parse(before.dueAt || '') || !same(after.dueAt, before.dueAt)) return 'اختر موعدًا بديلًا صالحًا في المستقبل';
+    } else if (!isRequester || (!same(after.dueAt, before.dueAt) && !same(after.dueAt, before.proposedDueAt))) {
+      return 'صاحب الطلب يوافق على الموعد المقترح أو يرفضه';
+    }
+  }
 
   if (before.status !== after.status) {
     const from = before.status;

@@ -6,9 +6,39 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import Database from 'better-sqlite3';
 import type { NewsroomDatabase } from './db';
+import type { VerifiedExternalBackup } from '../shared/databaseDiagnostics';
 
 const run = promisify(execFile);
 const bundleName = /^newsroom_backup_[0-9TZ-]+(?:_[a-z]+)?\.sqlite\.bundle$/;
+const EXTERNAL_EVIDENCE = 'backup_last_verified_external';
+type ExternalTargets = { backupDirectory?: string; backupRemote?: string };
+
+function externalTargets({ backupDirectory, backupRemote }: ExternalTargets) {
+  const directory = backupDirectory ? path.resolve(backupDirectory) : '';
+  const remote = (backupRemote || '').replace(/\/+$/, '');
+  const targets: VerifiedExternalBackup['targets'] = [];
+  if (directory) targets.push('directory');
+  if (remote) targets.push('remote');
+  const fingerprint = crypto.createHash('sha256').update(JSON.stringify([directory, remote])).digest('hex');
+  return { targets, fingerprint };
+}
+
+/** Evidence applies only to a complete bundle delivered to every current external target. */
+export function lastVerifiedExternalBackup(db: Pick<NewsroomDatabase, 'getMeta'>, config: ExternalTargets): VerifiedExternalBackup | null {
+  const { targets, fingerprint } = externalTargets(config);
+  if (!targets.length) return null;
+  try {
+    const value = JSON.parse(db.getMeta(EXTERNAL_EVIDENCE) || 'null');
+    if (value?.fingerprint !== fingerprint || !Number.isFinite(Date.parse(value.at)) || !bundleName.test(`${value.fileName}.bundle`)) return null;
+    return { at: value.at, fileName: value.fileName, targets };
+  } catch {
+    return null;
+  }
+}
+
+function outside(relative: string) {
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
 
 async function digest(file: string) {
   const hash = crypto.createHash('sha256');
@@ -51,11 +81,12 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   await fs.rename(staging, bundle);
   if (options.directory) {
     const directory = path.resolve(options.directory);
-    const relative = path.relative(db.dataDir, directory);
-    if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) throw new Error('External backup directory must be outside DATA_DIR');
+    if (!outside(path.relative(db.dataDir, directory))) throw new Error('External backup directory must be outside DATA_DIR');
     const pending = path.join(directory, `${name}.pending`);
     await fs.mkdir(directory, { recursive: true });
+    if (!outside(path.relative(await fs.realpath(db.dataDir), await fs.realpath(directory)))) throw new Error('External backup directory must be outside DATA_DIR');
     await fs.cp(bundle, pending, { recursive: true, errorOnExist: true, force: false });
+    if (await digest(path.join(pending, 'manifest.json')) !== await digest(path.join(bundle, 'manifest.json'))) throw new Error('External backup manifest checksum mismatch');
     for (const file of files) if (await digest(path.join(pending, file.path)) !== file.sha256) throw new Error('External backup checksum mismatch');
     await fs.rename(pending, path.join(directory, name));
   }
@@ -69,7 +100,7 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   for (const old of retained.slice(0, Math.max(0, retained.length - options.retention))) {
     await fs.rm(path.join(db.backupsDir, old), { recursive: true });
   }
-  return { bundle, uploads: uploads.length };
+  return { bundle, uploads: uploads.length, filesKeptElsewhere: elsewhere };
 }
 
 /**
@@ -81,7 +112,12 @@ export async function createFullBackup(db: NewsroomDatabase, config: { backupRet
   const file = await db.createBackup(kind, config.backupRetention);
   try {
     const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory, remote: config.backupRemote, retention: config.backupRetention });
-    db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+    const at = new Date().toISOString();
+    const { targets, fingerprint } = externalTargets(config);
+    if (targets.length && result.filesKeptElsewhere === 0) {
+      db.setMeta(EXTERNAL_EVIDENCE, JSON.stringify({ at, fileName: file.fileName, fingerprint }));
+    }
+    db.setMeta('backup_last_delivery', JSON.stringify({ at, status: 'ok' }));
     return { file, ...result };
   } catch (error) {
     db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));

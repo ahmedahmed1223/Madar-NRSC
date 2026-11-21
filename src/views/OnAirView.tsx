@@ -4,8 +4,12 @@ import { AirDisplayControls } from '../components/onair/AirDisplayControls';
 import { OfflineAirPreparation } from '../components/onair/OfflineAirPreparation';
 import { AirScriptPanel } from '../components/onair/AirScriptPanel';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
+import { AirSourceStatus } from '../components/onair/AirSourceStatus';
+import { useAirConnection } from '../hooks/useAirConnection';
 import { dataStore } from '../services/dataStore';
 import { confirmDialog } from '../services/dialogs';
+import { navigateTo } from '../services/uiEvents';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
 import React, { useEffect, useState } from 'react';
@@ -49,7 +53,7 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
           ['CONTROL', 'التحكم بالبث'],
           ['ASRUN', 'سجل البث الفعلي'],
         ] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-4 py-2 rounded-xl ${tab === id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`min-h-11 px-3 py-2 rounded-xl ${tab === id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
             {label}
           </button>
         ))}
@@ -64,6 +68,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
+  const connected = useAirConnection();
   // The station's clock and date, whatever zone this computer runs in.
   const stationZone = stationTimeZone(apiService.getSettings()?.defaultTimezone);
   const nowMs = Date.now();
@@ -97,6 +102,12 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const showLength = programmeSeconds(episode as any);
   const untilStart = episode && !live && state?.status !== 'ENDED' ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const isBulletin = (episode as any)?.kind === 'bulletin';
+  const bulletin = isBulletin && episode ? apiService.getBulletins().find(b => b.id === episode.id) : undefined;
+  const bulletinStories = bulletin ? apiService.getBulletinStories(bulletin.id) : [];
+  const issues = bulletin ? evaluateBulletinReadiness(bulletin, bulletinStories, apiService.getNews(), apiService.getMedia(), new Date(nowMs)) : [];
+  const bulletinBlocked = isBulletin && (!bulletin || rundown.length === 0 || issues.some(issue => issue.severity === 'blocker'));
+  const canOpenBulletin = RbacService.canOpenScreen(currentUser, 'bulletins');
+  const canOpenEpisode = RbacService.canOpenScreen(currentUser, 'episode-workspace');
   const offlineSources: { collection: OfflineAirSourceVersion[0]; id: string }[] = episode ? [
     { collection: isBulletin ? 'bulletins' : 'episodes', id: episode.id },
     ...(isBulletin ? rundown.map(segment => ({ collection: 'bulletinStories' as const, id: segment.id })) : []),
@@ -107,23 +118,14 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     offlineAirStateMarker(state ? { ...state } : null),
   ) : undefined;
   // A bulletin is ready when every story on air is approved; an episode when every department delivered.
-  const readiness = !episode
-    ? null
-    : isBulletin
-      ? (() => {
-           const b = apiService.getBulletins().find(b => b.id === episode.id);
-           const stories = apiService.getBulletinStories(episode.id);
-           const issues = b ? evaluateBulletinReadiness(b, stories, apiService.getNews(), apiService.getMedia(), new Date()).filter(i => i.severity === 'blocker') : [];
-           return { ready: !!b && rundown.length > 0 && issues.length === 0, blockers: issues.map(i => ({ segmentTitle: stories.find(s => s.id === i.storyId)?.slug || '', detail: i.message })) };
-      })()
-    : episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() as any[] });
+  const readiness = episode && !isBulletin ? episodeReadiness(episode, { requests: apiService.getRequests(), media: apiService.getMedia() }) : null;
   const myCues = apiService
     .getCues()
     .filter((c) => c.fromId === currentUser.id && (!episode || !c.episodeId || c.episodeId === episode.id))
     .slice(0, 5);
 
   const run = async (fn: () => any, collection: 'onAir' | 'cues' = 'onAir') => {
-    if (commandPending) return false;
+    if (commandPending || !connected) return false;
     setCommandPending(true);
     try {
       setError(null);
@@ -146,7 +148,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
 
   // Keyboard: Space/Left = next, Right = previous (RTL), while live.
   useEffect(() => {
-    if (!canControl || !live) return;
+    if (!canControl || !live || !connected) return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || commandPending || document.querySelector('[role=dialog], [role=alertdialog]') || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'SUMMARY'].includes(tag) || (e.target as HTMLElement)?.isContentEditable) return;
@@ -163,13 +165,12 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   });
 
   const start = async () => {
-    if (!episode || !rundown.length) return;
+    if (!episode || !rundown.length || !connected || bulletinBlocked) return;
     if (pastShow && !(await confirmDialog({
       title: 'حلقة أو نشرة من موعد سابق',
       message: `موعد «${episode.title}» هو ${arabicDate(episode.broadcastDate)}. هل تريد بث هذا المحتوى السابق؟`,
       confirmLabel: 'بث المحتوى السابق', cancelLabel: 'إلغاء', danger: true,
     }))) return;
-    if (isBulletin && readiness && !readiness.ready) { setError(`النشرة غير جاهزة: ${readiness.blockers[0]?.detail || 'لا قصص للبث'}`); return; }
     if (readiness && !readiness.ready && !(await confirmDialog(`الحلقة غير مكتملة الجاهزية (النواقص: ${countLabel(readiness.blockers.length, EP_NOUNS.item)}). بدء البث رغم ذلك؟`))) return;
     if (!await run(() => apiService.setOnAir(episode.id, 'LIVE', rundown[0].id))) {
       void dataStore.pull();
@@ -181,14 +182,17 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   };
 
   const remainingCls = !timing ? '' : timing.remaining < 0 ? 'text-red-400' : timing.remaining <= 30 ? 'text-amber-300' : 'text-emerald-300';
+  const selectedTitle = episode ? `${episode.programName} — ${episode.title}` : '';
+  const nextSegment = timing?.next ?? (!live && state?.status !== 'ENDED' ? rundown[0] : undefined);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <label htmlFor="onair-show" className="text-xs font-semibold text-slate-600">الحلقة أو النشرة:</label>
-          <select id="onair-show" value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة أو النشرة" className="min-h-10 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full sm:w-auto sm:max-w-md">
+      <div className="flex flex-wrap items-end gap-2 min-w-0">
+        <div className="min-w-0 w-full sm:w-80 max-w-full space-y-1">
+          <label htmlFor="onair-show" className="block text-xs font-semibold text-slate-700">الحلقة أو النشرة</label>
+          <select id="onair-show" value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} title={selectedTitle || undefined} className="min-h-11 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full min-w-0 truncate">
             <option value="">{candidates.length ? 'اختر الحلقة أو النشرة' : 'لا توجد حلقات قادمة'}</option>
+            {episode && !candidates.some(candidate => candidate.id === episode.id) && <option value={episode.id}>{selectedTitle}</option>}
             {candidates.map((e) => (
               <option key={e.id} value={e.id}>
                 {liveIds.includes(e.id) ? '● على الهواء — ' : ''}
@@ -196,14 +200,25 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               </option>
             ))}
           </select>
+        </div>
           {episode && (
-            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="min-h-10 inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700">
+            <button type="button" onClick={() => onOpenStudioScreen(episode.id)} className="min-h-11 inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700">
               <MonitorPlay className="w-4 h-4" aria-hidden />
               شاشة الاستديو
             </button>
           )}
-        </div>
       </div>
+
+      <AirSourceStatus connected={connected} control={canControl} />
+      {!live && bulletin && <ReadinessPanel issues={issues} stories={bulletinStories} users={apiService.getUsers()} airStoryCount={rundown.length} onOpen={canOpenBulletin ? story => {
+        try { sessionStorage.setItem('madar-open-bulletin-story', story.id); } catch { /* The bulletin remains reachable. */ }
+        navigateTo.emit(`/bulletins/${encodeURIComponent(bulletin.id)}`);
+      } : undefined} />}
+      {!live && readiness && !readiness.ready && episode && <section aria-label="جاهزية الحلقة" className="border-y border-slate-200 py-2 space-y-1">
+        <h2 className="text-sm font-bold text-slate-900">جاهزية الحلقة</h2>
+        {readiness.blockers[0] ? <p className="text-sm text-amber-800 break-words">{readiness.blockers[0].segmentTitle} · {readiness.blockers[0].detail} · {departmentName(readiness.blockers[0].departmentId)}</p> : <p className="text-sm text-amber-800">أضف فقرة إلى الرانداون.</p>}
+        {canOpenEpisode && <button type="button" className="min-h-11 text-sm font-semibold text-blue-700 hover:underline" onClick={() => navigateTo.emit(`/episodes/${encodeURIComponent(episode.id)}`)}>مراجعة قائمة تحضير الحلقة</button>}
+      </section>}
 
       {commandPending && <p role="status" className="text-sm font-bold">جارٍ تأكيد الأمر من الخادم...</p>}
       {error && <p role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{error}</p>}
@@ -220,7 +235,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                 <span className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-bold ${live ? 'bg-red-600' : state?.status === 'ENDED' ? 'bg-slate-700' : 'bg-slate-800'}`}>
                   {live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'لم يبدأ'}
                 </span>
-                <span className="text-sm font-bold">
+                <span className="text-sm font-bold min-w-0 break-words">
                   {episode.programName} — {episode.title}
                 </span>
               </div>
@@ -267,21 +282,21 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-300">{rundown.length ? 'جاهز للبدء من الفقرة الأولى.' : 'لا يمكن بدء البث قبل إضافة فقرة واحدة على الأقل إلى الرانداون.'}</p>
+              <p className="text-sm text-slate-300">{state?.status === 'ENDED' ? 'انتهى البث.' : bulletinBlocked ? 'بانتظار معالجة موانع النشرة.' : rundown.length ? 'بانتظار بدء البث من الفقرة الأولى.' : 'أضف فقرة إلى الرانداون قبل بدء البث.'}</p>
             )}
 
             <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
             {displayMode === 'TEXT' && state?.status !== 'ENDED' && <AirScriptPanel segmentId={timing?.current?.id || rundown[0]?.id} script={timing?.current ? timing.current.scriptText : rundown[0]?.scriptText} live={live} />}
-            {timing?.next && (
+            {nextSegment && (
               <p className="text-xs text-slate-300 border-t border-slate-800 pt-3">
-                التالي: <strong className="text-white">{timing.next.title}</strong> ({formatClock(timing.next.durationSeconds || 0)})
+                {live ? 'التالي' : 'الفقرة الأولى'} · <strong className="text-white">{nextSegment.title}</strong> ({formatClock(nextSegment.durationSeconds || 0)})
               </p>
             )}
 
             {canControl && (
-              <div className="flex flex-wrap gap-2 pt-1">
+              <fieldset disabled={!connected || commandPending} className="flex flex-wrap gap-2 pt-1 min-w-0 disabled:opacity-60">
                 {!live ? (
-                  <button type="button" onClick={start} disabled={!rundown.length} title={rundown.length ? undefined : 'أضف فقرة إلى الرانداون أولاً'} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
+                  <button type="button" onClick={start} disabled={!rundown.length || bulletinBlocked} className="min-h-11 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-40">
                     <Play className="w-4 h-4" />
                     {state?.status === 'ENDED' ? 'إعادة بدء البث' : 'بدء البث'}
                   </button>
@@ -306,7 +321,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </>
                 )}
                 {live && <span className="text-xs text-slate-300 self-center">المسافة أو ← للتالي، → للسابق</span>}
-              </div>
+              </fieldset>
             )}
           </section>
 

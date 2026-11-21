@@ -28,6 +28,7 @@ export const COLLECTIONS = {
   broadcastState: { storageKey: 'nrcs_broadcast_state_v1', kind: 'singleton' },
   /** Internal newsroom chat (intercom channels). */
   messages: { storageKey: 'nrcs_messages_v1', kind: 'list' },
+  chatPins: { storageKey: 'madar_chat_pins_v1', kind: 'list' },
   /** Soft edit locks ("X is editing this story"); id = `${collection}:${entityId}`. */
   editLocks: { storageKey: 'nrcs_edit_locks_v1', kind: 'list' },
   /** Team comments with @mentions (append-only; author stamped by the server). */
@@ -53,6 +54,8 @@ export const COLLECTIONS = {
   /** Each colleague's notification channels and wire watch words; id = userId (private). */
   notificationPrefs: { storageKey: 'nrcs_notification_prefs_v1', kind: 'list' },
   savedNewsFilters: { storageKey: 'madar_saved_news_filters_v1', kind: 'list' },
+  workspacePrefs: { storageKey: 'madar_workspace_preferences_v1', kind: 'list' },
+  personalNotes: { storageKey: 'madar_personal_notes_v1', kind: 'list' },
   shiftHandovers: { storageKey: 'madar_shift_handovers_v1', kind: 'list' },
   handoverReceipts: { storageKey: 'madar_handover_receipts_v1', kind: 'list' },
   /** Planning diary (news agenda): upcoming events, coverage decisions and assignments. */

@@ -10,6 +10,7 @@
  */
 import { cardContributions, cardState, isStepOpen, stepPoints, stepTypeName, type ProductionCard, type StepType } from './productionCards';
 import type { Station } from './stations';
+import { taskTiming } from './taskWorkflow';
 
 export type WorkSource = 'CARD_STEP' | 'TASK' | 'REQUEST' | 'NEWS' | 'REVIEW';
 
@@ -122,7 +123,8 @@ export function collectWork(input: WorkInputs): WorkItem[] {
       blocked: task.status === 'BLOCKED',
       overdue: !done && past(task.dueDate, now),
       dueAt: task.dueDate,
-      startedAt: task.createdAt,
+      startedAt: task.execution?.startedAt,
+      spentMinutes: task.execution?.startedAt ? taskTiming(task, now).activeSeconds / 60 : undefined,
       doneAt: done ? task.completedAt : undefined,
       ref: { nav: 'tasks', id: task.id },
     });
@@ -443,8 +445,9 @@ export function employeeFile(items: WorkItem[], user: UserLike, period: Period, 
 
 export const minutesLabel = (minutes: number) => {
   if (!minutes) return '—';
+  if (minutes < 1) return 'أقل من دقيقة';
   const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const m = Math.floor(minutes % 60);
   return h ? (m ? `${h} س ${m} د` : `${h} س`) : `${m} د`;
 };
 

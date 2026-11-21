@@ -344,6 +344,15 @@ export const ALL_PERMISSIONS: PermissionDefinition[] = [
 
   // --- TASKS ---
   {
+    code: 'work.assigned_only',
+    nameAr: 'عرض العمل المسند شخصيًا فقط',
+    nameEn: 'Assigned Work Only',
+    description: 'تقييد حساب الخدمات المساندة إلى المهام والتكليفات المسندة إليه بالاسم',
+    category: 'TASKS',
+    categoryNameAr: 'المهام التحريرية',
+    riskLevel: 'LOW',
+  },
+  {
     code: 'tasks.view',
     nameAr: 'عرض المهام والتكليفات',
     nameEn: 'View Tasks',
@@ -626,6 +635,19 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
     badgeText: 'مدير النظام العام',
     isSystemRole: true,
     permissions: ALL_PERMISSIONS.map((p) => p.code),
+  },
+  {
+    id: 'role-support-services',
+    roleCode: 'SUPPORT_SERVICES',
+    nameAr: 'الخدمات المساندة',
+    nameEn: 'Support Services',
+    description: 'استلام وإنجاز المهام والتكليفات المسندة بالاسم، مثل النقل وخدمات الميدان',
+    color: '#0f766e',
+    badgeBg: 'bg-teal-50 text-teal-800 border-teal-200',
+    badgeText: 'خدمات مساندة',
+    isSystemRole: true,
+    screens: ['tasks', 'cards'],
+    permissions: ['work.assigned_only', 'tasks.view', 'cards.view', 'cards.work'],
   },
   {
     id: 'role-admin',

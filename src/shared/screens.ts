@@ -21,7 +21,7 @@ export const SCREEN_GROUPS: { label: string; navs: string[] }[] = [
 export const ASSIGNABLE_SCREENS: string[] = SCREEN_GROUPS.flatMap((g) => g.navs);
 
 /** Open to everyone: the home page, personal settings and help (the user guide included). */
-const ALWAYS_OPEN = new Set(['dashboard', 'help', 'guide', 'whats-new', 'alerts']);
+const ALWAYS_OPEN = new Set(['dashboard', 'help', 'guide', 'whats-new', 'alerts', 'personal-notes']);
 
 /** Pages inside another screen follow that screen. */
 const PARENT_SCREEN: Record<string, string> = {

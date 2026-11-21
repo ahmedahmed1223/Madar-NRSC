@@ -6,18 +6,14 @@ import { User as UserType } from '../../types';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { intercomCommand, intercomState, navigateTo, routeChanged } from '../../services/uiEvents';
-import { isPrivateChannel, parseChannel, unreadByChannel } from '../../shared/chat';
+import { canonicalMessageChannel, isPrivateChannel, MAX_MESSAGE_CHARS, parseChannel, unreadByChannel } from '../../shared/chat';
+import { clearSentMessageDraft, messagePosition, rememberMessagePosition, saveMessageDraft, scrollToMessage, selectPublicMessageChannel, useMessageWorkspace } from '../../services/messageWorkspace';
 import { useLiveData } from '../../hooks/useLiveData';
+import { PinnedAnnouncement, usePinnedAnnouncement } from '../messages/PinnedAnnouncement';
 import { RbacService } from '../../services/rbacService';
 
 /** The quick drawer carries the open channels; private conversations live on the «المراسلات» screen. */
 const openChannelMessages = () => apiService.getMessages().filter((m) => ['general', 'department', 'legacy'].includes(parseChannel(m.channel)?.kind || ''));
-
-type Channel = string;
-
-/** Messages from the three original channels live on in the matching departments. */
-const LEGACY_CHANNELS: Record<string, string> = { STUDIO_PCR: 'control', NEWSROOM: 'newsroom', FIELD: 'field' };
-const channelOf = (m: { channel: string }) => LEGACY_CHANNELS[m.channel] || m.channel;
 
 interface NewsroomIntercomDrawerProps {
   currentUser?: UserType | null;
@@ -41,35 +37,36 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
   currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const userId = currentUser?.id || '';
   const myDept = currentUser ? departmentIdOf(currentUser) : 'newsroom';
-  const [selection, setSelection] = useState<Channel>(myDept);
+  const { publicChannel, drafts } = useMessageWorkspace(userId);
   const channels = [
     { id: 'general', name: 'عام' },
     ...DEPARTMENTS.filter((d) => d.id === myDept),
     ...DEPARTMENTS.filter((d) => d.id !== myDept),
   ];
-  const currentChannel = channels.find(channel => channel.id === selection) || channels[0];
+  const currentChannel = channels.find(channel => channel.id === (publicChannel ?? myDept)) || channels[0];
   const activeChannel = currentChannel.id;
+  const pin = usePinnedAnnouncement(activeChannel);
   useLiveData(['messages', 'chatReads', 'settings']);
   const messages = openChannelMessages();
   const reads = currentUser ? apiService.getChatReads() : undefined;
   const legacySeen = currentUser ? readLastSeen(currentUser.id) : '';
-  const [drafts, setDrafts] = useState<Record<string, { text: string; urgent: boolean }>>({});
-  const { text: inputText, urgent: isUrgentCue } = drafts[activeChannel] || { text: '', urgent: false };
-  const updateDraft = (text: string, urgent: boolean) => setDrafts(current => ({ ...current, [activeChannel]: { text, urgent } }));
+  const { text: inputText, urgent: isUrgentCue } = drafts.get(activeChannel) ?? { text: '', urgent: false };
+  const updateDraft = (text: string, urgent: boolean) => saveMessageDraft(userId, activeChannel, { text, urgent });
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState('');
   const [sending, setSending] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
   const previousChannel = useRef('');
   const followLatest = useRef(true);
-  const channelFilteredMessages = messages.filter(message => channelOf(message) === activeChannel)
+  const channelFilteredMessages = messages.filter(message => canonicalMessageChannel(message.channel) === activeChannel)
     .sort((left, right) => (left.timestamp || '').localeCompare(right.timestamp || '') || left.id.localeCompare(right.id));
   const newestTimestamp = channelFilteredMessages[channelFilteredMessages.length - 1]?.timestamp || '';
   const unreadByDepartment = new Map<string, number>();
   for (const message of messages) {
     if (message.userId === currentUser?.id || !message.timestamp) continue;
-    const channel = channelOf(message);
+    const channel = canonicalMessageChannel(message.channel);
     const seen = reads?.seen?.[channel] ?? legacySeen;
     if (message.timestamp > seen) unreadByDepartment.set(channel, (unreadByDepartment.get(channel) || 0) + 1);
   }
@@ -77,11 +74,15 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
 
   useEffect(() => {
     if (!isOpen || !streamRef.current) { previousChannel.current = ''; return; }
-    if (previousChannel.current !== activeChannel) followLatest.current = true;
-    previousChannel.current = activeChannel;
+    const scope = `${userId}:${activeChannel}`;
+    if (previousChannel.current !== scope) {
+      const saved = messagePosition(userId, activeChannel);
+      followLatest.current = !saved || !scrollToMessage(streamRef.current, saved);
+    }
+    previousChannel.current = scope;
     if (followLatest.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
     if (followLatest.current && currentUser && newestTimestamp) apiService.markChannelRead(activeChannel, newestTimestamp);
-  }, [isOpen, activeChannel, newestTimestamp, currentUser]);
+  }, [isOpen, activeChannel, newestTimestamp, userId]);
 
   // Opened from the top bar; closes on Esc and when the screen changes; focus goes in and back.
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -118,7 +119,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
       const id = apiService.sendMessage(activeChannel, inputText.trim(), isUrgentCue);
       const result = await dataStore.awaitWrite('messages', id);
       if (result.ok || result.pending) {
-        updateDraft('', false);
+        clearSentMessageDraft(userId, activeChannel, { text: inputText, urgent: isUrgentCue });
         setSendStatus(result.ok ? 'أُرسلت الرسالة' : 'الرسالة محفوظة بانتظار المزامنة');
       } else {
         setSendError(result.message || 'لم يؤكد الخادم إرسال الرسالة. أعد المحاولة.');
@@ -169,7 +170,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
             <label className="flex-1 min-w-0 text-xs font-semibold text-slate-700">
               قناة المحادثة
               <select value={activeChannel} disabled={sending} onChange={event => {
-                setSelection(event.target.value); setSendStatus(''); setSendError(null);
+                selectPublicMessageChannel(userId, event.target.value); setSendStatus(''); setSendError(null);
               }} className="mt-1 block w-full min-h-11 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-600">
                 {channels.map(channel => {
                   const unread = unreadByDepartment.get(channel.id) || 0;
@@ -179,7 +180,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 })}
               </select>
             </label>
-            {canOpenMessages && <button type="button" onClick={() => {
+            {canOpenMessages && <button type="button" disabled={sending} onClick={() => {
               setIsOpen(false);
               navigateTo.emit(`/messages/${encodeURIComponent(activeChannel)}`);
             }} className="min-h-11 inline-flex items-center gap-1 px-2 rounded-lg border border-slate-300 text-xs font-semibold text-blue-700 hover:bg-blue-50">
@@ -187,10 +188,15 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
             </button>}
           </div>
 
+          {pin && <PinnedAnnouncement pin={pin} onOpen={path => {
+            if (canOpenMessages) { setIsOpen(false); navigateTo.emit(path); }
+            else if (streamRef.current) scrollToMessage(streamRef.current, pin.messageId);
+          }} />}
           {/* Messages Stream */}
           <div ref={streamRef} role="log" aria-label={`رسائل ${currentChannel.name}`} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-2" onScroll={event => {
             const stream = event.currentTarget;
             followLatest.current = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48;
+            rememberMessagePosition(userId, activeChannel, stream, followLatest.current);
             if (followLatest.current && currentUser && newestTimestamp) apiService.markChannelRead(activeChannel, newestTimestamp);
           }}>
             {channelFilteredMessages.length === 0 && (
@@ -199,6 +205,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
             {channelFilteredMessages.map((msg) => (
               <div
                 key={msg.id}
+                data-chat-message={msg.id}
                 className={`px-3 py-2.5 rounded-xl border text-xs space-y-1.5 ${
                   msg.isUrgent
                     ? 'bg-rose-50 border-rose-200 text-rose-900'
@@ -247,7 +254,7 @@ export const NewsroomIntercomDrawer: React.FC<NewsroomIntercomDrawerProps> = ({
                 value={inputText}
                 readOnly={sending}
                 onChange={(e) => updateDraft(e.target.value, isUrgentCue)}
-                maxLength={2000}
+                maxLength={MAX_MESSAGE_CHARS}
                 aria-label="نص الرسالة"
                 placeholder={`رسالة إلى قناة ${currentChannel.name}…`}
                 className="flex-1 min-w-0 min-h-11 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-blue-600"

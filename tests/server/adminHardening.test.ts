@@ -205,7 +205,7 @@ describe('administrative departments (M6)', () => {
 
     const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
     await sync(journalist, [put('requests', { id: 'req-head', type: 'MONTAGE', title: 'مونتاج تقرير', status: 'OPEN' })]);
-    expect(server.db.listCollection('notifications').some((n) => n.d.userId === 'usr-4' && n.d.linkUrl === '/requests')).toBe(true);
+    expect(server.db.listCollection('notifications').some((n) => n.d.userId === 'usr-4' && n.d.linkUrl === '/requests/req-head')).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 import { ShowMore, useIncremental } from '../components/common/ShowMore';
 import { countLabel } from '../shared/labels';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
-import { normalizeTaskStatus, priorityLabel, statusLabel } from '../shared/labels';
+import { priorityLabel, statusLabel } from '../shared/labels';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -12,9 +12,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { newId } from '../shared/ids';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown, CheckSquare, X } from 'lucide-react';
-import { confirmDialog } from '../services/dialogs';
-import { TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, type TaskView } from '../services/taskBoard';
+import { confirmDialog, promptDialog } from '../services/dialogs';
+import { takeMessageTask, type MessageTaskOrigin } from '../services/messageWorkspace';
+import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
+import { assignedWorkOnly } from '../shared/assignedWork';
+import { departmentsOf, departmentWorkScope } from '../shared/departments';
+import { normalizeTaskStatus, taskDurationLabel, taskTiming } from '../shared/taskWorkflow';
+import { dataStore } from '../services/dataStore';
+import { useLiveData } from '../hooks/useLiveData';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
 function overdueDays(t: EditorialTask): number {
@@ -32,6 +38,15 @@ const OverdueBadge: React.FC<{ task: EditorialTask }> = ({ task }) => {
     </span>
   );
 };
+
+function TaskExecution({ task, now }: { task: EditorialTask; now: number }) {
+  const { activeSeconds, elapsedSeconds } = taskTiming(task, now);
+  if (elapsedSeconds === null) return null;
+  return <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
+    <span>مدة التنفيذ {taskDurationLabel(activeSeconds)}</span>
+    <span>المدة الكلية {taskDurationLabel(elapsedSeconds)}</span>
+  </div>;
+}
 import { Badge } from '../components/common/Badge';
 import { SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { notify } from '../services/notify';
@@ -52,6 +67,8 @@ interface TasksViewProps {
 const priorityVariant = (p?: string) => (p === 'URGENT' || p === 'CRITICAL' ? 'danger' : p === 'HIGH' ? 'warning' : 'default');
 
 const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 0, HIGH: 1, NORMAL: 2, MEDIUM: 2, LOW: 3 };
+const BLOCKED_REASON_LIMIT = 500;
+const INITIAL_STATUS_OPTIONS = TASK_STATUS_OPTIONS.filter(option => option.value === 'TODO' || option.value === 'IN_PROGRESS');
 const dueTime = (t: { dueDate?: string }) => (t.dueDate ? Date.parse(t.dueDate) || Infinity : Infinity);
 
 const cmp = (x: number, y: number) => (x === y ? 0 : x < y ? -1 : 1);
@@ -71,17 +88,33 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onDeleteTask,
   onOpenLink,
 }) => {
-  // Assignees may still move their own tasks; creating, reassigning and deleting need tasks.create_assign.
-  const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
+  useLiveData(['settings', 'tasks'], 30_000);
+  const now = Date.now();
+  const settings = apiService.getSettings();
+  const workflow = settings.taskWorkflow;
+  const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
+  const scope = departmentWorkScope(currentUser.id, departmentsOf(settings));
+  const scopedManager = !assignedOnly && scope.led.length > 0 && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN';
+  const assignableUsers = apiService.getUsers().filter(user => user.isActive !== false && !user.deletedAt && (!scopedManager || scope.departmentFor(user)));
+  const teamIds = scopedManager ? new Set(assignableUsers.map(user => user.id)) : null;
+  const canAssign = scopedManager || RbacService.hasPermission(currentUser, 'tasks.create_assign');
+  const canManage = (task: EditorialTask) => teamIds ? teamIds.has(task.assigneeId || task.assignedToId || '') : canAssign;
   const [activeTab, setActiveTabState] = useState<TaskView>(() => focusId ? 'LIST' : savedTaskView());
   const setActiveTab = (view: TaskView) => {
     setActiveTabState(view);
     saveTaskView(view);
   };
   /** Status buttons and dragging only on tasks this colleague may move (the server refuses the rest). */
-  const canMove = (t: EditorialTask) => canChangeTaskStatus(t, currentUser.id, canAssign);
+  const canMove = (t: EditorialTask) => canChangeTaskStatus(t, currentUser.id, canManage(t));
+  const optionsFor = (t: EditorialTask, includeCurrent = false) =>
+    taskStatusChoices(t.status, workflow, canManage(t), includeCurrent);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [period, setPeriod] = useState<TaskPeriod>(() => {
+    if (!assignedOnly || focusId) return 'ALL';
+    const dueToday = taskPeriodMatcher('TODAY', now, settings.defaultTimezone);
+    return tasks.some(task => isMyTask(task, currentUser.id) && dueToday(task)) ? 'TODAY' : 'ALL';
+  });
   // Colleagues who only carry out tasks start on their own; task managers see the whole team.
   const [mineOnly, setMineOnly] = useState(!canAssign);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -90,7 +123,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const columnLimit = (status: string) => columnLimits[status] ?? 30;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<EditorialTask | null>(null);
-  const focusedTask = focusId && ENTITY_ID_PATTERN.test(focusId) ? tasks.find(task => task.id === focusId && !(task as EditorialTask & { deletedAt?: string }).deletedAt) : undefined;
+  const [messageOrigin, setMessageOrigin] = useState<MessageTaskOrigin | null>(null);
+  const focusedTask = focusId && ENTITY_ID_PATTERN.test(focusId) ? tasks.find(task => task.id === focusId && !(task as EditorialTask & { deletedAt?: string }).deletedAt && (!assignedOnly || isMyTask(task, currentUser.id))) : undefined;
 
   // Form states
   const [title, setTitle] = useState('');
@@ -98,18 +132,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [priority, setPriority] = useState<NewsPriority>('NORMAL');
   const [dueDate, setDueDate] = useState(toLocalInputValue());
   const [assigneeId, setAssigneeId] = useState(currentUser.id);
-  // Tasks are assigned to real accounts so the assignee is notified and can update the task.
-  const assignableUsers = apiService.getUsers().filter((u) => u.isActive !== false && !u.deletedAt);
   const [status, setStatus] = useState<TaskStatus>('TODO');
+  const [blockedReason, setBlockedReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const newTaskId = useRef<string | null>(null);
   const moving = useRef(new Set<string>());
   const [movingTasks, setMovingTasks] = useState<ReadonlySet<string>>(new Set());
-  const draft = useFormDraft(`task:${currentUser.id}:${editingTask?.id || 'new'}`, isModalOpen,
-    { title, description, priority, dueDate, assigneeId, status }, value => {
+  const draft = useFormDraft(`task:${currentUser.id}:${editingTask?.id || (messageOrigin ? `message:${messageOrigin.channel}:${messageOrigin.messageId}` : 'new')}`, isModalOpen,
+    { title, description, priority, dueDate, assigneeId, status, blockedReason }, value => {
       setTitle(value.title); setDescription(value.description); setPriority(value.priority);
-      setDueDate(value.dueDate); setAssigneeId(value.assigneeId); setStatus(value.status);
+      setDueDate(value.dueDate); setAssigneeId(value.assigneeId); setStatus(normalizeTaskStatus(value.status));
+      setBlockedReason(value.blockedReason || '');
     });
 
   const TASK_TEMPLATES = [
@@ -130,30 +164,56 @@ export const TasksView: React.FC<TasksViewProps> = ({
     newTaskId.current = null;
     setSaveError('');
     setEditingTask(null);
+    setMessageOrigin(null);
     setTitle('');
     setDescription('');
     setPriority('NORMAL');
     setDueDate(toLocalInputValue(new Date(Date.now() + 86400000)));
-    setAssigneeId(currentUser.id);
+    setAssigneeId(teamIds && !teamIds.has(currentUser.id) ? assignableUsers[0]?.id || '' : currentUser.id);
     setStatus('TODO');
+    setBlockedReason('');
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    const origin = takeMessageTask(currentUser.id);
+    if (!origin || !canAssign) return;
+    handleOpenAdd();
+    setMessageOrigin(origin);
+    setTitle(origin.suggestedTitle);
+  }, [currentUser.id, canAssign]);
 
   const handleOpenEdit = (t: EditorialTask) => {
     setSaveError('');
     setEditingTask(t);
+    setMessageOrigin(null);
     setTitle(t.title);
     setDescription(t.description || '');
     setPriority(t.priority);
     setDueDate(toLocalInputValue(t.dueDate || new Date()));
     setAssigneeId(t.assigneeId || t.assignedToId || currentUser.id);
     setStatus(normalizeTaskStatus(t.status) as TaskStatus);
+    setBlockedReason(t.blockedReason || '');
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || saving) return;
+    if (!title.trim() || saving || !(editingTask ? canManage(editingTask) : canAssign)) return;
+    const reason = blockedReason.trim();
+    const current = editingTask && apiService.getTasks().find(item => item.id === editingTask.id);
+    if (editingTask && (!current || normalizeTaskStatus(current.status) !== normalizeTaskStatus(editingTask.status) || current.blockedReason !== editingTask.blockedReason)) {
+      setSaveError('تغيّرت حالة المهمة منذ فتحها. افتح نسختها الحالية ثم أعد المحاولة.');
+      return;
+    }
+    if (status === 'BLOCKED' && workflow?.requireBlockedReason && !reason && (normalizeTaskStatus(editingTask?.status) !== 'BLOCKED' || !!editingTask?.blockedReason)) {
+      setSaveError('أدخل سبب توقف المهمة.');
+      return;
+    }
+    if (!(editingTask ? optionsFor(editingTask, true) : INITIAL_STATUS_OPTIONS).some(option => option.value === status)) {
+      setSaveError('الحالة المختارة غير متاحة لهذه المهمة. اختر حالة من القائمة.');
+      return;
+    }
     const assignee = assignableUsers.find(u => u.id === assigneeId);
     if (!assignee) { setSaveError('اختر مسؤولًا نشطًا عن المهمة.'); return; }
     const deadline = fromLocalInputValue(dueDate);
@@ -172,24 +232,58 @@ export const TasksView: React.FC<TasksViewProps> = ({
       assignedToName: assignee.fullName,
       assigneeName: assignee.fullName,
       status,
+      ...(status === 'BLOCKED' && (reason || editingTask?.blockedReason) ? { blockedReason: reason } : {}),
       assignedToId: assignee.id,
       assigneeId: assignee.id,
       assigneeAvatar: assignee.avatarUrl,
       ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
+      ...(messageOrigin ? {
+        relatedEntityType: 'MESSAGE',
+        relatedEntityId: `${messageOrigin.channel}/entry/${messageOrigin.messageId}`,
+        relatedEntityTitle: messageOrigin.label,
+      } : {}),
     });
     if (saved !== false) { draft.clearDraft(); setIsModalOpen(false); }
     else setSaveError('لم يؤكد الخادم حفظ المهمة. احتفظنا بالبيانات لإعادة المحاولة.');
     } finally { setSaving(false); }
   };
 
-  const handleQuickStatusChange = async (taskId: string, newStatus: TaskStatus) => {
-    if (moving.current.has(taskId)) return false;
-    moving.current.add(taskId);
+  const handleQuickStatusChange = async (task: EditorialTask, newStatus: TaskStatus) => {
+    const id = task.id;
+    if (!canMove(task) || moving.current.has(id) || dataStore.hasPendingWrite('tasks', id)) return false;
+    if (!optionsFor(task).some(option => option.value === newStatus)) {
+      notify({ type: 'warning', message: 'هذه الحالة غير متاحة للمهمة الحالية.' });
+      return false;
+    }
+    moving.current.add(id);
     setMovingTasks(new Set(moving.current));
     try {
-      return await onSaveTask({ id: taskId, status: newStatus }) !== false;
+      let reason: string | undefined;
+      if (newStatus === 'BLOCKED') {
+        const answer = await promptDialog({
+          title: 'إيقاف المهمة',
+          label: 'سبب التوقف',
+          message: `ما الذي يعطّل «${task.title}»؟`,
+          confirmLabel: 'حفظ الحالة',
+          multiline: true,
+          required: workflow?.requireBlockedReason,
+        });
+        if (answer === null) return false;
+        reason = answer.trim();
+        if (reason.length > BLOCKED_REASON_LIMIT) {
+          notify({ type: 'warning', message: `اختصر سبب التوقف إلى ${BLOCKED_REASON_LIMIT} حرف.` });
+          return false;
+        }
+      }
+      const current = apiService.getTasks().find(item => item.id === id);
+      if (apiService.getCurrentUser().id !== currentUser.id) return false;
+      if (!current || !canMove(current) || normalizeTaskStatus(current.status) !== normalizeTaskStatus(task.status) || dataStore.hasPendingWrite('tasks', id)) {
+        notify({ type: 'warning', message: 'تغيّرت المهمة. راجع حالتها الحالية قبل المحاولة مجددًا.' });
+        return false;
+      }
+      return await onSaveTask({ id, status: newStatus, ...(newStatus === 'BLOCKED' ? { blockedReason: reason } : {}) }) !== false;
     } finally {
-      moving.current.delete(taskId);
+      moving.current.delete(id);
       setMovingTasks(new Set(moving.current));
     }
   };
@@ -211,7 +305,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     const kind = RELATED_ENTITY_LABELS[task.relatedEntityType] || 'سجل';
     const text = `${kind}: ${task.relatedEntityTitle || 'بلا عنوان'}`;
     const path = relatedTaskPath(task, bulletinOfStory);
-    if (!path || !onOpenLink) {
+    if (assignedOnly || !path || !onOpenLink) {
       return (
         <span className="inline-flex items-center gap-1 max-w-full px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-2xs font-semibold">
           <Link2 className="w-3 h-3 shrink-0" aria-hidden="true" />
@@ -234,12 +328,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   // A notification link (/tasks/<id>) brings that task into view: clear the filters that might hide it, then scroll to it.
   useEffect(() => {
-    if (!focusId) return;
-    const task = tasks.find((t) => t.id === focusId);
-    if (!task) return;
+    if (!focusId || !focusedTask) return;
     setActiveTabState('LIST');
     setSearchQuery('');
     setSelectedStatus('ALL');
+    setPeriod('ALL');
     setMineOnly(false);
     const timer = window.setTimeout(() => {
       const el = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusId)}"]`);
@@ -249,33 +342,52 @@ export const TasksView: React.FC<TasksViewProps> = ({
     return () => window.clearTimeout(timer);
     // Only when the target changes (not on every task update).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusId, tasks.some((t) => t.id === focusId)]);
+  }, [focusId, !!focusedTask]);
 
   // One status vocabulary for the board and the table (older tasks use DONE for completed).
   const assigneeOf = (t: EditorialTask) =>
     t.assigneeName || t.assignedToName || apiService.getUsers().find((u) => u.id === (t.assigneeId || t.assignedToId))?.fullName || 'غير مسندة';
+  const dueInPeriod = taskPeriodMatcher(period, now, settings.defaultTimezone);
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
     if (focusedTask && t.id !== focusedTask.id) return false;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
-    if (mineOnly && !isMyTask(t, currentUser.id)) return false;
+    if ((assignedOnly || mineOnly) && !isMyTask(t, currentUser.id)) return false;
+    if (!focusedTask && !dueInPeriod(t)) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
     }
     return true;
   });
 
-  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${mineOnly}`);
+  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${period}|${mineOnly}|${assignedOnly}`);
 
   const columns = TASK_BOARD_COLUMNS;
   const isFinished = (s: TaskStatus) => s === 'COMPLETED' || s === 'CANCELLED';
   const focusRing = (id: string) => (focusId === id ? 'ring-2 ring-blue-500 ring-offset-2' : '');
 
-  const quickMoves: { status: TaskStatus; label: string; className: string }[] = [
-    { status: 'TODO', label: '← مطلوبة', className: 'bg-slate-100 hover:bg-slate-200 text-slate-600' },
-    { status: 'IN_PROGRESS', label: 'قيد التنفيذ', className: 'bg-blue-50 hover:bg-blue-100 text-blue-700' },
-    { status: 'IN_REVIEW', label: 'قيد المراجعة', className: 'bg-amber-50 hover:bg-amber-100 text-amber-800' },
-    { status: 'COMPLETED', label: 'إنجاز ✓', className: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700' },
-  ];
+  const pending = (task: EditorialTask) => movingTasks.has(task.id) || dataStore.hasPendingWrite('tasks', task.id);
+  const movementControl = (task: EditorialTask) => {
+    const current = normalizeTaskStatus(task.status);
+    const options = canMove(task) ? optionsFor(task, true) : [];
+    return <div className="space-y-1">
+      {pending(task) && <p role="status" className="text-xs text-slate-600">بانتظار تأكيد نقل المهمة</p>}
+      {options.length > 1 ? (
+        <select
+          aria-label={`حالة المهمة: ${task.title}`}
+          value={current}
+          disabled={pending(task)}
+          onChange={(event) => void handleQuickStatusChange(task, event.target.value as TaskStatus)}
+          className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800"
+        >
+          {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : <Badge
+        variant={current === 'COMPLETED' ? 'success' : current === 'IN_PROGRESS' ? 'primary' : current === 'BLOCKED' ? 'danger' : current === 'CANCELLED' ? 'default' : 'warning'}
+        size="sm"
+      >{statusLabel(current, 'task')}</Badge>}
+      {current === 'BLOCKED' && task.blockedReason && <p className="text-xs text-rose-800 [overflow-wrap:anywhere]">سبب التوقف: {task.blockedReason}</p>}
+    </div>;
+  };
 
   const renderCard = (t: EditorialTask, colStatus: TaskStatus) => (
     <SortableItem
@@ -283,7 +395,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       id={t.id}
       container={`col:${colStatus}`}
       label={t.title}
-      disabled={!canMove(t) || movingTasks.has(t.id)}
+      disabled={!canMove(t) || !optionsFor(t).length || pending(t)}
       data-task-id={t.id}
       tabIndex={-1}
       className={`bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 outline-hidden ${focusRing(t.id)}`}
@@ -299,7 +411,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {priorityLabel(t.priority)}
         </Badge>
         <div className="flex items-center gap-1">
-          {canAssign && (
+          {canManage(t) && (
           <button
             type="button"
             onClick={() => handleOpenEdit(t)}
@@ -310,7 +422,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <Edit2 className="w-3.5 h-3.5" />
           </button>
           )}
-          {canAssign && (
+          {canManage(t) && (
           <button
             type="button"
             onClick={() => void handleDelete(t)}
@@ -325,7 +437,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
       </div>
 
       <h4 className="text-xs font-bold text-slate-800 leading-snug">{t.title}</h4>
-      {movingTasks.has(t.id) && <p role="status" className="text-xs font-semibold text-slate-600">بانتظار تأكيد نقل المهمة</p>}
 
       {t.description && (
         <p className="text-2xs text-slate-500 line-clamp-2">{t.description}</p>
@@ -345,20 +456,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       </div>
 
-      {/* Quick Move Buttons: only on tasks this colleague may move */}
-      {canMove(t) && <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-1">
-        {quickMoves.filter((m) => m.status !== colStatus).map((m) => (
-          <button
-            key={m.status}
-            type="button"
-            disabled={movingTasks.has(t.id)}
-            onClick={() => handleQuickStatusChange(t.id, m.status)}
-            className={`min-h-7 text-2xs px-2 py-0.5 rounded font-semibold ${m.className}`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>}
+      <TaskExecution task={t} now={now} />
+      {movementControl(t)}
       </>
       )}
     </SortableItem>
@@ -378,7 +477,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             المهام
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            المهام المسندة إلى الزملاء: من ينفّذ ماذا، وموعد التسليم، وأين وصل العمل.
+            {assignedOnly ? 'تابع المهام المسندة إليك وحدّث حالتها أثناء العمل.' : 'المهام المسندة إلى الزملاء ومواعيد تسليمها وحالة تنفيذها.'}
           </p>
         </div>
 
@@ -444,7 +543,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <option value="ALL">جميع الحالات</option>
             {TASK_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <label htmlFor="tasks-mine-only" className="inline-flex items-center gap-2 min-h-11 px-3 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+          <div className="inline-flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
+            <label htmlFor="tasks-period">موعد التسليم</label>
+            <select id="tasks-period" value={period} onChange={(event) => setPeriod(event.target.value as TaskPeriod)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800">
+              {TASK_PERIOD_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          {!assignedOnly && <label htmlFor="tasks-mine-only" className="inline-flex items-center gap-2 min-h-11 px-3 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
             <input
               id="tasks-mine-only"
               type="checkbox"
@@ -453,7 +558,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               className="w-4 h-4 accent-blue-600"
             />
             مهامي فقط
-          </label>
+          </label>}
         </div>
       </div>
 
@@ -461,17 +566,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {activeTab === 'KANBAN' ? (
         <SortableScope
           onDrop={async ({ id, from, to }) => {
-            if (from === to) return;
+            if (from === to || !to.startsWith('col:')) return;
             const task = tasks.find((x) => x.id === id);
-            if (task && !canMove(task)) return;
-            const status = to.slice(4) as TaskStatus;
-            const previous = task?.status;
-            if (!await handleQuickStatusChange(id, status)) return;
-            const label = columns.find((c) => c.status === status)?.label || status;
+            const next = to.slice(4) as TaskStatus;
+            if (!task || !await handleQuickStatusChange(task, next)) return;
+            const previous = normalizeTaskStatus(task.status);
+            const savedTask = apiService.getTasks().find(item => item.id === id && normalizeTaskStatus(item.status) === next);
+            const canUndo = savedTask && optionsFor(savedTask).some(option => option.value === previous);
             notify({
               type: 'success',
-              message: `نُقلت «${task?.title || ''}» إلى ${label}`,
-              action: previous ? { label: 'تراجع', run: () => { void handleQuickStatusChange(id, previous); } } : undefined,
+              message: `نُقلت «${task.title}» إلى ${statusLabel(next, 'task')}`,
+              action: canUndo ? { label: 'تراجع', run: () => { void handleQuickStatusChange(savedTask, previous); } } : undefined,
             });
           }}
         >
@@ -556,7 +661,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
               {filteredTasks.length === 0 && (
                 <tr role="row" className="max-lg:block">
                   <td role="cell" colSpan={6} className="max-lg:block py-10 px-4 text-center text-slate-500">
-                    {tasks.length === 0 ? 'لا مهام بعد.' : mineOnly && !searchQuery && selectedStatus === 'ALL' ? 'لا مهام مسندة إليك الآن. ألغِ «مهامي فقط» لرؤية مهام الفريق.' : 'لا مهام تطابق البحث أو التصفية.'}
+                    {period !== 'ALL' ? <>
+                      <p>لا مهام تطابق الفترة والفلاتر الحالية.</p>
+                      <button type="button" onClick={() => setPeriod('ALL')} className="min-h-11 px-3 text-xs font-bold text-blue-700 hover:underline">عرض كل المواعيد</button>
+                    </> : assignedOnly ? 'لا مهام مسندة إليك تطابق التصفية الحالية.' : tasks.length === 0 ? 'لا مهام بعد.' : mineOnly && !searchQuery && selectedStatus === 'ALL' ? 'لا مهام مسندة إليك الآن. ألغِ «مهامي فقط» لرؤية مهام الفريق.' : 'لا مهام تطابق البحث أو التصفية.'}
                   </td>
                 </tr>
               )}
@@ -584,32 +692,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <span className={overdueDays(t) ? 'text-amber-800 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
                       <OverdueBadge task={t} />
                     </div>
+                    <TaskExecution task={t} now={now} />
                   </td>
                   <td role="cell" className="min-w-0 lg:py-3 lg:px-3">
                     <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">الحالة</div>
-                    {movingTasks.has(t.id) && <span role="status" className="block text-xs text-slate-600">بانتظار تأكيد نقل المهمة</span>}
-                    {canMove(t) && t.status !== 'CANCELLED' ? (
-                      <select
-                        aria-label={`حالة المهمة: ${t.title}`}
-                        value={t.status}
-                        disabled={movingTasks.has(t.id)}
-                        onChange={(e) => handleQuickStatusChange(t.id, e.target.value as TaskStatus)}
-                        className="min-h-11 lg:min-h-9 max-w-full max-lg:w-full px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 font-semibold"
-                      >
-                        {TASK_STATUS_OPTIONS.filter((o) => canAssign || o.value !== 'CANCELLED').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    ) : (
-                      <Badge
-                        variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'primary' : t.status === 'BLOCKED' ? 'danger' : t.status === 'CANCELLED' ? 'default' : 'warning'}
-                        size="sm"
-                      >
-                        {statusLabel(t.status, 'task')}
-                      </Badge>
-                    )}
+                    {movementControl(t)}
                   </td>
                   <td role="cell" className="max-lg:self-end lg:py-3 lg:px-4 text-center">
                     <div className="flex items-center justify-end lg:justify-center gap-1">
-                      {canAssign && (
+                      {canManage(t) && (
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(t)}
@@ -620,7 +711,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <Edit2 className="w-4 h-4" />
                       </button>
                       )}
-                      {canAssign && (
+                      {canManage(t) && (
                       <button
                         type="button"
                         onClick={() => void handleDelete(t)}
@@ -743,10 +834,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-bold focus:ring-2 focus:ring-blue-500"
               >
-                {TASK_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {(editingTask ? optionsFor(editingTask, true) : INITIAL_STATUS_OPTIONS).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>
+
+          {status === 'BLOCKED' && <label className="block space-y-1 text-xs font-bold text-slate-700">
+            سبب التوقف
+            <textarea
+              value={blockedReason}
+              onChange={(event) => setBlockedReason(event.target.value)}
+              maxLength={BLOCKED_REASON_LIMIT}
+              required={workflow?.requireBlockedReason && (normalizeTaskStatus(editingTask?.status) !== 'BLOCKED' || !!editingTask?.blockedReason)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              rows={3}
+            />
+          </label>}
 
           <div>
             <div className="flex items-center justify-between mb-1">

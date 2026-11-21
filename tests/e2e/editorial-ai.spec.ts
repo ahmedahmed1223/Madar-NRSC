@@ -29,9 +29,16 @@ test('the newsroom previews a proofreading result with the chosen provider befor
     await expect(dialog.getByLabel('مزوّد الذكاء الاصطناعي')).toBeVisible({ timeout: 4_000 });
     await dialog.getByLabel('مزوّد الذكاء الاصطناعي').selectOption('openai');
     await dialog.getByRole('button', { name: 'التدقيق الأسلوبي' }).click();
+    const local = dialog.getByRole('checkbox', { name: 'إبقاء المحتوى الحساس على هذا الجهاز' });
+    await local.check();
+    await dialog.getByRole('button', { name: 'توليد المقترحات' }).click();
+    await expect(dialog.getByText('الناتج محلي ويعتمد على النص الموجود.')).toBeVisible();
+    expect(input).toBeUndefined();
+    await local.uncheck();
     await dialog.getByLabel('توجيه تحريري اختياري').fill('صحّح الترقيم');
     await dialog.getByRole('button', { name: 'توليد المقترحات' }).click();
-    await expect(dialog.getByText('صياغة محررة للمراجعة')).toBeVisible();
+    await expect(dialog.locator('.rich-content').getByText('صياغة محررة للمراجعة')).toBeVisible();
+    await expect(dialog.getByRole('region', { name: 'مقارنة النص قبل وبعد' }).locator('del').last()).toHaveText('نص الخبر الأصلي');
     expect(input).toMatchObject({ mode: 'PROOFREAD', provider: 'openai', instruction: 'صحّح الترقيم', content: expect.stringContaining(source) });
     await expect(body).toHaveText(source);
     await dialog.getByRole('button', { name: 'تطبيق النص المصوب' }).click();
@@ -76,6 +83,10 @@ test('the episode copilot opens a question draft and treats guest names as sugge
     await dialog.getByRole('button', { name: 'توليد المقترحات' }).click();
     await expect(dialog.getByText(guest, { exact: true })).toBeVisible();
     await expect(dialog.getByText(/تحقّق من الهوية/)).toBeVisible();
+    const copyGuest = dialog.getByRole('button', { name: 'نسخ المقترح' });
+    await expect(copyGuest).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: 'راجعت الاسم أو الصفة من مصدر موثوق' }).check();
+    await expect(copyGuest).toBeEnabled();
     await expect(dialog.getByRole('button', { name: 'فتح مسودة سؤال' })).toHaveCount(0);
     await dialog.getByRole('button', { name: 'أفكار وزوايا' }).click();
     await dialog.getByRole('button', { name: 'توليد المقترحات' }).click();

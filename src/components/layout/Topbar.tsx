@@ -39,6 +39,7 @@ import { PWAInstallButton } from '../common/PWAInstallButton';
 import { dataStore } from '../../services/dataStore';
 import { RbacService } from '../../services/rbacService';
 import { groupNotifications, isNotificationSnoozed, notificationInboxPath } from '../../shared/notificationInbox';
+import { requiresNotificationAcknowledgment } from '../../shared/notifications';
 import { useNotificationSnoozes } from '../../hooks/useNotificationSnoozes';
 
 const EMPTY_NOTIFICATIONS: AppNotification[] = [];
@@ -154,7 +155,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             run: () => {
               const path = pathFor(n);
               if (!path || currentUserRef.current.id !== userId || ApiService.getCurrentUser().id !== userId) return;
-              ApiService.markNotificationRead(n.id);
+              if (!requiresNotificationAcknowledgment(n)) ApiService.markNotificationRead(n.id);
               navigateRef.current?.(path);
             },
           } : undefined,
@@ -238,7 +239,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onToggleMobileMenu}
-            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl md:hidden transition-colors"
+            className="min-h-11 min-w-11 shrink-0 inline-grid place-items-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl lg:hidden transition-colors"
             title="فتح القائمة الرئيسية"
             aria-label="فتح القائمة الرئيسية"
           >
@@ -435,8 +436,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>}
 
-        {/* Team chat (was a floating button covering content) */}
-        <button
+        {canOpen('messages') && <button
           type="button"
           onClick={() => {
             setIsNotifOpen(false);
@@ -454,7 +454,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               {chat.unread > 9 ? '9+' : chat.unread}
             </span>
           )}
-        </button>
+        </button>}
 
         {/* Notifications Button */}
         <div className="relative">
@@ -518,18 +518,19 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2.5 p-1.5 pr-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-all"
+            className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-1.5 sm:px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-colors"
             title="حسابي: كلمة المرور والتحقق بخطوتين وتسجيل الخروج"
-            aria-label={`حساب ${currentUser.fullName}: كلمة المرور وتسجيل الخروج`}
+            aria-label={`الحساب ${currentUser.fullName}`}
             aria-haspopup="menu"
             aria-expanded={isUserMenuOpen}
           >
-            <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" />
-            <div className="text-right hidden 2xl:block max-w-[9rem] min-w-0">
-              <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
+            <span aria-hidden="true" className="hidden sm:inline-flex"><Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" /></span>
+            <div className="text-right max-w-[9rem] min-w-0">
+              <span className="text-2xs font-bold text-slate-800 2xl:hidden">الحساب</span>
+              <span className="hidden 2xl:block text-xs font-bold text-slate-800 leading-tight truncate">
                 {currentUser.fullName}
               </span>
-              <span className="text-2xs text-blue-600 font-semibold block leading-tight truncate">
+              <span aria-hidden="true" className="hidden 2xl:block text-2xs text-blue-600 font-semibold leading-tight truncate">
                 {roleName}
               </span>
             </div>

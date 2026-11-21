@@ -34,9 +34,10 @@ export function prepareOfflinePacket(db: NewsroomDatabase, auth: AuthContext, sh
   const bulletin = episode ? null : db.getRow('bulletins', showId);
   const parent = episode || bulletin;
   if (!parent || parent.d.deletedAt) return fail(404, 'الحلقة أو النشرة غير موجودة');
-  if (!canRead(auth, parent.c, parent.d)) return fail(403, 'لا تملك صلاحية قراءة الحلقة');
+  const lookup = (collection: Parameters<typeof canRead>[1], id: string) => db.getRow(collection, id)?.d;
+  if (!canRead(auth, parent.c, parent.d, lookup)) return fail(403, 'لا تملك صلاحية قراءة الحلقة');
   const stories = bulletin ? db.listCollection('bulletinStories').filter(row => row.d.bulletinId === showId && !row.d.deletedAt) : [];
-  if (stories.some(row => !canRead(auth, 'bulletinStories', row.d))) return fail(403, 'لا يمكن تجهيز نسخة جزئية من النشرة');
+  if (stories.some(row => !canRead(auth, 'bulletinStories', row.d, lookup))) return fail(403, 'لا يمكن تجهيز نسخة جزئية من النشرة');
   const show = findShow(showId, collection => db.listCollection(collection).map(row => row.d));
   if (!show?.rundown?.length) return fail(400, 'لا توجد فقرات لتجهيزها');
   const canEdit = bulletin ? auth.can('bulletins.edit') || auth.can('bulletins.manage') || auth.can('bulletins.approve') : auth.can('episodes.edit') || auth.can('rundown.edit');

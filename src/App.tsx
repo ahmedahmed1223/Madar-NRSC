@@ -27,6 +27,8 @@ import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
 import { registerServiceWorker } from './services/push';
 import { Sidebar, personalBadgeCounts } from './components/layout/Sidebar';
+import { cardProductionAssignment } from './shared/productionCards';
+import { assignedWorkOnly } from './shared/assignedWork';
 import { Topbar } from './components/layout/Topbar';
 import { BreakingNewsTicker } from './components/layout/BreakingNewsTicker';
 import { CommandPalette } from './components/layout/CommandPalette';
@@ -54,6 +56,7 @@ const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
 const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
+const PersonalNotesView = lazyWithRetry(() => import('./views/PersonalNotesView').then((m) => ({ default: m.PersonalNotesView })));
 const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
 const BulletinsView = lazyWithRetry(() => import('./views/BulletinsView').then((m) => ({ default: m.BulletinsView })));
@@ -781,7 +784,13 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     document.title = screenTitle(activeNav, routeItemTitle);
   }, [activeNav, routeItemTitle]);
   // A role opens only its own screens, whether reached from the sidebar, a link or the address bar.
-  const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav);
+  const assignedProduction = activeNav === 'episode-workspace' && activeEpisode
+    ? `episode:${activeEpisode.id}`
+    : activeNav === 'bulletins' && activeBulletinId && apiService.getBulletins().some((bulletin) => bulletin.id === activeBulletinId)
+      ? `bulletin:${activeBulletinId}`
+      : null;
+  const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav) || !!assignedProduction && !assignedWorkOnly((permission) => RbacService.hasPermission(currentUser, permission)) &&
+    apiService.getCards().some((card) => cardProductionAssignment(card, currentUser.id) === assignedProduction);
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   return (
@@ -1125,6 +1134,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'reports' && (
               <ReportsView
+                onOpenNews={id => openLink(`/news/${encodeURIComponent(id)}`)}
                 episodes={episodes}
                 guests={guests}
                 categories={categories}
@@ -1228,6 +1238,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'guide' && <GuideView currentUser={currentUser} focusId={focusId} onFocus={setFocusId} />}
 
             {activeNav === 'whats-new' && <WhatsNewView currentUser={currentUser} />}
+            {activeNav === 'personal-notes' && <PersonalNotesView key={currentUser.id} currentUser={currentUser} />}
 
             {activeNav === 'messages' && <MessagesView currentUser={currentUser} users={allUsers} channel={focusId} onChannel={setFocusId} onOpenLink={openLink} />}
 
@@ -1241,8 +1252,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 users={allUsers}
                 onOpen={(ref) => {
                   if (ref.nav === 'news-editor') handleEditNewsClick(ref.id);
-                  else if (ref.nav === 'cards') openLink(`/cards/${ref.id}`);
-                  else openLink(`/${ref.nav}`);
+                  else openLink(`/${ref.nav}/${encodeURIComponent(ref.id)}`);
                 }}
               />
             )}
@@ -1295,7 +1305,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       />
 
       {/* Global Newsroom Intercom & Audio Production Drawer */}
-      <NewsroomIntercomDrawer currentUser={currentUser} />
+      {RbacService.canOpenScreen(currentUser, 'messages') && <NewsroomIntercomDrawer currentUser={currentUser} />}
       <CueAlertOverlay currentUser={currentUser} />
     </div>
   );

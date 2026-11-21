@@ -8,7 +8,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
 import { logger } from './logger';
-import { prefsOf } from './notifications';
+import { prefsOf, writeNotification } from './notifications';
 import { categoryName, inQuietHours, wantsDelivery } from '../shared/notifications';
 import { validZone } from '../shared/dateFormat';
 
@@ -166,21 +166,36 @@ export function deliverPending(db: NewsroomDatabase, config: AppConfig, now = Da
           stats.skipped++;
           continue;
         }
-        if (wantsDelivery(prefs, n.category, 'push')) {
-          stats.push += await sendPush(db, config, n.userId, {
+        const failed: string[] = [];
+        if (wantsDelivery(prefs, n.category, 'push') && db.listPushSubscriptions(n.userId).length) {
+          const sent = await sendPush(db, config, n.userId, {
             title: n.title,
             body: n.message,
             url: openUrl(config, n.linkUrl).replace(/^https?:\/\/[^/]+/, ''),
             tag: n.id,
             urgent: !!n.urgent,
           }).catch(() => 0);
+          stats.push += sent;
+          if (!sent) failed.push('إشعار الجهاز');
         }
         if (config.mail && user.email && wantsDelivery(prefs, n.category, 'email')) {
           try {
             await sendEmail(config, user.email, notificationEmail(n, config));
             stats.email++;
           } catch (err: any) {
+            failed.push('البريد الإلكتروني');
             logger.warn('e-mail delivery failed', { userId: n.userId, error: String(err?.message || err).slice(0, 200) });
+          }
+        }
+        if (failed.length && typeof n.senderId === 'string' && n.senderId !== n.userId) {
+          const id = `delivery-${row.id}`;
+          const sender = db.getRow('users', n.senderId)?.d;
+          if (sender && sender.isActive !== false && !sender.deletedAt && !db.getRow('notifications', id, true)) {
+            writeNotification(db, {
+              userId: n.senderId, title: 'تعذّر توصيل أحد تنبيهاتك',
+              message: `${n.title} — ${user.fullName} (${failed.join('، ')})`,
+              linkUrl: n.linkUrl, category: 'system',
+            }, { id, createdAt: new Date(now).toISOString() });
           }
         }
       }

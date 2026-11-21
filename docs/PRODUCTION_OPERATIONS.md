@@ -73,6 +73,12 @@ Monitor disk capacity, backup failures, HTTP latency, 429/503 rates and sync err
 
 ## Release Gate
 
+تحقّق من قراءة بيانات الإنتاج بدور مُصرَّح له، وبمراسل مكلّف بحلقة واحدة، وبموظف من محطة أخرى لم يتلقّ التكليف. مشاركة البرامج والنشرات بين الأدوار المصرّح لها تظل سياسة غرفة الأخبار المشتركة. يتغير وصول المكلّف إلى المادة المحددة عند إزالة اسمه من التكليف النشط، وتعيد المزامنة تحميل البيانات المتاحة للحساب.
+
+للتشغيل الميداني اختر دور «الخدمات المساندة» لحسابات النقل والدعم وأسند العمل إليها بالاسم. تحقّق من اختفاء المهمة من حساب صاحبها السابق عند إعادة الإسناد، ومن استمرار ظهورها لصاحبها الجديد في الفترة المناسبة. قواعد المهمة على مستوى المؤسسة ومطبقة على الانتقالات الجديدة. يبدأ سجل التنفيذ المعتمد على الحالة عند تسجيل أول بدء؛ السجلات القديمة التي لا تحمل توقيت بدء لا تُستكمل بتوقيت تقديري.
+
+عيّن حساب مشرف مستقل رئيسًا للقسم، ثم افتح «متابعة الفرق والتكاليف» بحسابه. تحقّق من ظهور مهمة موظف وخطوته في تكليف مشترك من «أعمال فريقي»، واستبعاد موظف قسم مستقل أو محطة تقع خارج نطاق القسم. يستطيع رئيس القسم إسناد مهام فريقه وإدارتها من شاشة «المهام». جرّب تغيير رئيس القسم والتحقق من زوال نطاق المتابعة في الطلب التالي. تظل إدارة المهام العامة متاحة لحسابات الإدارة العامة المخوّلة.
+
 CI now runs critical browser workflows in addition to unit tests, type checks, build and
 production smoke tests. Keep a single application instance with persistent SQLite storage.
 Load testing, metrics/alerts, automatic failover and server-side pagination are separate
@@ -101,6 +107,10 @@ and the latest stable GitHub release. Once the server is running a newer build, 
 Only system-settings managers can request deployment. Accepting a request records the dispatch,
 while the running version confirms deployment after the external system finishes. The external
 system owns backup, maintenance timing, stopping the server and validating readiness after start.
+For an automated update in production, Madar requires evidence of a complete, verified backup
+delivered to the configured external destination within the last 24 hours. Configure
+`BACKUP_DIRECTORY` or `BACKUP_REMOTE` and run a full backup before requesting deployment.
+The existing environment and storage configuration remain part of the deployment workflow.
 Before replacing the app, verify a full backup (SQLite and uploads) stored outside the running
 container, preserve the deployment environment and secrets, and keep the same `DATA_DIR` backed
 by the same durable storage. For Compose, build the exact release from a clean checkout and keep

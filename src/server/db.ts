@@ -8,6 +8,17 @@ import { ARCHIVE_FILTER, MIGRATIONS, SETTLED_SQL } from './dbMigrations';
 import { withStableBackup } from './databaseRecovery';
 import { archiveTerms, prepareArchiveText, rankArchiveText } from './archiveIndex';
 import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
+import type { NewsArchiveFilters } from '../shared/newsArchive';
+
+function archiveScopeSql(filters: NewsArchiveFilters) {
+  const publishedDay = "substr(COALESCE(NULLIF(json_extract(e.data, '$.publishDate'), ''), e.updated_at), 1, 10)";
+  return [
+    filters.from && `AND ${publishedDay} >= @from`,
+    filters.to && `AND ${publishedDay} <= @to`,
+    filters.station && `AND EXISTS (SELECT 1 FROM entities AS author WHERE author.collection = 'users'
+      AND author.id = json_extract(e.data, '$.authorId') AND json_extract(author.data, '$.stationId') = @station)`,
+  ].filter(Boolean).join(' ');
+}
 
 export interface DbBackupFileInfo {
   fileName: string;
@@ -124,6 +135,7 @@ export class NewsroomDatabase {
   readonly filePath: string;
   readonly backupsDir: string;
   private db!: Database.Database;
+  generation = 0;
   private archiveVocabularyCache?: { revision: number; before: string; vocabulary: Vocabulary };
   private newsReportCache = { revision: -1, periods: new Map<string | null, NewsReportGroup[]>() };
 
@@ -136,6 +148,7 @@ export class NewsroomDatabase {
   }
 
   private open() {
+    this.generation += 1;
     this.archiveVocabularyCache = undefined;
     this.newsReportCache = { revision: -1, periods: new Map() };
     this.db = new Database(this.filePath);
@@ -253,17 +266,17 @@ export class NewsroomDatabase {
   }
 
   /** Settled news untouched since `beforeIso`, newest first, optionally filtered by text. */
-  searchNewsArchive(beforeIso: string, query: string, limit: number, offset: number) {
+  searchNewsArchive(beforeIso: string, query: string, limit: number, offset: number, filters: NewsArchiveFilters = {}) {
     const q = query.trim();
     const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const textFilter = q
       ? `AND (json_extract(data, '$.title') LIKE @like ESCAPE '\\' OR json_extract(data, '$.summary') LIKE @like ESCAPE '\\' OR json_extract(data, '$.content') LIKE @like ESCAPE '\\')`
       : '';
-    const where = `${ARCHIVE_FILTER} AND updated_at < @before ${textFilter}`;
-    const params = { before: beforeIso, like, limit, offset };
-    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities INDEXED BY idx_news_archive_updated WHERE ${where}`).get(params) as { n: number }).n;
+    const where = `${ARCHIVE_FILTER} AND updated_at < @before ${textFilter} ${archiveScopeSql(filters)}`;
+    const params = { before: beforeIso, like, limit, offset, ...filters };
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities AS e INDEXED BY idx_news_archive_updated WHERE ${where}`).get(params) as { n: number }).n;
     const rows = this.db
-      .prepare(`SELECT id, data, updated_at FROM entities INDEXED BY idx_news_archive_updated WHERE ${where} ORDER BY updated_at DESC, id LIMIT @limit OFFSET @offset`)
+      .prepare(`SELECT id, data, updated_at FROM entities AS e INDEXED BY idx_news_archive_updated WHERE ${where} ORDER BY updated_at DESC, id LIMIT @limit OFFSET @offset`)
       .all(params) as { id: string; data: string; updated_at: string }[];
     const items = rows.map((r) => {
       const d = JSON.parse(r.data);
@@ -281,7 +294,7 @@ export class NewsroomDatabase {
     return { total, items };
   }
 
-  rankNewsArchive(before: string, query: string, match: string, limit: number, offset: number) {
+  rankNewsArchive(before: string, query: string, match: string, limit: number, offset: number, filters: NewsArchiveFilters = {}) {
     const from = match
       ? 'news_archive_fts JOIN news_archive_index AS a ON a.key = news_archive_fts.rowid'
       : 'news_archive_index AS a';
@@ -289,7 +302,7 @@ export class NewsroomDatabase {
       WITH ranked AS MATERIALIZED (
         SELECT e.id, e.updated_at, nrcs_archive_rank(@query, a.prepared) AS score
         FROM ${from} JOIN entities AS e ON e.collection = 'news' AND e.id = a.id
-        WHERE e.updated_at < @before ${match ? 'AND news_archive_fts MATCH @match' : ''}
+        WHERE e.updated_at < @before ${match ? 'AND news_archive_fts MATCH @match' : ''} ${archiveScopeSql(filters)}
       )
       SELECT (SELECT COUNT(*) FROM ranked WHERE score IS NOT NULL) AS total,
         (SELECT json_group_array(json_object('id', page.id, 'data', e.data, 'updatedAt', page.updated_at)
@@ -298,7 +311,7 @@ export class NewsroomDatabase {
            SELECT id, updated_at, score FROM ranked WHERE score IS NOT NULL
            ORDER BY score DESC, updated_at DESC, id LIMIT @limit OFFSET @offset
          ) AS page JOIN entities AS e ON e.collection = 'news' AND e.id = page.id) AS items
-    `).get({ before, query, match, limit, offset }) as { total: number; items: string };
+    `).get({ before, query, match, limit, offset, ...filters }) as { total: number; items: string };
     const items = JSON.parse(row.items) as { id: string; data: string; updatedAt: string }[];
     return { total: row.total, items: items.map(({ id, data, updatedAt }) => ({ id, d: JSON.parse(data), updatedAt })) };
   }
@@ -341,15 +354,7 @@ export class NewsroomDatabase {
 
     // Only the unfiltered groups are shared. The report service applies each reader's scope.
     const groups = this.db.prepare(`
-      WITH report_news AS (
-        SELECT json_extract(u.data, '$.stationId') AS stationId,
-          json_extract(n.data, '$.categoryId') AS categoryId, json_extract(n.data, '$.status') AS status,
-          ROUND((julianday(json_extract(n.data, '$.approvedAt')) - julianday(json_extract(n.data, '$.createdAt'))) * 86400000) AS durationMs
-        FROM entities AS n
-        LEFT JOIN entities AS u ON u.collection = 'users' AND u.deleted = 0 AND u.id = json_extract(n.data, '$.authorId')
-        WHERE n.collection = 'news' AND n.deleted = 0 AND COALESCE(json_extract(n.data, '$.deletedAt'), '') = ''
-          AND (@since IS NULL OR julianday(COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt'))) >= julianday(@since))
-      )
+      ${this.newsReportSource()}
       SELECT stationId, categoryId, status, COUNT(*) AS total,
         COUNT(CASE WHEN durationMs >= 0 THEN 1 END) AS approvalCount,
         COALESCE(SUM(CASE WHEN durationMs >= 0 THEN durationMs END), 0) AS approvalMs
@@ -358,6 +363,31 @@ export class NewsroomDatabase {
     if (cache.periods.size >= 8) cache.periods.delete(cache.periods.keys().next().value!);
     cache.periods.set(cutoff, groups);
     return groups;
+  }
+
+  private newsReportSource() {
+    return `WITH report_news AS (
+      SELECT n.id, json_extract(n.data, '$.title') AS title, json_extract(n.data, '$.summary') AS summary,
+        COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt')) AS updatedAt,
+        json_extract(u.data, '$.stationId') AS stationId,
+        json_extract(n.data, '$.categoryId') AS categoryId, json_extract(n.data, '$.status') AS status,
+        ROUND((julianday(json_extract(n.data, '$.approvedAt')) - julianday(json_extract(n.data, '$.createdAt'))) * 86400000) AS durationMs
+      FROM entities AS n
+      LEFT JOIN entities AS u ON u.collection = 'users' AND u.deleted = 0 AND u.id = json_extract(n.data, '$.authorId')
+      WHERE n.collection = 'news' AND n.deleted = 0 AND COALESCE(json_extract(n.data, '$.deletedAt'), '') = ''
+        AND (@since IS NULL OR julianday(COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt'))) >= julianday(@since))
+    )`;
+  }
+
+  newsReportRecords(filters: { since?: string; stations: (string | null)[]; category: string; status: string; offset: number; limit: number }) {
+    return this.db.prepare(`${this.newsReportSource()}
+      SELECT id, title, substr(summary, 1, 400) AS summary, updatedAt, stationId, status
+      FROM report_news
+      WHERE EXISTS (SELECT 1 FROM json_each(@stations) WHERE value IS stationId)
+        AND (@category = 'ALL' OR categoryId = @category)
+        AND (@status = 'ALL' OR status = @status)
+      ORDER BY julianday(updatedAt) DESC, id LIMIT @limit OFFSET @offset
+    `).all({ ...filters, since: filters.since ?? null, stations: JSON.stringify(filters.stations) });
   }
 
   countCollection(collection: CollectionName): number {
@@ -455,11 +485,34 @@ export class NewsroomDatabase {
 
   /** Soft-delete (tombstone) so other browsers learn about the removal via the change feed. */
   /** Ownership survives deletion, but private tombstone payloads never leave the server. */
-  savedNewsFilterOwner(id: string): string | null {
-    const row = this.db.prepare('SELECT data FROM entities WHERE collection = ? AND id = ?').get('savedNewsFilters', id) as { data: string } | undefined;
+  privateRecordOwner(collection: 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes', id: string): string | null {
+    const row = this.db.prepare('SELECT data FROM entities WHERE collection = ? AND id = ?').get(collection, id) as { data: string } | undefined;
     if (!row) return null;
     const data = JSON.parse(row.data);
     return typeof data?.ownerId === 'string' ? data.ownerId : null;
+  }
+
+  listPrivateRecords(collection: 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes', ownerId: string): EntityRow[] {
+    if (collection === 'workspacePrefs') {
+      const row = this.getRow(collection, ownerId);
+      return row ? [row] : [];
+    }
+    const rows = this.db.prepare(`SELECT * FROM entities WHERE collection = ? AND deleted = 0
+      AND json_extract(data, '$.ownerId') = ? ORDER BY position, id`).all(collection, ownerId) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  assignedWorkIds(userId: string): string[] {
+    const rows = this.db.prepare(`SELECT collection || ':' || id AS key FROM entities AS item
+      WHERE deleted = 0 AND (
+        (collection = 'tasks' AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
+        OR (collection = 'productionCards' AND (json_extract(data, '$.ownerId') = @user OR EXISTS (
+          SELECT 1 FROM json_each(item.data, '$.steps') AS step WHERE step.type = 'object'
+            AND json_extract(item.data, step.fullkey || '.assigneeId') = @user
+            AND COALESCE(json_extract(item.data, step.fullkey || '.status'), '') <> 'SKIPPED'
+        )))
+      ) ORDER BY key`).all({ user: userId }) as { key: string }[];
+    return rows.map(({ key }) => key);
   }
 
   deleteRow(collection: CollectionName, id: string, userId: string | null): EntityRow | null {

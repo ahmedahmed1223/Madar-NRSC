@@ -52,6 +52,7 @@ import {
   ListVideo,
   CalendarDays,
   CalendarRange,
+  NotebookPen,
 } from 'lucide-react';
 import { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { cardsAwaitingMyDecision, isManagerRole, reviewableNews } from '../../shared/managerToday';
@@ -161,10 +162,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
   const organizationName = apiService.getSettings()?.organizationName || '';
 
-  // On phones the closed menu is off-screen: keep it out of Tab order and screen readers.
-  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  // On phones and narrow tablets, the closed menu stays out of Tab order and screen readers.
+  const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(width < 64rem)').matches);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia('(width < 64rem)');
     const on = () => setIsSmallScreen(mq.matches);
     mq.addEventListener?.('change', on);
     return () => mq.removeEventListener?.('change', on);
@@ -257,6 +258,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     help: { id: 'help', label: 'المساعدة', icon: BookOpen, badge: null },
     guide: { id: 'guide', label: 'دليل الاستخدام', icon: BookOpenText, badge: null },
     'whats-new': { id: 'whats-new', label: 'ما الجديد', icon: Sparkles, badge: whatsNewUnseen ? 'جديد' : null, badgeColor: 'bg-white/10 text-slate-100' },
+    'personal-notes': { id: 'personal-notes', label: 'ملاحظاتي', icon: NotebookPen, badge: null },
   };
 
   // Sections follow the colleague's role; each folds, and the fold is remembered on this device.
@@ -326,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile backdrop */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 md:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
@@ -338,8 +340,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {...(isSmallScreen && !isMobileOpen ? { inert: true, 'aria-hidden': true } : {})}
         {...(isSmallScreen && isMobileOpen ? { role: 'dialog', 'aria-modal': true } : {})}
         className={`theme-fixed bg-slate-950 text-slate-300 border-l border-white/5 flex flex-col transition-[transform,width] duration-200 ease-out select-none
-          fixed inset-y-0 right-0 z-50 md:relative md:z-20
-          ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'}
+          fixed inset-y-0 right-0 z-50 lg:relative lg:z-20
+          ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full lg:translate-x-0'}
           ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'}
         `}
       >
@@ -372,7 +374,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={toggleCollapse}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden md:block"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden lg:block"
               title={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
               aria-label={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
             >
@@ -384,7 +386,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors md:hidden"
+                className="min-h-11 min-w-11 inline-grid place-items-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors lg:hidden"
                 title="إغلاق القائمة"
                 aria-label="إغلاق القائمة"
               >

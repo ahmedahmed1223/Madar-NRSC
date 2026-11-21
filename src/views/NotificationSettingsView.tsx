@@ -3,6 +3,7 @@ import { BellRing, Mail, Moon, Plus, Radio, Save, Send, Smartphone, Trash2, X, Z
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { notify } from '../services/notify';
+import { confirmSaved } from '../services/confirmSave';
 import { currentPushSubscription, disablePush, enablePush, pushSupport } from '../services/push';
 import { useLiveData } from '../hooks/useLiveData';
 import { DEFAULT_CHANNELS, MAX_WATCH_WORDS, NOTIFICATION_CATEGORIES, NotificationCategory, NotificationPrefs, wantsDelivery } from '../shared/notifications';
@@ -17,15 +18,19 @@ const deviceName = (ua?: string) => {
 };
 
 /** Each colleague chooses what reaches them by e-mail and on their devices, and which wires to watch. */
-export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
-  useLiveData(['notificationPrefs']);
+export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ currentUser }) => <AccountNotificationSettings key={currentUser.id} currentUser={currentUser} />;
+
+function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
+  const revision = useLiveData(['notificationPrefs']);
   const [prefs, setPrefs] = useState<NotificationPrefs>(() => apiService.getMyNotificationPrefs());
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [word, setWord] = useState('');
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [deliveryError, setDeliveryError] = useState('');
   const [thisDevice, setThisDevice] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
+  const [testStatus, setTestStatus] = useState<{ key: string; ok: boolean; message: string } | null>(null);
   const support = pushSupport();
 
   const loadDelivery = async () => {
@@ -41,6 +46,9 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
   useEffect(() => {
     loadDelivery();
   }, []);
+  useEffect(() => {
+    if (!dirty && !saving) setPrefs(apiService.getMyNotificationPrefs());
+  }, [revision, dirty, saving]);
 
   const update = (patch: Partial<NotificationPrefs>) => {
     setPrefs((p) => ({ ...p, ...patch }));
@@ -49,13 +57,19 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
   const setChannel = (cat: NotificationCategory, channel: 'email' | 'push', value: boolean) =>
     update({ channels: { ...prefs.channels, [cat]: { ...DEFAULT_CHANNELS[cat], ...prefs.channels[cat], [channel]: value } } });
 
-  const save = () => {
+  const save = async () => {
+    if (saving || !dirty) return;
+    setSaving(true);
     try {
-      setPrefs(apiService.saveMyNotificationPrefs(prefs));
-      setDirty(false);
-      notify({ type: 'success', message: 'حُفظت إعدادات تنبيهاتك' });
+      const next = apiService.saveMyNotificationPrefs(prefs);
+      if (await confirmSaved('notificationPrefs', next.id, 'حُفظت إعدادات تنبيهاتك')) {
+        setPrefs(next);
+        setDirty(false);
+      }
     } catch (err: any) {
       notify({ type: 'error', title: 'تعذر الحفظ', message: err?.message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -70,11 +84,15 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
 
   const run = async (key: string, fn: () => Promise<void>, ok: string) => {
     setBusy(key);
+    const testing = key === 'test-push' || key === 'test-mail';
+    if (testing) setTestStatus(null);
     try {
       await fn();
+      if (testing) setTestStatus({ key, ok: true, message: ok });
       notify({ type: 'success', message: ok });
       await loadDelivery();
     } catch (err: any) {
+      if (testing) setTestStatus({ key, ok: false, message: err?.message || 'تعذر إرسال التجربة.' });
       notify({ type: 'error', title: 'تعذر التنفيذ', message: err?.message });
     } finally {
       setBusy('');
@@ -92,17 +110,17 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             تنبيهاتي
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            كل التنبيهات تظهر في الجرس دائماً؛ هنا تختار ما يصلك أيضاً على بريدك وعلى هاتفك أو حاسوبك، وأي مواد تريد أن تُنبَّه لها.
+            قنوات البريد والدفع تخص حسابك. تفعيل الدفع أو إيقافه على هذا المتصفح يغيّر اشتراك هذا الجهاز.
           </p>
         </div>
         <button
           type="button"
-          onClick={save}
-          disabled={!dirty}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold"
+          onClick={() => void save()}
+          disabled={!dirty || saving}
+          className="inline-flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold"
         >
           <Save className="w-4 h-4" />
-          حفظ الإعدادات
+          {saving ? 'بانتظار تأكيد الخادم…' : 'حفظ الإعدادات'}
         </button>
       </div>
 
@@ -112,19 +130,20 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <Smartphone className="w-4 h-4 text-blue-600" />
           الأجهزة والبريد
         </h2>
-        {deliveryError && <p className="text-xs text-rose-600">{deliveryError}</p>}
+        {deliveryError && <p role="alert" className="text-xs text-rose-700">{deliveryError}</p>}
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="p-3 rounded-xl border border-slate-200 space-y-2">
             <p className="text-xs font-bold text-slate-700">تنبيهات هذا الجهاز (هاتف / حاسوب)</p>
+            {testStatus?.key === 'test-push' && <p role={testStatus.ok ? 'status' : 'alert'} className={`text-xs ${testStatus.ok ? 'text-emerald-800' : 'text-rose-800'}`}>{testStatus.message}</p>}
             {!support.ok ? (
               <p className="text-2xs text-amber-700 leading-relaxed">{support.reason}</p>
             ) : thisRegistered ? (
               <div className="flex flex-wrap gap-2">
                 <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">مفعّلة على هذا الجهاز</span>
-                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'أُرسل تنبيه تجريبي')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
-                  <Send className="w-3 h-3" /> تجربة
+                <button type="button" disabled={!!busy} onClick={() => run('test-push', () => apiService.sendTestNotification('push'), 'قبلت خدمة الدفع إرسال التجربة إلى جهاز مسجل واحد على الأقل.')} className="inline-flex min-h-11 items-center gap-1 text-xs font-bold px-2 rounded-lg border border-slate-200 hover:bg-slate-50">
+                  <Send className="w-3 h-3" aria-hidden="true" /> تجربة الدفع لأجهزتي
                 </button>
-                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
+                <button type="button" disabled={!!busy} onClick={() => run('off', disablePush, 'أُوقفت التنبيهات على هذا الجهاز')} className="min-h-11 text-xs font-bold px-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-rose-600">
                   إيقاف
                 </button>
               </div>
@@ -149,9 +168,10 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                     </span>
                     <button
                       type="button"
-                      aria-label="إزالة الجهاز"
+                      aria-label={`إزالة الجهاز ${deviceName(d.userAgent)}`}
+                      disabled={!!busy}
                       onClick={() => run('rm', () => apiService.removePushSubscription(d.endpoint), 'أُزيل الجهاز')}
-                      className="p-1 rounded hover:bg-rose-50 text-slate-500 hover:text-rose-600"
+                      className="grid size-11 place-items-center rounded hover:bg-rose-50 text-slate-600 hover:text-rose-700"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -167,10 +187,11 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             <p className="text-2xs text-slate-600" dir="ltr">
               {delivery?.emailAddress || currentUser.email}
             </p>
+            {testStatus?.key === 'test-mail' && <p role={testStatus.ok ? 'status' : 'alert'} className={`text-xs ${testStatus.ok ? 'text-emerald-800' : 'text-rose-800'}`}>{testStatus.message}</p>}
             {delivery && !delivery.email ? (
               <p className="text-2xs text-amber-700">البريد غير مهيأ على الخادم بعد؛ اطلب من مدير النظام ضبط SMTP.</p>
             ) : (
-              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'أُرسلت رسالة تجريبية إلى بريدك')} className="inline-flex items-center gap-1 text-2xs font-bold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+              <button type="button" disabled={!delivery || !!busy} onClick={() => run('test-mail', () => apiService.sendTestNotification('email'), 'قبل خادم البريد الرسالة التجريبية.')} className="inline-flex min-h-11 items-center gap-1 text-xs font-bold px-2 rounded-lg border border-slate-200 hover:bg-slate-50">
                 <Send className="w-3 h-3" /> إرسال رسالة تجريبية
               </button>
             )}
@@ -200,13 +221,14 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 </td>
                 {(['push', 'email'] as const).map((ch) => (
                   <td key={ch} className="p-3 text-center">
-                    <input
+                    <label className="inline-grid size-11 place-items-center cursor-pointer"><input
                       type="checkbox"
                       className="w-4 h-4 accent-blue-600"
                       aria-label={`${c.name} — ${ch === 'push' ? 'الجهاز' : 'البريد'}`}
+                      disabled={saving}
                       checked={wantsDelivery(prefs, c.id, ch)}
                       onChange={(e) => setChannel(c.id, ch, e.target.checked)}
-                    />
+                    /></label>
                   </td>
                 ))}
               </tr>
@@ -221,8 +243,8 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
           <Radio className="w-4 h-4 text-red-600" />
           المواد العاجلة وكلمات المتابعة
         </h2>
-        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
-          <input type="checkbox" className="w-4 h-4 accent-red-600" checked={prefs.flashAlerts} onChange={(e) => update({ flashAlerts: e.target.checked })} />
+        <label className="flex min-h-11 items-center gap-2 text-xs font-bold text-slate-700">
+          <input type="checkbox" className="w-4 h-4 accent-red-600" disabled={saving} checked={prefs.flashAlerts} onChange={(e) => update({ flashAlerts: e.target.checked })} />
           <Zap className="w-3.5 h-3.5 text-red-600" />
           نبّهني فور وصول مادة عاجلة من أي وكالة
         </label>
@@ -232,7 +254,7 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
             {prefs.watchWords.map((w) => (
               <span key={w} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-2 py-1">
                 {w}
-                <button type="button" aria-label={`حذف ${w}`} onClick={() => update({ watchWords: prefs.watchWords.filter((x) => x !== w) })}>
+                <button type="button" disabled={saving} className="grid size-11 place-items-center rounded" aria-label={`حذف ${w}`} onClick={() => update({ watchWords: prefs.watchWords.filter((x) => x !== w) })}>
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -250,11 +272,12 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
                 }
               }}
               maxLength={60}
+              disabled={saving}
               placeholder="مثال: الخرطوم، وزير الطاقة، أوبك"
               aria-label="كلمة متابعة"
-              className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs"
+              className="min-h-11 min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs"
             />
-            <button type="button" onClick={addWord} className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold">
+            <button type="button" disabled={saving} onClick={addWord} className="inline-flex min-h-11 items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold">
               <Plus className="w-3.5 h-3.5" /> إضافة
             </button>
           </div>
@@ -270,11 +293,11 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
         <p className="text-2xs text-slate-500">لا يصلك بريد أو تنبيه جهاز في هذه الساعات (بتوقيت المحطة المضبوط في الإعدادات) إلا للعاجل؛ يبقى كل شيء في الجرس.</p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span>من</span>
-          <input type="time" aria-label="بداية ساعات الهدوء" value={prefs.quietFrom || ''} onChange={(e) => update({ quietFrom: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
+          <input type="time" disabled={saving} aria-label="بداية ساعات الهدوء" value={prefs.quietFrom || ''} onChange={(e) => update({ quietFrom: e.target.value })} className="min-h-11 px-2 py-1.5 rounded-lg border border-slate-200" />
           <span>إلى</span>
-          <input type="time" aria-label="نهاية ساعات الهدوء" value={prefs.quietTo || ''} onChange={(e) => update({ quietTo: e.target.value })} className="px-2 py-1.5 rounded-lg border border-slate-200" />
+          <input type="time" disabled={saving} aria-label="نهاية ساعات الهدوء" value={prefs.quietTo || ''} onChange={(e) => update({ quietTo: e.target.value })} className="min-h-11 px-2 py-1.5 rounded-lg border border-slate-200" />
           {(prefs.quietFrom || prefs.quietTo) && (
-            <button type="button" onClick={() => update({ quietFrom: '', quietTo: '' })} className="text-2xs text-slate-500 underline">
+            <button type="button" disabled={saving} onClick={() => update({ quietFrom: '', quietTo: '' })} className="min-h-11 px-2 text-xs text-slate-600 underline">
               بلا ساعات هدوء
             </button>
           )}
@@ -283,8 +306,8 @@ export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ curr
 
       {dirty && (
         <div role="region" aria-label="حفظ التغييرات" className="sticky bottom-4 z-30 flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 text-white shadow-xl">
-          <span className="text-xs font-bold">لديك تغييرات لم تُحفظ بعد</span>
-          <button type="button" onClick={save} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
+          <span role="status" className="text-xs font-bold">{saving ? 'بانتظار تأكيد الخادم' : 'لديك تغييرات لم تُحفظ بعد'}</span>
+          <button type="button" disabled={saving} onClick={() => void save()} className="inline-flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">
             <Save className="w-4 h-4" /> حفظ
           </button>
         </div>

@@ -6,7 +6,7 @@ import { Avatar } from '../components/common/Avatar';
 import React, { useState } from 'react';
 import { useLiveData } from '../hooks/useLiveData';
 import { stationWorkDay, stationWorkTime } from '../shared/myWork';
-import { Newspaper, Flame, Video, CheckSquare, Users, ArrowUpRight, Plus, Radio, FileCheck, Calendar as CalendarIcon, AlertTriangle, Filter } from 'lucide-react';
+import { Newspaper, Flame, Video, CheckSquare, ClipboardList, Users, ArrowUpRight, Plus, Radio, FileCheck, Calendar as CalendarIcon, AlertTriangle, Filter } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 import { RbacService } from '../services/rbacService';
 import { NewsItem, Program, Episode, EditorialTask, Guest, BreakingNews, User, Category } from '../types';
@@ -14,8 +14,9 @@ import { AppView } from '../components/layout/Sidebar';
 
 import { MyWorkPanel } from '../components/dashboard/MyWorkPanel';
 import { TodayStatusPanel } from '../components/dashboard/TodayStatusPanel';
-import { isManagerRole, reviewableNews } from '../shared/managerToday';
+import { isManagerRole, issuesInScope, managerScope, reviewableNews, stationGroupsOf } from '../shared/managerToday';
 import { stationsOf } from '../shared/stations';
+import { awaitsMyReview } from '../shared/newsWorkflow';
 import { apiService } from '../services/api';
 import { useSetupReminder } from '../components/setup/SetupWizard';
 import { sectionOrderFor } from '../shared/navigation';
@@ -31,7 +32,7 @@ interface DashboardViewProps {
   guests: Guest[];
   categories?: Category[];
   currentUser: User;
-  onNavigate: (view: AppView | '/settings/monitor') => void;
+  onNavigate: (view: string) => void;
   onSelectEpisode?: (episodeId: string) => void;
   onSelectNews?: (newsId: string) => void;
   onCreateNews?: () => void;
@@ -66,7 +67,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onCreateTask = () => {},
   onOpenBulletin,
 }) => {
-  useLiveData(['settings', 'roles'], 60_000);
+  useLiveData(['settings', 'roles', 'productionCards'], 60_000);
   const referenceTime = Date.now();
   const stationZone = apiService.getSettings().defaultTimezone;
   const [activeQueueTab, setActiveQueueTab] = useState<'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'PUBLISHED'>('UNDER_REVIEW');
@@ -76,7 +77,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Only what this colleague can act on: others' stories, and for a branch manager their stations' writers.
   const canReview = RbacService.hasPermission(currentUser, 'news.review') || RbacService.hasPermission(currentUser, 'news.approve');
   const stationOfUser = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
-  const pendingReviewNewsCount = reviewableNews(newsList || [], currentUser, { canReview, stations: stationsOf(apiService.getSettings()), stationOf: (id) => stationOfUser.get(id) }).length;
+  const stations = stationsOf(apiService.getSettings());
+  const reviewQueue = reviewableNews(newsList, currentUser, { canReview, stations, stationOf: (id) => stationOfUser.get(id) });
+  const pendingReviewNewsCount = reviewQueue.length;
   const isManager = isManagerRole(currentUser.role);
   const activeBreakingCount = (breakingNews || []).filter((b) => b.isActive).length;
   const todayKey = stationWorkDay(new Date(referenceTime), stationZone);
@@ -133,6 +136,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
   const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
   const domain = sectionOrderFor(currentUser)[1];
+  const inPreparation = upcomingEpisodes.filter(episode => !episode.deletedAt && !['ON_AIR', 'READY_FOR_BROADCAST'].includes(episode.status));
+  const nextEpisode = inPreparation.find(episode => episode.producerId === currentUser.id) || inPreparation[0];
+  const nextReview = reviewQueue.find(item => awaitsMyReview(can, currentUser.id, item, referenceTime));
+  const canCreateNews = canOpen('news') && can('news.create');
+  const canCreateEpisode = canOpen('episodes') && can('episodes.create');
+  const canTrackCards = isManager && canOpen('cards') && can('cards.view');
+  const nextIssue = canTrackCards
+    ? issuesInScope(apiService.getCards(), managerScope(currentUser, stations, can('workload.view_all'), stationGroupsOf(apiService.getSettings())), referenceTime)[0]
+    : undefined;
+  const primaryAction = canTrackCards
+    ? nextIssue
+      ? { label: nextIssue.blocked ? 'متابعة تكليف متعطل' : 'متابعة تكليف متأخر', Icon: AlertTriangle, run: () => onNavigate(`/cards/${encodeURIComponent(nextIssue.card.id)}`) }
+      : { label: 'متابعة التكليفات', Icon: ClipboardList, run: () => onNavigate('cards') }
+    : domain === 'programs' && canOpen('episodes')
+      ? nextEpisode && canOpen('episode-workspace')
+        ? { label: 'متابعة تجهيز الحلقة', Icon: Video, run: () => onSelectEpisode(nextEpisode.id) }
+        : canCreateEpisode
+          ? { label: 'إعداد حلقة جديدة', Icon: Video, run: onCreateEpisode }
+          : { label: 'فتح الحلقات', Icon: Video, run: () => onNavigate('episodes') }
+      : canOpen('news') && nextReview
+        ? { label: 'مراجعة خبر ينتظر قرارك', Icon: FileCheck, run: () => onSelectNews(nextReview.id) }
+        : canCreateNews
+          ? { label: 'خبر صحفي جديد', Icon: Plus, run: onCreateNews }
+          : canCreateEpisode
+            ? { label: 'إعداد حلقة جديدة', Icon: Video, run: onCreateEpisode }
+            : null;
   const showQueues = canOpen('news') && (can('news.create') || canReview);
   const showSchedule = canOpen('episodes') && (domain === 'programs' || domain === 'air' || domain === 'admin' || can('episodes.create'));
   const showGuests = canOpen('guests') && (domain === 'programs' || domain === 'admin' || can('guests.manage'));
@@ -167,26 +196,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Fast Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Only actions this user may take: a button that answers "not allowed" is noise. */}
-          {canOpen('news') && can('news.create') && <button
-            type="button"
-            onClick={onCreateNews}
-            className="flex items-center gap-1.5 px-4 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            خبر صحفي جديد
-          </button>}
-          {canOpen('episodes') && can('episodes.create') && <button
-            type="button"
-            onClick={onCreateEpisode}
-            className="flex items-center gap-1.5 px-4 min-h-10 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-colors"
-          >
-            <Video className="w-4 h-4 text-purple-600" />
-            إعداد حلقة جديدة
-          </button>}
-        </div>
+        {primaryAction && <button type="button" onClick={primaryAction.run} className="min-h-11 self-start inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700 md:self-end">
+          <primaryAction.Icon className="size-4" aria-hidden="true" />
+          {primaryAction.label}
+        </button>}
       </div>
 
       {canSetup && setup.pending && (

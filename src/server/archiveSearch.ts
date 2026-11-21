@@ -1,6 +1,7 @@
 import type { NewsroomDatabase } from './db';
 import { didYouMean, parseQuery } from '../shared/arabicSearch';
 import { archiveMatch } from './archiveIndex';
+import type { NewsArchiveFilters } from '../shared/newsArchive';
 
 /**
  * Archive search with the same Arabic matching as the newsroom screens (hamza/ة/ى variants,
@@ -41,16 +42,17 @@ export function searchArchive(
   beforeIso: string,
   query: string,
   limit: number,
-  offset: number
+  offset: number,
+  filters: NewsArchiveFilters = {},
 ): { total: number; items: ArchiveItem[]; suggestion?: string } {
   const q = query.trim();
-  if (!q || parseQuery(q).empty) return db.searchNewsArchive(beforeIso, q, limit, offset);
-  const ranked = db.rankNewsArchive(beforeIso, q, archiveMatch(q), limit, offset);
+  if (!q || parseQuery(q).empty) return db.searchNewsArchive(beforeIso, q, limit, offset, filters);
+  const ranked = db.rankNewsArchive(beforeIso, q, archiveMatch(q), limit, offset, filters);
   const result: { total: number; items: ArchiveItem[]; suggestion?: string } = {
     total: ranked.total,
     items: ranked.items.map(toItem),
   };
-  if (ranked.total <= 2 && offset === 0) {
+  if (ranked.total <= 2 && offset === 0 && !filters.station && !filters.from && !filters.to) {
     const fixed = didYouMean(q, db.archiveVocabulary(beforeIso));
     if (fixed && db.rankNewsArchive(beforeIso, fixed, archiveMatch(fixed), 0, 0).total > ranked.total) result.suggestion = fixed;
   }

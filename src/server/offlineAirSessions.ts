@@ -5,6 +5,7 @@ import type { AuthContext } from './auth';
 import { canControlOnAir } from '../shared/onair';
 import { OfflineAirError, verifyOfflinePacketProof } from './offlineAir';
 import type { OfflineAirPacket } from '../shared/offlineAir';
+import { canRead } from './policy';
 const id = z.string().min(1).max(200);
 const schema = z.object({ sessionId: id, packetId: id, dbId: id, showId: id, preparedAt: z.iso.datetime(), proof: z.string().regex(/^[a-f0-9]{64}$/), events: z.array(z.object({ id, sequence: z.number().int().positive(), action: z.enum(['START','NEXT','PREVIOUS','PAUSE','RESUME','END']), at: z.number().int().nonnegative(), segmentId: id })).min(1).max(2000) });
 export function importOfflineSession(db: NewsroomDatabase, auth: AuthContext, body: unknown) {
@@ -13,6 +14,8 @@ export function importOfflineSession(db: NewsroomDatabase, auth: AuthContext, bo
   const result = schema.safeParse(body);
   if (!result.success) throw new OfflineAirError(400, 'صيغة السجل المحلي غير صالحة');
   const value = result.data;
+  const show = db.getRow('episodes', value.showId) || db.getRow('bulletins', value.showId);
+  if (!show || show.d.deletedAt || !canRead(auth, show.c, show.d)) throw new OfflineAirError(403, 'مادة البث لم تعد متاحة');
   const proofPacket = { ...value, userId: auth.user.id, show: { id: value.showId } } as unknown as OfflineAirPacket;
   if (!verifyOfflinePacketProof(db, auth.user.id, proofPacket)) throw new OfflineAirError(403, 'هوية النسخة أو توقيعها أو عمرها غير صالح');
   let state = 'READY'; let lastTime = Date.parse(value.preparedAt) - 120000;

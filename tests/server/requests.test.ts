@@ -14,6 +14,22 @@ const put = (d: any, baseV?: number) => ({ c: 'requests', op: 'upsert', id: d.id
 const row = (id: string) => server.db.getRow('requests', id)!;
 
 describe('requests between departments', () => {
+  it('keeps the original deadline until the requester accepts the alternate', async () => {
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const media = await loginAgent(server.app, 'media@akhbar.tv');
+    const id = 'req-alternate-deadline';
+    const dueAt = new Date(Date.now() + 3600_000).toISOString();
+    const alternate = new Date(Date.now() + 7200_000).toISOString();
+    expect((await sync(journalist, [put({ id, type: 'MONTAGE', title: 'تسليم التقرير', dueAt })])).body.results[0].ok).toBe(true);
+    const update = async (agent: request.Agent, changes: object) => (await sync(agent, [put({ ...row(id).d, ...changes }, row(id).v)])).body.results[0];
+    expect((await update(journalist, { proposedDueAt: alternate })).ok).toBe(false);
+    expect((await update(media, { proposedDueAt: alternate, proposedById: 'usr-1' })).ok).toBe(true);
+    expect(row(id).d).toMatchObject({ dueAt, proposedDueAt: alternate, proposedById: 'usr-7' });
+    expect((await update(media, { dueAt: alternate, proposedDueAt: null })).ok).toBe(false);
+    expect((await update(journalist, { dueAt: alternate, proposedDueAt: null })).ok).toBe(true);
+    expect(row(id).d).toMatchObject({ dueAt: alternate, proposedDueAt: null });
+    expect(row(id).d.history.at(-1).note).toBe('اعتُمد الموعد البديل');
+  });
   it('routes a montage request, and only the montage desk can take and finish it', async () => {
     const journalist = await loginAgent(server.app, 'journalist@akhbar.tv'); // newsroom
     const media = await loginAgent(server.app, 'media@akhbar.tv'); // montage department
@@ -27,7 +43,7 @@ describe('requests between departments', () => {
     expect(r.departmentId).toBe('montage');
 
     // The montage member was notified (nobody on the roster, so the whole department).
-    const notes = server.db.listCollection('notifications').filter((n) => n.d.userId === 'usr-7' && n.d.linkUrl === '/requests');
+    const notes = server.db.listCollection('notifications').filter((n) => n.d.userId === 'usr-7' && n.d.linkUrl === '/requests/req-1');
     expect(notes.length).toBe(1);
 
     const stolen = await sync(journalist, [put({ ...r, status: 'ACCEPTED' }, row('req-1').v)]);

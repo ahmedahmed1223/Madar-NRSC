@@ -23,6 +23,11 @@ export const NOTIFICATION_CATEGORY_IDS = NOTIFICATION_CATEGORIES.map((c) => c.id
 export const isNotificationCategory = (v: unknown): v is NotificationCategory => NOTIFICATION_CATEGORY_IDS.includes(v as NotificationCategory);
 export const categoryName = (id: string | undefined) => NOTIFICATION_CATEGORIES.find((c) => c.id === id)?.name || 'تنبيه';
 
+/** Urgent work notices stay unread until their recipient explicitly acknowledges them. */
+export function requiresNotificationAcknowledgment(notice: { urgent?: boolean; category?: string }): boolean {
+  return !!notice.urgent && ['assignment', 'request', 'bulletin'].includes(notice.category || '');
+}
+
 export type DeliveryChannel = 'email' | 'push';
 
 export interface NotificationPrefs {

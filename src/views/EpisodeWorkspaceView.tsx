@@ -164,10 +164,22 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   };
   const guestCount = episodeGuestList(episode).length;
   const guestWait = readiness.blockers.some(blocker => blocker.key === 'guest');
-  const openPreparationTab = (tab: 'RUNDOWN' | 'GUESTS') => {
+  const openPreparationTab = (tab: 'PLAN' | 'RUNDOWN' | 'GUESTS' | 'NOTES') => {
     setActiveTab(tab);
     requestAnimationFrame(() => document.getElementById(`episode-tab-${tab}`)?.focus());
   };
+  const checkReadiness = () => {
+    setShowBlockers(true);
+    document.getElementById('episode-readiness')?.focus();
+  };
+  const preparationSteps = [
+    { label: 'الفكرة', detail: episode.brief?.idea ? 'موجز الفكرة مسجل' : 'راجع موجز الحلقة', action: () => openPreparationTab('PLAN') },
+    { label: 'الإعداد', detail: `${(episode.topics || []).length} محور مدرج`, action: () => openPreparationTab('PLAN') },
+    { label: 'الضيوف والحقوق', detail: guestCount ? 'راجع الحجوزات واستخدام المواد' : 'راجع ضيوف الحلقة واستخدام المواد', action: () => openPreparationTab('GUESTS') },
+    { label: 'الفقرات', detail: `${readiness.total} فقرة في خطة البث`, action: () => openPreparationTab('RUNDOWN') },
+    { label: 'المراجعة والجاهزية', detail: readiness.ready ? 'لا موانع للفقرات' : 'راجع نواقص الفقرات', action: checkReadiness },
+    { label: 'البث والأرشفة', detail: episode.status === 'ARCHIVED' ? 'أُرشفت الحلقة' : episode.status === 'BROADCASTED' ? 'أُذيعت الحلقة' : episode.status === 'ON_AIR' ? 'على الهواء' : 'راجع تعليمات الإخراج قبل البث', action: () => openPreparationTab('NOTES') },
+  ];
 
   const [savingStatus, setSavingStatus] = useState(false);
   const savingStatusRef = useRef(false);
@@ -372,7 +384,17 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
       </div>
 
       {initialSegmentId && !linkedSegment && <p role="status" className="text-sm text-slate-600">الفقرة المطلوبة غير متاحة؛ يمكنك متابعة العمل من الحلقة.</p>}
-      <section aria-label="قائمة تحضير الحلقة" className="p-4 rounded-2xl border bg-white border-slate-200">
+      <details className="rounded-xl border border-slate-200 bg-white px-3">
+        <summary className="min-h-11 py-2.5 cursor-pointer text-sm font-bold text-slate-900">مراحل الحلقة <span className="ms-2 text-xs font-semibold text-slate-700">{statusInfo.label}</span></summary>
+        <p className="text-xs text-slate-700 mb-1">المنتج المسؤول {episode.producerName || 'غير مسند'}{episode.broadcastDate ? ` · موعد البث ${arabicDate(episode.broadcastDate)} ${episode.startTime || ''}` : ''}</p>
+        <ol className="divide-y divide-slate-200">
+          {preparationSteps.map(step => <li key={step.label} className="flex flex-wrap items-center gap-x-3">
+            <button type="button" onClick={step.action} className="min-h-11 text-sm font-semibold text-blue-700 hover:underline">{step.label}</button>
+            <span className="text-xs text-slate-700">{step.detail}</span>
+          </li>)}
+        </ol>
+      </details>
+      <section id="episode-readiness" tabIndex={-1} aria-label="قائمة تحضير الحلقة" className="p-4 rounded-2xl border bg-white border-slate-200">
         <h2 className="text-sm font-bold text-slate-900 mb-3">قائمة تحضير الحلقة</h2>
         <ul className="divide-y divide-slate-200 text-sm">
         <li className="py-2">
@@ -462,6 +484,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('PLAN')}
+          id="episode-tab-PLAN"
           aria-pressed={activeTab === 'PLAN'}
           className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'PLAN' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
@@ -532,6 +555,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('NOTES')}
+          id="episode-tab-NOTES"
           aria-pressed={activeTab === 'NOTES'}
           className={`min-h-11 flex items-center gap-2 px-3 rounded-xl transition-all ${
             activeTab === 'NOTES' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'

@@ -21,14 +21,17 @@ for (const width of [390, 1440]) {
     const { page, close } = await signIn(browser, 'journalist@akhbar.tv', { viewport: { width, height: 900 } });
     const panel = page.getByTestId('my-work');
     await panel.getByRole('button', { name: 'تخصيص عملي' }).click();
+    await panel.getByRole('button', { name: 'استعادة الترتيب الافتراضي' }).click();
+    await expect(panel.getByRole('checkbox', { name: 'عرض أخباري قيد العمل' })).toBeChecked();
     await panel.getByRole('checkbox', { name: 'عرض أخباري قيد العمل' }).uncheck();
     await expect(panel.getByTestId('my-news')).toHaveCount(0);
     await panel.getByRole('button', { name: 'تقديم مهامي', exact: true }).click();
-    const data = await (await page.request.get('/api/v1/data')).json();
-    const userId = data.collections.users.find((row: any) => row.d.email === 'journalist@akhbar.tv').id;
-    const preferences = await page.evaluate(id => JSON.parse(localStorage.getItem(`madar-work-sections:${id}`) || '{}'), userId);
-    expect(preferences.hidden).toContain('my-news');
-    expect(preferences.order.indexOf('my-tasks')).toBeLessThan(preferences.order.indexOf('my-news'));
+    const { user } = await (await page.request.get('/api/v1/auth/me')).json();
+    await expect.poll(async () => {
+      const { collections } = await (await page.request.get('/api/v1/data')).json();
+      const preferences = collections.workspacePrefs.find((row: any) => row.id === user.id)?.d.workSections;
+      return !!preferences?.hidden.includes('my-news') && preferences.order.indexOf('my-tasks') < preferences.order.indexOf('my-news');
+    }).toBe(true);
     await page.reload();
     await expect(page.getByTestId('my-news')).toHaveCount(0);
     await expect(page.getByTestId('my-tasks')).toBeVisible();

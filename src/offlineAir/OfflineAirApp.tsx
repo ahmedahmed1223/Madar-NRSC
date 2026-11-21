@@ -7,6 +7,7 @@ import { plainText } from '../shared/bulletins';
 import { OfflineReconnectPanel } from './OfflineReconnectPanel';
 import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
 import { OfflineViewerControls } from './OfflineViewerControls';
+import { AirSourceStatus } from '../components/onair/AirSourceStatus';
 import { OfflineScriptDrafts, type OfflineScriptDraft } from './OfflineScriptDrafts';
 import { useReadingPreferences } from '../hooks/useReadingPreferences';
 import { READING_FONT_MIN, READING_FONT_MAX, type ReadingPreferences } from '../services/readingPreferences';
@@ -107,7 +108,12 @@ export function OfflineAirApp() {
   const segment = unlocked.packet.show.segments[readingIndex];
   const timing = localTiming(session, now);
   const preparedAt = unlocked.packet.preparedAt;
-  const freshness = <p>جُهزت هذه النسخة في <time dateTime={preparedAt}>{new Date(preparedAt).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' })}</time>. تحقق من حداثتها من شاشة تجهيز النسخة عند الاتصال.</p>;
+  const nextReading = unlocked.packet.show.segments[readingIndex + 1];
+  const freshness = <>
+    <AirSourceStatus local control={unlocked.packet.canOperate} />
+    <p>جُهزت هذه النسخة في <time dateTime={preparedAt}>{new Date(preparedAt).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' })}</time>. تحقق من حداثتها من شاشة تجهيز النسخة عند الاتصال.</p>
+    {nextReading && <p>التالي للقراءة · {nextReading.title}</p>}
+  </>;
   const viewerControls = <OfflineViewerControls onMove={delta => void selectReading(readingIndex + delta)} onFont={delta => update({ fontSize: Math.max(READING_FONT_MIN, Math.min(READING_FONT_MAX, preferences.fontSize + delta)) })}/>;
   const readingControls = <>
     <label>حجم الخط<input aria-label="حجم الخط" type="range" min={READING_FONT_MIN} max={READING_FONT_MAX} value={preferences.fontSize} onChange={event => update({ fontSize: Number(event.target.value) })}/></label>

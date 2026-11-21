@@ -1,9 +1,10 @@
 import { countLabel } from '../shared/arabicPlural';
 import { EP_NOUNS } from '../shared/episodeNouns';
 import { matchesQuery } from '../shared/search';
-import { bulletinSlot, episodeSlot, findStudioClashes, scheduledBulletinSlot, type AirSlot, type StudioClash } from '../shared/schedule';
+import { bulletinSlot, episodeSlot, findStudioClashes, scheduledBulletinSlot, suggestedStudioStart, type AirSlot, type StudioClash } from '../shared/schedule';
 import { BULLETIN_STATUSES, bulletinKindName } from '../shared/bulletins';
-import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
+import { addDaysIso, arabicDate, localDateString, stationTimeZone } from '../shared/dates';
+import { stationName, stationsOf } from '../shared/stations';
 import { episodeStatusInfo } from '../components/episodes/episodeDetails';
 import { apiService } from '../services/api';
 import { useLiveData } from '../hooks/useLiveData';
@@ -81,9 +82,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onOpenBulletin,
   onOpenBulletins,
 }) => {
-  useLiveData(['bulletins', 'bulletinFormats'], 60_000);
+  useLiveData(['bulletins', 'bulletinFormats', 'settings', 'users'], 60_000);
   const [selectedProgram, setSelectedProgram] = useState('ALL');
   const [selectedStudio, setSelectedStudio] = useState('ALL');
+  const [selectedStation, setSelectedStation] = useState('');
   const [viewMode, setViewMode] = useState<'WEEK' | 'MONTH' | 'STUDIO'>('WEEK');
   const [weekOffset, setWeekOffset] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -108,6 +110,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   // Everything that holds a studio: programme episodes, created bulletins, and the bulletins the
   // schedule plans for this week that nobody has created yet (from today on).
   const bulletins = apiService.getBulletins();
+  const settings = apiService.getSettings();
+  const stationTime = stationTimeZone(settings.defaultTimezone);
+  const stations = stationsOf(settings);
+  const stationByUser = new Map(apiService.getUsers().map(user => [user.id, user.stationId]));
+  const episodeStations = new Map(episodes.map(episode => [episode.id, stationByUser.get(episode.producerId || '')]));
+  const bulletinStations = new Map(bulletins.map(bulletin => [bulletin.id, stationByUser.get(bulletin.editorId || '')]));
+  const stationOfSlot = (slot: AirSlot) => slot.kind === 'episode' ? episodeStations.get(slot.refId) : slot.kind === 'bulletin' ? bulletinStations.get(slot.refId) : undefined;
   const missingKey = weekDates.filter((d) => d >= todayStr).map((d) => `${d}:${apiService.missingScheduledBulletins(d).map((f) => f.id).join(',')}`).join('|');
   const slots: AirSlot[] = useMemo(() => {
     const scheduled = weekDates
@@ -128,6 +137,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const inWeek = (c: StudioClash) => weekDates.includes(c.a.broadcastDate || '') || weekDates.includes(c.b.broadcastDate || '');
   const weekClashes = clashes.filter(inWeek);
   const otherClashes = clashes.length - weekClashes.length;
+  const alternatives = new Map(weekClashes.map(clash => [clash.b.id, suggestedStudioStart(clash.b, slots)]));
 
   // Studios list
   const studios = useMemo(() => {
@@ -140,16 +150,19 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     if (selectedProgram === 'BULLETINS' && slot.kind === 'episode') return false;
     if (selectedProgram !== 'ALL' && selectedProgram !== 'BULLETINS' && (slot.kind !== 'episode' || slot.programId !== selectedProgram)) return false;
     if (selectedStudio !== 'ALL' && slot.studioName !== selectedStudio) return false;
+    const station = stationOfSlot(slot);
+    if (selectedStation && (selectedStation === 'unassigned:' ? !!station : station !== selectedStation)) return false;
     if (searchQuery.trim() && !matchesQuery(searchQuery, slot.title, slot.programName, slot.presenterName, slot.studioName)) return false;
     return true;
   };
   const filteredSlots = slots.filter(visible).sort(byTime);
 
-  const hasActiveFilters = selectedProgram !== 'ALL' || selectedStudio !== 'ALL' || searchQuery.trim() !== '' || weekOffset !== 0;
+  const hasActiveFilters = selectedProgram !== 'ALL' || selectedStudio !== 'ALL' || selectedStation !== '' || searchQuery.trim() !== '' || weekOffset !== 0;
 
   const handleResetFilters = () => {
     setSelectedProgram('ALL');
     setSelectedStudio('ALL');
+    setSelectedStation('');
     setSearchQuery('');
     setWeekOffset(0);
   };
@@ -161,6 +174,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const isLive = isLiveSlot(slot);
     const isBulletin = slot.kind !== 'episode';
     const status = slotStatus(slot);
+    const station = stationOfSlot(slot);
+    const provisional = slot.kind === 'scheduled-bulletin' || ['PLANNING', 'IN_PREPARATION', 'PREPARING'].includes(slot.status || '');
     const others = isConflict ? clashesOf(slot) : [];
     return (
       <div key={slot.id} className="space-y-1">
@@ -197,6 +212,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div className="text-2xs text-slate-600 space-y-0.5 pt-1 border-t border-slate-100">
             {slot.kind === 'episode' && <div className="font-semibold text-blue-700 truncate">{slot.programName}</div>}
             <div className="truncate">{slot.studioName || 'بلا استوديو'}</div>
+            <p className="break-words">{station ? stationName(stations, station) : 'محطة الإنتاج غير محددة'}{provisional && ' · موعد مبدئي'}</p>
             {!compact && <Badge variant={status.variant} size="sm">{status.label}</Badge>}
           </div>
         </SlotLink>
@@ -224,7 +240,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">جدول البث</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">الحلقات والنشرات حسب اليوم أو الاستوديو، مع كشف تعارض الاستوديوهات بين الحلقات والنشرات.</p>
+          <p className="text-xs sm:text-sm text-slate-700 mt-1">{stationTime ? `المواعيد بتوقيت المحطة (${stationTime})` : 'المواعيد بتوقيت الجهاز'} · محطة الإنتاج هي محطة المنتج أو محرر النشرة.</p>
         </div>
 
         {/* View Switchers & Controls */}
@@ -307,6 +323,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               ))}
             </select>
 
+            <label htmlFor="calendar-station-filter" className="sr-only">تصفية حسب محطة الإنتاج</label>
+            <select id="calendar-station-filter" value={selectedStation} onChange={event => setSelectedStation(event.target.value)} className="min-h-11 max-w-full px-3 border border-slate-300 rounded-xl bg-white text-xs text-slate-800">
+              <option value="">جميع محطات الإنتاج</option>
+              {stations.map(station => <option key={station.id} value={station.id}>{station.name}</option>)}
+              <option value="unassigned:">محطة غير محددة</option>
+            </select>
+
             <label htmlFor="calendar-studio-filter" className="sr-only">تصفية حسب الاستوديو</label>
             <select
               id="calendar-studio-filter"
@@ -360,6 +383,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     {kindLabel(c.b)} «{c.b.title}» <span className="tabular-nums">{c.b.startTime}–{c.b.endTime}</span>
                   </SlotLink>
                   <span className="text-rose-800">(تداخل {c.overlapMinutes} د)</span>
+                  {!isLiveSlot(c.b) && alternatives.get(c.b.id) && <span className="w-full text-xs text-slate-700">موعد بديل مقترح للقيد الثاني · {arabicDate(alternatives.get(c.b.id)!.date)} {alternatives.get(c.b.id)!.startTime}</span>}
                 </li>
               ))}
             </ul>
@@ -428,6 +452,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 .map((studioName) => {
                   const studioSlots = filteredSlots.filter((s) => s.studioName === studioName && s.broadcastDate === shownStudioDay);
                   const busy = studioSlots.some((s) => conflictIds.has(s.id));
+                  const byStation = new Map<string, AirSlot[]>();
+                  for (const slot of studioSlots) {
+                    const station = stationOfSlot(slot) || '';
+                    const group = byStation.get(station);
+                    if (group) group.push(slot);
+                    else byStation.set(station, [slot]);
+                  }
                   return (
                     <div key={studioName} className={`border rounded-2xl p-4 space-y-3 ${busy ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 bg-slate-50/50'}`}>
                       <div className="flex items-center justify-between">
@@ -441,9 +472,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       </div>
                       <div className="space-y-2">
                         {studioSlots.length === 0 ? (
-                          <div className="py-8 text-center text-xs text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">الاستوديو متاح</div>
+                          <div className="py-8 text-center text-xs text-slate-600 bg-white rounded-xl border border-dashed border-slate-200">لا مواعيد مطابقة في الجدول</div>
                         ) : (
-                          studioSlots.map((slot) => slotCard(slot, false))
+                          [...byStation].map(([station, group]) => <section key={station} aria-label={station ? stationName(stations, station) : 'محطة الإنتاج غير محددة'} className="space-y-2">
+                            <p className="text-xs font-semibold text-slate-700">{station ? stationName(stations, station) : 'محطة الإنتاج غير محددة'}</p>
+                            {group.map(slot => slotCard(slot, false))}
+                          </section>)
                         )}
                       </div>
                     </div>

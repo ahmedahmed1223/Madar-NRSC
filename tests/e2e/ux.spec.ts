@@ -56,6 +56,14 @@ test('the mobile messages screen opens the department drawer and sends to its ch
     await expect(drawer.getByRole('status')).toHaveText('أُرسلت الرسالة');
     await senderChannel.selectOption('general');
     await expect(drawer.getByRole('textbox', { name: 'نص الرسالة' })).toHaveValue(text);
+    await drawer.getByLabel('تمييز الرسالة كعاجلة').check();
+    await drawer.getByRole('button', { name: 'فتح القناة', exact: true }).click();
+    await expect(sender.page).toHaveURL(/\/messages\/general$/);
+    await expect(sender.page.locator('#chat-text')).toHaveValue(text);
+    await expect(sender.page.getByLabel('رسالة عاجلة', { exact: false })).toBeChecked();
+    await sender.page.locator('header button[aria-label^="المحادثة الداخلية"]').click();
+    await expect(senderChannel).toHaveValue('general');
+    await expect(drawer.getByRole('textbox', { name: 'نص الرسالة' })).toHaveValue(text);
     await drawer.getByRole('button', { name: 'إرسال الرسالة' }).click();
     await expect(drawer.getByRole('status')).toHaveText('أُرسلت الرسالة');
     await receiver.page.getByRole('button', { name: /^المحادثة الداخلية/ }).click();
@@ -88,6 +96,29 @@ test('the mobile messages screen opens the department drawer and sends to its ch
   } finally {
     await receiver.close();
     await sender.close();
+  }
+});
+
+test('a public message opens an editable task and a verified task retains its exact origin', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'editor@akhbar.tv');
+  const text = `متابعة بلاغ ${Date.now()}`;
+  try {
+    await page.goto('/messages/general');
+    await page.locator('#chat-text').fill(text);
+    await page.getByRole('button', { name: 'إرسال', exact: true }).click();
+    await expect(page.getByText('أُرسلت الرسالة', { exact: true })).toBeVisible();
+    const message = page.locator('[data-chat-message]').filter({ hasText: text });
+    const messageId = await message.getAttribute('data-chat-message');
+    await message.getByRole('button', { name: 'إنشاء مهمة', exact: true }).click();
+    await expect(page.locator('#task-title-input')).toHaveValue(text);
+    await page.getByRole('button', { name: 'حفظ المهمة', exact: true }).click();
+    await expect(page.locator('#task-title-input')).not.toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: text });
+    await row.getByRole('button', { name: 'رسالة: عام' }).click();
+    await expect(page).toHaveURL(new RegExp(`/messages/general/entry/${messageId}$`));
+    await expect(message).toBeVisible();
+  } finally {
+    await close();
   }
 });
 

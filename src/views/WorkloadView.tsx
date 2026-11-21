@@ -6,6 +6,8 @@ import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { downloadCsv } from '../services/csvExport';
 import { FilterTabs } from '../components/common/FilterTabs';
+import { DepartmentWorkPanel } from '../components/workload/DepartmentWorkPanel';
+import { useLiveData } from '../hooks/useLiveData';
 import { stationDay, timeOnly, when } from '../components/cards/cardUi';
 import { formatDay } from '../shared/dateFormat';
 import { buildHandover, handoverSections, handoverText } from '../shared/handover';
@@ -19,6 +21,7 @@ import { dmChannel, groupChannel, MAX_MESSAGE_CHARS, stationChannel } from '../s
 import { AR, countLabel, countWithNumber } from '../shared/arabicPlural';
 import {
   collectWork,
+  inPeriod,
   comparePeriods,
   dailyTrend,
   employeeFile,
@@ -85,7 +88,23 @@ const Count: React.FC<{ value: number; tone?: string; label: string; onOpen: () 
  * and blocked items behind each figure and who is free), the trend of finished work against the
  * previous period, what was produced, each colleague's record and the shift handover brief.
  */
-export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpen }) => {
+export function WorkloadView(props: WorkloadViewProps) {
+  const { currentUser, onOpen } = props;
+  useLiveData(['settings', 'roles']);
+  const leadsDepartment = RbacService.leadsDepartment(currentUser);
+  const canViewReport = RbacService.canOpenScreen(currentUser, 'workload', false);
+  const [view, setView] = useState<'DEPARTMENT' | 'REPORT'>('DEPARTMENT');
+  return <div className="space-y-4">
+    {leadsDepartment && canViewReport && <div className="flex flex-wrap gap-2" role="group" aria-label="نطاق المتابعة">
+      <button type="button" className={TOOL} aria-pressed={view === 'DEPARTMENT'} onClick={() => setView('DEPARTMENT')}>أعمال فريقي</button>
+      <button type="button" className={TOOL} aria-pressed={view === 'REPORT'} onClick={() => setView('REPORT')}>الأعباء والأداء</button>
+    </div>}
+    {leadsDepartment && (view === 'DEPARTMENT' || !canViewReport) ? <DepartmentWorkPanel key={currentUser.id} currentUser={currentUser} onOpen={onOpen} />
+      : canViewReport ? <WorkloadReport {...props} /> : null}
+  </div>;
+}
+
+const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpen }) => {
   const canView = RbacService.hasPermission(currentUser, 'workload.view');
   const canViewAll = RbacService.hasPermission(currentUser, 'workload.view_all');
   const [version, setVersion] = useState(0);
@@ -451,7 +470,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ currentUser, users, 
               { label: 'متأخرة', period: 'الآن', value: openNow.filter((i) => i.overdue).length, open: () => drillTo('المتأخرة', pick(filteredItems, 'late')), tone: 'text-amber-700' },
               { label: 'متعطلة', period: 'الآن', value: openNow.filter((i) => i.blocked).length, open: () => drillTo('المتعطلة', pick(filteredItems, 'blocked')), tone: 'text-rose-700' },
               { label: 'متفرغون', period: 'الآن', value: freeNow.length, open: () => setShow('FREE'), tone: 'text-sky-800', note: countLabel(peopleRows.length, { ...AR.person, zero: 'لا أفراد' }) },
-              { label: 'أُنجز', period: periodLabel, value: comparison.done, tone: 'text-slate-900', note: points(comparison.donePoints) },
+              { label: 'أُنجز', period: periodLabel, value: comparison.done, open: () => drillTo('المنجز في الفترة', filteredItems.filter(item => !item.open && inPeriod(item.doneAt, period))), tone: 'text-slate-900', note: points(comparison.donePoints) },
             ].map((m) => (
               <div key={m.label} className="p-4 min-w-0">
                 <dt className="text-xs font-semibold text-slate-600">{m.label} <span className="font-normal text-slate-500">({m.period})</span></dt>

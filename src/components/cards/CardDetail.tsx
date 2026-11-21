@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, FileText, Gavel, LayoutTemplate, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
 import { apiService } from '../../services/api';
-import { apiFetch } from '../../services/http';
+import { CardBriefReview } from './CardBriefReview';
+import { CardTimingValues } from './CardTimingValues';
+import { stepLaborMinutes } from '../../shared/cardExecutionTiming';
 import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import { notify } from '../../services/notify';
@@ -43,6 +45,7 @@ interface CardDetailProps {
   onOpenTarget?: (card: ProductionCard) => void;
   /** «حفظ كقالب»: turns this assignment's chain of steps into a reusable workflow template. */
   onSaveAsTemplate?: (card: ProductionCard) => void;
+  now?: number;
 }
 
 const BTN = 'inline-flex items-center gap-1.5 min-h-11 px-3 py-2 rounded-lg text-xs font-bold';
@@ -52,7 +55,7 @@ const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'ف
 type Panel = { stepId: string; kind: 'done' | 'block' | 'back' | 'reassign' } | null;
 
 /** One production card: its steps and handoffs, the script, the material and the documented trail. */
-export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget, onSaveAsTemplate }) => {
+export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget, onSaveAsTemplate, now = Date.now() }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
@@ -69,7 +72,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const [script, setScript] = useState('');
   const [note, setNote] = useState('');
   const [decision, setDecision] = useState(false);
-  const [drafting, setDrafting] = useState(false);
+  const [briefReviewOpen, setBriefReviewOpen] = useState(false);
   const [gaps, setGaps] = useState<string[]>([]);
   const [linkLabel, setLinkLabel] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -82,6 +85,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     setNote('');
     setDecision(false);
     setGaps([]);
+    setBriefReviewOpen(false);
   }, [card.id]);
   // The editable copy follows the stored script (a colleague may have saved a newer one).
   useEffect(() => setScript(card.script || ''), [card.id, card.script]);
@@ -238,24 +242,6 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     }
   };
 
-  /** Suggests a brief from what the card documents; nothing is saved until a person saves it. */
-  const suggestBrief = async () => {
-    setDrafting(true);
-    setGaps([]);
-    try {
-      const material = [script, ...card.steps.map((s) => s.note || ''), ...(card.log || []).filter((e) => e.kind === 'NOTE').map((e) => e.text)].filter(Boolean).join('\n');
-      const res = await apiFetch<{ data: { brief: string; gaps: string[] } }>('/api/v1/ai/copilot', { method: 'POST', json: { mode: 'BRIEF', title: card.title, summary: card.brief || '', content: material } });
-      if (!res.data.brief.trim()) throw new Error('لم يُرجع المساعد نصاً؛ أضف معلومات أكثر إلى التكليف');
-      setScript(res.data.brief);
-      setGaps(res.data.gaps || []);
-      setMessage({ ok: true, text: 'مسودة مقترحة في خانة النص: راجعها وعدّلها ثم احفظها. الاعتماد يبقى للمحرر المسؤول.' });
-    } catch (err: any) {
-      setMessage({ ok: false, text: err?.message || 'تعذر اقتراح المسودة' });
-    } finally {
-      setDrafting(false);
-    }
-  };
-
   const reasonField = (id: string, label: string, placeholder: string) => (
     <div>
       <label htmlFor={id} className={LABEL}>{label}</label>
@@ -268,6 +254,13 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
 
   return (
     <article className="max-w-5xl mx-auto space-y-4">
+      {briefReviewOpen && canEditScript && <CardBriefReview key={card.id} title={card.title} script={script}
+        onClose={() => setBriefReviewOpen(false)} onUse={result => {
+          setScript(result.brief);
+          setGaps(result.gaps);
+          setBriefReviewOpen(false);
+          setMessage({ ok: true, text: 'أُدرج المقترح في مسودة النص. احفظه بعد المراجعة. الاعتماد يبقى للمحرر المسؤول.' });
+        }} />}
       <header className="flex items-start gap-3">
         <button type="button" onClick={onClose} className="shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50">
           <ArrowRight className="w-4 h-4" />
@@ -328,6 +321,12 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
           </section>
         )}
 
+        <section aria-label="توقيت تنفيذ التكليف" className="space-y-2 border-y border-slate-200 py-3">
+          <h2 className="text-sm font-bold text-slate-900">توقيت تنفيذ التكليف</h2>
+          <CardTimingValues card={card} now={now} />
+          <p className="text-xs text-slate-700">العمل المسجل يجمع جلسات الفريق. الزمن منذ أول بدء يشمل التوقفات حتى اكتمال المهام. الانتظار المرصود يجمع الانتظار قبل البدء وفترات التعطل الموثقة، ويُحسب الوقت المتداخل مرة واحدة.</p>
+        </section>
+
         <section>
           <h2 className="font-bold text-slate-800 text-sm mb-2">المهام والتسليم</h2>
           {card.steps.length === 0 && <p className="text-slate-500">لم تُضف مهام لهذا التكليف بعد.</p>}
@@ -337,6 +336,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
               const may = open && (actor.canManage || (mine && actor.canWork));
               const stepLate = isStepOwnLate(card, step);
               const stepOpen = isStepOpen(step);
+              const labor = stepLaborMinutes(step);
               const backTargets = sendBackTargets(card, step.id);
               // On a review step its holder sends work back; the owner or a supervisor may do it from the step the card waits on.
               const reviewing = REVIEW_STEP_TYPES.includes(step.type) && canSendBack(card, actor, mine ? step.id : undefined) && (mine || canDecide);
@@ -362,9 +362,19 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     {step.dueAt && <span>التسليم: {when(step.dueAt)}</span>}
                     <span>التعقيد: {complexityName(step.complexity)}</span>
                     {step.estimateMinutes ? <span>المقدر: {minutesLabel(step.estimateMinutes)}</span> : null}
-                    {step.spentMinutes ? <span>الفعلي: {minutesLabel(step.spentMinutes)}{step.timeLog && step.timeLog.length > 1 ? ` (${countLabel(step.timeLog.length, { one: 'جلسة واحدة', two: 'جلستان', few: 'جلسات', many: 'جلسة' })})` : ''}</span> : null}
+                    {labor !== null && <span>العمل المسجل {labor === 0 ? '0 د' : minutesLabel(labor)}</span>}
                     {step.doneAt && <span>أنجزها {step.doneByName} — {when(step.doneAt)}</span>}
                   </div>
+                  {!!step.timeLog?.length && <details className="border-y border-slate-200 text-xs text-slate-700">
+                    <summary className="min-h-11 py-2.5 cursor-pointer font-semibold text-blue-700">جلسات العمل ({step.timeLog.length})</summary>
+                    <ul className="divide-y divide-slate-200">
+                      {step.timeLog.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-x-3 py-2">
+                        <strong>{minutesLabel(entry.minutes)}</strong>
+                        {entry.byName && <span>{entry.byName}</span>}
+                        {entry.at && <time dateTime={entry.at}>{when(entry.at)}</time>}
+                      </li>)}
+                    </ul>
+                  </details>}
                   {step.returnedReason && stepOpen && (
                     <p className="p-2 rounded-lg bg-violet-50 border border-violet-200 text-violet-900 font-bold">
                       أعادها {step.returnedByName || 'زميل'}: {step.returnedReason}
@@ -565,9 +575,9 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     اعتماد النص
                   </button>
                 )}
-                <button type="button" disabled={drafting} onClick={suggestBrief} className={`${BTN} border border-slate-200 text-slate-700 disabled:opacity-50`}>
+                <button type="button" onClick={() => setBriefReviewOpen(true)} className={`${BTN} border border-slate-200 text-slate-700`}>
                   <Sparkles className="w-3.5 h-3.5" />
-                  {drafting ? 'جارٍ إعداد المسودة…' : 'اقتراح مسودة موجز'}
+                  اقتراح مسودة موجز
                 </button>
                 {actor.canManage && card.scriptApproved && (
                   <button type="button" onClick={() => act(() => apiService.updateCard(card.id, (c) => ({ ...c, scriptApproved: false })), 'سُحب اعتماد النص')} className={`${BTN} border border-slate-200 text-slate-700`}>سحب الاعتماد</button>

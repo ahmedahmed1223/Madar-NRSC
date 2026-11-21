@@ -17,6 +17,7 @@ import { DeptRequest, isRequestClosed, isVideoReady, requestStatusName, requestT
 import { RequestFormPage } from '../components/requests/RequestFormPage';
 import { MediaPicker } from '../components/media/MediaPicker';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { fromLocalInputValue } from '../shared/dates';
 
 interface RequestsViewProps {
   focusId?: string | null;
@@ -57,6 +58,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DeptRequest | null>(null);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
+  const [proposalFor, setProposalFor] = useState<string | null>(null);
+  const [proposalDate, setProposalDate] = useState('');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const running = useRef(new Set<string>());
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
@@ -89,6 +92,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
       assertCurrent(request);
       await fn();
       setMessage({ ok: true, text: ok });
+      return true;
     } catch (err) {
       setMessage({ ok: false, text: err instanceof Error ? err.message : 'تعذر تنفيذ الإجراء' });
     } finally {
@@ -270,9 +274,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   من: {r.requesterName}
                   {r.requesterDepartmentId ? ` (${departmentName(r.requesterDepartmentId)})` : ''}
                 </span>
+                {r.status === 'OPEN' && !pendingWrite && <span>لدى قسم {departmentName(r.departmentId)} · بانتظار الاستلام</span>}
                 {r.addressedToName && !r.assigneeName && <span className="font-bold text-violet-700">موجّه إلى: {r.addressedToName}</span>}
-                {r.assigneeName && <span>المنفذ: {r.assigneeName}</span>}
-                {dueAt ? <span>مطلوب قبل: {when(dueAt)}</span> : listTab === 'DELIVERY' && <span>موعد التسليم غير محدد</span>}
+                {r.assigneeName && !pendingWrite && <span>{r.status === 'OPEN' ? 'آخر مستلم' : 'تولّى الطلب'}: {r.assigneeName}</span>}
+                {dueAt ? <span>مطلوب قبل: <time dateTime={dueAt}>{when(dueAt)}</time></span> : !isRequestClosed(r.status) && <span>موعد التسليم غير محدد</span>}
                 {link && (linkedNews || canOpenEpisode ? (
                   <button
                     type="button"
@@ -288,6 +293,24 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
               {r.resolution && <p className="text-2xs text-rose-700">السبب: {r.resolution}</p>}
 
               <fieldset disabled={busyRow || !isOnline} className="flex flex-wrap gap-2 pt-1 min-w-0 disabled:opacity-60">
+                {r.proposedDueAt && !isRequestClosed(r.status) && <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="الموعد البديل">
+                  <span>موعد مقترح <time dateTime={r.proposedDueAt}>{when(r.proposedDueAt)}</time></span>
+                  {isRequester && <>
+                    <button type="button" className="min-h-11 px-2 font-semibold text-blue-700" onClick={() => changeStatus(r, { dueAt: r.proposedDueAt!, proposedDueAt: null }, 'اعتُمد الموعد البديل')}>اعتماد الموعد</button>
+                    <button type="button" className="min-h-11 px-2 font-semibold text-slate-700" onClick={() => changeStatus(r, { proposedDueAt: null }, 'رُفض الموعد البديل')}>رفض الموعد</button>
+                  </>}
+                </div>}
+                {isHandler && !isRequester && !isRequestClosed(r.status) && (proposalFor === r.id ? <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
+                  event.preventDefault();
+                  const date = fromLocalInputValue(proposalDate);
+                  if (date) void changeStatus(r, { proposedDueAt: date }, 'أُرسل الموعد البديل').then(saved => { if (saved) setProposalFor(null); });
+                }}>
+                  <label className="grid gap-1 text-xs font-semibold">موعد التسليم المقترح
+                    <input required type="datetime-local" value={proposalDate} onChange={event => setProposalDate(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 px-2" />
+                  </label>
+                  <button type="submit" className="min-h-11 px-2 font-semibold text-blue-700">إرسال الاقتراح</button>
+                  <button type="button" className="min-h-11 px-2 text-slate-700" onClick={() => setProposalFor(null)}>إلغاء</button>
+                </form> : <button type="button" className="min-h-11 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700" onClick={() => { setProposalFor(r.id); setProposalDate(''); }}>اقتراح موعد بديل</button>)}
                 {isHandler && r.status === 'OPEN' && (!r.addressedToId || r.addressedToId === currentUser.id || canManage) && (
                   <button type="button" onClick={() => changeStatus(r, { status: 'ACCEPTED' }, 'استلمت الطلب')} className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">
                     استلام الطلب

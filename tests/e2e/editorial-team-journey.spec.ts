@@ -126,8 +126,8 @@ test('a team prepares a program and a bulletin in parallel, supervises a handoff
 
     await openNav(control.page, 'وضع الهواء');
     await control.page.getByLabel('الحلقة أو النشرة', { exact: true }).selectOption(bulletinId);
-    await control.page.getByRole('button', { name: 'بدء البث', exact: true }).click();
-    await expect(control.page.getByText(/^النشرة غير جاهزة:/)).toBeVisible();
+    await expect(control.page.getByRole('button', { name: 'بدء البث', exact: true })).toBeDisabled();
+    await expect(control.page.getByRole('button', { name: /^فتح قصة النشرة:/ }).first()).toBeVisible();
 
     for (const { page } of [editor, control]) {
       await page.goto(`/bulletins/${bulletinId}`);

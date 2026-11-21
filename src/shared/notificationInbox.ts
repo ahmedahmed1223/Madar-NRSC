@@ -74,3 +74,15 @@ export function notificationInboxPath(path: string | undefined, canOpen: (screen
     return null;
   }
 }
+
+export function groupNoticeTargets(notices: AppNotification[], pathFor: (notice: AppNotification) => string | null) {
+  const targets = new Map<string, AppNotification[]>();
+  for (const notice of notices) {
+    const path = pathFor(notice);
+    const key = path && parsePath(path).id ? path : notice.id;
+    const entries = targets.get(key) ?? [];
+    entries.push(notice);
+    targets.set(key, entries);
+  }
+  return [...targets.values()];
+}

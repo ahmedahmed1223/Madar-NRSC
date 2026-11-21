@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppNotification } from '../../src/types';
-import { groupNotifications, notificationInboxPath, notificationSnoozeKey, readNotificationSnoozes, SNOOZE_MS } from '../../src/shared/notificationInbox';
+import { groupNoticeTargets, groupNotifications, notificationInboxPath, notificationSnoozeKey, readNotificationSnoozes, SNOOZE_MS } from '../../src/shared/notificationInbox';
 
 const notice = (id: string, changes: Partial<AppNotification> = {}): AppNotification => ({
   id, userId: 'a', title: id, message: '', type: 'SYSTEM', category: 'news',
@@ -45,5 +45,15 @@ describe('notification inbox', () => {
     for (const path of ['//external.example/roster', '/roster/%ZZ', '/roster/../news', '/toString']) {
       expect(notificationInboxPath(path, () => true)).toBeNull();
     }
+  });
+
+  it('groups exact accessible targets without merging a section or inaccessible item', () => {
+    const notices = [
+      notice('a', { linkUrl: '/tasks/task-1' }), notice('b', { linkUrl: '/tasks' }),
+      notice('c', { linkUrl: '/tasks/task-1', isRead: true }), notice('d', { linkUrl: '/tasks' }),
+      notice('e', { linkUrl: '/news/story-1' }), notice('f', { linkUrl: '/news/story-1' }),
+    ];
+    const groups = groupNoticeTargets(notices, entry => notificationInboxPath(entry.linkUrl, view => view === 'tasks'));
+    expect(groups.map(group => group.map(entry => entry.id))).toEqual([['a', 'c'], ['b'], ['d'], ['e'], ['f']]);
   });
 });

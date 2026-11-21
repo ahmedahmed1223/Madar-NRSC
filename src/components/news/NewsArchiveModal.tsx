@@ -8,6 +8,8 @@ import type { NewsItem } from '../../types';
 import { Highlight } from '../common/Highlight';
 import { DidYouMean } from '../common/SearchHints';
 import { AR, countLabel } from '../../shared/arabicPlural';
+import { stationsOf } from '../../shared/stations';
+import type { NewsArchiveFilters } from '../../shared/newsArchive';
 
 interface NewsArchiveModalProps {
   isOpen: boolean;
@@ -31,6 +33,7 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<NewsArchiveFilters>({});
   const [result, setResult] = useState<NewsArchivePage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,14 +46,14 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
     setLoading(true);
     setError(null);
     apiService
-      .searchNewsArchive(submitted, page)
+      .searchNewsArchive(submitted, page, filters)
       .then((r) => !cancelled && setResult(r))
       .catch((err) => !cancelled && setError(err?.message || 'تعذر البحث في الأرشيف'))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [isOpen, submitted, page]);
+  }, [isOpen, submitted, page, filters]);
 
   const openPreview = async (id: string) => {
     setBusy(true);
@@ -146,6 +149,21 @@ export const NewsArchiveModal: React.FC<NewsArchiveModalProps> = ({ isOpen, onCl
               بحث
             </button>
           </form>
+          <div role="group" aria-label="تصفية أرشيف الأخبار" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <label className="col-span-2 text-xs sm:col-span-1">محطة الكاتب
+              <select value={filters.station || ''} onChange={(e) => { setPage(1); setFilters({ ...filters, station: e.target.value }); }} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2">
+                <option value="">كل المحطات</option>
+                {stationsOf(apiService.getSettings()).map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}
+              </select>
+            </label>
+            {(['from', 'to'] as const).map((side) => (
+              <label key={side} className="min-w-0 text-xs">{side === 'from' ? 'من تاريخ' : 'إلى تاريخ'}
+                <input type="date" value={filters[side] || ''} max={side === 'from' ? filters.to || undefined : undefined} min={side === 'to' ? filters.from || undefined : undefined}
+                  onChange={(e) => { setPage(1); setFilters({ ...filters, [side]: e.target.value }); }}
+                  className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2" />
+              </label>
+            ))}
+          </div>
 
           {error && <p className="p-2 rounded-lg bg-rose-50 text-rose-700 text-xs font-bold">{error}</p>}
 

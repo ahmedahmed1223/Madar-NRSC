@@ -169,19 +169,22 @@ export async function runCopilot(config: AppConfig, input: CopilotInput) {
   const { apiKey, model } = config[provider];
   if (!apiKey) throw new Error('AI_NOT_CONFIGURED');
 
-  const body = stripHtml((input.content || '').slice(0, MAX_INPUT_CHARS * 4)).slice(0, MAX_INPUT_CHARS);
   const planning = isPlanningMode(input.mode);
+  const proofreading = input.mode === 'PROOFREAD';
+  const excerpt = input.mode === 'HEADLINES' || input.mode === 'ANCHOR_LEAD';
+  const summary = planning || proofreading ? '' : boundedText(input.summary, 2000);
+  const body = excerpt && summary ? '' : stripHtml((input.content || '').slice(0, MAX_INPUT_CHARS * 4)).slice(0, excerpt ? 1600 : MAX_INPUT_CHARS);
   const direction = TEXT_EDIT_MODES.includes(input.mode) ? boundedText(input.instruction, 800) : '';
   const tone = boundedText(input.tone, 32);
   const prompt = [
     PROMPTS[input.mode],
     'اكتب بالعربية الفصحى وبأسلوب غرف الأخبار التلفزيونية. لا تخترع حقائق أو أرقاماً غير موجودة في النص.',
-    ...(planning ? [] : [`النبرة المطلوبة: ${Object.hasOwn(TONES, tone) ? TONES[tone] : TONES.NEUTRAL_FORMAL}.`]),
+    ...(planning || proofreading ? [] : [`النبرة المطلوبة: ${Object.hasOwn(TONES, tone) ? TONES[tone] : TONES.NEUTRAL_FORMAL}.`]),
     ...(direction ? [`التوجيه التحريري: ${direction}`] : []),
     '--- السياق التحريري ---',
-    `العنوان: ${(input.title || '').slice(0, 500)}`,
-    ...(planning ? [] : [`الملخص: ${(input.summary || '').slice(0, 2000)}`]),
-    `المتن: ${body}`,
+    ...(proofreading ? [] : [`العنوان: ${(input.title || '').slice(0, 500)}`]),
+    ...(summary ? [`الملخص: ${summary}`] : []),
+    ...(body ? [`المتن: ${body}`] : []),
   ].join('\n');
 
   const data = parseResult(await generateText(provider, apiKey, model, prompt));

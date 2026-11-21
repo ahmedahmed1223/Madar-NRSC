@@ -101,6 +101,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     OPENROUTER_API_KEY: z.string().optional(),
     OPENROUTER_MODEL: z.string().trim().min(1).max(120).default('openai/gpt-4.1-mini'),
     AI_DEFAULT_PROVIDER: z.enum(AI_PROVIDERS).optional().or(z.literal('').transform(() => undefined)),
+    AI_DAILY_REQUESTS: int(120),
+    AI_DAILY_REQUESTS_BY_ROLE: z.string().optional(),
   });
 
   const parsed = schema.safeParse(env);
@@ -109,6 +111,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(`Invalid environment configuration: ${details}`);
   }
   const c = parsed.data;
+  const roleLimit = z.record(z.string().regex(/^[A-Z][A-Z0-9_]{0,39}$/), z.number().int().min(0));
+  let aiRoleLimits: Record<string, number> = {};
+  try {
+    if (c.AI_DAILY_REQUESTS_BY_ROLE?.trim()) aiRoleLimits = roleLimit.parse(JSON.parse(c.AI_DAILY_REQUESTS_BY_ROLE));
+  } catch {
+    throw new Error('AI_DAILY_REQUESTS_BY_ROLE must be a JSON object of role codes to nonnegative integer limits');
+  }
 
   // Checked on every start; the letters-and-digits rule is applied when the account is created (seed.ts).
   if (c.ADMIN_PASSWORD && c.ADMIN_PASSWORD.length < 10) {
@@ -182,6 +191,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     storageSyncSeconds: c.STORAGE_SYNC_SECONDS,
     ...providers,
     defaultAiProvider,
+    aiUsage: { dailyRequests: c.AI_DAILY_REQUESTS, roleLimits: aiRoleLimits },
     mail: c.SMTP_HOST
       ? {
           host: c.SMTP_HOST,

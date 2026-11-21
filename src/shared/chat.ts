@@ -6,10 +6,12 @@
  * Privacy is decided here and enforced by the server: a direct message is read by its two
  * people, a group message by the people who were in the group when it was sent, and nobody else.
  */
-import { isDepartmentId } from './departments';
+import { departmentsLedBy, isDepartmentId, type Department } from './departments';
+import { ENTITY_ID_PATTERN } from './collections';
 
 /** Channels kept from the first newsroom intercom. */
-const LEGACY_PUBLIC = ['STUDIO_PCR', 'NEWSROOM', 'FIELD'];
+const LEGACY_PUBLIC = new Map([['STUDIO_PCR', 'control'], ['NEWSROOM', 'newsroom'], ['FIELD', 'field']]);
+export const canonicalMessageChannel = (channel: string) => LEGACY_PUBLIC.get(channel) ?? channel;
 const ID = /^[A-Za-z0-9_.\-]{1,100}$/;
 
 export type Channel =
@@ -29,7 +31,7 @@ export function parseChannel(channel: unknown): Channel | null {
   if (typeof channel !== 'string' || channel.length > 250) return null;
   if (channel === 'general') return { kind: 'general' };
   if (isDepartmentId(channel)) return { kind: 'department', id: channel };
-  if (LEGACY_PUBLIC.includes(channel)) return { kind: 'legacy', id: channel };
+  if (LEGACY_PUBLIC.has(channel)) return { kind: 'legacy', id: channel };
   const [prefix, ...rest] = channel.split(':');
   if (prefix === 'st' && rest.length === 1 && ID.test(rest[0])) return { kind: 'station', id: rest[0] };
   if (prefix === 'grp' && rest.length === 1 && ID.test(rest[0])) return { kind: 'group', id: rest[0] };
@@ -38,6 +40,29 @@ export function parseChannel(channel: unknown): Channel | null {
 }
 
 export const isPrivateChannel = (channel: unknown) => ['dm', 'group'].includes(parseChannel(channel)?.kind || '');
+
+export interface ChatPin {
+  id: string;
+  messageId: string;
+  excerpt: string;
+}
+
+export function canPinAnnouncement(channel: string, userId: string, departments: readonly Department[], canBroadcast: boolean): boolean {
+  if (!publicMessageOrigin(channel, 'pin')) return false;
+  return canBroadcast || departmentsLedBy(userId, departments).some(department => department.id === channel);
+}
+
+export function publicMessageOrigin(channel: string, id: string) {
+  const kind = parseChannel(channel)?.kind;
+  return (kind === 'general' || kind === 'department' || kind === 'station') && ENTITY_ID_PATTERN.test(id);
+}
+
+export const messageEntryPath = (channel: string, id: string) => `/messages/${encodeURIComponent(channel)}/entry/${encodeURIComponent(id)}`;
+
+export function splitMessageFocus(focus: string | null | undefined) {
+  const [channel, target, ...rest] = focus?.split('/entry/') ?? [];
+  return { channel, messageId: target && !rest.length && publicMessageOrigin(channel, target) ? target : undefined };
+}
 
 export interface ChatAttachment {
   /** Upload id; the file is fetched from CHAT_FILE_URL_PREFIX + id. */

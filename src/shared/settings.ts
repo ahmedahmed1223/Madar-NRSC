@@ -5,8 +5,11 @@ import { departmentsError } from './departments';
 import { setupStateError } from './setup';
 import { validateStorage } from './storage';
 import { stepTypesError } from './productionCards';
+import { taskWorkflowError } from './taskWorkflow';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
+  const workflowError = taskWorkflowError(settings.taskWorkflow);
+  if (workflowError) return workflowError;
   for (const key of ['onAirDisplayMode', 'studioDisplayMode'] as const) {
     if (settings[key] !== undefined && !['OPERATIONAL', 'TEXT'].includes(settings[key]!)) return 'وضع العرض غير صالح';
   }

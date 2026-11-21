@@ -7,8 +7,8 @@ import { FormPage } from '../components/common/FormPage';
 import { RbacService } from '../services/rbacService';
 import { confirmSaved } from '../services/confirmSave';
 import { notify } from '../services/notify';
-import React, { useEffect, useState } from 'react';
-import { ACCEPTED_UPLOAD_TYPES, UploadedFile, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
+import React, { useEffect, useRef, useState } from 'react';
+import { ACCEPTED_UPLOAD_TYPES, UploadedFile, discardMediaUpload, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
 import { storageClient } from '../services/storageClient';
 import { ExternalFilePicker, availableSources } from '../components/media/ExternalFilePicker';
 import { TARGET_NAMES, type StorageCopy, type StorageStatus } from '../shared/storage';
@@ -158,6 +158,9 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [retryFile, setRetryFile] = useState<File | null>(null);
+  const activeUpload = useRef<ReturnType<typeof uploadMediaFile> | null>(null);
+  const uploadSelection = useRef(0);
   const [savingUpload, setSavingUpload] = useState(false);
 
   // Editing an item's metadata from its preview.
@@ -214,26 +217,49 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     setUploaded(null);
     setUploadProgress(null);
     setUploadError(null);
+    setRetryFile(null);
     setIsUploadModalOpen(true);
   };
 
+  const closeUpload = () => {
+    uploadSelection.current++;
+    activeUpload.current?.abort();
+    activeUpload.current = null;
+    if (retryFile) void discardMediaUpload(retryFile);
+    setRetryFile(null);
+    setUploadProgress(null);
+    setIsUploadModalOpen(false);
+  };
+
   const handleFileSelected = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || activeUpload.current) return;
+    if (retryFile && retryFile !== file) void discardMediaUpload(retryFile);
+    setRetryFile(file);
     setUploadError(null);
+    if (uploaded) setFileUrl('');
     setUploaded(null);
     setUploadProgress(0);
+    const selection = ++uploadSelection.current;
+    setDurationSeconds(0);
+    const task = uploadMediaFile(file, setUploadProgress, { keepInSharedFolder: shareOffered && keepInShare });
+    activeUpload.current = task;
     try {
       // The real length of a clip, read while it uploads.
-      void readMediaDuration(file).then((seconds) => seconds && setDurationSeconds(seconds));
-      const result = await uploadMediaFile(file, setUploadProgress, { keepInSharedFolder: shareOffered && keepInShare }).promise;
+      void readMediaDuration(file).then(seconds => { if (seconds && selection === uploadSelection.current) setDurationSeconds(seconds); });
+      const result = await task.promise;
+      if (activeUpload.current !== task) return;
       setUploaded(result);
+      setRetryFile(null);
       setFileUrl(result.url);
       setMediaType(mediaTypeForMime(result.mimeType));
-      if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''));
+      setTitle(current => current.trim() ? current : file.name.replace(/\.[^.]+$/, ''));
     } catch (err: any) {
-      setUploadError(err?.message || 'فشل رفع الملف');
+      if (activeUpload.current === task) setUploadError(err?.message || 'فشل رفع الملف');
     } finally {
-      setUploadProgress(null);
+      if (activeUpload.current === task) {
+        activeUpload.current = null;
+        setUploadProgress(null);
+      }
     }
   };
 
@@ -504,7 +530,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       {/* Upload Modal */}
       <FormPage
         isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
+        onClose={closeUpload}
         title="رفع وتسجيل مادة وسائط جديدة"
         subtitle="أرشفة الصور، التقارير المرئية، والمقاطع الصوتية في بنك الوسائط المركزي"
         maxWidth="lg"
@@ -525,8 +551,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               className="block w-full text-xs text-slate-700 file:ml-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:text-xs file:font-bold"
             />
             {uploadProgress !== null && (
-              <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={uploadProgress}>
-                <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+              <div className="space-y-1">
+                <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden" role="progressbar" aria-label="تقدم رفع الملف" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}>
+                  <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <button type="button" className="min-h-11 text-sm font-semibold text-blue-700 hover:underline" onClick={() => activeUpload.current?.abort()}>إيقاف الرفع</button>
               </div>
             )}
             {uploaded && (
@@ -534,10 +563,11 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 تم رفع الملف: {uploaded.originalName} ({(uploaded.sizeBytes / (1024 * 1024)).toFixed(2)} MB)
               </p>
             )}
-            {uploadError && <p className="text-2xs text-red-600 font-bold">{uploadError}</p>}
+            {uploadError && <p role="alert" className="text-sm text-rose-800 font-semibold">{uploadError}</p>}
+            {uploadError && retryFile && <button type="button" className="min-h-11 px-3 bg-white border border-blue-300 rounded-lg text-sm font-bold text-blue-700 hover:bg-blue-50" onClick={() => void handleFileSelected(retryFile)}>إعادة محاولة رفع الملف</button>}
             {shareOffered && (
               <label className="flex items-center gap-2 min-h-11 text-xs text-slate-800">
-                <input type="checkbox" className="w-4 h-4" checked={keepInShare} disabled={uploadProgress !== null || !!uploaded} onChange={(e) => setKeepInShare(e.target.checked)} />
+                <input type="checkbox" className="w-4 h-4" checked={keepInShare} disabled={uploadProgress !== null || !!uploaded || !!retryFile} onChange={(e) => setKeepInShare(e.target.checked)} />
                 احفظ نسخة في المجلد المشترك{storage?.share.displayPath ? <span dir="ltr" className="text-slate-500">({storage.share.displayPath})</span> : null}
               </label>
             )}
@@ -736,7 +766,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsUploadModalOpen(false)}
+              onClick={closeUpload}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               إلغاء

@@ -140,7 +140,12 @@ async function main() {
   // E-mail and phone/desktop push for new notifications (per-colleague preferences).
   if (config.deliverySeconds > 0) {
     registerJob(JOBS.delivery, config.deliverySeconds / 60);
-    const deliver = () => trackJob(JOBS.delivery, () => deliverPending(db, config)).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
+    const deliver = () => trackJob(JOBS.delivery, async () => {
+      const revision = db.currentRev();
+      const result = await deliverPending(db, config);
+      if (db.currentRev() !== revision) changeBus.emit('rev', db.currentRev());
+      return result;
+    }).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
     timers.push(setInterval(deliver, config.deliverySeconds * 1000));
     deliver();
   }

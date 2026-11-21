@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { saveMessageDraft, selectPublicMessageChannel, useMessageWorkspace } from '../services/messageWorkspace';
+import { canonicalMessageChannel, splitMessageFocus } from '../shared/chat';
 import { Hash, MessagesSquare, Plus, Users } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
@@ -38,7 +40,8 @@ const INPUT = 'w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text
 const preview = (m?: ChatMessage) => (!m ? '' : m.text || (m.attachments?.length ? `مرفق: ${m.attachments[0].name}` : m.ref ? m.ref.title : ''));
 
 /** Messaging: direct conversations, groups, and the open channels of the newsroom, stations and departments. */
-export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, channel, onChannel, onOpenLink }) => {
+export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, channel: focus, onChannel, onOpenLink }) => {
+  const { channel, messageId } = splitMessageFocus(focus);
   const me = currentUser.id;
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState('');
@@ -46,8 +49,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
   const [groupForm, setGroupForm] = useState<Conversation | 'new' | null>(null);
   const [showAllChannels, setShowAllChannels] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
-  const drafts = useRef(new Map<string, string>());
-  const [draftChannels, setDraftChannels] = useState<string[]>([]);
+  const { drafts } = useMessageWorkspace(me);
+  const draftChannels = useMemo(() => [...drafts.entries()].filter(([, draft]) => draft.text).map(([channel]) => channel), [drafts]);
+  useEffect(() => {
+    if (channel) selectPublicMessageChannel(me, channel);
+  }, [me, channel]);
 
   useEffect(
     () =>
@@ -57,7 +63,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
     []
   );
 
-  const messages = useMemo(() => apiService.getMessages(), [version]);
+  const messages = useMemo(() => apiService.getMessages().map(message => {
+    const channel = canonicalMessageChannel(message.channel);
+    return channel === message.channel ? message : { ...message, channel };
+  }), [version, me]);
   const conversations = useMemo(() => apiService.getConversations(), [version]);
   const reads = useMemo(() => apiService.getChatReads(), [version]);
   const stations = useMemo(() => stationsOf(apiService.getSettings()), [version]);
@@ -197,22 +206,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
         {active ? (
           <ThreadPane
             key={`${me}:${active.channel}`}
+            focusMessageId={messageId}
             thread={active}
             group={activeGroup}
             currentUser={currentUser}
             userById={userById}
             messages={messages}
             seen={reads?.seen?.[active.channel]}
-            draftText={drafts.current.get(`${me}:${active.channel}`) || ''}
-            onDraftText={(text) => {
-              const key = `${me}:${active.channel}`;
-              const hasDraft = drafts.current.has(key);
-              if (text) drafts.current.set(key, text);
-              else drafts.current.delete(key);
-              if (hasDraft !== !!text) {
-                setDraftChannels((list) => text ? [...list, active.channel] : list.filter((item) => item !== active.channel));
-              }
-            }}
+            draft={drafts.get(active.channel)}
+            onDraft={(draft) => saveMessageDraft(me, active.channel, draft)}
             onBack={() => onChannel(null)}
             onOpenLink={onOpenLink}
             onGroupSettings={activeGroup ? () => setGroupForm(activeGroup) : undefined}

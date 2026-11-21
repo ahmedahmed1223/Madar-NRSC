@@ -10,6 +10,20 @@ const send = (agent: request.Agent, id: string, d: Record<string, unknown>) => s
 const visible = async (agent: request.Agent, collection: string) => ((await agent.get('/api/v1/data')).body.collections[collection] || []).map((r: any) => r.d);
 const upload = (agent: request.Agent, name: string, type: string, body: string) => agent.post('/api/v1/chat/upload').set(H).set('Content-Type', type).set('X-File-Name', encodeURIComponent(name)).send(Buffer.from(body));
 
+it('shares public announcement pins and prevents changing them outside the authorized channel', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+  const messageId = 'msg-public-announcement';
+  expect((await send(admin, messageId, { channel: 'general', text: 'تحديث موعد المناوبة' })).body.results[0].ok).toBe(true);
+  const pin = (agent: request.Agent, channel: string, remove = false) => agent.post('/api/v1/chat/pin').set(H).send({ channel, messageId, remove });
+  await pin(journalist, 'general').expect(403);
+  await pin(admin, 'field').expect(404);
+  await pin(admin, 'general').expect(200);
+  expect(await visible(journalist, 'chatPins')).toContainEqual({ id: 'general', messageId, excerpt: 'تحديث موعد المناوبة' });
+  await pin(admin, 'general', true).expect(200);
+  expect(await visible(journalist, 'chatPins')).toEqual([]);
+});
+
 let editor: request.Agent; // usr-2
 let journalist: request.Agent; // usr-3
 let reporter: request.Agent; // usr-6

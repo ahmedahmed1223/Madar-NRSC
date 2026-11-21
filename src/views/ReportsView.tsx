@@ -8,6 +8,7 @@ import { managerScope, stationFilterMatcher, stationGroupsOf } from '../shared/m
 import { productionSummary } from '../shared/workload';
 import { stepTypesOf } from '../shared/productionCards';
 import { addDaysIso, fromLocalInputValue, localDateString } from '../shared/dates';
+import { basisZone } from '../shared/dateFormat';
 import { when } from '../components/cards/cardUi';
 import React, { useEffect, useState, useMemo } from 'react';
 import { apiFetch } from '../services/http';
@@ -51,12 +52,14 @@ interface ReportsViewProps {
   episodes: Episode[];
   guests: Guest[];
   categories: Category[];
+  onOpenNews: (id: string) => void;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
   episodes = [],
   guests = [],
   categories = [],
+  onOpenNews,
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -93,14 +96,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const params = new URLSearchParams({ category: selectedCategory, station: selectedStation });
   if (since) params.set('since', since);
   const reportUrl = `/api/v1/reports/news?${params}`;
+  const [records, setRecords] = useState<{ status: 'ALL' | 'PUBLISHED'; page: number } | null>(null);
+  type RecordsPage = { rows: { id: string; title: string | null; summary: string | null; updatedAt: string | null }[]; hasMore: boolean };
+  const recordsUrl = records ? `${reportUrl}&records=${records.status}&page=${records.page}` : null;
+  const [recordsResult, setRecordsResult] = useState<{ url: string; value?: RecordsPage; error?: string }>();
+  useEffect(() => {
+    if (!recordsUrl) return;
+    const controller = new AbortController();
+    void apiFetch<{ data: RecordsPage }>(recordsUrl, { signal: controller.signal }).then(({ data }) => {
+      if (!controller.signal.aborted) setRecordsResult({ url: recordsUrl, value: data });
+    }).catch(error => {
+      if (!controller.signal.aborted) setRecordsResult({ url: recordsUrl, error: error instanceof Error ? error.message : 'تعذّر تحميل سجلات التقرير' });
+    });
+    return () => controller.abort();
+  }, [recordsUrl]);
+  const sourcePage = recordsResult?.url === recordsUrl ? recordsResult : undefined;
   const reportRevision = useLiveData(['news', 'users', 'settings'], 60_000);
   const [attempt, setAttempt] = useState(0);
-  const [reportState, setReportState] = useState<{ url: string; data?: NewsReport; error?: string }>();
+  const [reportState, setReportState] = useState<{ url: string; data?: NewsReport; updatedAt?: string; error?: string }>();
   useEffect(() => {
     const controller = new AbortController();
     void apiFetch<{ data: NewsReport }>(reportUrl, { signal: controller.signal, cache: 'no-store' })
       .then(({ data }) => {
-        if (!controller.signal.aborted) setReportState({ url: reportUrl, data });
+        if (!controller.signal.aborted) setReportState({ url: reportUrl, data, updatedAt: new Date().toISOString() });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setReportState({
@@ -157,7 +175,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const notAired = periodEpisodes.filter((e) => !['BROADCASTED', 'CANCELLED', 'ARCHIVED'].includes(e.status)).length;
   /** The period in words for a sentence: «اليوم», «في آخر 7 أيام»… */
   const inPeriodWords = selectedPeriod === 'today' ? 'اليوم' : selectedPeriod === 'all' ? 'في كل الفترات' : `في ${periodLabel}`;
-  const preparedAt = when(new Date().toISOString());
+  const preparedAt = currentReport?.updatedAt ? when(currentReport.updatedAt) : '—';
 
   const handlePrint = () => {
     if (report) window.print();
@@ -229,6 +247,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {report && <p className="no-print text-xs text-slate-600">آخر تحديث لنتائج الأخبار {preparedAt} · توقيت الفلاتر {basisZone() || 'توقيت الجهاز'}</p>}
 
       {/* On paper: who, what period and which filters, and when it was prepared. */}
       <div className="hidden print-only print-keep text-xs">
@@ -315,7 +335,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           scope={periodLabel}
           icon={FileText}
           value={`${newsTotal > 0 ? Math.round((publishedCount / newsTotal) * 100) : 0}%`}
-          note={newsTotal > 0 ? `نُشر ${publishedCount} من ${newsTotal}` : 'لا أخبار في هذه الفترة'}
+          note={newsTotal > 0 ? <>
+            نُشر {publishedCount} من {newsTotal}{' '}
+            <button type="button" className="no-print min-h-11 px-1 font-semibold text-blue-700 hover:underline" onClick={() => setRecords({ status: 'ALL', page: 1 })}>عرض سجلات الفترة</button>
+          </> : 'لا أخبار في هذه الفترة'}
         />
         <Metric
           label="جاهزية الحلقات للبث"
@@ -337,6 +360,31 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         />
         <Metric label="الضيوف في الدليل" scope="العدد الكلي" icon={Users} value={guests.length} note="لا يتأثر بالفترة ولا بالمحطة." />
       </div>
+      {records && <section className="no-print space-y-3 rounded-xl border border-slate-200 bg-white p-4" aria-label="سجلات تقرير الأخبار">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-slate-900">سجلات تقرير الأخبار</h2>
+          <div className="flex flex-wrap gap-1 text-xs">
+            <button type="button" aria-pressed={records.status === 'ALL'} onClick={() => setRecords({ status: 'ALL', page: 1 })} className="min-h-11 px-2 font-semibold">كل أخبار الفترة</button>
+            <button type="button" aria-pressed={records.status === 'PUBLISHED'} onClick={() => setRecords({ status: 'PUBLISHED', page: 1 })} className="min-h-11 px-2 font-semibold">المنشورة</button>
+            <button type="button" onClick={() => setRecords(null)} className="min-h-11 px-2 text-blue-700">إغلاق</button>
+          </div>
+        </div>
+        {sourcePage?.error ? <p role="alert" className="text-sm text-rose-800">{sourcePage.error}</p> : !sourcePage?.value ? <p role="status" className="text-sm text-slate-600">جارٍ تحميل السجلات…</p> : <>
+          {sourcePage.value.rows.length ? <ul className="divide-y divide-slate-200">
+            {sourcePage.value.rows.map(row => <li key={row.id} className="py-2 text-sm">
+              {apiService.getNews().some(news => news.id === row.id)
+                ? <button type="button" onClick={() => onOpenNews(row.id)} className="min-h-9 text-start font-semibold text-blue-700 hover:underline">{row.title || row.id}</button>
+                : <p className="font-semibold text-slate-900">{row.title || row.id}</p>}
+              {row.summary && <p className="mt-1 break-words text-xs text-slate-600">{row.summary}</p>}
+            </li>)}
+          </ul> : <p className="text-sm text-slate-600">لا سجلات تطابق الفلاتر الحالية.</p>}
+          <div className="flex items-center gap-2 text-xs text-slate-700">
+            <button type="button" disabled={records.page === 1} className="min-h-11 px-3 disabled:opacity-50" onClick={() => setRecords({ ...records, page: records.page - 1 })}>السابق</button>
+            <span>صفحة {records.page}</span>
+            <button type="button" disabled={!sourcePage.value.hasMore || records.page >= 1000} className="min-h-11 px-3 disabled:opacity-50" onClick={() => setRecords({ ...records, page: records.page + 1 })}>التالي</button>
+          </div>
+        </>}
+      </section>}
 
       {/* Production by Category & Workflow Velocity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

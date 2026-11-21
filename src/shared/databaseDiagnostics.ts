@@ -5,10 +5,13 @@ export interface BackupStatus {
   lastSnapshotAt: string | null;
   lastAttempt: { at: string; status: 'ok' | 'failed' } | null;
   lastDelivery: { at: string; status: 'ok' | 'failed' } | null;
+  lastVerifiedExternal?: VerifiedExternalBackup | null;
+  lastRehearsal?: { at: string; fileName: string } | null;
   intervalHours: number;
   overdue: boolean;
   count: number;
 }
+export interface VerifiedExternalBackup { at: string; fileName: string; targets: ('directory' | 'remote')[] }
 export interface BackupIncident { id: 'snapshot-failure' | 'delivery-failure' | 'overdue'; active: boolean; openedAt: string; recoveredAt?: string }
 export interface BackupVerification { valid: true; fileName: string; checkedAt: string; sha256: string }
 export interface BackupRehearsal {

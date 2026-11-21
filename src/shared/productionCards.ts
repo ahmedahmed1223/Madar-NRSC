@@ -163,6 +163,9 @@ export interface CardLogEntry {
   /** A NOTE marked as a decision by the card owner or a supervisor: everyone on the card hears it. */
   decision?: boolean;
   stepId?: string;
+  /** Snapshots of an actual state transition, stamped by the server. */
+  fromStatus?: StepStatus;
+  toStatus?: StepStatus;
   text: string;
 }
 
@@ -170,6 +173,15 @@ export interface CardTarget {
   kind: 'news' | 'episode' | 'bulletin';
   id: string;
   title: string;
+}
+
+/** A named, active assignment grants access to its exact production item. */
+export function cardProductionAssignment(card: ProductionCard, userId: string): string | undefined {
+  const target = card.target;
+  if (card.deletedAt || card.status !== 'OPEN' || !target || target.kind === 'news') return;
+  if (card.ownerId === userId || card.steps?.some((step) => step.assigneeId === userId && step.status !== 'SKIPPED')) {
+    return `${target.kind}:${target.id}`;
+  }
 }
 
 export interface ProductionCard {

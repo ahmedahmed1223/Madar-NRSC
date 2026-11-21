@@ -9,6 +9,14 @@ export interface AppUpdateStatus {
   broadcastActive: boolean;
   deployment: 'github' | 'webhook' | null;
   requestedVersion: string | null;
+  tracking?: AppUpdateTracking | null;
+  backupRequired?: boolean;
+}
+
+export interface AppUpdateTracking {
+  version: string;
+  requestedAt: string;
+  state: 'accepted' | 'deployed' | 'unverified';
 }
 
 const STABLE_VERSION = /^v?(0|[1-9]\d{0,7})\.(0|[1-9]\d{0,7})\.(0|[1-9]\d{0,7})$/;

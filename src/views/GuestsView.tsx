@@ -1,5 +1,5 @@
 import { ShowMore, useIncremental } from '../components/common/ShowMore';
-import { arabicDate } from '../shared/dates';
+import { arabicDate, stationTimeZone } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
@@ -10,6 +10,12 @@ import React, { useState } from 'react';
 import { Plus, Search, Phone, Mail, Edit2, Trash2 } from 'lucide-react';
 import { Guest, User } from '../types';
 import { Badge } from '../components/common/Badge';
+import { apiService } from '../services/api';
+import { navigateTo } from '../services/uiEvents';
+import { useLiveData } from '../hooks/useLiveData';
+import { bookingStatusName, bookingStatusOf, connectionName, episodeGuestList, guestKey } from '../shared/episodePlan';
+import { stationWall } from '../shared/stationTime';
+import type { Episode, EpisodeGuest } from '../types';
 
 interface GuestsViewProps {
   guests: Guest[];
@@ -25,6 +31,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   onDeleteGuest,
 }) => {
   const canManage = RbacService.hasPermission(currentUser, 'guests.manage');
+  const canSeeEpisode = RbacService.canOpenScreen(currentUser, 'episode-workspace');
+  useLiveData(['episodes', 'users', 'settings'], 60_000);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -117,11 +125,23 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const filteredGuests = guests.filter((g) => {
     if (selectedSpecialty !== 'ALL' && g.specialty !== selectedSpecialty) return false;
     if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, g.fullName, g.organization, g.jobTitle, g.specialty, g.email, g.phone);
+      return matchesQuery(searchQuery, g.fullName, g.organization, g.jobTitle, g.specialty, ...(canManage ? [g.email, g.phone] : []));
     }
     return true;
   });
   const guestPage = useIncremental(filteredGuests, 48, `${searchQuery}|${selectedSpecialty}`);
+  const zone = stationTimeZone(apiService.getSettings().defaultTimezone);
+  const today = stationWall(Date.now(), zone).date;
+  const followUps = new Map<string, { episode: Episode; booking: EpisodeGuest }>();
+  if (canSeeEpisode) {
+    const episodes = apiService.getEpisodes().filter(episode => episode.broadcastDate >= today && !['CANCELLED', 'BROADCASTED', 'ARCHIVED'].includes(episode.status))
+      .sort((a, b) => `${a.broadcastDate}${a.startTime}`.localeCompare(`${b.broadcastDate}${b.startTime}`));
+    for (const episode of episodes) for (const booking of episodeGuestList(episode) as EpisodeGuest[]) {
+      const key = guestKey(booking);
+      if (key && !followUps.has(key)) followUps.set(key, { episode, booking });
+    }
+  }
+  const ownerNames = new Map(followUps.size ? apiService.getUsers().map(user => [user.id, user.fullName]) : []);
 
   return (
     <div className="space-y-6">
@@ -185,7 +205,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
       {/* Guests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-        {guestPage.visible.map((guest) => (
+        {guestPage.visible.map((guest) => { const followUp = followUps.get(guest.id); return (
           <article
             key={guest.id}
             className="min-w-0 bg-white rounded-xl border border-slate-200 p-3 sm:p-4 flex flex-col"
@@ -212,8 +232,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                 </p>
               </div>
 
+              {followUp && <div className="space-y-1 pt-2 border-t border-slate-200 text-xs text-slate-700" aria-label="متابعة الظهور">
+                <p className="font-bold">{bookingStatusName(bookingStatusOf(followUp.booking))}{followUp.booking.connectionType ? ` · ${connectionName(followUp.booking.connectionType)}` : ''}</p>
+                <p>مسؤول التواصل {ownerNames.get(followUp.booking.contactOwnerId || '') || 'غير مسند'}</p>
+                <p>{arabicDate(followUp.episode.broadcastDate)} · {followUp.episode.startTime}{zone ? ` · ${zone}` : ''}</p>
+                <button type="button" onClick={() => navigateTo.emit(`/episodes/${encodeURIComponent(followUp.episode.id)}`)} className="min-h-11 font-semibold text-blue-700 hover:underline break-words">{followUp.episode.title}</button>
+              </div>}
               {/* Contact Info */}
-              {(guest.phone || guest.email || guest.notes) && (
+              {canManage && (guest.phone || guest.email || guest.notes) && (
               <div className="text-xs text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
                 {guest.phone && (
                   <a href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-2 min-h-11 sm:min-h-8 hover:text-blue-700 hover:underline" aria-label={`اتصال بـ ${guest.fullName}: ${guest.phone}`}>
@@ -275,7 +301,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
               </div>
             )}
           </article>
-        ))}
+        ); })}
         {filteredGuests.length === 0 && (
           <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
             <p role="status" className="text-sm text-slate-700">{guests.length ? 'لا ضيوف يطابقون البحث أو التخصص.' : 'لا ضيوف في الدليل بعد.'}</p>

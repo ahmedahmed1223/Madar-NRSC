@@ -26,6 +26,9 @@ import { canReadMessage, chatReadsError, conversationChangeError, sendError } fr
 import { stationsOf } from '../shared/stations';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, reviewBookkeepingDenial, transitionDenial } from '../shared/newsWorkflow';
 import { handledChangeError, manualWireError } from '../shared/wires';
+import { PERSONAL_NOTE_BODY_LIMIT, PERSONAL_NOTE_TITLE_LIMIT } from '../shared/personalWorkspace';
+import { taskTransitionError } from '../shared/taskWorkflow';
+import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -299,17 +302,23 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
 };
 
 const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
+  const team = auth.departmentTaskMembers?.();
+  const inTeam = (task: any) => team?.has(task?.assigneeId || task?.assignedToId) === true;
+  const canManage = team ? (!before || inTeam(before)) && (kind === 'delete' || inTeam(after)) : auth.can('tasks.create_assign');
   if (after && kind !== 'delete') {
-    if (before?.status !== after.status && !['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'DONE', 'COMPLETED', 'CANCELLED'].includes(after.status)) return 'حالة المهمة غير صالحة';
-    if (after.assigneeId && before?.assigneeId !== after.assigneeId && !(list?.('users') || []).some((u: any) => u.id === after.assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
+    const rules = list?.('settings')[0]?.taskWorkflow;
+    const transition = taskTransitionError(before, after, rules, canManage);
+    if (transition) return transition;
+    const assigneeId = after.assigneeId || after.assignedToId;
+    if (assigneeId && (before?.assigneeId || before?.assignedToId) !== assigneeId && !(list?.('users') || []).some((u: any) => u.id === assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
     const targets: Record<string, CollectionName> = { NEWS: 'news', EPISODE: 'episodes', PROGRAM: 'programs', BULLETIN: 'bulletins', BULLETIN_STORY: 'bulletinStories' };
     const target = Object.hasOwn(targets, after.relatedEntityType) ? targets[after.relatedEntityType] : undefined;
     if (target && (before?.relatedEntityType !== after.relatedEntityType || before?.relatedEntityId !== after.relatedEntityId)
       && !(list?.(target) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
   }
-  if (auth.can('tasks.create_assign')) return null;
+  if (canManage) return null;
   // Assignees may progress their own tasks.
-  if (auth.can('tasks.view') && kind === 'update' && before?.assigneeId === auth.user.id && after?.assigneeId === auth.user.id && !isSoftDelete(before, after)) {
+  if ((auth.can('tasks.view') || team) && kind === 'update' && taskAssignedTo(before, auth.user.id) && taskAssignedTo(after, auth.user.id) && !isSoftDelete(before, after)) {
     const protectedFields = ['title', 'description', 'assigneeId', 'assignedToId', 'assignedToName', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority'];
     return protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
   }
@@ -328,7 +337,13 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
   return null;
 };
 
-const notificationsPolicy: Policy = ({ auth, kind, before }) => {
+const notificationsPolicy: Policy = ({ auth, kind, before, after }) => {
+  if (assignedWorkOnly(auth.can)) {
+    if (kind === 'create' || before?.userId !== auth.user.id) return DENIED;
+    if (kind === 'delete') return null;
+    const allowed = new Set(['isRead', 'deletedAt']);
+    return Object.keys({ ...before, ...after }).some(key => !allowed.has(key) && changed(before, after, key)) ? DENIED : null;
+  }
   if (kind === 'create') return null; // any signed-in user may notify a colleague
   if (before?.userId === auth.user.id) return null; // mark own as read / dismiss
   return auth.can('system.settings') ? null : DENIED;
@@ -424,6 +439,14 @@ const settingsPolicy: Policy = (input) => {
 export const POLICIES: Record<CollectionName, Policy> = {
   shiftHandovers: () => 'تسليم الوردية يستخدم المسار المخصص فقط',
   handoverReceipts: () => 'الاستلام يستخدم المسار المخصص فقط',
+  workspacePrefs: ({ auth, before, after }) => (after || before)?.id === auth.user.id ? null : DENIED,
+  personalNotes: ({ auth, kind, before, after }) => {
+    if ((before && before.ownerId !== auth.user.id) || (after && after.ownerId !== auth.user.id)) return DENIED;
+    if (kind === 'delete') return null;
+    if (typeof after?.title !== 'string' || !after.title || after.title.length > PERSONAL_NOTE_TITLE_LIMIT ||
+        typeof after.body !== 'string' || after.body.length > PERSONAL_NOTE_BODY_LIMIT) return 'عنوان الملاحظة أو نصها غير صالح';
+    return null;
+  },
   users: usersPolicy,
   roles: rolesPolicy,
   news: newsPolicy,
@@ -604,6 +627,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (kind !== 'delete' && !canHold) return DENIED;
     return null;
   },
+  chatPins: () => DENIED,
   messages: ({ auth, kind, after, list }) => {
     if (kind !== 'create') return 'الرسائل غير قابلة للتعديل أو الحذف';
     return sendError(after, auth.user.id, {
@@ -634,6 +658,13 @@ export const POLICIES: Record<CollectionName, Policy> = {
   bookings: bookingsPolicy,
   productionCards: ({ auth, kind, before, after, list }) => {
     const canManage = auth.can('cards.manage');
+    if (assignedWorkOnly(auth.can)) {
+      if (!cardAssignedTo(before, auth.user.id)) return 'يمكنك التعامل مع التكليفات المسندة إليك فقط';
+      if (Array.isArray(after?.steps) && before?.steps?.some((step: any) => step.assigneeId !== auth.user.id &&
+          JSON.stringify(step) !== JSON.stringify(after.steps.find((candidate: any) => candidate?.id === step.id)))) {
+        return 'لا يمكنك تغيير خطوة مسندة إلى زميل آخر';
+      }
+    }
     const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
     const ctx = cardContextOf(list?.('settings')[0], list?.('users') || []);
     if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
@@ -649,26 +680,65 @@ export const POLICIES: Record<CollectionName, Policy> = {
   },
 };
 
+const SUPPORT_COLLECTIONS = new Set<CollectionName>(['roles', 'users', 'settings', 'tasks', 'productionCards',
+  'notifications', 'notificationPrefs', 'personalNotes', 'workspacePrefs']);
+
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
+  if (assignedWorkOnly(auth.can)) {
+    if (!SUPPORT_COLLECTIONS.has(collection)) return false;
+    if (collection === 'users') return data?.id === auth.user.id;
+    if (collection === 'tasks') return auth.can('tasks.view') && taskAssignedTo(data, auth.user.id);
+    if (collection === 'productionCards') return auth.can('cards.view') && cardAssignedTo(data, auth.user.id);
+  }
+  const parentVisible = (parent: CollectionName, id: unknown) => {
+    const target = typeof id === 'string' && lookup?.(parent, id);
+    return !!target && canRead(auth, parent, target, lookup);
+  };
+  const delegated = (kind: string, id: unknown) => typeof id === 'string' && !!auth.productionAssignments?.().has(`${kind}:${id}`);
+  const showVisible = (id: unknown) => parentVisible('episodes', id) || parentVisible('bulletins', id);
   switch (collection) {
     case 'shiftHandovers':
     case 'handoverReceipts': return false;
     case 'savedNewsFilters':
+    case 'workspacePrefs':
+    case 'personalNotes':
       return data?.ownerId === auth.user.id;
     case 'news':
       return auth.can('news.view');
-    case 'tasks':
-      return auth.can('tasks.view') || auth.can('tasks.create_assign');
+    case 'stories':
+    case 'breaking':
+      return auth.can('news.view');
+    case 'programs':
+      return any(auth, 'programs.view', 'programs.manage');
+    case 'episodes':
+      return any(auth, 'rundown.view', 'rundown.edit', 'episodes.create', 'episodes.edit') || delegated('episode', data?.id);
+    case 'bulletins':
+      return any(auth, 'rundown.view', 'bulletins.edit', 'bulletins.manage', 'bulletins.approve') || delegated('bulletin', data?.id);
+    case 'bulletinFormats':
+      return any(auth, 'rundown.view', 'bulletins.edit', 'bulletins.manage', 'bulletins.approve');
+    case 'bulletinStories':
+      return parentVisible('bulletins', data?.bulletinId);
+    case 'onAir':
+    case 'offlineAirSessions':
+      return showVisible(data?.episodeId || data?.showId || data?.id);
+    case 'guests':
+      return any(auth, 'guests.view', 'guests.manage');
+    case 'media':
+      return any(auth, 'media.view', 'media.upload');
+    case 'tasks': {
+      const team = auth.departmentTaskMembers?.();
+      return team ? team.has(data?.assigneeId || data?.assignedToId) || taskAssignedTo(data, auth.user.id) : auth.can('tasks.view') || auth.can('tasks.create_assign');
+    }
     case 'newsCorrections':
       const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
       return !!news && !news.deletedAt && auth.can('news.view') && canRead(auth, 'news', news);
     case 'pronunciationTerms':
       return any(auth, 'system.settings', 'news.view', 'episodes.view', 'rundown.presenter_teleprompter', 'bulletins.view');
     case 'reviewThreads':
-      return data?.collection === 'news' ? auth.can('news.view') : canRead(auth, 'bulletinStories', data);
+      return data?.collection === 'news' ? auth.can('news.view') : parentVisible('bulletinStories', data?.entityId);
     case 'comments':
-      return !data?.threadId || (data.target?.kind === 'news' ? auth.can('news.view') : canRead(auth, 'bulletinStories', data));
+      return !data?.threadId || parentVisible('reviewThreads', data.threadId);
     case 'auditLogs':
       return auth.can('audit.view');
     case 'wires':

@@ -11,7 +11,7 @@ test('grouped bell actions snooze and restore only the nonurgent notice on a pho
     const { user } = await (await reporter.page.request.get('/api/v1/auth/me')).json();
     const notices = [
       { id: `daily-role-inbox-normal-${suffix}`, title: normalTitle, category: 'news', urgent: false },
-      { id: `daily-role-inbox-urgent-${suffix}`, title: urgentTitle, category: 'system', urgent: true },
+      { id: `daily-role-inbox-urgent-${suffix}`, title: urgentTitle, category: 'assignment', urgent: true },
     ];
     const response = await editor.page.request.post('/api/v1/data/sync', {
       headers: { 'X-NRCS-Client': 'web' },
@@ -51,8 +51,18 @@ test('grouped bell actions snooze and restore only the nonurgent notice on a pho
     expect(row.d.isRead).toBe(false);
     await inbox.getByRole('button', { name: normalTitle }).click();
     await expect(page).toHaveURL(/\/news\/nws-1$/);
+    await bell.click();
+    await inbox.getByRole('button', { name: urgentTitle }).click();
+    await expect(inbox).toHaveCount(0);
+    await bell.click();
+    const urgentNotice = inbox.getByRole('listitem').filter({ hasText: urgentTitle });
+    await urgentNotice.getByRole('button', { name: 'إقرار القراءة' }).click();
+    await expect(inbox.getByText('أكد الخادم إقرار القراءة.')).toBeVisible();
+    const confirmed = await (await page.request.get('/api/v1/data')).json();
+    expect(confirmed.collections.notifications.find((item: { id: string }) => item.id === notices[1].id).d.isRead).toBe(true);
     expect(reporter.errors).toEqual([]);
   } finally {
+    await reporter.page.keyboard.press('Escape');
     await reporter.close();
     await editor.close();
   }

@@ -1,6 +1,7 @@
 import { APP_NAME } from '../shared/brand';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { shiftHandoverPath } from '../shared/shiftHandovers';
+import { messageEntryPath, publicMessageOrigin, splitMessageFocus } from '../shared/chat';
 
 /**
  * Screen ⇄ URL mapping for the browser History API: every screen has its own address
@@ -50,6 +51,11 @@ export function routeToPath(s: RouteState): string {
     }
     case 'settings':
       return s.focusId === 'monitor' ? '/settings/monitor' : '/settings';
+    case 'messages': {
+      const { channel, messageId } = splitMessageFocus(s.focusId);
+      if (channel && messageId) return messageEntryPath(channel, messageId);
+      return s.focusId ? `/messages/${clean(s.focusId)}` : '/messages';
+    }
     default:
       if (FOCUS_SCREENS.has(s.nav) && s.focusId) return `/${s.nav}/${clean(s.focusId)}`;
       return `/${s.nav}`;
@@ -76,6 +82,10 @@ export function parsePath(pathname: string): { view: string; id: string | null; 
     const episodeSegmentId = decodePathPart(rawSegmentId);
     if (ENTITY_ID_PATTERN.test(episodeSegmentId)) return { view, id, episodeSegmentId };
   }
+  if (view === 'messages' && id && rawTarget === 'entry' && !rest.some(Boolean)) {
+    const messageId = decodePathPart(rawSegmentId);
+    if (publicMessageOrigin(id, messageId)) return { view, id: `${id}/entry/${messageId}` };
+  }
   return { view: view || 'dashboard', id: id || null };
 }
 
@@ -98,6 +108,7 @@ const TITLES: Record<string, string> = {
   'studio-screen': 'شاشة الاستديو',
   media: 'مكتبة الوسائط',
   messages: 'المراسلات',
+  'personal-notes': 'ملاحظاتي',
   cards: 'التكليفات',
   workload: 'متابعة الفرق والتكاليف',
   requests: 'طلبات الأقسام',

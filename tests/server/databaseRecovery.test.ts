@@ -24,6 +24,7 @@ it('rehearses an isolated copy without changing live data or revision', async ()
   expect(JSON.stringify(response.body)).not.toContain(server.dir);
   expect(server.db.currentRev()).toBe(revision);
   expect(server.db.serialize()).toEqual(before);
+  expect((await admin.get('/api/v1/db/backup-status')).body.data.lastRehearsal).toEqual({ at: response.body.data.checkedAt, fileName: snapshot.fileName });
   expect(fs.readdirSync(path.join(server.dir, 'rehearsals'))).toEqual([]);
 });
 

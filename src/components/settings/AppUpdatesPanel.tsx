@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
 import { isNewerVersion, type AppUpdateStatus } from '../../shared/appUpdates';
 import { apiFetch } from '../../services/http';
 import { dataStore } from '../../services/dataStore';
 import { confirmDialog } from '../../services/dialogs';
+import { appLocale, zoneOptions } from '../../shared/dateFormat';
+import { apiService } from '../../services/api';
+import { RbacService } from '../../services/rbacService';
+import { navigateTo } from '../../services/uiEvents';
 
 const checkStatus = () => apiFetch<{ data: AppUpdateStatus }>('/api/v1/updates', { cache: 'no-store' });
 const button = 'min-h-11 inline-flex items-center gap-2 px-3 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-800 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-blue-600';
@@ -32,6 +36,16 @@ export function AppUpdatesPanel({ canManage }: { canManage: boolean }) {
   const canReload = !!status && isNewerVersion(status.deployedVersion, localVersion);
   const newer = status?.latest && isNewerVersion(status.latest.version, status.deployedVersion) ? status.latest : null;
   const requested = status?.requestedVersion;
+  const tracking = status?.tracking;
+  const backupAccess = canManage && RbacService.hasPermission(apiService.getCurrentUser(), 'system.database_manage') && RbacService.canOpenScreen(apiService.getCurrentUser(), 'database');
+
+  useEffect(() => {
+    if (!requested && tracking?.state !== 'accepted') return;
+    const timer = window.setInterval(() => {
+      void checkStatus().then(result => setStatus(result.data)).catch(() => {});
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [requested, tracking?.state]);
 
   const applyBrowser = () => run(async () => {
     const current = await verifiedStatus();
@@ -71,16 +85,24 @@ export function AppUpdatesPanel({ canManage }: { canManage: boolean }) {
           ? <>أحدث إصدار منشور <b dir="ltr">v{newer.version}</b>.</>
           : 'الخادم يشغّل أحدث إصدار منشور أو إصدارًا أحدث.'}
         {status.broadcastActive && <p className="mt-1">يتاح التحديث بعد انتهاء البث النشط.</p>}
-        {requested && <p className="mt-1">استلم نظام النشر الطلب للإصدار <b dir="ltr">v{requested}</b>. افحص الإصدار مجددًا بعد اكتمال النشر.</p>}
+        {tracking ? <p className="mt-1">طلب نشر <b dir="ltr">v{tracking.version}</b> · {new Date(tracking.requestedAt).toLocaleString(appLocale(), zoneOptions())} · {
+          tracking.state === 'deployed' ? 'تأكد تشغيل الإصدار المطلوب أو إصدار أحدث على الخادم.'
+            : tracking.state === 'accepted' ? 'استلم نظام النشر الطلب. في انتظار ظهور الإصدار على الخادم.'
+              : 'لم يتأكد تشغيل الإصدار. راجع سجل مهمة النشر لدى منصة الاستضافة.'}</p>
+          : requested && <p className="mt-1">استلم نظام النشر الطلب للإصدار <b dir="ltr">v{requested}</b>. افحص الإصدار مجددًا بعد اكتمال النشر.</p>}
         {newer && !status.deployment && <p className="mt-1">{canManage
           ? 'النشر من داخل مدار غير مهيأ على هذا الخادم. استخدم منصة الاستضافة لنشر الإصدار.'
           : 'اطلب من مدير النظام نشر الإصدار على الخادم، ثم افحص الإصدارات مرة أخرى.'}</p>}
+      </div>}
+      {canManage && status?.backupRequired && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+        <p>يتطلب النشر نسخة كاملة تحقّق الخادم من تسليمها إلى الوجهة الخارجية خلال آخر 24 ساعة.</p>
+        {backupAccess && <button type="button" className={button} onClick={() => navigateTo.emit('/database')}>فتح النسخ والاستعادة</button>}
       </div>}
       <div className="flex flex-wrap items-center gap-2">
         {canReload && <button type="button" className={button} disabled={busy || status?.broadcastActive} onClick={() => void applyBrowser()}>
           <Download size={16} aria-hidden="true" /> تحميل الواجهة الجديدة
         </button>}
-        {newer && status?.deployment && <button type="button" className={button} disabled={busy || status.broadcastActive || !!requested} onClick={() => void deploy()}>طلب نشر الإصدار على الخادم</button>}
+        {canManage && newer && status?.deployment && <button type="button" className={button} disabled={busy || status.broadcastActive || !!requested || status.backupRequired} onClick={() => void deploy()}>طلب نشر الإصدار على الخادم</button>}
         {newer && <a href={newer.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center px-2 text-sm font-bold text-blue-700 hover:underline">ملاحظات الإصدار على GitHub</a>}
       </div>
     </section>

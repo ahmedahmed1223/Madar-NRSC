@@ -50,7 +50,8 @@ const cards = [shared, local, finished, blocked, cancelled];
 
 const tasks = [
   { id: 't1', title: 'متابعة مؤتمر', assigneeId: 'b2', status: 'TODO', dueDate: '2026-11-18T10:00:00Z', createdAt: '2026-11-17T10:00:00Z' },
-  { id: 't2', title: 'أرشفة', assigneeId: 'b2', status: 'COMPLETED', completedAt: '2026-11-18T15:00:00Z', createdAt: '2026-11-18T10:00:00Z' },
+  { id: 't2', title: 'أرشفة', assigneeId: 'b2', status: 'COMPLETED', completedAt: '2026-11-18T15:00:00Z', createdAt: '2026-11-18T10:00:00Z',
+    execution: { startedAt: '2026-11-18T12:00:00Z', activeSeconds: 4500, endedAt: '2026-11-18T15:00:00Z' } },
   { id: 't3', title: 'ملغاة', assigneeId: 'b2', status: 'CANCELLED' },
 ];
 const requests = [
@@ -66,6 +67,11 @@ const withTarget = [...cards, { ...cancelled, id: 'linked', status: 'OPEN' as co
 const items = collectWork({ cards: withTarget, tasks, requests, news, users, stepTypes: DEFAULT_STEP_TYPES, now: NOW });
 
 describe('collecting work', () => {
+  it('uses tracked task execution in the employee file', () => {
+    const file = employeeFile(items, users.find(user => user.id === 'b2')!, week);
+    expect(file.done.find(item => item.key === 'task:t2')).toMatchObject({ startedAt: '2026-11-18T12:00:00Z', spentMinutes: 75 });
+    expect(file.totals.spentMinutes).toBe(75);
+  });
   it('turns every recorded piece of work into one item', () => {
     const keys = items.map((i) => i.key);
     expect(keys).toContain('card:shared:s3');

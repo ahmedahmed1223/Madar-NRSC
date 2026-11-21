@@ -19,11 +19,15 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { DraftStatus } from '../components/common/DraftStatus';
 import { NewsTemplatesSettings } from '../components/settings/NewsTemplatesSettings';
 import { ProductionListsSettings } from '../components/settings/ProductionListsSettings';
+import { TaskWorkflowSettings } from '../components/settings/TaskWorkflowSettings';
+import { navigateTo } from '../services/uiEvents';
 import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
 import { StationsSettings } from '../components/settings/StationsSettings';
 import { DepartmentsSettings } from '../components/settings/DepartmentsSettings';
 import { OrgStructureSettings } from '../components/settings/OrgStructureSettings';
 import { SystemMonitor } from '../components/settings/SystemMonitor';
+import { BackupReadinessSummary } from '../components/settings/BackupReadinessSummary';
+import { AppUpdatesPanel } from '../components/settings/AppUpdatesPanel';
 import { StorageSettings } from '../components/settings/StorageSettings';
 import { ProgramTypesSettings } from '../components/settings/ProgramTypesSettings';
 import { dataStore } from '../services/dataStore';
@@ -99,7 +103,7 @@ const SECTIONS: { id: SettingsSection; group: SectionGroup; label: string; hint:
   { id: 'editorial', group: 'news', label: 'الأخبار والتحرير', hint: 'قوالب الأخبار وأولوية الخبر ومدة العاجل ومدة الفقرة', icon: FileText },
   { id: 'categories', group: 'news', label: 'تصنيفات الأخبار', hint: 'تصنيفات المواد الإخبارية وألوانها (غير الأقسام الإدارية)', icon: Layers },
   { id: 'sources', group: 'news', label: 'الوكالات والمصادر', hint: 'المصادر وخلاصات المصادر', icon: Rss },
-  { id: 'production', group: 'news', label: 'قوائم الإنتاج', hint: 'المذيعون والمخرجون والاستديوهات وأنواع البرامج', icon: Users },
+  { id: 'production', group: 'news', label: 'قوائم الإنتاج', hint: 'سير عمل المهام والتكليفات وقوائم الإنتاج وأنواع البرامج', icon: Users },
   { id: 'airDisplay', group: 'news', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
   { id: 'datetime', group: 'news', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'monitor', group: 'system', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
@@ -109,6 +113,13 @@ const SECTIONS: { id: SettingsSection; group: SectionGroup; label: string; hint:
   { id: 'preferences', group: 'device', label: 'تفضيلات هذا الجهاز', hint: 'المظهر وحجم الخط وتقليل الحركة', icon: Palette },
 ];
 const SECTION_KEY = 'nrcs-settings-section';
+const SECTION_SCOPE: Partial<Record<SettingsSection, string>> = {
+  system: 'خادم المؤسسة · الأمان والنسخ والنشر تؤثر في كل المحطات المتصلة بهذا الخادم.',
+  station: 'المؤسسة · الاسم وهوية البث والتوقيت الموحد مشتركة بين المحطات.',
+  stations: 'المحطات · تعديلات سجل المحطة تنطبق على المحطة المختارة.',
+  departments: 'المؤسسة · تحدد هنا بنية الأقسام الإدارية التي تستخدمها المحطات.',
+  preferences: 'هذا الجهاز · يتغير العرض في هذا المتصفح.',
+};
 const GENERAL_LABEL = 'block font-bold text-slate-700 mb-1';
 const GENERAL_INPUT = 'block w-full min-h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900';
 const isSection = (value: unknown): value is SettingsSection => SECTIONS.some((x) => x.id === value);
@@ -243,9 +254,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (new URLSearchParams(window.location.search).has('storage')) return 'storage';
     try {
       const saved = localStorage.getItem(SECTION_KEY);
-      return isSection(saved) ? saved : 'station';
+      return isSection(saved) ? saved : 'system';
     } catch {
-      return 'station';
+      return 'system';
     }
   });
   // A section asked for by another screen wins over the remembered one, and becomes the remembered one.
@@ -701,6 +712,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.</span>
         </div>
       )}
+      {SECTION_SCOPE[section] && <p className="text-xs font-semibold text-slate-700">{SECTION_SCOPE[section]}</p>}
       {section === 'preferences' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-preferences-title">
         <div>
           <h2 id="settings-preferences-title" className="text-base font-bold text-slate-900">تفضيلات هذا الجهاز</h2>
@@ -714,7 +726,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>}
       {section === 'system' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-system-title">
         <div>
-          <h2 id="settings-system-title" className="text-base font-bold text-slate-900">حالة النظام وإعدادات التشغيل المعتمدة</h2>
+          <h2 id="settings-system-title" className="text-base font-bold text-slate-900">حالة الأمان والخادم</h2>
           <p className="text-xs text-slate-600 mt-0.5">قيم يضبطها الخادم عند التشغيل؛ للعرض فقط.</p>
         </div>
         {runtimeError ? <p role="alert" className="text-sm font-bold text-rose-700">{runtimeError}</p> : !runtime ? <p role="status" className="text-sm text-slate-600">جارٍ قراءة الحالة...</p> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 text-sm">
@@ -731,6 +743,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ] as [string, unknown, boolean][]).map(([key, value, attention]) => <div key={key} className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-2.5"><dt className="text-slate-600">{key}</dt><dd className="font-semibold break-words tabular-nums text-left">{String(value)}{attention && <span className="ms-2 text-2xs font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">يحتاج ضبطاً</span>}</dd></div>)}
         </dl>}
       </section>}
+      {section === 'system' && <BackupReadinessSummary canOpenBackups={RbacService.hasPermission(apiService.getCurrentUser(), 'system.database_manage') && RbacService.canOpenScreen(apiService.getCurrentUser(), 'database')} />}
+      {section === 'system' && <AppUpdatesPanel canManage={RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings')} />}
 
       {(section === 'station' || section === 'editorial') && (
         <div className={`grid grid-cols-1 gap-6 ${section === 'station' ? 'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
@@ -787,12 +801,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Team summary: the full directory lives in «المستخدمون والصلاحيات». */}
-        {section === 'station' && <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4 self-start">
+        {section === 'station' && <div className="@container bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4 self-start">
           <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
             <Users className="w-4 h-4 text-blue-600" aria-hidden="true" />
             <span>الفريق والصلاحيات</span>
           </h2>
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-1 @[24rem]:grid-cols-3 gap-2 text-center">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-lg font-bold text-slate-800">{users.filter((u) => u.isActive !== false).length}</p>
               <p className="text-2xs text-slate-500">حساب نشط</p>
@@ -822,6 +836,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {section === 'editorial' && <NewsTemplatesSettings />}
       {section === 'editorial' && <PronunciationSettings />}
+      {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && (
+        <TaskWorkflowSettings
+          onOpenStepTypes={() => void chooseSection('stations')}
+          onOpenTemplates={RbacService.hasPermission(apiService.getCurrentUser(), 'cards.manage') && RbacService.canOpenScreen(apiService.getCurrentUser(), 'cards')
+            ? () => navigateTo.emit('/cards') : undefined}
+        />
+      )}
       {section === 'production' && <ProductionListsSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ProgramTypesSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}

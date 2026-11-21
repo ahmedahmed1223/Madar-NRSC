@@ -153,6 +153,7 @@ export class DataStore {
   private inFlight = new Set<string>();
   private listeners = new Set<Listener>();
   private rev = 0;
+  private accessRevision?: string;
   private userId: string | null = null;
   private ready = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -334,11 +335,13 @@ export class DataStore {
     this.userId = null;
     this.starting = null;
     this.rev = 0;
+    this.accessRevision = undefined;
   }
 
   private async bootstrap() {
-    const res = await this.request<{ rev: number; dbId?: string; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
+    const res = await this.request<{ rev: number; dbId?: string; access?: string; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
     this.checkDb(res.dbId);
+    this.accessRevision = res.access;
     // Unsent local edits survive a full reload: they are laid back over the server copy.
     const pendingKeys = [...this.dirty.keys(), ...this.inFlight];
     const pending = pendingKeys
@@ -781,7 +784,8 @@ export class DataStore {
     }
     this.pulling = true;
     try {
-      const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}`);
+      const access = this.accessRevision ? `&access=${encodeURIComponent(this.accessRevision)}` : '';
+      const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}${access}`);
       this.checkDb(res.dbId);
       this.setOnline(true);
       if (res.reset || this.dbSwitched) {

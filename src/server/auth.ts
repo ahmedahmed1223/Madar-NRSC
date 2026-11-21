@@ -5,6 +5,9 @@ import { computeEffectivePermissions, evaluatePermission, RoleDefinition, DEFAUL
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
 import { MIN_PASSWORD_LENGTH, temporaryPassword, validatePasswordStrength } from '../shared/passwords';
+import { cardProductionAssignment, type ProductionCard } from '../shared/productionCards';
+import { assignedWorkOnly } from '../shared/assignedWork';
+import { departmentsOf, departmentWorkScope } from '../shared/departments';
 
 export const SESSION_COOKIE = 'nrcs_sid';
 export const CSRF_HEADER = 'x-nrcs-client';
@@ -84,6 +87,8 @@ export interface AuthContext {
   roles: RoleDefinition[];
   can: (permission: string) => boolean;
   permissions: string[];
+  productionAssignments?: () => ReadonlySet<string>;
+  departmentTaskMembers?: () => ReadonlySet<string> | null;
 }
 
 declare global {
@@ -102,12 +107,40 @@ export function loadRoles(db: NewsroomDatabase): RoleDefinition[] {
 
 export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: string): AuthContext {
   const roles = loadRoles(db);
+  const decisions = new Map<string, boolean>();
+  const can = (permission: string) => {
+    let allowed = decisions.get(permission);
+    if (allowed === undefined) {
+      allowed = evaluatePermission(user, permission, roles);
+      decisions.set(permission, allowed);
+    }
+    return allowed;
+  };
+  let assignments: Set<string> | undefined;
+  let team: ReadonlySet<string> | null | undefined;
   return {
     user,
     sessionId,
     roles,
-    can: (permission: string) => evaluatePermission(user, permission, roles),
+    can,
     permissions: computeEffectivePermissions(user, roles),
+    departmentTaskMembers: () => {
+      if (team !== undefined) return team;
+      if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || assignedWorkOnly(can)) return team = null;
+      const scope = departmentWorkScope(user.id, departmentsOf(db.getRow('settings', 'singleton')?.d));
+      if (!scope.led.length) return team = null;
+      return team = new Set(db.listCollection('users').filter(row => scope.departmentFor(row.d)).map(row => row.id));
+    },
+    productionAssignments: () => {
+      if (assignments) return assignments;
+      assignments = new Set();
+      if (can('rundown.view') || !can('cards.view') || assignedWorkOnly(can)) return assignments;
+      for (const { d } of db.listCollection('productionCards')) {
+        const target = cardProductionAssignment(d as ProductionCard, user.id);
+        if (target) assignments.add(target);
+      }
+      return assignments;
+    },
   };
 }
 

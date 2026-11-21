@@ -33,7 +33,8 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
   for (const entry of (after.log || []).slice(log.length)) {
     log.push({ id: entry.id, kind: 'NOTE', stepId: typeof entry.stepId === 'string' ? entry.stepId : undefined, text: entry.text.trim(), ...(entry.decision === true ? { decision: true } : {}), ...by });
   }
-  const record = (step: CardStep, text: string) => log.push({ id: newId('log'), kind: 'STEP', stepId: step.id, text, ...by });
+  const record = (step: CardStep, text: string, transition?: Pick<CardLogEntry, 'fromStatus' | 'toStatus'>) =>
+    log.push({ id: newId('log'), kind: 'STEP', stepId: step.id, text, ...transition, ...by });
 
   const previous = new Map((before?.steps || []).map((s) => [s.id, s]));
   const steps = after.steps.map((step): CardStep => {
@@ -65,8 +66,8 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
       returnedAt: freshReturn ? now : keepReturn ? prev!.returnedAt : undefined,
       timeLog: timeLog.length ? timeLog : undefined,
       spentMinutes: spentMinutes || undefined,
-      // Work starts when the step first leaves the queue; a step set aside keeps what it had.
-      startedAt: step.status === 'TODO' ? undefined : step.status === 'SKIPPED' ? prev?.startedAt : prev?.startedAt || now,
+      // Only starting work sets its first start. Waiting, rework and late time entries keep it.
+      startedAt: prev?.startedAt || (step.status === 'IN_PROGRESS' ? now : undefined),
       doneAt: undefined,
       doneById: undefined,
       doneByName: undefined,
@@ -84,10 +85,10 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
       record(next, `«${name}» لم تعد مسندة إلى ${prev.assigneeName || 'زميل'}${next.stationId ? '؛ متاحة لمحطتها' : ''}`);
     }
     if (freshReturn) {
-      record(next, `أُعيدت «${name}» للعمل — ${next.returnedReason}`);
-    } else if (prev ? prev.status !== step.status : step.status !== 'TODO') {
+      record(next, `أُعيدت «${name}» للعمل — ${next.returnedReason}`, { fromStatus: prev?.status, toStatus: step.status });
+    } else if (!prev || prev.status !== step.status) {
       const detail = step.status === 'BLOCKED' ? `${next.blockedReason}${waiting ? ` (بانتظار ${waiting.fullName})` : ''}` : step.status === 'DONE' ? next.note : '';
-      record(next, `«${name}»: ${stepStatusName(step.status)}${detail ? ` — ${detail}` : ''}`);
+      record(next, `«${name}»: ${stepStatusName(step.status)}${detail ? ` — ${detail}` : ''}`, { fromStatus: prev?.status, toStatus: step.status });
     }
     if (added.length) record(next, `سُجّل وقت على «${name}»: ${timeLogMinutes(added)} د (المجموع ${spentMinutes} د)`);
     return next;

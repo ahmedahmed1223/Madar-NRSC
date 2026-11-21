@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseErrorsPanel } from '../components/database/DatabaseErrorsPanel';
 import { DatabaseOperationConfirmation, type DatabaseOperation } from '../components/database/DatabaseOperationConfirmation';
 import type { BackupStatus, BackupRehearsal } from '../shared/databaseDiagnostics';
+import { BackupReadinessEvidence } from '../components/settings/BackupReadinessSummary';
 import {
   Database,
   Download,
@@ -190,7 +191,11 @@ export const DatabaseManagerView: React.FC = () => {
   const handleRehearse = async (fileName: string) => {
     if (rehearsalGuard.current) return;
     rehearsalGuard.current = true; setRehearsing(fileName); setRehearsal(null); setActionError('');
-    try { setRehearsal(await apiService.rehearseBackup(fileName)); }
+    try {
+      const result = await apiService.rehearseBackup(fileName);
+      setRehearsal(result);
+      setBackupHealth(current => current ? { ...current, lastRehearsal: { at: result.checkedAt, fileName: result.fileName } } : current);
+    }
     catch (error) { setActionError(error instanceof Error ? error.message : 'تعذرت تجربة الاستعادة'); }
     finally { rehearsalGuard.current = false; setRehearsing(null); }
   };
@@ -584,6 +589,7 @@ export const DatabaseManagerView: React.FC = () => {
       {/* Backups & Snapshots Tab */}
       {activeTab === 'backups' && (
         <div role="tabpanel" id="database-backups" aria-labelledby="database-tab-backups" className="space-y-6 min-w-0">
+          {backupHealth && <BackupReadinessEvidence data={backupHealth} />}
           {rehearsal && <section className="border-y border-slate-200 py-4 space-y-2 text-sm" aria-label="نتيجة تجربة الاستعادة">
             <h3 className="font-bold">نتيجة تجربة الاستعادة</h3>
             <p className="text-emerald-800">لم تتغير قاعدة البيانات الحالية</p>

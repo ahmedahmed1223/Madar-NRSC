@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isMyTask, relatedTaskPath, TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS } from '../../src/services/taskBoard';
+import { canChangeTaskStatus, isMyTask, relatedTaskPath, TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, taskPeriodMatcher, taskStatusChoices } from '../../src/services/taskBoard';
 import { roleHolders, roleInUseError } from '../../src/services/roleUsage';
 import { normalizeOverrides, overrideStateOf, sameOverrides, setOverride } from '../../src/services/permissionOverrides';
 import { computeEffectivePermissions, type RoleDefinition } from '../../src/shared/rbac';
@@ -19,6 +19,33 @@ describe('task board helpers', () => {
     expect(isMyTask({ assignedToId: 'u1' }, 'u1')).toBe(true);
     expect(isMyTask({ assigneeId: 'u2' }, 'u1')).toBe(false);
     expect(isMyTask({}, 'u1')).toBe(false);
+    expect(canChangeTaskStatus({ assignedToId: 'u1' }, 'u1', false)).toBe(true);
+    expect(canChangeTaskStatus({ assigneeId: 'u2', assignedToId: 'u1' }, 'u1', false)).toBe(false);
+  });
+
+  it('uses the active workflow and displays legacy completion in the current status choice', () => {
+    const active = { requireReview: true, reopenManagersOnly: true };
+    expect(taskStatusChoices('IN_PROGRESS', active, true).map(option => option.value)).toContain('IN_REVIEW');
+    expect(taskStatusChoices('IN_PROGRESS', active, true).map(option => option.value)).not.toContain('COMPLETED');
+    expect(taskStatusChoices('IN_REVIEW', active, false).map(option => option.value)).not.toContain('COMPLETED');
+    expect(taskStatusChoices('IN_REVIEW', active, true).map(option => option.value)).toContain('COMPLETED');
+    expect(taskStatusChoices('DONE', active, false, true).map(option => option.value)).toEqual(['COMPLETED']);
+  });
+
+  it('uses the station date, keeps overdue open work visible, and leaves undated work in All', () => {
+    const now = Date.parse('2026-11-20T22:30:00Z');
+    const today = taskPeriodMatcher('TODAY', now, 'Asia/Hebron');
+    const week = taskPeriodMatcher('WEEK', now, 'Asia/Hebron');
+    const month = taskPeriodMatcher('MONTH', now, 'Asia/Hebron');
+    expect(today({ dueDate: '2026-11-20T22:01:00Z', status: 'IN_PROGRESS' })).toBe(true);
+    expect(today({ dueDate: '2026-11-19', status: 'BLOCKED' })).toBe(true);
+    expect(today({ dueDate: '2026-11-19', status: 'COMPLETED' })).toBe(false);
+    expect(week({ dueDate: '2026-11-22', status: 'TODO' })).toBe(true);
+    expect(today({ dueDate: '2026-11-22', status: 'TODO' })).toBe(false);
+    expect(week({ dueDate: '2026-11-30', status: 'TODO' })).toBe(false);
+    expect(month({ dueDate: '2026-11-30', status: 'TODO' })).toBe(true);
+    expect(month({ status: 'TODO' })).toBe(false);
+    expect(taskPeriodMatcher('ALL', now)({ status: 'TODO' })).toBe(true);
   });
 
   it('links a task to the record it came from', () => {

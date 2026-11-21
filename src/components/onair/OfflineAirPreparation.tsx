@@ -89,7 +89,7 @@ export function OfflineAirPreparation({ showId, userId, snapshot, dbId }: { show
    <details className="space-y-3">
     <summary className="min-h-11 flex flex-wrap items-center gap-2 cursor-pointer">
       <h3 className="text-base font-bold text-slate-800">نسخة الهواء المحلية</h3>
-      {saved[0] ? <span className="text-xs font-semibold text-slate-700">آخر نسخة: {freshnessText[freshness(saved[0])]}</span> : loaded && <span className="text-xs text-slate-600">لا توجد نسخة لهذا البث على الجهاز</span>}
+      {saved[0] ? <span className="text-xs font-semibold text-slate-700">آخر نسخة · <time dateTime={saved[0].preparedAt}>{new Date(saved[0].preparedAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}</time> · {freshnessText[freshness(saved[0])]}</span> : loaded && <span className="text-xs text-slate-600">لا توجد نسخة لهذا البث على الجهاز</span>}
     </summary>
     <form onSubmit={prepare} className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1 text-sm">كلمة فتح النسخة<input aria-label="كلمة فتح النسخة" type="password" autoComplete="new-password" minLength={8} required disabled={!!progress} value={secret} onChange={event => setSecret(event.target.value)} className="min-h-11 border border-slate-300 rounded-xl px-3 bg-white"/></label>
@@ -97,6 +97,14 @@ export function OfflineAirPreparation({ showId, userId, snapshot, dbId }: { show
       <button type="submit" disabled={!!progress || !consent || secret.length < 8} className="min-h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2"><Lock size={18} aria-hidden/>تجهيز النسخة</button>
       {progress && <button type="button" onClick={() => { generation.current++; abort.current?.abort(); setProgress(''); }} className="min-h-11 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-sm font-semibold flex items-center gap-2"><X size={18} aria-hidden/>إلغاء التجهيز</button>}
     </form>
+    <details className="mt-2 border-y border-slate-200 py-1">
+      <summary className="min-h-11 py-2.5 cursor-pointer text-sm font-semibold text-blue-700">تمرين استعادة التحكم بعد الانقطاع</summary>
+      <ol className="list-decimal ps-5 space-y-1 pb-2 text-sm text-slate-700">
+        <li>أوقف التشغيل المحلي أثناء مراجعة حالة البث على الخادم.</li>
+        <li>قارن الفقرة الحالية وسجل التشغيل المحلي مع المخرج أو الكنترول.</li>
+        <li>بعد تأكيد المخرج أو الكنترول، تابع من شاشة التحكم المتصلة. استورد السجل عبر خيار المراجعة في شاشة الهواء المحلي.</li>
+      </ol>
+    </details>
     {progress && <p role="status" className="text-sm">{progress}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {ready && <p role="status" className="text-sm text-emerald-700">تحقق حفظ النسخة وغلاف القراءة دون اتصال</p>}

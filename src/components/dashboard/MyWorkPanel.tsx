@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
 import { useWorkSections } from '../../hooks/useWorkSections';
 import { orderWorkSections, stationWorkDay } from '../../shared/myWork';
-import type { WorkSectionKey } from '../../shared/workContext';
+import { sanitizeWorkSections, type WorkSectionKey } from '../../shared/workContext';
 import type { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
@@ -114,7 +114,7 @@ export const MyWorkPanel: React.FC<MyWorkPanelProps> = (props) => <MyWorkPanelCo
 
 const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin, referenceTime }) => {
   useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'settings', 'productionCards', 'users'], 60_000);
-  const [preferences, savePreferences] = useWorkSections(currentUser.id);
+  const [preferences, savePreferences, preferenceStatus] = useWorkSections(currentUser.id);
   const [customizing, setCustomizing] = useState(false);
   const me = currentUser.id;
   const myDept = departmentIdOf(currentUser);
@@ -316,7 +316,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
           <ClipboardList className="w-5 h-5 text-blue-600" />
           عملي
           <span className="text-2xs font-semibold text-slate-500">
-            — {isManager ? (currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : 'الإدارة') : `قسم ${departmentName(myDept)}`}
+            — {[currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : undefined, isManager ? 'الإدارة' : `قسم ${departmentName(myDept)}`].filter(Boolean).join(' · ')}
           </span>
         </h2>
         <span
@@ -328,6 +328,12 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       </div>
       <button type="button" aria-label="تخصيص عملي" aria-expanded={customizing} aria-controls="work-section-controls" onClick={() => setCustomizing(value => !value)} className="min-h-11 inline-flex items-center gap-2 px-3 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg"><Settings2 className="w-4 h-4" />تخصيص عملي</button>
       {customizing && <div id="work-section-controls" className="border-y border-slate-200 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 py-1">
+          <p className="text-xs text-slate-600">يرتبط ترتيب الأقسام وظهورها بحسابك.</p>
+          <button type="button" onClick={() => void savePreferences(sanitizeWorkSections(null))} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-blue-700">استعادة الترتيب الافتراضي</button>
+        </div>
+        {preferenceStatus.pending && <p role="status" className="text-xs text-slate-600">بانتظار تأكيد حفظ تخصيص عملي.</p>}
+        {preferenceStatus.error && <p role="alert" className="text-xs text-rose-800">{preferenceStatus.error}</p>}
         {ordered.map(section => <div key={section.key} className="flex flex-wrap items-center justify-between gap-2 py-1">
           <label className="inline-flex items-center gap-2 min-h-11 text-xs text-slate-700"><input type="checkbox" aria-label={`عرض ${section.title}`} checked={section.mandatory || !preferences.hidden.includes(section.key)} disabled={section.mandatory} aria-describedby={section.mandatory ? `work-warning-${section.key}` : undefined} onChange={event => savePreferences({ ...preferences, hidden: event.target.checked ? preferences.hidden.filter(key => key !== section.key) : [...preferences.hidden, section.key] })} />{section.title}</label>
           {section.mandatory && <span id={`work-warning-${section.key}`} className="text-xs text-amber-800">يتضمن تنبيهات تشغيلية ولا يمكن إخفاؤه الآن</span>}

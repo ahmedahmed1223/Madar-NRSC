@@ -11,6 +11,8 @@ import { CUE_ACTIVE_MS, formatClock, isCueForUser, liveTiming } from '../shared/
 import { stationTimeZone } from '../shared/dates';
 import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
 import { DriftIndicator } from '../components/onair/DriftIndicator';
+import { AirSourceStatus } from '../components/onair/AirSourceStatus';
+import { useAirConnection } from '../hooks/useAirConnection';
 
 interface StudioScreenViewProps {
   currentUser: User;
@@ -22,6 +24,7 @@ const lowerThirdsFromStory = (seg: any): string[] => (seg?.graphics || []).flatM
 /** Big, glanceable display for the studio floor and presenters. */
 export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser, initialEpisodeId }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'settings'], 500);
+  const connected = useAirConnection();
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'studio');
   const ref = useRef<HTMLDivElement>(null);
@@ -65,11 +68,13 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
   const live = state?.status === 'LIVE';
   const untilStart = episode && !state ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const programmeLeft = timing && showLength > 0 ? showLength - timing.onAirSeconds : null;
+  const nextSegment = timing?.next ?? (!live && state?.status !== 'ENDED' ? episode?.rundown?.[0] : undefined);
+  const fullTitle = episode ? `${episode.programName} — ${episode.title}` : '';
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <select value={effectiveId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة" className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white max-w-sm">
+        <select value={effectiveId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة" title={fullTitle || undefined} className="min-h-11 w-full sm:w-80 min-w-0 max-w-full truncate px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
           {!effectiveId && <option value="">لا يوجد بث مباشر الآن</option>}
           {apiService
             .getAirShows()
@@ -81,13 +86,14 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
               </option>
             ))}
         </select>
-        <button type="button" onClick={() => ref.current?.requestFullscreen?.()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
+        <button type="button" onClick={() => ref.current?.requestFullscreen?.()} className="min-h-11 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white text-blue-700 text-xs font-bold">
           <Maximize2 className="w-4 h-4" />
           ملء الشاشة
         </button>
       </div>
 
       <div ref={ref} data-testid="studio-wall" className="theme-fixed bg-black text-white rounded-2xl min-h-[70vh] p-6 sm:p-10 flex flex-col gap-6 overflow-auto">
+        <AirSourceStatus connected={connected} />
         <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
         {cue && (
           <div className={`rounded-2xl px-6 py-4 text-center text-2xl sm:text-4xl xl:text-5xl font-black ${cue.level === 'urgent' ? 'bg-red-600 animate-pulse' : cue.level === 'standby' ? 'bg-amber-400 text-black' : 'bg-sky-600'}`} role="alert">
@@ -99,7 +105,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <span className={`shrink-0 px-4 py-2 rounded-xl text-xl xl:text-3xl font-black ${live ? 'bg-red-600 text-white' : 'bg-slate-700 text-white'}`}>{live ? 'على الهواء' : state?.status === 'ENDED' ? 'انتهى البث' : 'خارج الهواء'}</span>
-            <span className="text-xl sm:text-2xl xl:text-3xl font-bold text-slate-100 truncate">{episode ? `${episode.programName} — ${episode.title}` : 'لا يوجد بث'}</span>
+            <span className="min-w-0 text-xl sm:text-2xl xl:text-3xl font-bold text-slate-100 break-words">{fullTitle || 'لا يوجد بث'}</span>
           </div>
           <div className="text-left" role="timer" aria-label={`الساعة ${wall.clock}`}>
             <span className="block text-sm xl:text-lg font-bold text-slate-300 text-right">{stationZone ? 'الساعة (توقيت المحطة)' : 'الساعة'}</span>
@@ -173,11 +179,11 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
             ))}
           </div>
         )}
-        {(timing?.next || (!timing && episode?.rundown?.[0])) && (
+        {nextSegment && (
           <div className="border-t-2 border-slate-700 pt-4 text-2xl xl:text-4xl text-slate-200 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="font-bold">{timing ? 'الفقرة التالية:' : 'الفقرة الأولى:'}</span>
-            <strong className="text-white font-black">{(timing?.next || episode.rundown[0]).title}</strong>
-            <span className="tabular-nums text-slate-300" dir="ltr">{formatClock((timing?.next || episode.rundown[0]).durationSeconds || 0)}</span>
+            <strong className="min-w-0 break-words text-white font-bold">{nextSegment.title}</strong>
+            <span className="tabular-nums text-slate-300" dir="ltr">{formatClock(nextSegment.durationSeconds || 0)}</span>
           </div>
         )}
       </div>

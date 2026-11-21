@@ -1,6 +1,9 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { pronunciationDraftConflict } from '../shared/pronunciation';
 import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
+import type { NewsArchiveFilters } from '../shared/newsArchive';
+import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
+import { sanitizeWorkSections, type WorkSectionPreferences } from '../shared/workContext';
 import { savedFilterRequest } from './savedNewsFilterTransport';
 import { handoverRequest } from './handoverTransport';
 import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
@@ -105,7 +108,7 @@ import {
 } from '../shared/bulletins';
 import { scheduledBulletinExists } from '../shared/bulletinReadiness';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
-import { defaultPrefs, NotificationPrefs, prefsError } from '../shared/notifications';
+import { defaultPrefs, NotificationPrefs, prefsError, requiresNotificationAcknowledgment } from '../shared/notifications';
 import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
 
@@ -1797,10 +1800,41 @@ export class ApiService {
   }
 
   // --- NEWS ARCHIVE (settled news kept on the server only) ---
-  static async searchNewsArchive(query: string, page = 1): Promise<NewsArchivePage> {
+  static async searchNewsArchive(query: string, page = 1, filters: NewsArchiveFilters = {}): Promise<NewsArchivePage> {
     const params = new URLSearchParams({ q: query, page: String(page) });
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
     const res = await apiFetch<{ data: NewsArchivePage }>(`/api/v1/archive/news?${params}`);
     return res.data;
+  }
+
+  static getWorkspaceWorkSections(): WorkSectionPreferences | undefined {
+    const key = COLLECTIONS.workspacePrefs.storageKey;
+    return getStored<WorkspacePreferences[]>(key, []).find(({ id }) => id === this.getCurrentUser().id)?.workSections;
+  }
+
+  static saveWorkspaceWorkSections(sections: WorkSectionPreferences): void {
+    const userId = this.getCurrentUser().id;
+    setStored<WorkspacePreferences[]>(COLLECTIONS.workspacePrefs.storageKey, [{ id: userId, ownerId: userId,
+      workSections: sanitizeWorkSections(sections), updatedAt: new Date().toISOString() }]);
+  }
+
+  static getPersonalNotes(): PersonalNote[] {
+    const userId = this.getCurrentUser().id;
+    return getStored<PersonalNote[]>(COLLECTIONS.personalNotes.storageKey, []).filter(({ ownerId }) => ownerId === userId);
+  }
+
+  static savePersonalNote(input: Pick<PersonalNote, 'title' | 'body' | 'pinned'> & { id?: string }): PersonalNote {
+    const notes = this.getPersonalNotes();
+    const previous = notes.find(({ id }) => id === input.id);
+    const updatedAt = new Date().toISOString();
+    const saved: PersonalNote = { id: previous?.id || input.id || newId('note'), ownerId: this.getCurrentUser().id, title: input.title.trim(),
+      body: input.body, pinned: input.pinned, createdAt: previous?.createdAt || updatedAt, updatedAt };
+    setStored(COLLECTIONS.personalNotes.storageKey, [saved, ...notes.filter(({ id }) => id !== saved.id)]);
+    return saved;
+  }
+
+  static deletePersonalNote(id: string): void {
+    setStored(COLLECTIONS.personalNotes.storageKey, this.getPersonalNotes().filter((note) => note.id !== id));
   }
 
   static async getArchivedNews(id: string): Promise<NewsItem> {
@@ -2273,7 +2307,7 @@ export class ApiService {
   static markNotificationsReadFor(linkUrl: string): void {
     const all = this.getNotifications();
     const me = this.getCurrentUser().id;
-    const mine = all.filter((n) => n.userId === me && !n.isRead && n.linkUrl === linkUrl);
+    const mine = all.filter((n) => n.userId === me && !n.isRead && n.linkUrl === linkUrl && !requiresNotificationAcknowledgment(n));
     if (!mine.length) return;
     mine.forEach((n) => (n.isRead = true));
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
@@ -2283,7 +2317,7 @@ export class ApiService {
     const all = this.getNotifications();
     const me = this.getCurrentUser().id;
     all.forEach((n) => {
-      if (n.userId === me) n.isRead = true;
+      if (n.userId === me && !requiresNotificationAcknowledgment(n)) n.isRead = true;
     });
     setStored(STORAGE_KEYS.NOTIFICATIONS, all);
   }

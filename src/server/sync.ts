@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import {
   APPEND_ONLY_COLLECTIONS,
   COLLECTIONS,
@@ -26,6 +27,10 @@ import type { NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { removeUpload, uploadIdFromMedia } from './uploads';
 import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
+import { sanitizeWorkSections } from '../shared/workContext';
+import { stampTaskWorkflow } from '../shared/taskWorkflow';
+import { assignedWorkOnly } from '../shared/assignedWork';
+import { departmentTaskIds } from './departmentWork';
 import { departmentIdOf } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
@@ -67,7 +72,7 @@ function stampRequest(before: any, after: any, auth: AuthContext) {
   const now = new Date().toISOString();
   const by = { byId: auth.user.id, byName: auth.user.fullName, at: now };
   if (!before) {
-    const { assigneeId: _a, assigneeName: _n, resultMediaId: _r, ...rest } = after;
+    const { assigneeId: _a, assigneeName: _n, resultMediaId: _r, proposedById: _proposer, proposedDueAt: _proposal, ...rest } = after;
     return {
       ...rest,
       status: 'OPEN',
@@ -94,7 +99,17 @@ function stampRequest(before: any, after: any, auth: AuthContext) {
     assigneeName: before.assigneeName,
     addressedToId: before.addressedToId,
     addressedToName: before.addressedToName,
+    proposedById: before.proposedById,
   };
+  if (after.proposedDueAt !== before.proposedDueAt) {
+    next.proposedById = after.proposedDueAt ? auth.user.id : undefined;
+    const note = after.proposedDueAt ? `اقتُرح موعد بديل: ${localStamp(after.proposedDueAt)}` : after.dueAt !== before.dueAt ? 'اعتُمد الموعد البديل' : 'رُفض الموعد البديل';
+    next.history = [...next.history, { status: after.status, ...by, note }];
+  }
+  if (['DONE', 'REJECTED', 'CANCELLED'].includes(after.status) || (after.dueAt !== before.dueAt && after.proposedDueAt)) {
+    next.proposedDueAt = undefined;
+    next.proposedById = undefined;
+  }
   if (after.status !== before.status) {
     next.history = [...next.history, { status: after.status, ...by, note: after.status === 'REJECTED' ? after.resolution : undefined }];
     if (after.status === 'ACCEPTED' && before.status === 'OPEN') {
@@ -267,19 +282,44 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
   return data;
 }
 
+// These rows all carry working content or parent-specific broadcast state.
+const PRODUCTION_READ_BOUND = new Set<CollectionName>(['programs', 'episodes', 'bulletins', 'bulletinStories', 'onAir', 'offlineAirSessions']);
+const SUPPORT_WRITES = new Set<CollectionName>(['users', 'tasks', 'productionCards', 'notifications', 'notificationPrefs', 'personalNotes', 'workspacePrefs']);
+const isPrivateRecord = (collection: CollectionName): collection is 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes' =>
+  collection === 'savedNewsFilters' || collection === 'workspacePrefs' || collection === 'personalNotes';
+
 export class SyncService {
   constructor(private db: NewsroomDatabase, private dataDir: string, private newsActiveDays = 0) {}
 
+  private bootstrapRows = { rev: -1, generation: -1, rows: new Map<CollectionName, EntityRow[]>() };
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
+  private lookup = (c: CollectionName, id: string) => this.db.getRow(c, id)?.d;
+
+  private accessRevision(auth: AuthContext): string {
+    const assigned = assignedWorkOnly(auth.can) ? this.db.assignedWorkIds(auth.user.id) : [];
+    const team = auth.departmentTaskMembers?.();
+    const teamTasks = team ? departmentTaskIds(this.db, auth.user.id, team) : null;
+    const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks]);
+    return createHash('sha256').update(access).digest('base64url');
+  }
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
     if (row.c === 'shiftHandovers' || row.c === 'handoverReceipts') return false;
-    if (row.c === 'savedNewsFilters' && row.deleted) return this.db.savedNewsFilterOwner(row.id) === auth.user.id;
-    return row.deleted ? true : canRead(auth, row.c, row.d, (c, id) => this.db.getRow(c, id)?.d);
+    if (isPrivateRecord(row.c) && row.deleted) return this.db.privateRecordOwner(row.c, row.id) === auth.user.id;
+    // A changed assigned-work scope prompts a fresh bootstrap; no hidden IDs travel as tombstones.
+    if (row.deleted && assignedWorkOnly(auth.can)) return false;
+    if (row.deleted && row.c === 'tasks' && auth.departmentTaskMembers?.()) return false;
+    return row.deleted ? true : canRead(auth, row.c, row.d, this.lookup);
   }
 
-  private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false) {
-    writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK' });
+  private readableRow(auth: AuthContext, row: EntityRow): EntityRow {
+    if (row.c !== 'guests' || row.deleted || auth.can('guests.manage')) return row;
+    const { phone: _phone, email: _email, notes: _notes, ...profile } = row.d;
+    return { ...row, d: profile };
+  }
+
+  private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false, senderId?: string) {
+    writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK', senderId });
   }
 
   /** Colleagues as card notices need them: station, role, department and what they may do on cards. */
@@ -443,7 +483,7 @@ export class SyncService {
     const body = message.text || (message.attachments?.length ? `أرسل ${message.attachments.length === 1 ? 'ملفاً' : 'ملفات'}: ${message.attachments.map((a) => a.name).join('، ')}` : '');
     for (const userId of message.to) {
       if (userId === message.userId || (waiting.has(userId) && !message.isUrgent)) continue;
-      this.notify(userId, group ? `${group}: ${message.userName}` : `رسالة من ${message.userName}`, body.slice(0, 200), linkUrl, 'message', message.isUrgent === true);
+      this.notify(userId, group ? `${group}: ${message.userName}` : `رسالة من ${message.userName}`, body.slice(0, 200), linkUrl, 'message', message.isUrgent === true, message.userId);
     }
   }
 
@@ -483,6 +523,14 @@ export class SyncService {
       recipients.add(after.requesterId);
       if (after.status === 'CANCELLED' && after.assigneeId) recipients.add(after.assigneeId);
       title = `طلب ${type?.name || ''}: ${requestStatusName(after.status)}`;
+    } else if ((before.proposedDueAt || null) !== (after.proposedDueAt || null)) {
+      if (after.proposedDueAt) {
+        recipients.add(after.requesterId);
+        title = 'اقتراح موعد بديل لتسليم الطلب';
+      } else if (before.proposedById) {
+        recipients.add(before.proposedById);
+        title = after.dueAt === before.proposedDueAt ? 'اعتُمد الموعد البديل للطلب' : 'أُغلق اقتراح الموعد البديل';
+      }
     } else {
       return;
     }
@@ -492,7 +540,8 @@ export class SyncService {
         userId,
         title,
         message: `${after.title} — ${after.requesterName}${after.link?.title ? ` (${after.link.title})` : ''}`,
-        linkUrl: '/requests',
+        linkUrl: `/requests/${encodeURIComponent(after.id)}`,
+        senderId: auth.user.id,
         category: after.addressedToId && !before ? 'assignment' : 'request',
         urgent: after.priority === 'URGENT',
         type: 'TASK',
@@ -585,28 +634,42 @@ export class SyncService {
   bootstrap(auth: AuthContext) {
     this.applySettings();
     const rev = this.db.currentRev();
+    if (this.bootstrapRows.rev !== rev || this.bootstrapRows.generation !== this.db.generation) {
+      this.bootstrapRows = { rev, generation: this.db.generation, rows: new Map() };
+    }
+    const snapshotRows = (name: CollectionName, limit?: number) => {
+      let rows = this.bootstrapRows.rows.get(name);
+      if (!rows) {
+        rows = this.db.listCollection(name, { limit });
+        this.bootstrapRows.rows.set(name, rows);
+      }
+      return rows;
+    };
     const collections: Partial<Record<CollectionName, EntityRow[]>> = {};
     for (const name of COLLECTION_NAMES) {
       let rows: EntityRow[];
       if (name === 'messages') {
         // The newest messages this user may read; most rows of a busy newsroom are other people's conversations.
-        rows = this.db.listCollection(name, { limit: MESSAGE_BOOTSTRAP_SCAN }).filter((r) => canRead(auth, name, r.d)).slice(0, MESSAGE_BOOTSTRAP_LIMIT);
+        rows = snapshotRows(name, MESSAGE_BOOTSTRAP_SCAN).filter((r) => canRead(auth, name, r.d)).slice(0, MESSAGE_BOOTSTRAP_LIMIT);
+      } else if (isPrivateRecord(name)) {
+        rows = this.db.listPrivateRecords(name, auth.user.id);
       } else if (APPEND_ONLY_COLLECTIONS.has(name)) {
         // Logs are ordered newest first (lowest position); only ship the recent window.
-        rows = this.db.listCollection(name, { limit: LOG_BOOTSTRAP_LIMIT });
+        rows = name === 'auditLogs' && !auth.can('audit.view') ? [] : snapshotRows(name, LOG_BOOTSTRAP_LIMIT);
       } else if (name === 'news' && this.newsActiveDays > 0) {
         // Old finished news stays on the server (archive search) instead of every browser.
         rows = this.db.listActiveNews(new Date(Date.now() - this.newsActiveDays * 24 * 60 * 60 * 1000).toISOString());
       } else {
-        rows = this.db.listCollection(name);
+        rows = snapshotRows(name);
       }
-      collections[name] = rows.filter((r) => canRead(auth, name, r.d, (c, id) => this.db.getRow(c, id)?.d));
+      collections[name] = rows.filter((r) => this.visible(auth, r)).map((r) => this.readableRow(auth, r));
     }
-    return { rev, collections };
+    return { rev, access: this.accessRevision(auth), collections };
   }
 
-  changes(auth: AuthContext, since: number) {
+  changes(auth: AuthContext, since: number, knownAccess?: string) {
     const rev = this.db.currentRev();
+    if (knownAccess !== undefined && knownAccess !== this.accessRevision(auth)) return { rev, reset: true as const };
     if (since < this.db.tombstoneFloor() || since > rev) return { rev, reset: true as const };
     const { rows, truncated } = this.db.changesSince(since, MAX_CHANGES_PER_POLL);
     if (truncated) return { rev, reset: true as const };
@@ -615,10 +678,10 @@ export class SyncService {
       rev,
       reset: false as const,
       changes: rows.flatMap((r): EntityRow[] => {
-        if (this.visible(auth, r)) return [r];
+        if (this.visible(auth, r)) return [this.readableRow(auth, r)];
         // Someone removed from a group stops seeing it: their browser is told the row is gone
         // (only its random id travels), instead of keeping a group they can no longer write to.
-        return r.c === 'conversations' ? [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }] : [];
+        return r.c === 'conversations' && !assignedWorkOnly(auth.can) ? [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }] : [];
       }),
     };
   }
@@ -634,6 +697,7 @@ export class SyncService {
       if (result.ok === false && result.current && !this.visible(auth, result.current)) {
         return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' };
       }
+      if (result.ok === false && result.current) return { ...result, current: this.readableRow(auth, result.current) };
       return result;
     });
     if (ops.some((op) => op?.c === 'settings')) this.applySettings();
@@ -654,16 +718,27 @@ export class SyncService {
 
     try {
       return this.db.transaction(() => {
+        if (assignedWorkOnly(auth.can) && !SUPPORT_WRITES.has(collection)) {
+          return { ok: false, code: 'FORBIDDEN', message: 'يقتصر هذا الحساب على العمل المسند له' } as SyncOpResult;
+        }
         const current = this.db.getRow(collection, id);
         if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
-        if (collection === 'savedNewsFilters') {
-          const owner = this.db.savedNewsFilterOwner(id);
-          if (owner && owner !== auth.user.id) return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا الفلتر' } as SyncOpResult;
-          if (!current && this.db.getRow(collection, id, true)?.deleted && op.op === 'upsert') return { ok: false, code: 'CONFLICT', message: 'حُذف هذا الفلتر؛ أنشئ فلترًا جديدًا بعد مراجعة الإعدادات' } as SyncOpResult;
-          if (current && op.op === 'delete' && op.baseV !== current.v) return { ok: false, code: 'CONFLICT', message: 'تغير الفلتر؛ راجع النسخة الحالية قبل حذفه', current } as SyncOpResult;
+        if (isPrivateRecord(collection)) {
+          const owner = this.db.privateRecordOwner(collection, id);
+          if ((owner && owner !== auth.user.id) || (collection === 'workspacePrefs' && id !== auth.user.id)) {
+            return { ok: false, code: 'FORBIDDEN', message: 'هذا السجل الخاص غير متاح لك' } as SyncOpResult;
+          }
+          if (current && op.op === 'delete' && op.baseV !== current.v) {
+            return { ok: false, code: 'CONFLICT', message: 'تغيّر السجل؛ راجع النسخة الحالية قبل حذفه', current } as SyncOpResult;
+          }
+          if (owner && !current && op.op === 'upsert' && collection !== 'workspacePrefs') {
+            return { ok: false, code: 'CONFLICT', message: 'حُذف هذا السجل؛ أنشئ سجلًا جديدًا' } as SyncOpResult;
+          }
         }
-
+        if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current)) {
+          return { ok: false, code: 'FORBIDDEN', message: 'هذه المادة الإنتاجية غير متاحة لك' } as SyncOpResult;
+        }
         // Story locks: nobody else may change or delete a story while its editor holds the lock.
         if (LOCKABLE_COLLECTIONS.has(collection) && current) {
           const lock = this.db.getRow('editLocks', lockIdFor(collection, id))?.d;
@@ -728,10 +803,30 @@ export class SyncService {
         let after: any = { ...incoming };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        const target = collection === 'productionCards' ? after.target : null;
+        if (target && (target.kind === 'episode' || target.kind === 'bulletin') &&
+            (target.kind !== before?.target?.kind || target.id !== before?.target?.id)) {
+          const targetCollection = target.kind === 'episode' ? 'episodes' : 'bulletins';
+          const material = typeof target.id === 'string' ? this.lookup(targetCollection, target.id) : null;
+          if (!material || material.deletedAt || !canRead(auth, targetCollection, material, this.lookup)) {
+            return { ok: false, code: 'FORBIDDEN', message: 'لا تملك صلاحية ربط هذه المادة الإنتاجية' } as SyncOpResult;
+          }
+        }
+        if ((collection === 'bulletinStories' || collection === 'onAir') && !canRead(auth, collection, after, this.lookup)) {
+          return { ok: false, code: 'FORBIDDEN', message: 'المادة الإنتاجية المرتبطة غير متاحة لك' } as SyncOpResult;
+        }
         if (collection === 'savedNewsFilters') {
           const now = new Date().toISOString();
           after = { ...after, ownerId: auth.user.id, createdAt: before?.createdAt || now, updatedAt: now,
             name: typeof after.name === 'string' ? after.name.trim() : after.name };
+        }
+        if (collection === 'workspacePrefs') {
+          after = { id, ownerId: auth.user.id, workSections: sanitizeWorkSections(after.workSections), updatedAt: new Date().toISOString() };
+        }
+        if (collection === 'personalNotes') {
+          const now = new Date().toISOString();
+          after = { id, ownerId: auth.user.id, title: typeof after.title === 'string' ? after.title.trim() : '',
+            body: after.body, pinned: after.pinned === true, createdAt: before?.createdAt || now, updatedAt: now };
         }
         if (collection === 'pronunciationTerms') {
           const now = new Date().toISOString();
@@ -761,11 +856,14 @@ export class SyncService {
           after = stampBulletinStory(before, after, auth, bulletin);
         }
         if (collection === 'cues') after = stampCue(before, after, auth);
+        if (collection === 'notifications') after = { ...after, senderId: before ? before.senderId : auth.user.id };
           if (collection === 'tasks') {
-            const member = this.db.getRow('users', String(after.assigneeId))?.d;
+            const member = this.db.getRow('users', String(after.assigneeId || after.assignedToId))?.d;
             const finished = after.status === 'DONE' || after.status === 'COMPLETED';
+            const now = new Date().toISOString();
             // Completion time is the server's, so output can be measured per period.
-            after = { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || new Date().toISOString(), assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || new Date().toISOString() : undefined };
+            after = stampTaskWorkflow(before, { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || now,
+              assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || now : undefined }, auth.user.id, now);
           }
           if (collection === 'reviewThreads') {
             const now = new Date().toISOString();
@@ -898,18 +996,19 @@ export class SyncService {
         if (collection === 'productionCards' && !after.deletedAt) {
           const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
           for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(settings), this.cardPeople(settings))) {
-            this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent);
+            this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent, auth.user.id);
           }
         }
         if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) this.settleCardNotifications(id);
           if (collection === 'tasks' && !after.deletedAt) {
-            const assigned = after.assigneeId && after.assigneeId !== before?.assigneeId;
+            const assignee = after.assigneeId || after.assignedToId;
+            const assigned = assignee && assignee !== (before?.assigneeId || before?.assignedToId);
             const deadline = before && after.dueDate !== before.dueDate;
             const status = before && after.status !== before.status && ['BLOCKED', 'IN_REVIEW', 'DONE', 'COMPLETED'].includes(after.status);
             const recipients = new Set<string>();
-            if ((assigned || deadline) && after.assigneeId) recipients.add(after.assigneeId);
+            if ((assigned || deadline) && assignee) recipients.add(assignee);
             if (status && after.creatorId) recipients.add(after.creatorId);
-            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment');
+            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment', false, auth.user.id);
           }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'messages' && !before) this.notifyMessage(after);

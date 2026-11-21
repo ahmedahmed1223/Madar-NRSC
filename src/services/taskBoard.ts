@@ -1,4 +1,8 @@
 import type { EditorialTask, TaskStatus } from '../types';
+import { messageEntryPath, splitMessageFocus } from '../shared/chat';
+import { normalizeTaskStatus, taskWorkflowOptions, type TaskWorkflowRules } from '../shared/taskWorkflow';
+import { stationWorkDay } from '../shared/myWork';
+import { weekDays } from '../shared/planning';
 
 /** Board columns, in workflow order. Cancelled tasks sit in their own column, folded by default. */
 export const TASK_BOARD_COLUMNS: { status: TaskStatus; label: string; color: string; collapsible?: boolean }[] = [
@@ -20,6 +24,41 @@ export const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'CANCELLED', label: 'ملغاة' },
 ];
 
+export function taskStatusChoices(
+  status: TaskStatus,
+  rules: TaskWorkflowRules | undefined,
+  canManage: boolean,
+  includeCurrent = false,
+) {
+  const current = normalizeTaskStatus(status);
+  const allowed = new Set<TaskStatus>(taskWorkflowOptions(current, rules, canManage));
+  if (includeCurrent) allowed.add(current);
+  return TASK_STATUS_OPTIONS.filter((option) => allowed.has(option.value));
+}
+
+export const TASK_PERIOD_OPTIONS = [
+  { value: 'ALL', label: 'كل المواعيد' },
+  { value: 'TODAY', label: 'اليوم' },
+  { value: 'WEEK', label: 'هذا الأسبوع' },
+  { value: 'MONTH', label: 'هذا الشهر' },
+] as const;
+export type TaskPeriod = typeof TASK_PERIOD_OPTIONS[number]['value'];
+
+export function taskPeriodMatcher(period: TaskPeriod, now: number, timezone?: string) {
+  if (period === 'ALL') return () => true;
+  const today = stationWorkDay(new Date(now), timezone);
+  const week = period === 'WEEK' ? new Set(weekDays(today)) : undefined;
+  return (task: Pick<EditorialTask, 'dueDate' | 'status'>) => {
+    if (!task.dueDate || !Number.isFinite(Date.parse(task.dueDate))) return false;
+    const dueDay = /^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) ? task.dueDate : stationWorkDay(new Date(task.dueDate), timezone);
+    const status = normalizeTaskStatus(task.status);
+    if (dueDay < today && status !== 'COMPLETED' && status !== 'CANCELLED') return true;
+    if (period === 'TODAY') return dueDay === today;
+    if (period === 'WEEK') return !!week?.has(dueDay);
+    return dueDay.slice(0, 7) === today.slice(0, 7);
+  };
+}
+
 /** Is the task assigned to this colleague (either spelling of the assignee field)? */
 export function isMyTask(task: Pick<EditorialTask, 'assigneeId' | 'assignedToId'>, userId: string): boolean {
   return (task.assigneeId || task.assignedToId) === userId;
@@ -31,6 +70,7 @@ export const RELATED_ENTITY_LABELS: Record<string, string> = {
   PROGRAM: 'برنامج',
   BULLETIN: 'نشرة',
   BULLETIN_STORY: 'قصة في نشرة',
+  MESSAGE: 'رسالة',
 };
 
 /**
@@ -44,6 +84,10 @@ export function relatedTaskPath(
   const id = task.relatedEntityId;
   if (!id) return null;
   switch (task.relatedEntityType) {
+    case 'MESSAGE': {
+      const { channel, messageId } = splitMessageFocus(id);
+      return messageId ? messageEntryPath(channel, messageId) : null;
+    }
     case 'BULLETIN':
       return `/bulletins/${encodeURIComponent(id)}`;
     case 'BULLETIN_STORY': {
@@ -63,8 +107,8 @@ export function relatedTaskPath(
  * Whether this colleague may move the task between statuses: task managers (tasks.create_assign)
  * move any task, an assignee moves their own (the server applies the same rule).
  */
-export function canChangeTaskStatus(task: Pick<EditorialTask, 'assigneeId'>, userId: string, canAssign: boolean): boolean {
-  return canAssign || (!!task.assigneeId && task.assigneeId === userId);
+export function canChangeTaskStatus(task: Pick<EditorialTask, 'assigneeId' | 'assignedToId'>, userId: string, canAssign: boolean): boolean {
+  return canAssign || (!!userId && isMyTask(task, userId));
 }
 
 export type TaskView = 'LIST' | 'KANBAN';

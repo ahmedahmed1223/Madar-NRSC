@@ -1,4 +1,5 @@
 import type { MediaType } from '../types';
+import { apiFetch, ApiError } from './http';
 
 export interface UploadedFile {
   id: string;
@@ -6,6 +7,66 @@ export interface UploadedFile {
   mimeType: string;
   sizeBytes: number;
   originalName: string;
+}
+
+const RESUMABLE_ENDPOINT = '/api/v1/media/resumable';
+const RESUMABLE_MIN_BYTES = 8 * 1024 * 1024;
+const resumeIds = new WeakMap<File, string>();
+
+export async function discardMediaUpload(file: File): Promise<void> {
+  const id = resumeIds.get(file);
+  if (!id) return;
+  resumeIds.delete(file);
+  try { await apiFetch(`${RESUMABLE_ENDPOINT}/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+  catch { /* Interrupted staging expires automatically. */ }
+}
+
+interface UploadCursor { id: string; offset: number; chunkBytes: number; completed?: UploadedFile }
+
+async function resumeMediaFile(file: File, signal: AbortSignal, onProgress?: (percent: number) => void): Promise<UploadedFile> {
+  let cursor: UploadCursor | undefined;
+  const known = resumeIds.get(file);
+  if (known) {
+    try {
+      cursor = (await apiFetch<{ data: UploadCursor }>(`${RESUMABLE_ENDPOINT}/${encodeURIComponent(known)}`, { signal, cache: 'no-store' })).data;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+      resumeIds.delete(file);
+    }
+  }
+  if (!cursor) {
+    cursor = (await apiFetch<{ data: UploadCursor }>(RESUMABLE_ENDPOINT, {
+      method: 'POST', signal, json: { name: file.name, mimeType: file.type, size: file.size },
+    })).data;
+    resumeIds.set(file, cursor.id);
+  }
+  if (cursor.completed) {
+    resumeIds.delete(file);
+    onProgress?.(100);
+    return cursor.completed;
+  }
+  const { id, chunkBytes } = cursor;
+  let offset = cursor.offset;
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size || !Number.isSafeInteger(chunkBytes) || chunkBytes < 1 || chunkBytes > 2 * 1024 * 1024) throw new Error('موضع الرفع غير صالح');
+  const target = `${RESUMABLE_ENDPOINT}/${encodeURIComponent(id)}`;
+  onProgress?.(Math.min(99, Math.floor(offset * 100 / file.size)));
+  while (offset < file.size) {
+    signal.throwIfAborted();
+    const end = Math.min(offset + chunkBytes, file.size);
+    const bytes = await file.slice(offset, end).arrayBuffer();
+    const hash = await crypto.subtle.digest('SHA-256', bytes);
+    const checksum = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+    const confirmation = await apiFetch<{ data: { offset: number } }>(target, {
+      method: 'PUT', signal, body: bytes, headers: { 'Content-Type': 'application/octet-stream', 'X-Upload-Offset': String(offset), 'X-Upload-Sha256': checksum },
+    });
+    if (confirmation.data.offset !== end) throw new Error('لم يؤكد الخادم جزء الرفع كاملاً. أعد المحاولة.');
+    offset = end;
+    onProgress?.(Math.min(99, Math.floor(offset * 100 / file.size)));
+  }
+  const { data } = await apiFetch<{ data: UploadedFile }>(`${target}/complete`, { method: 'POST', signal });
+  resumeIds.delete(file);
+  onProgress?.(100);
+  return data;
 }
 
 export const ACCEPTED_UPLOAD_TYPES = [
@@ -35,6 +96,15 @@ export function mediaTypeForMime(mime: string): MediaType {
 
 /** Streams a file to the media library (XHR so the UI can show upload progress). */
 export function uploadMediaFile(file: File, onProgress?: (percent: number) => void, opts: { keepInSharedFolder?: boolean } = {}): { promise: Promise<UploadedFile>; abort: () => void } {
+  if (!opts.keepInSharedFolder && file.size >= RESUMABLE_MIN_BYTES && !!globalThis.crypto?.subtle && ACCEPTED_UPLOAD_TYPES.includes(file.type)) {
+    const controller = new AbortController();
+    const promise = resumeMediaFile(file, controller.signal, onProgress).catch(error => {
+      if (controller.signal.aborted) throw new Error('تم إيقاف الرفع. يمكنك إعادة المحاولة من آخر جزء أكده الخادم.');
+      if (error instanceof TypeError) throw new Error('انقطع الاتصال أثناء الرفع. أعد المحاولة للمتابعة من آخر جزء مؤكّد.');
+      throw error;
+    });
+    return { promise, abort: () => controller.abort() };
+  }
   // The server honours the shared-folder copy only for colleagues on the station's network.
   return uploadFile<UploadedFile>('/api/v1/media/upload', file, onProgress, opts.keepInSharedFolder ? { 'X-Storage-Share': '1' } : undefined);
 }

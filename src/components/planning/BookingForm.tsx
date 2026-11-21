@@ -85,6 +85,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({ isOpen, onClose, curre
       if (confirmOnSave) {
         const result = await dataStore.awaitWrite('bookings', saved.id);
         if (!result.ok) {
+          if (!result.pending) await dataStore.pull();
           setSaveMessage(result.message || 'لم يؤكد الخادم الحجز بعد.');
           return;
         }

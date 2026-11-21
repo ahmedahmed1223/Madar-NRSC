@@ -1,4 +1,4 @@
-import { User } from '../types';
+import { SystemSettings, User } from '../types';
 import {
   DEFAULT_ROLE_DEFINITIONS,
   RoleDefinition,
@@ -7,6 +7,8 @@ import {
   findUserRole,
 } from '../shared/rbac';
 import { canOpenScreen } from '../shared/screens';
+import { departmentsLedBy, departmentsOf } from '../shared/departments';
+import { assignedWorkOnly } from '../shared/assignedWork';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
@@ -85,10 +87,16 @@ export class RbacService {
   }
 
   /** Whether the user's role opens a screen (the sidebar, the search and the address bar all ask here). */
-  static canOpenScreen(user: User | undefined | null, nav: string): boolean {
+  static canOpenScreen(user: User | undefined | null, nav: string, includeDepartmentWork = true): boolean {
     if (!user) return false;
     const roles = this.getRoleDefinitions();
+    if ((nav === 'workload' || nav === 'tasks') && includeDepartmentWork && this.leadsDepartment(user)) return true;
     return canOpenScreen(nav, findUserRole(user, roles), (permission) => evaluatePermission(user, permission, roles), user.role === 'SUPER_ADMIN');
+  }
+
+  static leadsDepartment(user: User): boolean {
+    const settings = dataStore.get<SystemSettings | null>(COLLECTIONS.settings.storageKey, null);
+    return departmentsLedBy(user.id, departmentsOf(settings)).length > 0 && !assignedWorkOnly(permission => this.hasPermission(user, permission));
   }
 
   /**

@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, AtSign, Download, FileText, Link2, Paperclip, Send, Settings2, X } from 'lucide-react';
+import { ArrowRight, AtSign, CheckSquare, Download, FileText, Link2, Paperclip, Search, Send, Settings2, X } from 'lucide-react';
 import type { User } from '../../types';
+import { canPinAnnouncement } from '../../shared/chat';
+import { departmentsOf } from '../../shared/departments';
+import { changeAnnouncementPin, PinnedAnnouncement, usePinnedAnnouncement } from './PinnedAnnouncement';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
 import { uploadFile } from '../../services/mediaUpload';
@@ -8,9 +11,11 @@ import { FormPage } from '../common/FormPage';
 import { stationDay, timeOnly } from '../cards/cardUi';
 import { formatDay } from '../../shared/dateFormat';
 import { matchesQuery } from '../../shared/search';
+import { clearSentMessageDraft, messagePosition, queueMessageTask, rememberMessagePosition, scrollToMessage } from '../../services/messageWorkspace';
+import { dataStore } from '../../services/dataStore';
 import {
   CHAT_REF_KINDS, CHAT_UPLOAD_TYPES, MAX_ATTACHMENTS, MAX_MESSAGE_CHARS,
-  chatFileUrl, chatRefLink, isPrivateChannel, type ChatAttachment, type ChatMessage,
+  chatFileUrl, chatRefLink, isPrivateChannel, publicMessageOrigin, type ChatAttachment, type ChatMessage,
   type ChatRef, type Conversation,
 } from '../../shared/chat';
 
@@ -75,9 +80,10 @@ interface ThreadPaneProps {
   currentUser: User;
   userById: Map<string, User>;
   messages: ChatMessage[];
+  focusMessageId?: string;
   seen?: string;
-  draftText: string;
-  onDraftText: (text: string) => void;
+  draft?: { text: string; urgent: boolean };
+  onDraft: (draft: { text: string; urgent: boolean }) => void;
   onBack: () => void;
   onOpenLink: (path: string) => void;
   onGroupSettings?: () => void;
@@ -93,21 +99,35 @@ interface Pending {
   abort?: () => void;
 }
 
-export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, userById, messages, seen, draftText, onDraftText, onBack, onOpenLink, onGroupSettings }) => {
-  const me = currentUser.id;
-  const [text, setText] = useState(draftText);
-  const updateDraft = (value: string) => {
-    setText(value);
-    onDraftText(value);
+export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUser, userById, messages, seen, draft, onDraft, onBack, onOpenLink, onGroupSettings, focusMessageId }) => {
+  const pin = usePinnedAnnouncement(thread.channel);
+  const canPin = canPinAnnouncement(thread.channel, currentUser.id, departmentsOf(apiService.getSettings()),
+    RbacService.hasPermission(currentUser, 'tasks.intercom_broadcast') || RbacService.hasPermission(currentUser, 'system.settings'));
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const updatePin = async (messageId: string, remove: boolean) => {
+    setPinBusy(true);
+    setPinError('');
+    try { await changeAnnouncementPin(thread.channel, messageId, remove); }
+    catch (error) { setPinError(error instanceof Error ? error.message : 'تعذّر تحديث البلاغ المثبّت'); }
+    finally { setPinBusy(false); }
   };
-  const [urgent, setUrgent] = useState(false);
+  const me = currentUser.id;
+  const { text, urgent } = draft ?? { text: '', urgent: false };
+  const updateDraft = (value: string) => onDraft({ text: value, urgent });
+  const setUrgent = (value: boolean) => onDraft({ text, urgent: value });
   const [pending, setPending] = useState<Pending[]>([]);
   const [ref, setRef] = useState<ChatRef | null>(null);
   const [refOpen, setRefOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendStatus, setSendStatus] = useState('');
+  const [sending, setSending] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [query, setQuery] = useState('');
   const [older, setOlder] = useState<ChatMessage[]>([]);
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
-  const [atLatest, setAtLatest] = useState(true);
+  const savedPosition = useRef(focusMessageId || messagePosition(me, thread.channel));
+  const [atLatest, setAtLatest] = useState(!savedPosition.current);
   const runningUploads = useRef(new Map<string, () => void>());
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -116,7 +136,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
   const keyboardHeight = useKeyboardSafeHeight(sectionRef, () =>
     requestAnimationFrame(() => {
       const list = listRef.current;
-      if (list) list.scrollTop = list.scrollHeight;
+      if (list && atLatest && !query.trim()) list.scrollTop = list.scrollHeight;
     })
   );
 
@@ -126,15 +146,33 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
     return [...older.filter((m) => !ids.has(m.id)), ...recent];
   }, [older, recent]);
   const newest = recent[recent.length - 1]?.timestamp;
+  const searching = !!query.trim();
+  const visible = searching ? shown.filter(message => matchesQuery(query, message.text, message.userName, message.ref?.title, message.attachments?.map(file => file.name))) : shown;
+  const focusAvailable = shown.some(message => message.id === focusMessageId);
+  const canCreateTask = RbacService.hasPermission(currentUser, 'tasks.create_assign') && RbacService.canOpenScreen(currentUser, 'tasks');
+
+  useEffect(() => {
+    if (!focusMessageId) return;
+    savedPosition.current = focusMessageId;
+    setAtLatest(false);
+    if (listRef.current && scrollToMessage(listRef.current, focusMessageId)) savedPosition.current = undefined;
+  }, [focusMessageId]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || searching || !savedPosition.current) return;
+    if (scrollToMessage(list, savedPosition.current)) savedPosition.current = undefined;
+    else if (recent.length && !focusMessageId) { savedPosition.current = undefined; setAtLatest(true); }
+  }, [recent, shown, searching, focusMessageId]);
 
   // Keep the reader's place when a new message arrives while they are reading older messages.
   useEffect(() => {
-    if (!atLatest) return;
+    if (!atLatest || searching) return;
     if (newest && newest > (seen || '')) apiService.markChannelRead(thread.channel, newest);
     else if (!newest && seen === undefined && !isPrivateChannel(thread.channel)) apiService.markChannelRead(thread.channel, new Date(0).toISOString());
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [atLatest, newest, seen, thread.channel]);
+  }, [atLatest, newest, seen, thread.channel, searching]);
 
   useEffect(() => {
     const uploads = runningUploads.current;
@@ -192,17 +230,23 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
   const ready = pending.filter((p) => p.attachment).map((p) => p.attachment!);
   const canSend = ready.length === pending.length && (!!text.trim() || ready.length > 0 || !!ref);
 
-  const send = () => {
-    if (!canSend) return;
+  const send = async () => {
+    if (!canSend || sending) return;
+    setSending(true);
+    setError(null);
+    setSendStatus('');
     try {
-      apiService.sendMessage(thread.channel, text.trim() || (ref && !ready.length ? ref.title : ''), urgent, { attachments: ready, ref: ref || undefined });
-      updateDraft('');
-      setUrgent(false);
+      const id = apiService.sendMessage(thread.channel, text.trim() || (ref && !ready.length ? ref.title : ''), urgent, { attachments: ready, ref: ref || undefined });
+      const result = await dataStore.awaitWrite('messages', id);
+      if (!result.ok && !result.pending) throw new Error(result.message || 'لم يؤكد الخادم إرسال الرسالة.');
+      clearSentMessageDraft(me, thread.channel, { text, urgent });
       setPending([]);
       setRef(null);
-      setError(null);
+      setSendStatus(result.ok ? 'أُرسلت الرسالة' : 'الرسالة محفوظة بانتظار المزامنة');
     } catch (err: any) {
       setError(err?.message || 'تعذر إرسال الرسالة');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -224,17 +268,31 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
             {group ? group.memberIds.map((id) => userById.get(id)?.fullName).filter(Boolean).join('، ') : thread.kind === 'dm' ? thread.hint || 'رسالة مباشرة' : `${thread.hint} — مفتوحة لكل الزملاء`}
           </p>
         </div>
+        <button type="button" className={ICON_BTN} aria-label="البحث في المحادثة" aria-expanded={showSearch} onClick={() => {
+          if (showSearch) { savedPosition.current = messagePosition(me, thread.channel); setQuery(''); }
+          setShowSearch(value => !value);
+        }}><Search className="size-4" aria-hidden="true" /></button>
         {onGroupSettings && (
           <button type="button" onClick={onGroupSettings} aria-label="إعدادات المجموعة وأعضاؤها" className={ICON_BTN}>
             <Settings2 className="w-4 h-4" />
           </button>
         )}
       </header>
+      {pin && <PinnedAnnouncement pin={pin} onOpen={onOpenLink} onRemove={canPin && !pinBusy ? () => void updatePin(pin.messageId, true) : undefined} />}
+      {pinError && <p role="alert" className="px-3 py-2 text-xs text-rose-800">{pinError}</p>}
+      {showSearch && <label className="shrink-0 px-3 py-2 text-xs font-semibold">
+        البحث في الرسائل المحمّلة
+        <input type="search" value={query} onChange={event => setQuery(event.target.value)} className={`${INPUT} mt-1 min-h-11`} />
+      </label>}
+      {focusMessageId && !focusAvailable && <p className="px-3 py-2 text-xs text-slate-600" role="status">الرسالة غير ظاهرة في الرسائل المحمّلة. يمكنك تحميل رسائل أقدم من القناة.</p>}
 
       <div ref={listRef} role="log" aria-live={atLatest ? 'polite' : 'off'} aria-label="الرسائل" tabIndex={0}
         onScroll={(e) => {
           const list = e.currentTarget;
-          setAtLatest(list.scrollHeight - list.scrollTop - list.clientHeight < 48);
+          if (searching) return;
+          const latest = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+          setAtLatest(latest);
+          rememberMessagePosition(me, thread.channel, list, latest);
         }}
         className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2 bg-slate-50">
         {shown.length > 0 && olderState !== 'done' && (
@@ -245,7 +303,8 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
           </div>
         )}
         {shown.length === 0 && <p className="text-center text-xs text-slate-500 py-10">لا رسائل بعد. اكتب أول رسالة.</p>}
-        {shown.map((m) => {
+        {searching && shown.length > 0 && !visible.length && <p className="py-10 text-center text-xs text-slate-600">لا نتائج في الرسائل المحمّلة.</p>}
+        {visible.map((m) => {
           const mine = m.userId === me;
           const day = m.timestamp ? stationDay(m.timestamp) : '';
           const newDay = day !== lastDay;
@@ -255,7 +314,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
               {newDay && day && (
                 <p className="text-center text-2xs font-bold text-slate-500 py-1">{formatDay(day)}</p>
               )}
-              <div className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
+              <div data-chat-message={m.id} className={`flex ${mine ? 'justify-start' : 'justify-end'} ${m.id === focusMessageId ? 'rounded-lg outline-2 outline-blue-600 outline-offset-2' : ''}`}>
                 <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 space-y-1.5 border ${mine ? 'bg-blue-600 border-blue-600 text-white' : m.isUrgent ? 'bg-red-50 border-red-300 text-slate-900' : 'bg-white border-slate-200 text-slate-900'}`}>
                   {!mine && thread.kind !== 'dm' && <p className="text-2xs font-bold text-slate-600">{m.userName}</p>}
                   {m.isUrgent && <span className={`inline-block px-1.5 py-0.5 rounded text-3xs font-bold ${mine ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>عاجل</span>}
@@ -285,14 +344,21 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
                       </a>
                     )
                   )}
-                  <p className={`text-2xs tabular-nums ${mine ? 'text-white' : 'text-slate-500'}`}>{timeOnly(m.timestamp)}</p>
+                  <div className="flex flex-wrap items-center gap-x-2">
+                    <p className={`text-2xs tabular-nums ${mine ? 'text-white' : 'text-slate-500'}`}>{timeOnly(m.timestamp)}</p>
+                    {canPin && pin?.messageId !== m.id && !dataStore.hasPendingWrite('messages', m.id) && <button type="button" disabled={pinBusy} className={`min-h-11 px-1 text-xs font-semibold hover:underline ${mine ? 'text-white' : 'text-blue-700'}`} onClick={() => void updatePin(m.id, false)}>تثبيت البلاغ</button>}
+                    {canCreateTask && publicMessageOrigin(thread.channel, m.id) && !dataStore.hasPendingWrite('messages', m.id) && <button type="button" className={`min-h-11 inline-flex items-center gap-1 px-1 text-xs font-semibold hover:underline ${mine ? 'text-white' : 'text-blue-700'}`} onClick={() => {
+                      queueMessageTask(me, { channel: thread.channel, messageId: m.id, label: thread.name, suggestedTitle: m.text.replace(/\s+/g, ' ').trim().slice(0, 120) });
+                      onOpenLink('/tasks');
+                    }}><CheckSquare className="size-3.5" aria-hidden="true" /> إنشاء مهمة</button>}
+                  </div>
                 </div>
               </div>
             </React.Fragment>
           );
         })}
       </div>
-      {!atLatest && <button type="button" className="min-h-10 self-center px-4 text-xs font-bold text-blue-700 hover:underline" onClick={() => {
+      {!atLatest && !searching && <button type="button" className="min-h-11 self-center px-4 text-xs font-bold text-blue-700 hover:underline" onClick={() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
         setAtLatest(true);
       }}>الانتقال إلى أحدث الرسائل</button>}
@@ -300,11 +366,13 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          send();
+          void send();
         }}
         className="shrink-0 border-t border-slate-200 p-3 space-y-2 bg-white"
       >
         {error && <p role="alert" className="text-xs font-bold text-rose-700">{error}</p>}
+        {sendStatus && <p role="status" className="text-xs text-slate-600">{sendStatus}</p>}
+        <fieldset disabled={sending} className="min-w-0 space-y-2">
         {(pending.length > 0 || ref) && (
           // Many attachments scroll inside this strip instead of pushing the text box off screen.
           <ul aria-label="المرفقات" className="flex flex-wrap gap-2 max-h-20 overflow-y-auto overscroll-contain">
@@ -363,7 +431,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
             placeholder="اكتب رسالة…"
             className={`${INPUT} resize-none max-h-32 min-h-11`}
           />
-          <button type="submit" disabled={!canSend} aria-label="إرسال" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl bg-blue-600 text-white disabled:opacity-50">
+          <button type="submit" disabled={!canSend || sending} aria-label="إرسال" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl bg-blue-600 text-white disabled:opacity-50">
             <Send className="w-4 h-4" />
           </button>
         </div>
@@ -374,6 +442,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
           </label>
           <span className="hidden sm:inline text-2xs text-slate-500">Enter للإرسال، Shift+Enter لسطر جديد</span>
         </div>
+        </fieldset>
       </form>
 
       <RefPicker isOpen={refOpen} onClose={() => setRefOpen(false)} onPick={(picked) => (setRef(picked), setRefOpen(false))} canSeeCards={RbacService.hasPermission(currentUser, 'cards.view')} />

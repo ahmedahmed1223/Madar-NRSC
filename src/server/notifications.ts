@@ -12,6 +12,7 @@ export interface NewNotification {
   /** Urgent items ignore quiet hours for e-mail/push. */
   urgent?: boolean;
   type?: string;
+  senderId?: string;
 }
 
 /** Writes one bell notification (system write; the caller emits the revision). */
@@ -23,6 +24,7 @@ export function writeNotification(db: NewsroomDatabase, n: NewNotification, opti
     {
       id,
       userId: n.userId,
+      senderId: n.senderId,
       title: n.title.slice(0, 200),
       message: n.message.slice(0, 600),
       type: n.type || (n.category === 'wire' ? 'BREAKING_NEWS' : n.category === 'assignment' ? 'TASK_ASSIGNED' : 'SYSTEM'),

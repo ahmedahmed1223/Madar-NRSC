@@ -22,6 +22,26 @@ export function databaseOperationLock(db: NewsroomDatabase) {
 }
 
 const TEMP_NAME = /^rehearsal-[a-zA-Z0-9_-]+$/;
+const REHEARSAL_EVIDENCE = 'last-backup-rehearsal.json';
+
+export function readRehearsalEvidence(dataDir: string): string | null {
+  try {
+    return fs.readFileSync(path.join(dataDir, REHEARSAL_EVIDENCE), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function recordRehearsal(dataDir: string, result: BackupRehearsal) {
+  const target = path.join(dataDir, REHEARSAL_EVIDENCE);
+  const pending = `${target}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.promises.writeFile(pending, JSON.stringify({ at: result.checkedAt, fileName: result.fileName }), { flag: 'wx', mode: 0o600 });
+    await fs.promises.rename(pending, target);
+  } finally {
+    await fs.promises.unlink(pending).catch(() => {});
+  }
+}
 function ensureRoot(root: string) {
   fs.mkdirSync(root, { recursive: true });
   if (fs.lstatSync(root).isSymbolicLink() || !fs.lstatSync(root).isDirectory()) throw new Error('Unsafe temporary directory');
@@ -54,7 +74,7 @@ export async function withStableBackup<T>(db: NewsroomDatabase, fileName: string
 }
 
 export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tempRoot: string): Promise<BackupRehearsal> {
-  return withStableBackup(db, fileName, tempRoot, async (source, sha256) => {
+  const result = await withStableBackup<BackupRehearsal>(db, fileName, tempRoot, async (source, sha256) => {
     const probe = new Database(source, { fileMustExist: true });
     try {
       if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
@@ -62,8 +82,11 @@ export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tem
       const rows = probe.prepare('SELECT collection, COUNT(*) AS count FROM entities WHERE deleted = 0 GROUP BY collection').all() as { collection: string; count: number }[];
       const counts: Record<string, number> = {};
       for (const row of rows) if (db.isKnownCollection(row.collection)) counts[row.collection] = row.count;
-      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '4.2.2', compatible: true, counts,
+      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '4.3.0', compatible: true, counts,
         mediaVerified: false };
     } finally { probe.close(); }
   });
+  // Evidence survives restart without writing to the newsroom database being rehearsed.
+  await recordRehearsal(db.dataDir, result);
+  return result;
 }
