@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Settings2, Trash2 } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { notify } from '../../services/notify';
 import { setupCommand } from '../../services/uiEvents';
@@ -48,14 +48,19 @@ export const DemoDataCard: React.FC = () => {
 
   const total = info ? Object.values(info.counts).reduce((a, b) => a + b, 0) : 0;
   const nothingLeft = !!info && total === 0 && info.users.length === 0;
+  const selectedCount = total + (includeUsers ? info?.users.length || 0 : 0);
 
   const remove = async () => {
     setBusy(true);
     try {
       const { total: n, setupReviewId } = await apiService.removeDemoData(includeUsers, confirm.trim());
-      notify({ type: 'success', title: 'حُذفت البيانات التجريبية', message: `حُذف ${n} سجلاً، وحُفظت نسخة احتياطية قبل الحذف.` });
+      if (n > 0) {
+        notify({ type: 'success', title: 'حُذفت البيانات التجريبية', message: `حُذف ${n} سجلاً، وحُفظت نسخة احتياطية قبل الحذف.` });
+      } else {
+        notify({ type: 'info', title: 'لا توجد بيانات تجريبية محددة للحذف', message: 'يمكنك مراجعة إعدادات المؤسسة في المعالج.' });
+      }
       setConfirm('');
-      if (setupReviewId) setupCommand.emit({ reviewId: setupReviewId });
+      setupCommand.emit(setupReviewId ? { reviewId: setupReviewId } : 'review');
       await load();
     } catch (e: any) {
       notify({ type: 'error', title: 'تعذر الحذف', message: e?.message });
@@ -68,8 +73,12 @@ export const DemoDataCard: React.FC = () => {
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4" data-testid="demo-data-card">
       <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
         <Trash2 className="w-4 h-4 text-rose-600" />
-        <span>حذف البيانات التجريبية</span>
+        <span>البيانات التجريبية</span>
       </h3>
+      <p className="text-sm text-slate-700 leading-relaxed">
+        البيانات التجريبية هي أمثلة تأتي مع نسخة العرض، مثل الأخبار والنشرات والحلقات والمهام والحجوزات. يعرض هذا القسم الأعداد المتاحة للحذف.
+        تبقى إعدادات المؤسسة والمحطات والتصنيفات والمصادر والأدوار محفوظة.
+      </p>
       {error && <p className="text-xs text-rose-600">{error}</p>}
       {!info && !error && <p className="text-xs text-slate-500">جارٍ الفحص...</p>}
       {info && nothingLeft && (
@@ -80,8 +89,7 @@ export const DemoDataCard: React.FC = () => {
       {info && !nothingLeft && (
         <div className="space-y-3 text-xs">
           <p className="text-slate-600 leading-relaxed">
-            يحذف الأخبار والبرامج والحلقات والضيوف والنشرات والحجوزات وغيرها من الأمثلة التي جاءت مع النظام للتجربة فقط. لا يُحذف أي شيء أنشأه فريقكم، ولا الأقسام والمصادر والأدوار.
-            تُحفظ نسخة احتياطية قبل الحذف. بعدها يفتح معالج الإعداد لمراجعة إعدادات المؤسسة، وتبقى القيم الحالية محفوظة حتى تعدّلها.
+            تُحفظ نسخة احتياطية قبل حذف الأمثلة. بعدها يفتح معالج الإعداد لمراجعة القيم المحفوظة للمؤسسة.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(info.counts)
@@ -108,16 +116,27 @@ export const DemoDataCard: React.FC = () => {
             </label>
             <button
               type="button"
-              disabled={busy || confirm.trim() !== 'حذف'}
+              disabled={busy || selectedCount === 0 || confirm.trim() !== 'حذف'}
               onClick={remove}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-bold"
             >
               <AlertTriangle className="w-3.5 h-3.5" />
-              {busy ? 'جارٍ الحذف...' : `حذف البيانات التجريبية (${total + (includeUsers ? info.users.length : 0)})`}
+              {busy ? 'جارٍ الحذف...' : `حذف البيانات التجريبية (${selectedCount})`}
             </button>
           </div>
         </div>
       )}
+      <div className="pt-3 border-t border-slate-200">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setupCommand.emit('review')}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Settings2 className="size-4" aria-hidden="true" />
+          فتح معالج الإعداد
+        </button>
+      </div>
     </div>
   );
 };

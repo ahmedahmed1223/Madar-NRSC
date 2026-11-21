@@ -42,8 +42,22 @@ test('first setup, institutional administrator and demo cleanup use the saved or
     await expect(wizard.getByLabel('عرض الساعة')).toHaveValue('h12');
     await wizard.getByRole('button', { name: 'رجوع', exact: true }).click();
     await page.reload();
-    await expect(page.getByRole('navigation', { name: 'أقسام الإعدادات' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: 'البيانات', exact: true }).click();
     await expect(wizard).toHaveCount(0);
+    await expect(card.getByRole('button', { name: /حذف البيانات التجريبية \(0\)/ })).toBeDisabled();
+    await card.getByRole('button', { name: 'فتح معالج الإعداد' }).click();
+    await expect(name).toHaveValue('غرفة أخبار المؤسسة');
+    await expect(wizard.getByLabel('عرض الساعة')).toHaveValue('h12');
+    await wizard.getByRole('button', { name: 'رجوع', exact: true }).click();
+
+    await card.getByLabel(/حذف حسابات المستخدمين التجريبيين/).check();
+    await card.getByLabel('تأكيد الحذف').fill('حذف');
+    await card.getByRole('button', { name: /حذف البيانات التجريبية/ }).click();
+    await expect(name).toHaveValue('غرفة أخبار المؤسسة');
+    await wizard.getByRole('button', { name: 'رجوع', exact: true }).click();
+    await expect(card.getByText(/لا توجد أمثلة أو حسابات تجريبية متاحة للحذف/)).toBeVisible();
+    await card.getByRole('button', { name: 'فتح معالج الإعداد' }).click();
+    await expect(name).toHaveValue('غرفة أخبار المؤسسة');
   } finally {
     await context.close();
     await http.close();

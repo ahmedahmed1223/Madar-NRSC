@@ -17,17 +17,19 @@ test('date and time are set once for the whole station and apply to everyone', a
   await admin.page.getByRole('radio', { name: /12 ساعة/ }).click();
   await admin.page.getByRole('button', { name: 'حفظ للجميع' }).click();
   await expect(admin.page.getByText('حُفظت إعدادات التاريخ والوقت').first()).toBeVisible();
-  await expect(admin.page.locator('header')).toContainText('بتوقيت المحطة');
+  const adminToolbar = admin.page.getByRole('banner');
+  await expect(adminToolbar.getByText('بتوقيت المحطة', { exact: true })).toBeVisible();
 
   // Another colleague, another browser: the same conventions without doing anything.
   const editor = await signIn(browser, 'editor@akhbar.tv');
-  await expect(editor.page.locator('header')).toContainText('بتوقيت المحطة');
-  await expect(editor.page.locator('header')).toContainText(/[صم]/);
+  const editorToolbar = editor.page.getByRole('banner');
+  await expect(editorToolbar.getByText('بتوقيت المحطة', { exact: true })).toBeVisible();
+  await expect(editorToolbar.getByText(/\d{2}:\d{2}(?::\d{2})?\s*[صم]/)).toBeVisible();
 
   // Back to the defaults so other tests see device time and a 24-hour clock.
   await admin.page.getByRole('button', { name: /الافتراضي/ }).click();
   await admin.page.getByRole('button', { name: 'حفظ للجميع' }).click();
-  await expect(admin.page.locator('header')).not.toContainText('بتوقيت المحطة');
+  await expect(adminToolbar.getByText('بتوقيت المحطة', { exact: true })).toHaveCount(0);
   expect([...admin.errors, ...editor.errors]).toEqual([]);
   await admin.close();
   await editor.close();

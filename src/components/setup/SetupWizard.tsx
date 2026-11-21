@@ -75,6 +75,7 @@ async function saveSetup(change: (setup: SetupState) => SetupState, extra: Recor
 
 interface SetupWizardProps {
   isOpen: boolean;
+  startAtOrganization?: boolean;
   reviewId?: string;
   onClose: () => void;
   currentUser: User;
@@ -85,7 +86,7 @@ interface SetupWizardProps {
  * Every step saves for real; the progress follows what the system shows, so leaving halfway and
  * coming back later resumes where the work stands.
  */
-export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, reviewId, onClose, currentUser }) => {
+export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganization, reviewId, onClose, currentUser }) => {
   const { settings, facts } = useFacts(isOpen, currentUser);
   const progress = setupProgress(facts);
   const skipped = setupSkipped(facts);
@@ -95,14 +96,14 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, reviewId, onCl
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (isOpen) {
-      setStepId(reviewId ? 'organization' : firstOpen);
+      setStepId(startAtOrganization ? 'organization' : firstOpen);
       setMessage(null);
       // A lost acknowledgement leaves the review available on the next sign-in.
       if (reviewId) void authClient.setupReviewShown(reviewId).catch(() => undefined);
     }
     // Opens on the first step still to do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, reviewId]);
+  }, [isOpen, startAtOrganization, reviewId]);
 
   const index = SETUP_STEPS.findIndex((s) => s.id === stepId);
   const go = (offset: number) => {

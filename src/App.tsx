@@ -78,7 +78,7 @@ import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
 import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
-import { navigateTo, routeChanged, setupCommand } from './services/uiEvents';
+import { navigateTo, routeChanged, setupCommand, type SetupCommand } from './services/uiEvents';
 import { TourHost } from './components/help/TourHost';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
@@ -723,7 +723,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   }, [activeNav]);
   useEffect(() => routeChanged.emit(routePath), [routePath]);
   useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
-  const [setupOpen, setSetupOpen] = useState<'open' | { reviewId: string } | null>(() => {
+  const [setupOpen, setSetupOpen] = useState<SetupCommand | null>(() => {
     const reviewId = authClient.getSession()?.setupReviewId;
     return reviewId ? { reviewId } : null;
   });
@@ -1276,7 +1276,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
       <TourHost currentUser={currentUser} />
       {setupOpen && RbacService.hasPermission(currentUser, 'system.settings') && (
-        <SetupWizard isOpen reviewId={setupOpen === 'open' ? undefined : setupOpen.reviewId} onClose={() => setSetupOpen(null)} currentUser={currentUser} />
+        <SetupWizard isOpen startAtOrganization={setupOpen !== 'open'} reviewId={typeof setupOpen === 'object' ? setupOpen.reviewId : undefined} onClose={() => setSetupOpen(null)} currentUser={currentUser} />
       )}
 
       {/* Global Command Palette (Ctrl + K) */}

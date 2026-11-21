@@ -922,7 +922,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   }
 
   return (
-    <div className="space-y-3 sm:space-y-6">
+    <div className="space-y-2 sm:space-y-6">
       {draftStorageFailed && (
         <p role="alert" className="bg-red-50 border border-red-200 p-3 text-sm text-red-800 rounded-lg">
           تعذر حفظ النسخة المحلية. احفظ تغييراتك قبل تحديث الصفحة أو إغلاقها.
