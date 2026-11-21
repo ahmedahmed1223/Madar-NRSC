@@ -16,24 +16,26 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
   const [calm, setCalm] = useState(reducedMotion);
   const [scale, setScale] = useState(textScale);
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    menu.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')?.focus();
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', close);
-    };
+    return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
   const label = `المظهر: ${OPTIONS.find((o) => o.id === preference)?.label}`;
   return (
-    <div ref={ref} className={`relative ${className}`}>
+    <div ref={ref} className={`relative ${className}`} onBlur={event => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+    }}>
       <button
+        ref={button}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={label}
@@ -45,7 +47,22 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
         {mode === 'dark' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
       </button>
       {open && (
-        <div role="menu" aria-label="المظهر" className="absolute top-full mt-2 left-0 z-50 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 text-right">
+        <div ref={menu} role="menu" aria-label="المظهر" className="theme-options absolute top-full mt-2 left-0 z-50 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 text-right" onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            button.current?.focus();
+            return;
+          }
+          if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+          const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
+          const index = items.indexOf(document.activeElement as HTMLButtonElement);
+          const step = event.key === 'ArrowUp' ? -1 : 1;
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + step + items.length) % items.length;
+          event.preventDefault();
+          items[next]?.focus();
+        }}>
           {OPTIONS.map((o) => {
             const Icon = o.icon;
             const active = preference === o.id;
@@ -58,8 +75,9 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
                 onClick={() => {
                   setPreference(o.id);
                   setOpen(false);
+                  button.current?.focus();
                 }}
-                className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-right ${active ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                className={`w-full min-h-[44px] flex items-center gap-2.5 p-2 rounded-xl text-right ${active ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-500'}`} />
                 <span className="flex-1 min-w-0">

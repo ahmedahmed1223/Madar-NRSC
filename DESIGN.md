@@ -58,6 +58,9 @@ One hierarchy everywhere, so a colleague never wonders which button acts:
 
 - The rail is ordered by the user's role: «عملي» (messages, tasks, production cards, requests) first, then the role's own domain, then the rest, administration last. Every section folds; the fold state is remembered per user on the device, and the section holding the current screen always opens.
 - The rail itself collapses to icons on desktop.
+- Phone navigation is modal. It moves focus to its close control, keeps Tab inside the rail and returns focus to the menu button on dismissal. The workspace is inert while the rail is open.
+- The shared workspace gutter grows from 14px to 32px. Long working screens can use up to 96rem on wide desks. The toolbar keeps a stable four-rem minimum height, wraps its groups when space is tight and offers 44px targets for its icon actions.
+- Quick-create actions open the form for the named record with the user's current permissions. Toolbar disclosures use the same spacing, borders and text hierarchy as the workspace.
 
 ## Motion
 

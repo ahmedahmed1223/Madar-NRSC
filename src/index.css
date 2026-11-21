@@ -2,6 +2,7 @@
 @import "./styles/fonts.css";
 @import "./styles/theme-light.css";
 @import "./styles/theme-dark.css";
+@import "./styles/workspace.css";
 
 /* A calm «live» pulse: slow and never fading below 60%, used only on small live dots/icons. */
 @theme {

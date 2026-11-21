@@ -16,6 +16,22 @@ test('the editorial dashboard opens a story by keyboard', async ({ browser }) =>
   }
 });
 
+test('manager overview moves keyboard focus to the selected detail on a narrow screen', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 320, height: 780 } });
+  try {
+    const overview = page.getByTestId('today-status');
+    const metric = overview.getByRole('button', { name: /^نشرات وحلقات/ });
+    await metric.focus();
+    await page.keyboard.press('Enter');
+    await expect(overview.getByRole('heading', { name: 'نشرات وحلقات اليوم' })).toBeFocused();
+    expect(await overview.evaluate(element => element.scrollWidth)).toBeLessThanOrEqual(
+      await overview.evaluate(element => element.clientWidth),
+    );
+  } finally {
+    await close();
+  }
+});
+
 for (const width of [390, 1440]) {
   test(`personal sections can be arranged and hidden (${width}px)`, async ({ browser }) => {
     const { page, close } = await signIn(browser, 'journalist@akhbar.tv', { viewport: { width, height: 900 } });

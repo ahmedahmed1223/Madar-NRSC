@@ -41,7 +41,8 @@ import { Badge } from '../components/common/Badge';
 
 interface EpisodesViewProps {
   /** Changes when another screen asks to create an episode (opens the form at once). */
-  openNewRequest?: number;
+  openNewRequest?: boolean;
+  onOpenNewHandled?: () => void;
   episodes: Episode[];
   programs: Program[];
   currentUser: User;
@@ -60,6 +61,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   filterProgramId,
   onDeleteEpisode,
   openNewRequest,
+  onOpenNewHandled,
 }) => {
   const canCreate = RbacService.hasPermission(currentUser, 'episodes.create');
   const canEditDetails = RbacService.hasPermission(currentUser, 'episodes.edit');
@@ -138,7 +140,9 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
 
   // «حلقة جديدة» from a programme page: open the form straight away, with that programme selected.
   useEffect(() => {
-    if (openNewRequest && canCreate) handleOpenAdd();
+    if (!openNewRequest) return;
+    if (canCreate && !isAddModalOpen && !editingEpisode) handleOpenAdd();
+    onOpenNewHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openNewRequest]);
 

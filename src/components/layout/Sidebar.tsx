@@ -57,6 +57,7 @@ import {
 import { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { cardsAwaitingMyDecision, isManagerRole, reviewableNews } from '../../shared/managerToday';
 import { stationsOf } from '../../shared/stations';
+import { trapTab } from '../../shared/focus';
 
 /**
  * The rail's counts are personal: my open tasks, the stories I can actually review (none for
@@ -131,7 +132,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   badgeCounts,
 }) => {
   const [internalCollapsed, setInternalCollapsed] = React.useState(false);
-  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
   const toggleCollapse = controlledToggle || (() => setInternalCollapsed(!internalCollapsed));
 
   // Determine current active navigation identifier (normalize to lowercase for matching)
@@ -164,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // On phones and narrow tablets, the closed menu stays out of Tab order and screen readers.
   const [isSmallScreen, setIsSmallScreen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(width < 64rem)').matches);
+  const isCollapsed = !isSmallScreen && (controlledCollapsed ?? internalCollapsed);
   useEffect(() => {
     const mq = window.matchMedia('(width < 64rem)');
     const on = () => setIsSmallScreen(mq.matches);
@@ -171,18 +172,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => mq.removeEventListener?.('change', on);
   }, []);
   const asideRef = useRef<HTMLElement>(null);
+  const closeMobileRef = useRef(onCloseMobile);
+  closeMobileRef.current = onCloseMobile;
   useEffect(() => {
-    if (!isSmallScreen || !isMobileOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-    // Focus moves into the menu; Escape closes it and focus returns to the menu button.
-    asideRef.current?.querySelector<HTMLElement>('nav button')?.focus();
+    if (!isMobileOpen) return;
+    if (!isSmallScreen) {
+      closeMobileRef.current?.();
+      return;
+    }
+    const drawer = asideRef.current;
+    const opener = document.querySelector<HTMLButtonElement>('[aria-controls="workspace-navigation"]');
+    drawer?.querySelector<HTMLElement>('[aria-label="إغلاق القائمة"]')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseMobile?.();
+      if (e.defaultPrevented || !drawer) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMobileRef.current?.();
+      } else {
+        trapTab(e, drawer);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
+      requestAnimationFrame(() => {
+        if (opener?.getClientRects().length && (document.activeElement === document.body || drawer?.contains(document.activeElement))) opener.focus({ preventScroll: true });
+      });
     };
   }, [isSmallScreen, isMobileOpen]);
 
@@ -336,19 +351,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         ref={asideRef}
+        id="workspace-navigation"
         aria-label="القائمة الرئيسية"
         {...(isSmallScreen && !isMobileOpen ? { inert: true, 'aria-hidden': true } : {})}
         {...(isSmallScreen && isMobileOpen ? { role: 'dialog', 'aria-modal': true } : {})}
-        className={`theme-fixed bg-slate-950 text-slate-300 border-l border-white/5 flex flex-col transition-[transform,width] duration-200 ease-out select-none
+        className={`theme-fixed bg-slate-950 text-slate-300 border-s border-white/5 flex shrink-0 flex-col transition-transform duration-200 ease-out select-none
           fixed inset-y-0 right-0 z-50 lg:relative lg:z-20
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full lg:translate-x-0'}
-          ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'}
+          ${isCollapsed ? 'w-20' : 'w-64 sm:w-72'} max-w-[calc(100vw-3rem)]
         `}
       >
         {/* Brand Header */}
-        <div className="h-16 border-b border-white/5 flex items-center justify-between px-4">
-          {!isCollapsed && (
-            <div className="flex items-center gap-2.5 overflow-hidden">
+        <div className="min-h-16 shrink-0 border-b border-white/10 flex items-center justify-between gap-1 px-4">
+          {!isCollapsed && <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="w-8 h-8 rounded-md bg-red-600 flex items-center justify-center text-white shrink-0">
                 <Radio className="w-5 h-5" />
               </div>
@@ -360,11 +375,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {APP_TAGLINE}
                 </span>
               </div>
-            </div>
-          )}
+          </div>}
 
           {isCollapsed && (
-            <div className="mx-auto w-8 h-8 rounded-md bg-red-600 flex items-center justify-center text-white">
+            <div className="mx-auto w-8 h-8 rounded-md bg-red-600 hidden lg:flex items-center justify-center text-white">
               <Radio className="w-5 h-5" />
             </div>
           )}

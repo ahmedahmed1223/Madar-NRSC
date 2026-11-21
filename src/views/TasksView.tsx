@@ -61,6 +61,8 @@ interface TasksViewProps {
   onDeleteTask: (taskId: string) => void;
   /** Opens an in-app address (e.g. '/bulletins/<id>') for the record a task was created from. */
   onOpenLink?: (path: string) => void;
+  openNewRequest?: boolean;
+  onOpenNewHandled?: () => void;
 }
 
 /** One priority vocabulary on the board and in the list: urgent in red, high in amber. */
@@ -87,6 +89,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onSaveTask,
   onDeleteTask,
   onOpenLink,
+  openNewRequest,
+  onOpenNewHandled,
 }) => {
   useLiveData(['settings', 'tasks'], 30_000);
   const now = Date.now();
@@ -182,6 +186,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setMessageOrigin(origin);
     setTitle(origin.suggestedTitle);
   }, [currentUser.id, canAssign]);
+
+  useEffect(() => {
+    if (!openNewRequest) return;
+    if (canAssign && !isModalOpen) handleOpenAdd();
+    onOpenNewHandled?.();
+    // Open once per request, using the current form defaults.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNewRequest]);
 
   const handleOpenEdit = (t: EditorialTask) => {
     setSaveError('');
@@ -645,9 +657,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </SortableScope>
       ) : (
         /* LIST VIEW */
-        <div role="region" aria-label="قائمة المهام" className="bg-white border border-slate-200 rounded-lg shadow-2xs">
-          <table role="table" className="max-lg:block w-full text-right text-xs">
-            <thead role="rowgroup" className="max-lg:sr-only">
+        <div role="region" aria-label="قائمة المهام" className="@container/task-list bg-white border border-slate-200 rounded-lg shadow-2xs">
+          <table role="table" className="@max-[54rem]/task-list:block w-full text-start text-xs">
+            <thead role="rowgroup" className="@max-[54rem]/task-list:sr-only">
               <tr role="row" className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                 <th role="columnheader" scope="col" className="py-3 px-4">عنوان المهمة</th>
                 <th role="columnheader" scope="col" className="py-3 px-3">الأولوية</th>
@@ -657,10 +669,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <th role="columnheader" scope="col" className="py-3 px-4 text-center">إجراءات</th>
               </tr>
             </thead>
-            <tbody role="rowgroup" className="max-lg:block divide-y divide-slate-200">
+            <tbody role="rowgroup" className="@max-[54rem]/task-list:block divide-y divide-slate-200">
               {filteredTasks.length === 0 && (
-                <tr role="row" className="max-lg:block">
-                  <td role="cell" colSpan={6} className="max-lg:block py-10 px-4 text-center text-slate-500">
+                <tr role="row" className="@max-[54rem]/task-list:block">
+                  <td role="cell" colSpan={6} className="@max-[54rem]/task-list:block py-10 px-4 text-center text-slate-500">
                     {period !== 'ALL' ? <>
                       <p>لا مهام تطابق الفترة والفلاتر الحالية.</p>
                       <button type="button" onClick={() => setPeriod('ALL')} className="min-h-11 px-3 text-xs font-bold text-blue-700 hover:underline">عرض كل المواعيد</button>
@@ -669,37 +681,37 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </tr>
               )}
               {taskListPage.visible.map((t) => (
-                <tr role="row" key={t.id} data-task-id={t.id} tabIndex={-1} className={`max-lg:grid max-lg:grid-cols-2 max-lg:gap-x-3 max-lg:gap-y-2.5 max-lg:p-3 hover:bg-slate-50/70 outline-hidden ${focusId === t.id ? 'bg-blue-50' : ''}`}>
-                  <td role="cell" className="min-w-0 max-lg:col-span-2 lg:py-3 lg:px-4 font-bold text-slate-800 [overflow-wrap:anywhere]">
+                <tr role="row" key={t.id} data-task-id={t.id} tabIndex={-1} className={`@max-[54rem]/task-list:grid @max-[54rem]/task-list:grid-cols-2 @max-[54rem]/task-list:gap-x-3 @max-[54rem]/task-list:gap-y-2.5 @max-[54rem]/task-list:p-3 hover:bg-slate-50/70 ${focusId === t.id ? 'bg-blue-50' : ''}`}>
+                  <td role="cell" className="min-w-0 @max-[54rem]/task-list:col-span-2 @min-[54rem]/task-list:px-4 @min-[54rem]/task-list:py-3 font-bold text-slate-800 wrap-anywhere">
                     <div className="space-y-1">
-                      <div className="max-lg:text-sm">{t.title}</div>
+                      <div className="@max-[54rem]/task-list:text-sm">{t.title}</div>
                       {relatedChip(t)}
                     </div>
                   </td>
-                  <td role="cell" className="lg:py-3 lg:px-3">
-                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">الأولوية</div>
+                  <td role="cell" className="@min-[54rem]/task-list:p-3">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 @min-[54rem]/task-list:hidden">الأولوية</div>
                     <Badge variant={priorityVariant(t.priority)} size="sm">
                       {priorityLabel(t.priority)}
                     </Badge>
                   </td>
-                  <td role="cell" className="min-w-0 lg:py-3 lg:px-3 text-slate-700 [overflow-wrap:anywhere]">
-                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">المسؤول المكلف</div>
+                  <td role="cell" className="min-w-0 @min-[54rem]/task-list:p-3 text-slate-700 wrap-anywhere">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 @min-[54rem]/task-list:hidden">المسؤول المكلف</div>
                     <span className="font-semibold">{assigneeOf(t)}</span>
                   </td>
-                  <td role="cell" className="lg:py-3 lg:px-3 max-lg:col-span-2 tabular-nums text-slate-600">
-                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">تاريخ الاستحقاق</div>
+                  <td role="cell" className="@max-[54rem]/task-list:col-span-2 @min-[54rem]/task-list:p-3 tabular-nums text-slate-600">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 @min-[54rem]/task-list:hidden">تاريخ الاستحقاق</div>
                     <div className="flex flex-wrap items-center gap-1">
                       <span className={overdueDays(t) ? 'text-amber-800 font-semibold' : ''}>{t.dueDate ? new Date(t.dueDate).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>
                       <OverdueBadge task={t} />
                     </div>
                     <TaskExecution task={t} now={now} />
                   </td>
-                  <td role="cell" className="min-w-0 lg:py-3 lg:px-3">
-                    <div aria-hidden="true" className="mb-1 text-slate-500 lg:hidden">الحالة</div>
+                  <td role="cell" className="min-w-0 @min-[54rem]/task-list:p-3">
+                    <div aria-hidden="true" className="mb-1 text-slate-500 @min-[54rem]/task-list:hidden">الحالة</div>
                     {movementControl(t)}
                   </td>
-                  <td role="cell" className="max-lg:self-end lg:py-3 lg:px-4 text-center">
-                    <div className="flex items-center justify-end lg:justify-center gap-1">
+                  <td role="cell" className="@max-[54rem]/task-list:self-end @min-[54rem]/task-list:px-4 @min-[54rem]/task-list:py-3 text-center">
+                    <div className="flex items-center justify-end @min-[54rem]/task-list:justify-center gap-1">
                       {canManage(t) && (
                       <button
                         type="button"
@@ -773,9 +785,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   key={tmpl}
                   type="button"
                   onClick={() => setTitle(tmpl)}
-                  className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-1.5 py-0.5 rounded transition-colors"
+                  className="min-h-11 text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 rounded-lg transition-colors"
                 >
-                  {tmpl.slice(0, 20)}...
+                  {tmpl}
                 </button>
               ))}
             </div>

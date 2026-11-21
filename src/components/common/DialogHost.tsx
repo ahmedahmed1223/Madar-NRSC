@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, HelpCircle, Info } from 'lucide-react';
 import { DialogRequest, onDialogs, settleDialog } from '../../services/dialogs';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 /**
  * Shows in-app confirm / alert / prompt dialogs one at a time. Focus moves into the dialog and
@@ -17,7 +18,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const opener = useRef<HTMLElement | null>(typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const prompt = req.kind === 'prompt' ? req.options : null;
   const [value, setValue] = useState(prompt?.defaultValue ?? '');
   const [copied, setCopied] = useState(false);
@@ -34,58 +35,17 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
     settleDialog(req.id, req.kind === 'confirm' ? true : req.kind === 'prompt' ? value : undefined);
   };
 
-  useEffect(() => {
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
-      event.preventDefault();
-      cancel();
-    };
-    window.addEventListener('keydown', onEscape);
-    const t = setTimeout(() => {
-      if (prompt) {
-        inputRef.current?.focus();
-        if (prompt.copyOnly) inputRef.current?.select();
-      } else confirmRef.current?.focus();
-    }, 20);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const back = opener.current;
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener('keydown', onEscape);
-      document.body.style.overflow = prev;
-      back?.focus?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      cancel();
-    } else if (e.key === 'Enter' && !(prompt?.multiline && e.target instanceof HTMLTextAreaElement)) {
-      e.preventDefault();
-      accept();
-    } else if (e.key === 'Tab') {
-      const items = boxRef.current?.querySelectorAll<HTMLElement>('button, input, textarea');
-      if (!items?.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-  };
+  useModalFocus(true, boxRef, {
+    close: cancel,
+    global: true,
+    initialFocus: () => prompt ? inputRef.current : danger ? cancelRef.current : confirmRef.current,
+  });
 
   const Icon = req.kind === 'alert' ? Info : danger ? AlertTriangle : HelpCircle;
   const title = opts.title || (req.kind === 'confirm' ? (danger ? 'تأكيد إجراء لا يمكن التراجع عنه' : 'تأكيد') : req.kind === 'alert' ? 'تنبيه' : 'إدخال');
   const titleId = `dlg-title-${req.id}`;
   const descId = `dlg-desc-${req.id}`;
+  const inputId = `dlg-input-${req.id}`;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" dir="rtl">
@@ -94,14 +54,19 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
         ref={boxRef}
         role={req.kind === 'prompt' ? 'dialog' : 'alertdialog'}
         aria-modal="true"
+        tabIndex={-1}
         aria-labelledby={titleId}
         aria-describedby={opts.message ? descId : undefined}
-        onKeyDown={onKeyDown}
-        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4 text-right"
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing || !(event.target instanceof HTMLInputElement)) return;
+          event.preventDefault();
+          accept();
+        }}
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 sm:p-5 space-y-4 text-start"
       >
         <div className="flex items-start gap-3">
           <span className={`p-2 rounded-xl shrink-0 ${danger ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-            <Icon className="w-5 h-5" />
+            <Icon className="w-5 h-5" aria-hidden="true" />
           </span>
           <div className="min-w-0 space-y-1">
             <h2 id={titleId} className="text-sm font-bold text-slate-900">
@@ -116,29 +81,34 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
         </div>
 
         {prompt && (
-          <label className="block text-xs font-bold text-slate-700">
-            {prompt.label}
+          <div>
+            <label htmlFor={inputId} className="block text-xs font-bold text-slate-700">{prompt.label || 'الإجابة'}</label>
             {prompt.multiline ? (
               <textarea
                 ref={inputRef}
+                id={inputId}
                 rows={3}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={prompt.placeholder}
                 aria-invalid={invalid || undefined}
+                aria-required={prompt.required || undefined}
                 className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"
               />
             ) : (
               <div className="mt-1 flex gap-2">
                 <input
                   ref={inputRef}
+                  id={inputId}
                   value={value}
                   readOnly={prompt.copyOnly}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder={prompt.placeholder}
                   aria-invalid={invalid || undefined}
+                  aria-required={prompt.required || undefined}
+                  onFocus={prompt.copyOnly ? (event) => event.currentTarget.select() : undefined}
                   dir={prompt.copyOnly ? 'ltr' : undefined}
-                  className={`flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm ${prompt.copyOnly ? 'font-mono' : ''}`}
+                  className={`min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm ${prompt.copyOnly ? 'font-mono' : ''}`}
                 />
                 {prompt.copyOnly && (
                   <button
@@ -146,7 +116,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
                     onClick={() => {
                       void navigator.clipboard?.writeText(value).then(() => setCopied(true)).catch(() => inputRef.current?.select());
                     }}
-                    className="inline-flex items-center gap-1 px-3 rounded-xl border border-slate-300 text-xs font-bold hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center gap-1 px-3 rounded-xl border border-slate-300 text-xs font-bold hover:bg-slate-50"
                   >
                     {copied ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />}
                     {copied ? 'نُسخت' : 'نسخ'}
@@ -154,12 +124,12 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
                 )}
               </div>
             )}
-          </label>
+          </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {(req.kind === 'confirm' || (req.kind === 'prompt' && !prompt?.copyOnly)) && (
-            <button type="button" onClick={cancel} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50">
+            <button type="button" ref={cancelRef} onClick={cancel} className="min-h-11 px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50">
               {opts.cancelLabel || 'إلغاء'}
             </button>
           )}
@@ -168,7 +138,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
             type="button"
             onClick={accept}
             disabled={invalid}
-            className={`px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+            className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
             {opts.confirmLabel || (req.kind === 'confirm' ? 'تأكيد' : req.kind === 'alert' || prompt?.copyOnly ? 'حسناً' : 'موافق')}
           </button>

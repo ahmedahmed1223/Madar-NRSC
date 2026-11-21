@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AutocompleteBar, ProofreadButton, useAutocomplete } from '../editor/WritingAids';
 import { AArrowDown, AArrowUp, Maximize2, Minimize2 } from 'lucide-react';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 /** Reading sizes for long text (scripts, story bodies), in pixels. */
 export const TEXT_SIZES = [13, 15, 17, 20, 24, 28] as const;
@@ -11,7 +12,8 @@ const key = (id: string) => `nrcs-text-size:${id}`;
 export function useTextSize(id: string) {
   const [index, setIndex] = useState<number>(() => {
     try {
-      const saved = Number(localStorage.getItem(key(id)));
+      const value = localStorage.getItem(key(id));
+      const saved = value === null ? DEFAULT_INDEX : Number(value);
       return Number.isInteger(saved) && saved >= 0 && saved < TEXT_SIZES.length ? saved : DEFAULT_INDEX;
     } catch {
       return DEFAULT_INDEX;
@@ -33,28 +35,19 @@ export function useTextSize(id: string) {
 /** Full-screen writing mode for one field; Escape leaves it. */
 export function useFullscreenField() {
   const [full, setFull] = useState(false);
-  useEffect(() => {
-    if (!full) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setFull(false);
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey, true);
-      document.body.style.overflow = prev;
-    };
-  }, [full]);
-  return { full, setFull, toggle: () => setFull((v) => !v) };
+  const ref = useRef<HTMLDivElement>(null);
+  useModalFocus(full, ref, {
+    close: () => setFull(false),
+    initialFocus: () => ref.current?.querySelector<HTMLElement>('[data-fullscreen-focus]'),
+  });
+  return { full, ref, toggle: () => setFull(value => !value) };
 }
 
 /** Classes for the field's container: normal, or covering the screen for focused writing. */
 export const fullscreenClass = (full: boolean) =>
   full ? 'fixed inset-0 z-[70] bg-white p-3 sm:p-6 flex flex-col gap-2' : '';
+
+const controlClass = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 sm:min-h-8 sm:min-w-8';
 
 /** A−  size  A+  and a full-screen toggle; small enough to sit beside a field's label. */
 export const TextSizeControls: React.FC<{
@@ -64,13 +57,13 @@ export const TextSizeControls: React.FC<{
   className?: string;
 }> = ({ label, text, fullscreen, className = '' }) => (
   <div role="group" aria-label={`عرض ${label}`} className={`inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5 ${className}`}>
-    <button type="button" onClick={text.smaller} disabled={!text.canSmaller} aria-label={`تصغير خط ${label}`} title="تصغير الخط" className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30">
+    <button type="button" onClick={text.smaller} disabled={!text.canSmaller} aria-label={`تصغير خط ${label}`} title="تصغير الخط" className={controlClass}>
       <AArrowDown className="w-4 h-4" />
     </button>
     <span className="min-w-[2.25rem] text-center text-2xs font-mono text-slate-500" aria-live="polite">
       {text.size}px
     </span>
-    <button type="button" onClick={text.larger} disabled={!text.canLarger} aria-label={`تكبير خط ${label}`} title="تكبير الخط" className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30">
+    <button type="button" onClick={text.larger} disabled={!text.canLarger} aria-label={`تكبير خط ${label}`} title="تكبير الخط" className={controlClass}>
       <AArrowUp className="w-4 h-4" />
     </button>
     {fullscreen && (
@@ -80,7 +73,7 @@ export const TextSizeControls: React.FC<{
         aria-pressed={fullscreen.full}
         aria-label={fullscreen.full ? `إنهاء ملء الشاشة (${label})` : `ملء الشاشة للكتابة (${label})`}
         title={fullscreen.full ? 'إنهاء ملء الشاشة (Esc)' : 'ملء الشاشة للكتابة'}
-        className="p-1 rounded-md text-slate-600 hover:bg-slate-100 border-s border-slate-200 ms-0.5"
+        className={`${controlClass} border-s border-slate-200 ms-0.5`}
       >
         {fullscreen.full ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
       </button>
@@ -114,7 +107,7 @@ export const LongTextField: React.FC<
   const auto = useAutocomplete(ref, value, setValue);
   const editable = !rest.readOnly && !rest.disabled;
   return (
-    <div className={fullscreenClass(fs.full)} role={fs.full ? 'dialog' : undefined} aria-modal={fs.full || undefined} aria-label={fs.full ? name : undefined}>
+    <div ref={fs.ref} tabIndex={fs.full ? -1 : undefined} className={fullscreenClass(fs.full)} role={fs.full ? 'dialog' : undefined} aria-modal={fs.full || undefined} aria-label={fs.full ? name : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
         <label htmlFor={id} className="text-xs font-bold text-slate-700">
           {label}
@@ -133,6 +126,7 @@ export const LongTextField: React.FC<
         dir="rtl"
         spellCheck
         {...rest}
+        data-fullscreen-focus
         onKeyDown={(e) => {
           auto.bind.onKeyDown(e);
           rest.onKeyDown?.(e);

@@ -1,4 +1,5 @@
 {
+  "exclude": ["node_modules", "dist", "test-results", "playwright-report", "coverage"],
   "compilerOptions": {
     "target": "ES2022",
     "strict": false,

@@ -193,6 +193,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   return (
     <div
+      ref={fs.ref}
+      tabIndex={fs.full ? -1 : undefined}
       role={fs.full ? 'dialog' : undefined}
       aria-modal={fs.full || undefined}
       aria-label={fs.full ? 'نص الخبر' : undefined}
@@ -202,7 +204,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     >
       {/* Editor Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-slate-50 border-b border-slate-200 text-slate-700">
-        <div role="toolbar" aria-label="تنسيق النص" className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40 pointer-events-none' : ''}`} aria-disabled={readOnly}>
+        <div role="toolbar" aria-label="تنسيق النص" className={`flex flex-wrap items-center gap-1 ${readOnly ? 'opacity-40' : ''}`} inert={readOnly || undefined}>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
@@ -330,7 +332,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             className={`shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
               isSource ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
             }`}
-            title={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'} aria-label={isSource ? 'العودة إلى المحرر المرئي' : 'عرض وتحرير شيفرة HTML'}
+            title={isSource ? 'العودة إلى المحرر المرئي' : !readOnly ? 'عرض وتحرير شيفرة HTML' : 'عرض شيفرة HTML'} aria-label={isSource ? 'العودة إلى المحرر المرئي' : !readOnly ? 'عرض وتحرير شيفرة HTML' : 'عرض شيفرة HTML'}
           >
             {isSource ? <Edit3 className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
             {isSource ? 'المحرر المرئي' : 'HTML'}
@@ -339,10 +341,11 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </div>
 
       {/* Editor Body: scrolls inside itself so long stories keep the toolbar in view */}
-      <div className={`p-4 overflow-y-auto ${fs.full ? 'flex-1' : 'max-h-[75vh] resize-y'}`} {...(readOnly ? { tabIndex: 0, role: 'region', 'aria-label': 'نص الخبر' } : {})}>
+      <div className={`p-4 overflow-y-auto ${fs.full ? 'flex-1' : 'max-h-[75vh] resize-y'}`} {...(readOnly && !isSource ? { tabIndex: 0, role: 'region', 'aria-label': 'نص الخبر', 'data-fullscreen-focus': true } : {})}>
         {isSource ? (
           <textarea
             value={value}
+            data-fullscreen-focus
             readOnly={readOnly}
             onChange={(e) => onChange(e.target.value)}
             style={{ minHeight }}
@@ -353,6 +356,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         ) : (
           <div
             ref={editorRef}
+            data-fullscreen-focus={readOnly ? undefined : true}
             role="textbox"
             aria-multiline="true"
             aria-label="محتوى الخبر"
@@ -363,6 +367,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             data-placeholder={placeholder}
             onInput={emit}
             onFocus={() => {
+              if (readOnly) return;
               document.execCommand('defaultParagraphSeparator', false, 'p');
               const el = editorRef.current;
               // Start the body inside a paragraph so every line is stored as <p>.
@@ -377,6 +382,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
               }
             }}
             onBlur={() => {
+              if (readOnly) return;
               const el = editorRef.current;
               if (el && el.innerHTML === '<p><br></p>') el.innerHTML = '';
               saveSelection();
@@ -384,7 +390,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             }}
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
-            onPaste={handlePaste}
+            onPaste={readOnly ? undefined : handlePaste}
             style={{ minHeight, fontSize: text.size }}
             lang="ar"
             spellCheck

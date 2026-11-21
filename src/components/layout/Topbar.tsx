@@ -1,7 +1,5 @@
-import { longToday } from '../common/StationClock';
 import { canRequestBreaking } from '../../shared/newsWorkflow';
-import { appLocale, basisZone, getDateSettings, onDateFormat } from '../../shared/dateFormat';
-import { deviceDiffersFromStation, stationTimeZone } from '../../shared/dates';
+import { TopbarClock } from './TopbarClock';
 import { Avatar } from '../common/Avatar';
 import { ThemeToggle } from '../common/ThemeToggle';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -11,8 +9,6 @@ import {
   Search,
   Bell,
   Plus,
-  Radio,
-  Clock,
   ChevronDown,
   FileText,
   Tv,
@@ -55,9 +51,11 @@ interface TopbarProps {
   onCreateProgram?: () => void;
   onCreateEpisode?: () => void;
   onCreateTask?: () => void;
+  onCreateCard?: () => void;
   onNavigate?: (view: string) => void;
   unreadNotificationsCount?: number;
   onToggleMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
   isLiveLockActive?: boolean;
   onToggleLiveLock?: () => void;
 }
@@ -69,17 +67,18 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenSearch,
   onOpenCommandPalette,
   onOpenShortcuts,
-  onCreateNews = () => {},
-  onCreateProgram = () => {},
-  onCreateEpisode = () => {},
-  onCreateTask = () => {},
+  onCreateNews,
+  onCreateProgram,
+  onCreateEpisode,
+  onCreateTask,
+  onCreateCard,
   onNavigate,
   unreadNotificationsCount,
   onToggleMobileMenu,
+  isMobileMenuOpen = false,
   isLiveLockActive = false,
   onToggleLiveLock = () => {},
 }) => {
-  const [timeStr, setTimeStr] = useState('');
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -93,36 +92,14 @@ export const Topbar: React.FC<TopbarProps> = ({
   snoozesRef.current = entries;
   const inbox = useMemo(() => groupNotifications(notifications, userId, entries, now), [notifications, userId, entries, now]);
   const bellButton = useRef<HTMLButtonElement>(null);
+  const createButton = useRef<HTMLButtonElement>(null);
+  const accountButton = useRef<HTMLButtonElement>(null);
   const navigateRef = useRef(onNavigate);
   navigateRef.current = onNavigate;
   const currentUserRef = useRef(currentUser);
   currentUserRef.current = currentUser;
   const pathFor = (notice: AppNotification) => notificationInboxPath(notice.linkUrl, (screen) => RbacService.canOpenScreen(currentUserRef.current, screen));
   const handleSearchClick = onOpenCommandPalette || onOpenSearch || (() => {});
-
-  const stationTz = stationTimeZone(ApiService.getSettings()?.defaultTimezone);
-  const [stationTime, setStationTime] = useState('');
-  const [zoneMismatch, setZoneMismatch] = useState(false);
-  const [dateSettings, setDateSettings] = useState(getDateSettings);
-  useEffect(() => onDateFormat(() => setDateSettings(getDateSettings())), []);
-  const [clockLabel, setClockLabel] = useState('');
-  useEffect(() => {
-    // Unified station time: the clock shows the station's time on every device. Otherwise it
-    // shows this device's time (the clock every date/time field uses), flagging a different zone.
-    const unified = basisZone(dateSettings);
-    const fmt = (timeZone: string | undefined, seconds: boolean) =>
-      new Date().toLocaleTimeString(appLocale(dateSettings), { timeZone, hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}) });
-    const updateTime = () => {
-      setTimeStr(fmt(unified, dateSettings.clockSeconds));
-      setClockLabel(unified ? 'بتوقيت المحطة' : '');
-      const differs = !unified && deviceDiffersFromStation(stationTz);
-      setZoneMismatch(differs);
-      setStationTime(differs && stationTz ? fmt(stationTz, false) : '');
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, [stationTz, dateSettings]);
 
   useEffect(() => {
     const mine = ApiService.getMyNotifications();
@@ -166,22 +143,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
   const canToggleLock = RbacService.hasPermission(currentUser, 'rundown.lock_override');
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
-  // «إنشاء جديد» lists only what this colleague may create; with nothing to create it is not shown.
-  const canCreateAnything = ['news.create', 'programs.manage', 'episodes.create', 'tasks.create_assign', 'cards.manage'].some(can);
   const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
-
-  /** Opens the production cards screen with its «تكليف من قالب» أو «تكليف حر» form. */
-  const createCard = () => {
-    onNavigate?.('/cards');
-    // The cards screen loads on demand; press its own «تكليف من قالب» أو «تكليف حر» once it is on screen.
-    let tries = 0;
-    const press = () => {
-      const button = document.querySelector<HTMLButtonElement>('[data-tour="card-create"]');
-      if (button) button.click();
-      else if (++tries < 60) window.setTimeout(press, 50);
-    };
-    window.setTimeout(press, 0);
-  };
 
   /** A breaking-news alert: the new-story form, flagged so the editor opens in breaking mode. */
   const createBreaking = () => {
@@ -192,6 +154,15 @@ export const Topbar: React.FC<TopbarProps> = ({
     }
     onNavigate?.('/news/new?breaking=1');
   };
+
+  const createActions = [
+    { label: 'خبر صحفي جديد', icon: FileText, run: canOpen('news-editor') && can('news.create') ? onCreateNews : undefined },
+    { label: 'خبر عاجل', icon: Flame, run: onNavigate && canOpen('news-editor') && canRequestBreaking(can) ? createBreaking : undefined },
+    { label: 'تكليف', icon: ClipboardList, run: canOpen('cards') && can('cards.manage') ? onCreateCard : undefined },
+    { label: 'برنامج تلفزيوني جديد', icon: Tv, run: canOpen('programs') && can('programs.manage') ? onCreateProgram : undefined },
+    { label: 'حلقة برنامج جديدة', icon: Video, run: canOpen('episodes') && can('episodes.create') ? onCreateEpisode : undefined },
+    { label: 'مهمة تحريرية جديدة', icon: CheckSquare, run: canOpen('tasks') && can('tasks.create_assign') ? onCreateTask : undefined },
+  ].filter(action => action.run);
 
   // Floating menus close on Esc and whenever the screen changes.
   const [chat, setChat] = useState(intercomState.last || { open: false, unread: 0 });
@@ -205,7 +176,8 @@ export const Topbar: React.FC<TopbarProps> = ({
     const offRoute = routeChanged.on(closeAll);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !document.querySelector('[role=alertdialog]')) {
-        if (bellButton.current?.getAttribute('aria-expanded') === 'true') bellButton.current.focus();
+        const expandedButton = [bellButton, createButton, accountButton].find(ref => ref.current?.getAttribute('aria-expanded') === 'true');
+        expandedButton?.current?.focus();
         closeAll();
       }
     };
@@ -231,17 +203,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   const roleName = findUserRole(currentUser, RbacService.getRoleDefinitions())?.nameAr?.split(' (')[0] || currentUser.jobTitle;
 
   return (
-    <header className="app-topbar no-print h-16 bg-white border-b border-slate-200 px-1.5 min-[360px]:px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+    <header className="app-topbar workspace-topbar no-print bg-white border-b border-slate-200 sticky top-0 z-30">
       {/* Right side (RTL Start): Station Live Clock & Search */}
-      <div className="flex items-center gap-1 min-[360px]:gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
+      <div className="workspace-toolbar-group">
         {/* Mobile menu trigger */}
         {onToggleMobileMenu && (
           <button
             type="button"
             onClick={onToggleMobileMenu}
-            className="min-h-11 min-w-11 shrink-0 inline-grid place-items-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl lg:hidden transition-colors"
+            className="workspace-icon-button lg:hidden"
             title="فتح القائمة الرئيسية"
             aria-label="فتح القائمة الرئيسية"
+            aria-controls="workspace-navigation"
+            aria-expanded={isMobileMenuOpen}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -253,40 +227,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <Lock className="w-4 h-4" />
           </span>
         )}
-        <div className="hidden sm:flex items-center gap-1.5 sm:gap-2.5 bg-slate-100 border border-slate-200 text-slate-800 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-mono shrink-0">
-          <button
-            type="button"
-            onClick={onToggleLiveLock}
-            disabled={!canToggleLock}
-            title={
-              isLiveLockActive
-                ? 'قفل البث المباشر مفعّل لكل المستخدمين (Ctrl+Alt+L لرفعه)'
-                : 'تفعيل قفل البث المباشر: يمنع حذف البرامج والحلقات أثناء الهواء (Ctrl+Alt+L)'
-            }
-            aria-label={isLiveLockActive ? 'قفل البث المباشر مفعّل' : 'قفل البث المباشر غير مفعّل'}
-            aria-pressed={isLiveLockActive}
-            className={`flex items-center gap-1.5 min-h-6 px-1 rounded-md disabled:cursor-default ${isLiveLockActive ? 'text-red-600' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            {isLiveLockActive ? <Lock className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
-            <span className={`font-bold text-2xs tracking-wider hidden ${isLiveLockActive ? 'lg:inline' : '2xl:inline'}`}>{isLiveLockActive ? 'قفل البث مفعّل' : 'غير مقفل'}</span>
-          </button>
-          <span className="text-slate-300 hidden 2xl:inline">|</span>
-          <div className="hidden sm:flex items-center gap-1 font-bold text-slate-800" title={clockLabel ? `الساعة ${clockLabel}` : 'الساعة بتوقيت جهازك'}>
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span className="tabular-nums">{timeStr || '00:00'}</span>
-            <span className="hidden 2xl:inline font-sans text-2xs font-semibold text-slate-600 border-s border-slate-300 ps-2 ms-1">{longToday(new Date(), dateSettings)}</span>
-            {clockLabel && <span className="font-sans text-2xs text-slate-500">{clockLabel}</span>}
-          </div>
-          {zoneMismatch && (
-            <span
-              role="status"
-              className="hidden xl:inline font-sans text-2xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-1.5 py-0.5"
-              title={`توقيت جهازك يختلف عن توقيت المحطة (${stationTz}). الأوقات التي تدخلها تُفهم بتوقيت جهازك؛ اضبط المنطقة الزمنية لجهازك لتطابق المحطة.`}
-            >
-              المحطة {stationTime}
-            </span>
-          )}
-        </div>
+        <TopbarClock timezone={ApiService.getSettings()?.defaultTimezone} locked={isLiveLockActive} canToggle={canToggleLock} onToggle={onToggleLiveLock} />
 
         {/* Real synchronisation status with the server */}
         <div
@@ -309,7 +250,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           role="status"
           title={connectionFeedback(typeof navigator === 'undefined' || navigator.onLine, syncStatus.online, syncStatus.pending)}
           aria-label={!syncStatus.online ? 'غير متصل بالخادم' : syncStatus.pending > 0 ? 'جارٍ المزامنة' : 'متصل بالخادم'}
-          className={`2xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          className={`max-[390px]:sr-only 2xl:hidden w-2.5 h-2.5 rounded-full shrink-0 ${!syncStatus.online ? 'bg-red-500 animate-pulse' : syncStatus.pending > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
         />
 
         {/* Mobile Search Button */}
@@ -317,7 +258,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           onClick={handleSearchClick}
           aria-label="البحث السريع (Ctrl + K)"
-          className="p-2 shrink-0 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl xl:hidden transition-colors"
+          className="workspace-icon-button xl:hidden"
           title="البحث السريع"
         >
           <Search className="w-4 h-4" />
@@ -329,11 +270,11 @@ export const Topbar: React.FC<TopbarProps> = ({
           onClick={handleSearchClick}
           aria-label="البحث السريع (Ctrl + K)"
           title="البحث السريع (Ctrl + K)"
-          className="hidden xl:flex shrink-0 items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition-colors border border-slate-200/60"
+          className="hidden xl:flex min-h-10 shrink-0 items-center gap-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs transition-colors border border-slate-200"
         >
           <Search className="w-3.5 h-3.5 text-slate-500" />
           <span className="2xl:hidden">بحث…</span>
-          <span className="hidden 2xl:inline">بحث فوري في الأخبار والبرامج...</span>
+          <span className="hidden 2xl:inline">بحث في غرفة الأخبار</span>
           <kbd className="hidden 2xl:inline whitespace-nowrap bg-white px-1.5 py-0.5 rounded-md border border-slate-300 text-2xs font-mono text-slate-500" dir="ltr">
             Ctrl + K
           </kbd>
@@ -341,96 +282,47 @@ export const Topbar: React.FC<TopbarProps> = ({
       </div>
 
       {/* Left side (RTL End): Quick Actions, Notifications, Role Switcher */}
-      <div className="flex items-center min-[360px]:gap-1 sm:gap-3 shrink-0">
+      <div className="workspace-toolbar-group">
         {/* PWA Workstation Install Prompt */}
         <PWAInstallButton />
 
         {/* Quick Create Dropdown */}
-        {canCreateAnything && <div className="relative">
+        {createActions.length > 0 && <div className="sm:relative" onBlur={event => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setIsCreateMenuOpen(false);
+        }}>
           <button
+            ref={createButton}
             type="button"
-            onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
+            onClick={() => {
+              setIsUserMenuOpen(false);
+              setIsNotifOpen(false);
+              setIsCreateMenuOpen(open => !open);
+            }}
             aria-label="إنشاء جديد"
-            aria-haspopup="menu"
             aria-expanded={isCreateMenuOpen}
-            className="flex items-center gap-1.5 px-3.5 min-h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0"
+            aria-controls={isCreateMenuOpen ? 'workspace-create-actions' : undefined}
+            className="flex items-center justify-center gap-1.5 min-w-[44px] min-h-[44px] sm:px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden 2xl:inline">إنشاء جديد</span>
             <span className="hidden xl:inline 2xl:hidden">جديد</span>
-            <ChevronDown className="w-3 h-3 opacity-80 hidden sm:block" />
+            <ChevronDown className="w-3 h-3 opacity-80 hidden xl:block" />
           </button>
 
           {isCreateMenuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsCreateMenuOpen(false)} />
-              <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-right">
-                {can('news.create') && <button
-                  type="button"
-                  onClick={() => {
+              <div id="workspace-create-actions" className="workspace-popover sm:w-60" role="group" aria-label="خيارات الإنشاء">
+                {createActions.map(({ label, icon: Icon, run }) => (
+                  <button key={label} type="button" className="workspace-popover-item" onClick={() => {
                     setIsCreateMenuOpen(false);
-                    onCreateNews();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  خبر صحفي جديد
-                </button>}
-                {canRequestBreaking(can) && <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateMenuOpen(false);
-                    createBreaking();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <Flame className="w-4 h-4 text-red-600" />
-                  خبر عاجل
-                </button>}
-                {can('cards.manage') && canOpen('cards') && <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateMenuOpen(false);
-                    createCard();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <ClipboardList className="w-4 h-4 text-blue-600" />
-                  تكليف
-                </button>}
-                {can('programs.manage') && <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateMenuOpen(false);
-                    onCreateProgram();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <Tv className="w-4 h-4 text-emerald-700" />
-                  برنامج تلفزيوني جديد
-                </button>}
-                {can('episodes.create') && <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateMenuOpen(false);
-                    onCreateEpisode();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <Video className="w-4 h-4 text-purple-600" />
-                  حلقة برنامج جديدة
-                </button>}
-                {can('tasks.create_assign') && <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateMenuOpen(false);
-                    onCreateTask();
-                  }}
-                  className="w-full px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium"
-                >
-                  <CheckSquare className="w-4 h-4 text-amber-700" />
-                  مهمة تحريرية جديدة
-                </button>}
+                    createButton.current?.focus();
+                    run?.();
+                  }}>
+                    <Icon className="size-4 shrink-0 text-blue-700" aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
               </div>
             </>
           )}
@@ -445,7 +337,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           aria-label={chat.unread > 0 ? `المحادثة الداخلية (${chat.unread} رسالة جديدة)` : 'المحادثة الداخلية'}
           aria-expanded={chat.open}
           title="المحادثة الداخلية بين الأقسام"
-          className={`min-h-11 min-w-11 inline-flex items-center justify-center gap-1.5 p-2 rounded-xl transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
+          className={`min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 sm:px-2 rounded-lg transition-colors relative ${chat.open ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'}`}
         >
           <MessageSquare className="w-5 h-5" />
           <span className="hidden lg:inline text-xs font-semibold whitespace-nowrap">محادثة الأقسام</span>
@@ -463,12 +355,14 @@ export const Topbar: React.FC<TopbarProps> = ({
             type="button"
             onClick={() => {
               if (!isNotifOpen) intercomCommand.emit('close');
-              setIsNotifOpen(!isNotifOpen);
+              setIsCreateMenuOpen(false);
+              setIsUserMenuOpen(false);
+              setIsNotifOpen(open => !open);
             }}
             aria-label={unreadCount > 0 ? `الإشعارات (${unreadCount} غير مقروء)` : 'الإشعارات'}
             aria-expanded={isNotifOpen}
             aria-controls={isNotifOpen ? 'notification-inbox' : undefined}
-            className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors relative"
+            className="workspace-icon-button relative"
             title="الإشعارات التحريرية"
           >
             <Bell className="w-5 h-5" />
@@ -498,7 +392,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           />}
         </div>
 
-        <ThemeToggle />
+        <ThemeToggle className="workspace-theme max-sm:static" />
 
         {/* Keyboard Shortcuts Trigger Button */}
         {onOpenShortcuts && (
@@ -514,18 +408,25 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Signed-in user menu */}
-        <div className="relative">
+        <div className="sm:relative" onBlur={event => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setIsUserMenuOpen(false);
+        }}>
           <button
             type="button"
-            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-1.5 sm:px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-colors"
+            ref={accountButton}
+            onClick={() => {
+              setIsNotifOpen(false);
+              setIsCreateMenuOpen(false);
+              setIsUserMenuOpen(open => !open);
+            }}
+            className="min-h-[44px] min-w-[44px] max-sm:w-[44px] flex items-center justify-center gap-1.5 sm:px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-colors"
             title="حسابي: كلمة المرور والتحقق بخطوتين وتسجيل الخروج"
             aria-label={`الحساب ${currentUser.fullName}`}
-            aria-haspopup="menu"
             aria-expanded={isUserMenuOpen}
+            aria-controls={isUserMenuOpen ? 'workspace-account-actions' : undefined}
           >
-            <span aria-hidden="true" className="hidden sm:inline-flex"><Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="w-7 h-7 rounded-full ring-1 ring-slate-200" /></span>
-            <div className="text-right max-w-[9rem] min-w-0">
+            <span aria-hidden="true" className="inline-flex"><Avatar src={currentUser.avatarUrl} name={currentUser.fullName} className="size-7 rounded-full ring-1 ring-slate-200" /></span>
+            <div className="hidden sm:block text-right max-w-[9rem] min-w-0">
               <span className="text-2xs font-bold text-slate-800 2xl:hidden">الحساب</span>
               <span className="hidden 2xl:block text-xs font-bold text-slate-800 leading-tight truncate">
                 {currentUser.fullName}
@@ -540,10 +441,10 @@ export const Topbar: React.FC<TopbarProps> = ({
           {isUserMenuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-              <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-right">
+              <div id="workspace-account-actions" className="workspace-popover sm:w-72" role="group" aria-label="خيارات الحساب">
                 <div className="px-3 py-2 border-b border-slate-100">
                   <span className="text-xs font-bold text-slate-800 block">{currentUser.fullName}</span>
-                  <span className="text-2xs text-slate-500 block" dir="ltr">
+                  <span className="text-2xs text-slate-600 block wrap-anywhere" dir="ltr">
                     {currentUser.email}
                   </span>
                   <span className="text-2xs text-blue-600 font-semibold block mt-0.5">
@@ -557,7 +458,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       setIsUserMenuOpen(false);
                       onNavigate?.('/alerts');
                     }}
-                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    className="workspace-popover-item"
                   >
                     <BellRing className="w-4 h-4 text-slate-500" />
                     <span>تنبيهاتي (البريد والجوال)</span>
@@ -566,9 +467,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                     type="button"
                     onClick={() => {
                       setIsUserMenuOpen(false);
+                      accountButton.current?.focus();
                       onChangePassword();
                     }}
-                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    className="workspace-popover-item"
                   >
                     <KeyRound className="w-4 h-4 text-slate-500" />
                     <span>تغيير كلمة المرور</span>
@@ -577,9 +479,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                     type="button"
                     onClick={() => {
                       setIsUserMenuOpen(false);
+                      accountButton.current?.focus();
                       setIsTwoFactorOpen(true);
                     }}
-                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    className="workspace-popover-item"
                   >
                     <ShieldCheck className="w-4 h-4 text-slate-500" />
                     <span>التحقق بخطوتين {currentUser.twoFactorEnabled ? '(مفعّل)' : ''}</span>
@@ -590,7 +493,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       setIsUserMenuOpen(false);
                       onLogout();
                     }}
-                    className="w-full p-2 rounded-xl flex items-center gap-2 text-right text-xs font-bold text-red-600 hover:bg-red-50"
+                    className="workspace-popover-item text-red-700 hover:bg-red-50"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>تسجيل الخروج</span>

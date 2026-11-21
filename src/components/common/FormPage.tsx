@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { DraftStatus } from './DraftStatus';
 import type { FormDraftStatus } from '../../hooks/useFormDraft';
 import { confirmDialog } from '../../services/dialogs';
+import { canFocus, tabStops } from '../../shared/focus';
 
 interface FormPageProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ interface FormPageProps {
 
 export const FORM_PAGE_ROOT_ID = 'form-page-root';
 const OPEN_CLASS = 'form-page-open';
-let openCount = 0;
+const openForms: string[] = [];
 // The app restores scroll itself when a page closes; the browser's restoration would fight it.
 if (typeof history !== 'undefined' && 'scrollRestoration' in history) history.scrollRestoration = 'manual';
 let seq = 0;
@@ -49,6 +50,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     return (await onClose()) !== false;
   };
   onCloseRef.current = requestClose;
+  const pageRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -65,7 +67,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     let closedByHistory = false;
 
-    openCount++;
+    openForms.push(id);
     document.body.classList.add(OPEN_CLASS);
     if (scroller) scroller.scrollTop = 0;
     else window.scrollTo(0, 0);
@@ -76,6 +78,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       // history unavailable (sandboxed frame): the back button still works
     }
     const onPop = async () => {
+      if (openForms.at(-1) !== id || history.state?.nrcsFormPage === id) return;
       closedByHistory = true;
       const closed = await onCloseRef.current();
       if (closed === false) {
@@ -86,8 +89,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     window.addEventListener('popstate', onPop);
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || document.querySelector('[role=dialog], [role=alertdialog]')) return;
-      const pages = document.querySelectorAll('.form-page');
-      if (!pages[pages.length - 1]?.contains(bodyRef.current)) return;
+      if (openForms.at(-1) !== id) return;
       event.preventDefault();
       void onCloseRef.current();
     };
@@ -98,19 +100,21 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       const body = bodyRef.current;
       const active = document.activeElement;
       if (active && active !== trigger && active !== document.body) return;
+      const controls = body ? tabStops(body) : [];
       const first =
-        body?.querySelector<HTMLElement>('[data-autofocus]') ||
-        body?.querySelector<HTMLElement>('input[required]:not([disabled]), select[required], textarea[required]') ||
-        body?.querySelector<HTMLElement>('input:not([type=hidden]):not([type=url]):not([type=file]):not([disabled]), select, textarea');
-      first?.focus({ preventScroll: true });
+        controls.find(control => control.matches('[data-autofocus]')) ||
+        controls.find(control => control.matches('input[required], select[required], textarea[required]')) ||
+        controls.find(control => control.matches('input:not([type=url]):not([type=file]), select, textarea'));
+      (first || pageRef.current)?.focus({ preventScroll: true });
     }, 50);
 
     return () => {
       window.clearTimeout(t);
       window.removeEventListener('popstate', onPop);
       window.removeEventListener('keydown', onKey);
-      openCount = Math.max(0, openCount - 1);
-      if (!openCount) document.body.classList.remove(OPEN_CLASS);
+      const wasTop = openForms.at(-1) === id;
+      openForms.splice(openForms.indexOf(id), 1);
+      if (!openForms.length) document.body.classList.remove(OPEN_CLASS);
       if (!closedByHistory && history.state?.nrcsFormPage === id) {
         try {
           history.back();
@@ -121,10 +125,14 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
       const restore = () => {
         if (scroller) scroller.scrollTop = savedScroll;
         else window.scrollTo(0, savedScroll);
-        if (!openCount && trigger?.isConnected) trigger.focus({ preventScroll: true });
       };
-      window.requestAnimationFrame(restore);
-      window.setTimeout(restore, 60); // after the history navigation settles
+      if (wasTop) {
+        window.requestAnimationFrame(() => {
+          restore();
+          if (canFocus(trigger) && document.activeElement === document.body) trigger.focus({ preventScroll: true });
+        });
+        window.setTimeout(restore, 60); // after the history navigation settles
+      }
     };
   }, [isOpen]);
 
@@ -132,15 +140,15 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
 
   const width = WIDTHS[(size || maxWidth || '2xl') as string] || 'max-w-4xl';
   const page = (
-    <section className={`form-page w-full ${width} mx-auto space-y-4`} aria-label={title}>
+    <section ref={pageRef} tabIndex={-1} className={`form-page w-full ${width} mx-auto space-y-4`} aria-label={title}>
       {/* A form page is a screen: its title is the strap, like every screen title (DESIGN.md). */}
       <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={requestClose}
-          className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-colors shrink-0"
+          className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-colors shrink-0"
         >
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-4 h-4" aria-hidden="true" />
           رجوع
         </button>
         <div className="min-w-0 pt-0.5">

@@ -113,8 +113,8 @@ export default function AppShell() {
   if (phase === 'checking' || phase === 'loading-data') {
     return (
       <FullScreenMessage>
-        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
-        <span>{phase === 'checking' ? 'جارٍ التحقق من الجلسة...' : 'جارٍ تحميل بيانات غرفة الأخبار...'}</span>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-400" aria-hidden="true" />
+        <span role="status">{phase === 'checking' ? 'جارٍ التحقق من الجلسة...' : 'جارٍ تحميل بيانات غرفة الأخبار...'}</span>
       </FullScreenMessage>
     );
   }
@@ -122,8 +122,8 @@ export default function AppShell() {
   if (phase === 'offline') {
     return (
       <FullScreenMessage>
-        <AlertTriangle className="w-8 h-8 text-amber-400" />
-        <span>غير متصل — سيفتح «مدار» تلقائياً عند عودة الاتصال. ما حفظته على هذا الجهاز باقٍ.</span>
+        <AlertTriangle className="w-8 h-8 text-amber-400" aria-hidden="true" />
+        <span role="status">غير متصل — سيفتح «مدار» تلقائياً عند عودة الاتصال. ما حفظته على هذا الجهاز باقٍ.</span>
       </FullScreenMessage>
     );
   }
@@ -137,8 +137,8 @@ export default function AppShell() {
   if (phase === 'error') {
     return (
       <FullScreenMessage>
-        <AlertTriangle className="w-8 h-8 text-amber-400" />
-        <span>{errorMessage}</span>
+        <AlertTriangle className="w-8 h-8 text-amber-400" aria-hidden="true" />
+        <span role="alert">{errorMessage}</span>
         <button
           type="button"
           onClick={() => window.location.reload()}
@@ -155,7 +155,8 @@ export default function AppShell() {
       <Suspense
         fallback={
           <FullScreenMessage>
-            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-400" aria-hidden="true" />
+            <span role="status">جارٍ فتح مساحة العمل...</span>
           </FullScreenMessage>
         }
       >

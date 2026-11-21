@@ -178,10 +178,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
       </div>
 
       {/* Tabs & Search Filter */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
         <FilterTabs<"ARCHIVED" | "ACTIVE" | "RESOLVED">
           label="تصفية التغطيات"
-          className="shrink-0"
+          className="w-full sm:w-auto"
           active={activeTab}
           onChange={setActiveTab}
           tabs={[
@@ -191,13 +191,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           ]}
         />
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-[1_1_24rem] flex-wrap items-center gap-2">
           {categories.length > 0 && (
             <select
               aria-label="تصنيف التغطية"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="min-h-11 sm:min-h-0 px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500"
+              className="min-h-11 min-w-0 flex-[1_1_9rem] px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white font-semibold focus:ring-2 focus:ring-blue-500 sm:grow-0"
             >
               <option value="ALL">جميع التصنيفات</option>
               {categories.map((c) => (
@@ -208,22 +208,22 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
             </select>
           )}
 
-          <div className="relative flex-1 sm:w-80">
-            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
+          <div className="relative min-w-0 flex-[1_1_12rem]">
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="بحث في عنوان التغطية، الوصف، أو المدينة..."
               aria-label="بحث في التغطيات"
-              className="w-full min-h-11 sm:min-h-0 pr-9 pl-8 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+              className="min-h-11 w-full rounded-lg border border-slate-300 py-2 ps-9 pe-11 text-xs focus:ring-2 focus:ring-blue-500"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
                 aria-label="مسح البحث"
-                className="absolute left-0 top-1/2 -translate-y-1/2 min-h-9 min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-slate-700"
+                className="absolute end-0 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-slate-500 hover:text-slate-700"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -467,7 +467,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
                     key={loc}
                     type="button"
                     onClick={() => setLocationName(loc)}
-                    className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 px-1.5 py-0.5 rounded"
+                    className="min-h-11 text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 rounded-lg"
                   >
                     {loc}
                   </button>

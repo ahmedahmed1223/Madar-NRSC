@@ -367,7 +367,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
             </section>
 
             {/* Alerts to departments */}
-            <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات الهواء">
+            <section className="min-w-0 bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="تنبيهات الهواء">
               <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Megaphone className="w-4 h-4 text-amber-700" />
                 تنبيهات الهواء
@@ -375,7 +375,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               {canControl || RbacService.hasPermission(currentUser, 'tasks.intercom_broadcast') ? (
                 <>
                   <div className="flex flex-wrap gap-1" role="group" aria-label="الأقسام المستهدفة">
-                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'}`}>
+                    <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`min-h-11 px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.length === 0 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}>
                       الجميع
                     </button>
                     {DEPARTMENTS.map((d) => (
@@ -384,7 +384,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         type="button"
                         aria-pressed={cueTargets.includes(d.id)}
                         onClick={() => setCueTargets((t) => (t.includes(d.id) ? t.filter((x) => x !== d.id) : [...t, d.id]))}
-                        className={`px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`min-h-11 px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {d.name}
                       </button>
@@ -392,7 +392,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {CUE_PRESETS.map((p) => (
-                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`px-2 py-2 rounded-lg text-2xs font-bold border text-right ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`min-h-11 px-2 py-2 rounded-lg text-2xs font-bold border text-start ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                         {p.message}
                       </button>
                     ))}
@@ -404,8 +404,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     }}
                     className="flex gap-2"
                   >
-                    <input value={cueText} onChange={(e) => setCueText(e.target.value)} maxLength={300} placeholder="تنبيه مخصص..." aria-label="نص التنبيه" className="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-xs" />
-                    <button type="submit" className="px-3 py-2 rounded-xl bg-red-600 text-white text-xs font-bold">إرسال</button>
+                    <input value={cueText} onChange={(e) => setCueText(e.target.value)} maxLength={300} placeholder="تنبيه مخصص..." aria-label="نص التنبيه" className="min-h-11 min-w-0 flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs" />
+                    <button type="submit" disabled={!cueText.trim()} className="min-h-11 shrink-0 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 disabled:opacity-50">إرسال</button>
                   </form>
                   <div className="space-y-1.5">
                     {myCues.map((c) => (

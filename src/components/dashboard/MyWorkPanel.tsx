@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { awaitsMyReview } from '../../shared/newsWorkflow';
 import React, { useState } from 'react';
-import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck } from 'lucide-react';
+import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck, type LucideIcon } from 'lucide-react';
 import { useWorkSections } from '../../hooks/useWorkSections';
 import { orderWorkSections, stationWorkDay } from '../../shared/myWork';
 import { sanitizeWorkSections, type WorkSectionKey } from '../../shared/workContext';
@@ -51,32 +51,32 @@ const TONES: Record<NonNullable<Row['tone']>, string> = {
   emerald: 'bg-emerald-50 text-emerald-700',
 };
 
-interface CardProps { icon: any; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }
+interface CardProps { icon: LucideIcon; title: string; rows: Row[]; empty: string; more?: () => void; testId: string }
 
 const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, more, testId }) => (
-  <section data-testid={testId} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col min-w-0">
-    <div className="flex items-center justify-between gap-2 mb-2">
-      <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-        <Icon className="w-4 h-4 text-blue-600" />
-        {title}
-        <span className="text-2xs font-bold bg-slate-100 text-slate-600 rounded-full px-1.5">{rows.length}</span>
+  <section data-testid={testId} aria-labelledby={`work-title-${testId}`} className="flex min-w-0 flex-col border-t border-slate-200 bg-white">
+    <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-2 gap-y-0 border-b border-slate-200 px-4">
+      <h3 id={`work-title-${testId}`} className="flex min-w-0 flex-wrap items-center gap-1.5 py-2 text-sm font-bold text-slate-800">
+        <Icon className="size-4 shrink-0 text-blue-700" aria-hidden="true" />
+        <span className="min-w-0">{title}</span>
+        <span className="font-mono text-2xs tabular-nums text-slate-600">{rows.length}</span>
       </h3>
       {more && (
-        <button type="button" onClick={more} className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs font-bold text-blue-600 hover:bg-blue-50 hover:underline">
+        <button type="button" onClick={more} aria-label={`عرض الكل · ${title}`} className="inline-flex min-h-11 items-center px-1.5 text-2xs font-bold text-blue-700 hover:underline">
           عرض الكل
         </button>
       )}
-    </div>
-    <ul className="space-y-1.5">
+    </header>
+    <ul className="divide-y divide-slate-100">
       {rows.slice(0, 5).map((r) => (
         <li key={r.id}>
           <button
             type="button"
             onClick={r.onClick}
-            className="w-full text-right flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200"
+            className="flex min-h-11 w-full min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 py-2 text-start hover:bg-slate-50 focus-visible:outline-offset-[-2px]"
           >
-            <span className="text-xs font-semibold text-slate-800 truncate">{r.title}</span>
-            {r.meta && <span className={`text-2xs font-bold rounded px-1.5 py-0.5 shrink-0 max-w-[45%] truncate ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
+            <span className="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] text-xs font-semibold text-slate-800">{r.title}</span>
+            {r.meta && <span className={`max-w-full rounded px-1.5 py-0.5 text-2xs font-bold [overflow-wrap:anywhere] ${TONES[r.tone || 'slate']}`}>{r.meta}</span>}
           </button>
         </li>
       ))}
@@ -86,18 +86,18 @@ const Card: React.FC<CardProps> = ({ icon: Icon, title, rows, more, testId }) =>
 
 /** Queues with nothing waiting: one quiet line of names (each opens its screen), so work leads. */
 const NothingWaiting: React.FC<{ cards: CardProps[]; after: boolean }> = ({ cards, after }) => (
-  <div className="flex flex-wrap items-center gap-1.5 text-2xs text-slate-500">
+  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
     <span className="font-semibold">{after ? 'ولا شيء ينتظرك في:' : 'لا شيء ينتظرك الآن في:'}</span>
     {cards.map(({ icon: Icon, title, empty, more, testId }) => {
-      const look = 'inline-flex items-center gap-1.5 min-h-8 px-2.5 rounded-lg border border-slate-200 bg-white/70 text-xs font-semibold text-slate-600';
+      const look = 'inline-flex min-h-11 max-w-full items-center gap-1.5 px-2 text-start text-xs font-semibold text-slate-700';
       const body = (
         <>
           <Icon className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-          {title}
+          <span className="min-w-0">{title}</span>
         </>
       );
       return more ? (
-        <button key={testId} type="button" data-testid={testId} onClick={more} title={empty} className={`${look} hover:bg-white hover:text-slate-900`}>
+        <button key={testId} type="button" data-testid={testId} onClick={more} title={empty} className={`${look} rounded-lg hover:bg-slate-50 hover:text-blue-700 hover:underline`}>
           {body}
         </button>
       ) : (
@@ -120,6 +120,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const myDept = departmentIdOf(currentUser);
   const canReview = RbacService.hasPermission(currentUser, 'news.review') || RbacService.hasPermission(currentUser, 'news.approve');
   const now = referenceTime ?? Date.now();
+  const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
   const reviewAccess = reviewBroadcastVisibility(code => RbacService.hasPermission(currentUser, code));
   const isManager = isManagerRole(currentUser.role);
   const stations = stationsOf(apiService.getSettings());
@@ -171,8 +172,8 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' })) : undefined,
         tone: overdue ? ('red' as const) : ('slate' as const),
           onClick: () => {
-            if (t.relatedEntityType === 'BULLETIN') openBulletin(t.relatedEntityId || '');
-            else if (t.relatedEntityType === 'BULLETIN_STORY') {
+            if (canOpen('bulletins') && t.relatedEntityType === 'BULLETIN' && t.relatedEntityId) openBulletin(t.relatedEntityId);
+            else if (canOpen('bulletins') && t.relatedEntityType === 'BULLETIN_STORY') {
               const story = apiService.getBulletins().flatMap(b => apiService.getBulletinStories(b.id)).find(s => s.id === t.relatedEntityId);
               if (story) { try { sessionStorage.setItem('madar-open-bulletin-story', story.id); } catch { /* Keep navigation available. */ } openBulletin(story.bulletinId); } else onNavigate(`/tasks/${encodeURIComponent(t.id)}`);
             } else onNavigate(`/tasks/${encodeURIComponent(t.id)}`);
@@ -201,7 +202,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
 
   const mentions: Row[] = apiService
     .getComments()
-    .filter((c) => c.mentions?.includes(me) && now - new Date(c.createdAt).getTime() < 7 * DAY)
+    .filter((c) => c.mentions?.includes(me) && now - new Date(c.createdAt).getTime() < 7 * DAY && canOpen(commentLink(c.target).split('/')[1]))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map((c) => ({
       id: c.id,
@@ -239,8 +240,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   const in3 = addDaysIso(today, 3);
   const resName = (id: string) => apiService.getResources().find((r) => r.id === id)?.name || 'مورد';
   const planRows: Row[] = [
-    ...apiService
-      .getDiary()
+    ...(canOpen('diary') ? apiService.getDiary() : [])
       .filter((e) => e.date >= today && e.date <= in3 && e.coverage !== 'SKIP' && e.assigneeIds.includes(me))
       .sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')))
       .map((e) => ({
@@ -250,8 +250,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         tone: (e.priority === 'HIGH' ? 'red' : e.date === today ? 'amber' : 'slate') as Row['tone'],
         onClick: () => onNavigate(`/diary/${encodeURIComponent(e.id)}`),
       })),
-    ...apiService
-      .getBookings()
+    ...(canOpen('bookings') ? apiService.getBookings() : [])
       .filter((b) => b.status !== 'CANCELLED' && b.assigneeId === me && Date.parse(b.end) > now && Date.parse(b.start) < now + 2 * DAY)
       .sort((a, b) => a.start.localeCompare(b.start))
       .map((b) => ({
@@ -280,16 +279,16 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
 
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
-  const sections: { key: WorkSectionKey; title: string; icon: any; rows: Row[]; empty: string; more?: () => void; enabled: boolean; mandatory?: boolean }[] = [
-    { key: 'my-news', title: 'أخباري قيد العمل', icon: FileEdit, rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news'), enabled: RbacService.hasPermission(currentUser, 'news.create') },
-    { key: 'my-review', title: 'بانتظار مراجعتي', icon: FileSearch, rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news'), enabled: canReview },
-    { key: 'my-tasks', title: 'مهامي', icon: CheckSquare, rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks'), enabled: true },
-    { key: 'my-dept-requests', title: `طلبات واردة لقسم ${departmentName(myDept)}`, icon: Inbox, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests'), enabled: !isManager || deptInbox.length > 0, mandatory: deptInbox.some(r => r.tone === 'red') },
-    { key: 'my-episodes', title: 'الحلقات القادمة وجاهزيتها', icon: Tv, rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes'), enabled: true, mandatory: todayEpisodes.some(r => r.tone === 'red' || r.tone === 'amber') },
-    { key: 'my-bulletins', title: 'قصص النشرات', icon: Radio, rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins'), enabled: bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0 },
-    { key: 'my-sent-requests', title: 'طلباتي المرسلة', icon: Send, rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests'), enabled: true },
-    { key: 'my-plan', title: 'تغطياتي وحجوزاتي', icon: CalendarDays, rows: planRows, empty: 'لا تغطيات أو حجوزات مسندة إليك', more: () => onNavigate('diary'), enabled: planRows.length > 0 },
-    { key: 'my-card-steps', title: 'مهامي في التكليفات', icon: ClipboardList, rows: cardRows, empty: 'لا مهام مفتوحة باسمك في البطاقات', more: () => onNavigate('cards'), enabled: RbacService.hasPermission(currentUser, 'cards.view'), mandatory: cardRows.some(row => row.tone === 'red') },
+  const sections: (Omit<CardProps, 'testId'> & { key: WorkSectionKey; enabled: boolean; mandatory?: boolean })[] = [
+    { key: 'my-news', title: 'أخباري قيد العمل', icon: FileEdit, rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news'), enabled: canOpen('news') && RbacService.hasPermission(currentUser, 'news.create') },
+    { key: 'my-review', title: 'بانتظار مراجعتي', icon: FileSearch, rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news'), enabled: canOpen('news') && canReview },
+    { key: 'my-tasks', title: 'مهامي', icon: CheckSquare, rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks'), enabled: canOpen('tasks') },
+    { key: 'my-dept-requests', title: `طلبات واردة لقسم ${departmentName(myDept)}`, icon: Inbox, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests'), enabled: canOpen('requests') && (!isManager || deptInbox.length > 0), mandatory: deptInbox.some(r => r.tone === 'red') },
+    { key: 'my-episodes', title: 'الحلقات القادمة وجاهزيتها', icon: Tv, rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes'), enabled: canOpen('episodes'), mandatory: todayEpisodes.some(r => r.tone === 'red' || r.tone === 'amber') },
+    { key: 'my-bulletins', title: 'قصص النشرات', icon: Radio, rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins'), enabled: canOpen('bulletins') && (bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) },
+    { key: 'my-sent-requests', title: 'طلباتي المرسلة', icon: Send, rows: sent, empty: 'لا طلبات مفتوحة أرسلتها', more: () => onNavigate('requests'), enabled: canOpen('requests') },
+    { key: 'my-plan', title: 'تغطياتي وحجوزاتي', icon: CalendarDays, rows: planRows, empty: 'لا تغطيات أو حجوزات مسندة إليك', more: () => onNavigate(canOpen('diary') ? 'diary' : 'bookings'), enabled: planRows.length > 0 },
+    { key: 'my-card-steps', title: 'مهامي في التكليفات', icon: ClipboardList, rows: cardRows, empty: 'لا مهام مفتوحة باسمك في البطاقات', more: () => onNavigate('cards'), enabled: canOpen('cards'), mandatory: cardRows.some(row => row.tone === 'red') },
     { key: 'my-mentions', title: 'إشارات إليّ (7 أيام)', icon: AtSign, rows: mentions, empty: 'لم يُشر إليك أحد مؤخراً', enabled: true },
   ];
   const ordered = orderWorkSections(sections.filter(section => section.enabled).map(section => section.key), preferences).map(key => sections.find(section => section.key === key)!);
@@ -309,24 +308,28 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
   };
 
   return (
-    <div data-testid="my-work" className="space-y-3">
+    <section aria-labelledby="my-work-title" data-testid="my-work" className="space-y-3">
       <IncomingHandovers currentUser={currentUser} onNavigate={onNavigate} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="w-5 h-5 text-blue-600" />
-          عملي
-          <span className="text-2xs font-semibold text-slate-500">
-            — {[currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : undefined, isManager ? 'الإدارة' : `قسم ${departmentName(myDept)}`].filter(Boolean).join(' · ')}
-          </span>
-        </h2>
-        <span
-          className={`text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-        >
-          <UserCheck className="w-3.5 h-3.5" />
-          {myDuty ? `مناوب الآن — ${shiftName(myDuty.shift)}${myDuty.isLead ? ' (رئيس المناوبة)' : ''}` : 'لست ضمن المناوبة الحالية'}
-        </span>
+        <div className="min-w-0">
+          <h2 id="my-work-title" className="text-base font-bold text-slate-900">عملي</h2>
+          <p className="text-xs text-slate-600">
+            {[currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : undefined, isManager ? 'الإدارة' : `قسم ${departmentName(myDept)}`].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {canOpen('roster') && (
+            <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-semibold ${myDuty ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600'}`}>
+              <UserCheck className="size-3.5 shrink-0" aria-hidden="true" />
+              {myDuty ? `مناوب الآن · ${shiftName(myDuty.shift)}${myDuty.isLead ? ' (رئيس المناوبة)' : ''}` : 'لست ضمن المناوبة الحالية'}
+            </span>
+          )}
+          <button type="button" aria-expanded={customizing} aria-controls={customizing ? 'work-section-controls' : undefined} onClick={() => setCustomizing(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            <Settings2 className="size-4" aria-hidden="true" />
+            تخصيص عملي
+          </button>
+        </div>
       </div>
-      <button type="button" aria-label="تخصيص عملي" aria-expanded={customizing} aria-controls="work-section-controls" onClick={() => setCustomizing(value => !value)} className="min-h-11 inline-flex items-center gap-2 px-3 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg"><Settings2 className="w-4 h-4" />تخصيص عملي</button>
       {customizing && <div id="work-section-controls" className="border-y border-slate-200 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2 py-1">
           <p className="text-xs text-slate-600">يرتبط ترتيب الأقسام وظهورها بحسابك.</p>
@@ -344,11 +347,12 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
         </div>)}
       </div>}
       {busy.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] gap-x-4 gap-y-3">
           {busy.map(card => <Card key={card.key} {...card} />)}
         </div>
       )}
       {idle.length > 0 && <NothingWaiting cards={idle} after={busy.length > 0} />}
-    </div>
+      {!visibleCards.length && <p className="border-y border-slate-200 py-3 text-sm text-slate-600">اختر الأقسام التي تريد عرضها من «تخصيص عملي».</p>}
+    </section>
   );
 };

@@ -75,12 +75,45 @@ test('tabs support arrow navigation and forms keep shortcuts away from confirmat
   await page.getByRole('button', { name: 'تجاهل المسودة المحلية', exact: true }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible();
+  const stay = dialog.getByRole('button', { name: 'البقاء', exact: true });
+  const discard = dialog.getByRole('button', { name: 'تجاهل التغييرات', exact: true });
+  await expect(stay).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(discard).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(stay).toBeFocused();
   await page.keyboard.press('Control+s');
   await expect(dialog).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
   await expect(form.getByLabel('عنوان التكليف', { exact: true })).toHaveValue('مسودة تكليف');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true })).toBeFocused();
   await close();
+});
+
+test('fullscreen writing and its nested link dialog restore keyboard focus in order', async ({ browser }) => {
+  const { page, close, errors } = await signIn(browser, 'editor@akhbar.tv', { viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto('/news/new');
+    const fullscreen = page.getByRole('button', { name: 'ملء الشاشة للكتابة (نص الخبر)', exact: true });
+    await fullscreen.press('Enter');
+    const writer = page.getByRole('dialog', { name: 'نص الخبر', exact: true });
+    await expect(writer.getByRole('textbox', { name: 'محتوى الخبر' })).toBeFocused();
+
+    const insert = writer.getByRole('button', { name: 'إدراج رابط', exact: true });
+    await insert.press('Enter');
+    const link = page.getByRole('dialog', { name: 'إدراج رابط إلكتروني' });
+    await expect(link.getByLabel('عنوان الرابط (URL)')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(link).toHaveCount(0);
+    await expect(writer).toBeVisible();
+    await expect(insert).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(writer).toHaveCount(0);
+    await expect(fullscreen).toBeFocused();
+    expect(errors).toEqual([]);
+  } finally {
+    await close();
+  }
 });

@@ -1,8 +1,7 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { X } from 'lucide-react';
-
-let openModals = 0;
-let previousOverflow = '';
+import { useModalFocus } from '../../hooks/useModalFocus';
+import { tabStops } from '../../shared/focus';
 
 interface ModalProps {
   isOpen: boolean;
@@ -26,23 +25,16 @@ export const Modal: React.FC<ModalProps> = ({
   size,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const subtitleId = useId();
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const opener = document.activeElement as HTMLElement | null;
-    if (openModals++ === 0) previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const first = initialFocusRef?.current || dialog.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)');
-    (first || dialog).focus({ preventScroll: true });
-    return () => {
-      if (--openModals === 0) document.body.style.overflow = previousOverflow;
-      if (opener?.isConnected) opener.focus();
-    };
-  }, [isOpen]);
+  useModalFocus(isOpen, dialogRef, {
+    close: onClose,
+    initialFocus: () => {
+      const fields = contentRef.current ? tabStops(contentRef.current) : [];
+      return initialFocusRef?.current || fields.find(element => element.matches('input, select, textarea, [data-autofocus]'));
+    },
+  });
 
   if (!isOpen) return null;
 
@@ -68,27 +60,6 @@ export const Modal: React.FC<ModalProps> = ({
       aria-labelledby={titleId}
       aria-describedby={subtitle ? subtitleId : undefined}
       aria-modal="true"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose();
-          return;
-        }
-        if (e.key !== 'Tab') return;
-        const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
-          'button, input, select, textarea, a[href], [tabindex]'
-        )).filter(el => el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0);
-        const first = controls[0];
-        const last = controls[controls.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }}
       className={`relative w-full ${widthClass} p-0 bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden max-h-[calc(100dvh-2rem)]`}
     >
       <div className="flex flex-col max-h-[calc(100dvh-2rem)]">
@@ -105,12 +76,12 @@ export const Modal: React.FC<ModalProps> = ({
             className="shrink-0 min-w-11 min-h-11 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors"
             title="إغلاق"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain min-h-0 flex-1">{children}</div>
+        <div ref={contentRef} className="p-4 sm:p-6 overflow-y-auto overscroll-contain min-h-0 flex-1">{children}</div>
       </div>
     </div>
     </div>

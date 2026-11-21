@@ -45,6 +45,8 @@ import { assignedWorkOnly } from '../shared/assignedWork';
 import { CARD_WORK_PERIODS, matchesCardWorkPeriod, type CardWorkPeriod } from '../shared/cardWorkPeriod';
 
 interface ProductionCardsViewProps {
+  openNewRequest?: boolean;
+  onOpenNewHandled?: () => void;
   currentUser: User;
   users: User[];
   /** Card opened from a notification or a shared link. */
@@ -65,7 +67,7 @@ const isWithinPeriod = (period: CardWorkPeriod, today: string, dates: (string | 
  * Assignments («التكليفات», stored as production cards) shared between stations: my steps, the
  * board for today, every assignment, the workflow templates they are created from, and reports.
  */
-export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode }) => {
+export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode, openNewRequest, onOpenNewHandled }) => {
   const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
   const canManage = RbacService.hasPermission(currentUser, 'cards.manage');
   const actor = apiService.cardActor();
@@ -87,6 +89,12 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductionCard | null>(null);
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!openNewRequest) return;
+    if (canManage && !formOpen && !assignForm.open) setAssignForm({ open: true, templateId: null });
+    onOpenNewHandled?.();
+  }, [openNewRequest, onOpenNewHandled, canManage, formOpen, assignForm.open]);
 
   useEffect(
     () =>

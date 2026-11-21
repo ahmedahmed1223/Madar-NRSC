@@ -68,29 +68,31 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                   className="flex-1 min-w-0 px-2 py-1 text-xs font-bold border border-slate-200 rounded-lg"
                 />
               </div>
-              <div className="flex items-center gap-1">
-                <Icon className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-                <select
-                  value={v.kind}
-                  onChange={(e) => update(v.id, { kind: e.target.value as NewsVideoKind })}
-                  disabled={disabled}
-                  aria-label={`نوع المقطع ${i + 1}`}
-                  className="text-2xs px-1.5 py-1 border border-slate-200 rounded-lg"
-                >
-                  {(Object.keys(VIDEO_KIND_NAMES) as NewsVideoKind[]).map((k) => (
-                    <option key={k} value={k}>
-                      {VIDEO_KIND_NAMES[k]}
-                    </option>
-                  ))}
-                </select>
-                <span className="ms-auto flex items-center">
-                  <button type="button" onClick={() => move(i, -1)} disabled={disabled || i === 0} aria-label={`تقديم المقطع ${i + 1}`} title="تقديم" className="p-1.5 text-slate-500 hover:text-slate-800 disabled:opacity-30" data-compact>
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex min-w-0 items-center gap-1">
+                  <Icon className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+                  <select
+                    value={v.kind}
+                    onChange={(e) => update(v.id, { kind: e.target.value as NewsVideoKind })}
+                    disabled={disabled}
+                    aria-label={`نوع المقطع ${i + 1}`}
+                    className="min-h-11 min-w-0 max-w-full text-2xs px-1.5 py-1 border border-slate-200 rounded-lg"
+                  >
+                    {(Object.keys(VIDEO_KIND_NAMES) as NewsVideoKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {VIDEO_KIND_NAMES[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span className="ms-auto flex flex-wrap items-center justify-end">
+                  <button type="button" onClick={() => move(i, -1)} disabled={disabled || i === 0} aria-label={`تقديم المقطع ${i + 1}`} title="تقديم" className="grid size-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30">
                     <ArrowUp className="w-3.5 h-3.5" />
                   </button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={disabled || i === videos.length - 1} aria-label={`تأخير المقطع ${i + 1}`} title="تأخير" className="p-1.5 text-slate-500 hover:text-slate-800 disabled:opacity-30" data-compact>
+                  <button type="button" onClick={() => move(i, 1)} disabled={disabled || i === videos.length - 1} aria-label={`تأخير المقطع ${i + 1}`} title="تأخير" className="grid size-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30">
                     <ArrowDown className="w-3.5 h-3.5" />
                   </button>
-                  <button type="button" onClick={() => onChange(videos.filter((x) => x.id !== v.id))} disabled={disabled} aria-label={`حذف المقطع ${i + 1}`} title="حذف" className="p-1.5 text-slate-300 hover:text-rose-600" data-compact>
+                  <button type="button" onClick={() => onChange(videos.filter((x) => x.id !== v.id))} disabled={disabled} aria-label={`حذف المقطع ${i + 1}`} title="حذف" className="grid size-11 place-items-center rounded-lg text-rose-700 hover:bg-rose-50 disabled:opacity-30">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </span>
@@ -169,7 +171,7 @@ export const NewsVideosEditor: React.FC<{ videos: NewsVideo[]; onChange: (next: 
                   maxLength={1000}
                   aria-label={`ملاحظة للتنفيذ عن المقطع ${i + 1}`}
                   placeholder="ملاحظة للتنفيذ (نقطة البدء، الصوت، الحقوق…)"
-                  className="flex-1 min-w-[10rem] px-2 py-1 text-2xs border border-slate-200 rounded-lg"
+                  className="min-w-0 flex-[1_1_10rem] px-2 py-1 text-2xs border border-slate-200 rounded-lg"
                 />
               </div>
               {err && <p className="text-2xs font-bold text-amber-800">{err}</p>}

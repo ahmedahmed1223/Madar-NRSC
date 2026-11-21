@@ -27,6 +27,8 @@ interface ProgramsViewProps {
   /** Opens the edit form for this program on arrival (e.g. from the program page). */
   initialEditProgramId?: string | null;
   onInitialEditHandled?: () => void;
+  openNewRequest?: boolean;
+  onOpenNewHandled?: () => void;
 }
 
 
@@ -43,6 +45,8 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   onDeleteProgram,
   initialEditProgramId,
   onInitialEditHandled,
+  openNewRequest,
+  onOpenNewHandled,
 }) => {
   const canManage = RbacService.hasPermission(currentUser, 'programs.manage');
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,6 +119,14 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     setTeamMembers(prog.teamMembers || []);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!openNewRequest) return;
+    if (canManage && !isModalOpen) handleOpenAddModal();
+    onOpenNewHandled?.();
+    // Open once per request, using the current form defaults.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNewRequest]);
 
   useEffect(() => {
     if (!initialEditProgramId) return;

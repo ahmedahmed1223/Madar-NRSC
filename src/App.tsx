@@ -92,8 +92,15 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [activeNav, setActiveNav] = useState('dashboard');
   /** Item opened from a notification link (wire, diary entry, booking). */
   const [focusId, setFocusId] = useState<string | null>(null);
-  /** Bumped when «حلقة جديدة» is pressed elsewhere: the episodes screen opens its form directly. */
-  const [openNewEpisode, setOpenNewEpisode] = useState(0);
+  const [createTarget, setCreateTarget] = useState<'programs' | 'episodes' | 'tasks' | 'cards' | null>(null);
+  const clearCreateTarget = useCallback(() => setCreateTarget(null), []);
+  const openCreate = (target: NonNullable<typeof createTarget>, programId: string | null = null) => {
+    if (target === 'episodes') setFilterProgramId(programId);
+    if (target === 'programs') setEditProgramId(null);
+    setFocusId(null);
+    setCreateTarget(target);
+    setActiveNav(target);
+  };
   /** Set when the server answers from different databases (misconfigured multi-instance hosting). */
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
@@ -710,6 +717,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   });
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
+  const workspaceScroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (workspaceScroll.current) workspaceScroll.current.scrollTop = 0;
+  }, [activeNav]);
   useEffect(() => routeChanged.emit(routePath), [routePath]);
   useEffect(() => navigateTo.on((path) => openLinkRef.current(path)), []);
   const [setupOpen, setSetupOpen] = useState<'open' | { reviewId: string } | null>(() => {
@@ -803,9 +814,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         href="#app-main"
         onClick={(e) => {
           e.preventDefault();
-          const main = document.getElementById('app-main');
-          main?.setAttribute('tabindex', '-1');
-          main?.focus();
+          const forms = document.querySelectorAll<HTMLElement>('#form-page-root .form-page');
+          (forms[forms.length - 1] || document.getElementById('app-main'))?.focus();
         }}
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:right-2 focus:z-[200] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-blue-600 focus:text-white focus:text-sm focus:font-bold"
       >
@@ -841,7 +851,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         />
 
         {/* Center Content Area */}
-        <div className="app-scroll flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
+        <div ref={workspaceScroll} inert={isMobileSidebarOpen || undefined} className="app-scroll flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
           {/* Topbar */}
           <Topbar
             currentUser={currentUser}
@@ -853,16 +863,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             onToggleLiveLock={handleToggleLiveLock}
             onNavigate={openLink}
             onToggleMobileMenu={() => setIsMobileSidebarOpen((prev) => !prev)}
+            isMobileMenuOpen={isMobileSidebarOpen}
             onCreateNews={handleCreateNewNewsClick}
-            onCreateProgram={() => {
-              setActiveNav('programs');
-            }}
-            onCreateEpisode={() => {
-              setActiveNav('episodes');
-            }}
-            onCreateTask={() => {
-              setActiveNav('tasks');
-            }}
+            onCreateProgram={() => openCreate('programs')}
+            onCreateEpisode={() => openCreate('episodes')}
+            onCreateTask={() => openCreate('tasks')}
+            onCreateCard={() => openCreate('cards')}
           />
 
           {/* Dynamic Page Views */}
@@ -871,10 +877,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               تحذير تخزين: {storageWarning}
             </div>
           )}
-          <main id="app-main" className="flex-1 p-4 sm:p-6 pb-12 max-w-7xl w-full mx-auto">
+          <main id="app-main" tabIndex={-1} className="workspace-content flex-1 w-full mx-auto pb-12">
             <ViewErrorBoundary key={`${activeNav}:${activeBulletinId || ''}:${selectedEpisodeId || ''}`} onHome={() => setActiveNav('dashboard')}>
             <Suspense
-              fallback={<div className="py-24 text-center text-sm font-semibold text-slate-500">جارٍ التحميل...</div>}
+              fallback={<div role="status" className="workspace-loading text-sm font-semibold text-slate-600">جارٍ تحميل {screenTitle(activeNav).split(' · ')[0]}…</div>}
             >
             {!screenAllowed && (
               <div className="max-w-xl mx-auto text-center space-y-3 py-20">
@@ -909,12 +915,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   }))}
                 onSelectNews={(id) => handleEditNewsClick(id)}
                 onCreateNews={handleCreateNewNewsClick}
-                onCreateEpisode={() => {
-                  setFilterProgramId(null);
-                  setActiveNav('episodes');
-                  // The episodes screen opens its form directly.
-                  setOpenNewEpisode((n) => n + 1);
-                }}
+                onCreateEpisode={() => openCreate('episodes')}
                 onNavigate={(view: any) => {
                   if (String(view).includes('/')) { openLink(String(view).startsWith('/') ? String(view) : `/${view}`); return; }
                   setFocusId(null);
@@ -1029,6 +1030,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onDeleteProgram={handleDeleteProgram}
                 initialEditProgramId={editProgramId}
                 onInitialEditHandled={() => setEditProgramId(null)}
+                openNewRequest={createTarget === 'programs'}
+                onOpenNewHandled={clearCreateTarget}
               />
             )}
 
@@ -1044,11 +1047,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                   setEditProgramId(p.id);
                   setActiveNav('programs');
                 }}
-                onCreateEpisodeForProgram={(prgId) => {
-                  setFilterProgramId(prgId);
-                  setOpenNewEpisode((n) => n + 1);
-                  setActiveNav('episodes');
-                }}
+                onCreateEpisodeForProgram={(prgId) => openCreate('episodes', prgId)}
                 onOpenWorkspace={(ep) => {
                   setSelectedEpisodeId(ep.id);
                   setActiveNav('episode-workspace');
@@ -1066,7 +1065,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveEpisode={handleSaveEpisode}
                 filterProgramId={filterProgramId}
                 onDeleteEpisode={handleDeleteEpisode}
-                openNewRequest={openNewEpisode}
+                openNewRequest={createTarget === 'episodes'}
+                onOpenNewHandled={clearCreateTarget}
               />
             )}
 
@@ -1113,6 +1113,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSaveTask={handleSaveTask}
                 onDeleteTask={handleDeleteTask}
                 onOpenLink={openLink}
+                openNewRequest={createTarget === 'tasks'}
+                onOpenNewHandled={clearCreateTarget}
               />
             )}
 
@@ -1247,7 +1249,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'messages' && <MessagesView currentUser={currentUser} users={allUsers} channel={focusId} onChannel={setFocusId} onOpenLink={openLink} />}
 
             {activeNav === 'cards' && (
-              <ProductionCardsView currentUser={currentUser} users={allUsers} focusId={focusId} onFocus={setFocusId} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} />
+              <ProductionCardsView currentUser={currentUser} users={allUsers} focusId={focusId} onFocus={setFocusId} onOpenNews={handleEditNewsClick} onOpenEpisode={handleSelectEpisode} openNewRequest={createTarget === 'cards'} onOpenNewHandled={clearCreateTarget} />
             )}
 
             {activeNav === 'workload' && (
@@ -1268,7 +1270,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             </Suspense>
             </ViewErrorBoundary>
           </main>
-          <div id="form-page-root" className="flex-1 p-4 sm:p-6 pb-12 w-full empty:hidden" />
+          <div id="form-page-root" className="workspace-content flex-1 pb-12 w-full empty:hidden" />
         </div>
       </div>
 
