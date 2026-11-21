@@ -3,6 +3,7 @@ import { pronunciationDraftConflict } from '../shared/pronunciation';
 import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
 import type { NewsArchiveFilters } from '../shared/newsArchive';
 import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
+import { preparePersonalTask, type PersonalTask, type PersonalTaskInput } from '../shared/personalTasks';
 import { sanitizeWorkSections, type WorkSectionPreferences } from '../shared/workContext';
 import { savedFilterRequest } from './savedNewsFilterTransport';
 import { handoverRequest } from './handoverTransport';
@@ -1835,6 +1836,22 @@ export class ApiService {
 
   static deletePersonalNote(id: string): void {
     setStored(COLLECTIONS.personalNotes.storageKey, this.getPersonalNotes().filter((note) => note.id !== id));
+  }
+
+  static getPersonalTasks(): PersonalTask[] {
+    const ownerId = this.getCurrentUser().id;
+    return getStored<PersonalTask[]>(COLLECTIONS.personalTasks.storageKey, []).filter(task => task.ownerId === ownerId);
+  }
+
+  static savePersonalTask(id: string, input: PersonalTaskInput): PersonalTask {
+    const tasks = this.getPersonalTasks();
+    const saved = preparePersonalTask(id, this.getCurrentUser().id, input, tasks.find(task => task.id === id));
+    setStored(COLLECTIONS.personalTasks.storageKey, [saved, ...tasks.filter(task => task.id !== id)]);
+    return saved;
+  }
+
+  static deletePersonalTask(id: string): void {
+    setStored(COLLECTIONS.personalTasks.storageKey, this.getPersonalTasks().filter(task => task.id !== id));
   }
 
   static async getArchivedNews(id: string): Promise<NewsItem> {

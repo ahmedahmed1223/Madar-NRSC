@@ -80,6 +80,7 @@ const WORKFLOW_ACTION_LABELS: Record<string, string> = {
 
 interface NewsEditorViewProps {
   newsItem?: NewsItem | null;
+  initialBreaking?: boolean;
   currentUser: User;
   categories: Category[];
   sources: NewsSource[];
@@ -101,6 +102,7 @@ interface NewsEditorViewProps {
 
 export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   newsItem,
+  initialBreaking,
   currentUser,
   categories,
   sources,
@@ -129,22 +131,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const lock = useNewsEditLock(newsItem?.id, editableStory);
   const lockHolder = lock.holder || lock.readerSees;
   const lockedByOther = lock.status === 'locked' || !!lock.readerSees;
-  // «خبر عاجل» from the «+ إنشاء جديد» menu opens the short field form (Topbar sets the flag).
-  const [fieldBreaking, setFieldBreaking] = useState(() => {
-    if (newsItem || !canRequestBreaking(can)) return false;
-    try {
-      return sessionStorage.getItem('madar-new-news-breaking') === '1' || new URLSearchParams(window.location.search).get('breaking') === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem('madar-new-news-breaking');
-    } catch {
-      // storage blocked
-    }
-  }, []);
+  const [fieldBreaking, setFieldBreaking] = useState(() => !newsItem && !!initialBreaking && canRequestBreaking(can));
   const [title, setTitle] = useState('');
   // The headline wraps instead of scrolling sideways, so the editor always sees all of it.
   useLayoutEffect(() => {

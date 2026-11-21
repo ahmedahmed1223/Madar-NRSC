@@ -16,21 +16,21 @@ import { useAirConnection } from '../hooks/useAirConnection';
 
 interface StudioScreenViewProps {
   currentUser: User;
-  initialEpisodeId?: string | null;
+  selectedShowId: string | null;
+  onSelectShow: (id: string) => void;
 }
 
 const lowerThirdsFromStory = (seg: any): string[] => (seg?.graphics || []).flatMap((g: any) => g.lines || []);
 
 /** Big, glanceable display for the studio floor and presenters. */
-export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser, initialEpisodeId }) => {
+export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser, selectedShowId, onSelectShow }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'settings'], 500);
   const connected = useAirConnection();
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'studio');
   const ref = useRef<HTMLDivElement>(null);
   const liveStates = apiService.getOnAirStates().filter((s) => s.status === 'LIVE');
-  const [episodeId, setEpisodeId] = useState<string>(initialEpisodeId || liveStates[0]?.episodeId || '');
-  const effectiveId = episodeId || liveStates[0]?.episodeId || '';
+  const effectiveId = selectedShowId || liveStates[0]?.episodeId || '';
   const episode: any = apiService.getAirShows().find((e) => e.id === effectiveId);
   const state = effectiveId ? apiService.getOnAir(effectiveId) : null;
   const timing = liveTiming(state, episode);
@@ -74,7 +74,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <select value={effectiveId} onChange={(e) => setEpisodeId(e.target.value)} aria-label="الحلقة" title={fullTitle || undefined} className="min-h-11 w-full sm:w-80 min-w-0 max-w-full truncate px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
+        <select value={effectiveId} onChange={(e) => onSelectShow(e.target.value)} aria-label="الحلقة" title={fullTitle || undefined} className="min-h-11 w-full sm:w-80 min-w-0 max-w-full truncate px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white">
           {!effectiveId && <option value="">لا يوجد بث مباشر الآن</option>}
           {apiService
             .getAirShows()

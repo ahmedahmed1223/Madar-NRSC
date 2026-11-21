@@ -31,8 +31,8 @@ import { offlineAirStateMarker, serializeOfflineAirSnapshot, type OfflineAirSour
 interface OnAirViewProps {
   currentUser: User;
   onOpenStudioScreen: (episodeId: string) => void;
-  /** Episode or bulletin to show first (e.g. opened from a bulletin rundown). */
-  initialShowId?: string | null;
+  selectedShowId: string | null;
+  onSelectShow: (id: string) => void;
 }
 
 /** Live control of the show, shared in real time with every department. */
@@ -63,7 +63,7 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
   );
 };
 
-const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, initialShowId }) => {
+const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, selectedShowId, onSelectShow }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings'], 1000);
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
@@ -87,7 +87,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
         .sort((a, b) => Number(liveIds.includes(b.id)) - Number(liveIds.includes(a.id)) ||
           Number(a.broadcastDate < today) - Number(b.broadcastDate < today) ||
           `${a.broadcastDate} ${a.startTime}`.localeCompare(`${b.broadcastDate} ${b.startTime}`));
-  const [episodeId, setEpisodeId] = useState<string>(() => initialShowId || liveIds[0] || candidates.find(e => e.broadcastDate >= today)?.id || '');
+  const [defaultShowId] = useState(() => liveIds[0] || candidates.find(e => e.broadcastDate >= today)?.id || '');
+  const episodeId = selectedShowId ?? defaultShowId;
   const [error, setError] = useState<string | null>(null);
   const [commandPending, setCommandPending] = useState(false);
   const [cueText, setCueText] = useState('');
@@ -190,7 +191,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       <div className="flex flex-wrap items-end gap-2 min-w-0">
         <div className="min-w-0 w-full sm:w-80 max-w-full space-y-1">
           <label htmlFor="onair-show" className="block text-xs font-semibold text-slate-700">الحلقة أو النشرة</label>
-          <select id="onair-show" value={episodeId} onChange={(e) => setEpisodeId(e.target.value)} title={selectedTitle || undefined} className="min-h-11 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full min-w-0 truncate">
+          <select id="onair-show" value={episodeId} onChange={(e) => onSelectShow(e.target.value)} title={selectedTitle || undefined} className="min-h-11 px-3 border border-slate-300 rounded-xl text-xs font-semibold bg-white w-full min-w-0 truncate">
             <option value="">{candidates.length ? 'اختر الحلقة أو النشرة' : 'لا توجد حلقات قادمة'}</option>
             {episode && !candidates.some(candidate => candidate.id === episode.id) && <option value={episode.id}>{selectedTitle}</option>}
             {candidates.map((e) => (

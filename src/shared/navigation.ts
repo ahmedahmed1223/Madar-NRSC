@@ -16,7 +16,7 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: Record<NavSectionId, NavSection> = {
-  work: { id: 'work', label: 'عملي', items: ['messages', 'tasks', 'cards', 'requests', 'personal-notes'] },
+  work: { id: 'work', label: 'عملي', items: ['messages', 'tasks', 'personal-tasks', 'cards', 'requests', 'personal-notes'] },
   newsroom: { id: 'newsroom', label: 'غرفة الأخبار', items: ['news', 'wires', 'breaking', 'bulletins', 'stories', 'diary'] },
   programs: { id: 'programs', label: 'البرامج', items: ['episodes', 'programs', 'calendar', 'guests'] },
   air: { id: 'air', label: 'الهواء والاستديو', items: ['on-air', 'studio-screen'] },

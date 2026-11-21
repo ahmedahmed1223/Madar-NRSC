@@ -447,6 +447,8 @@ export const POLICIES: Record<CollectionName, Policy> = {
         typeof after.body !== 'string' || after.body.length > PERSONAL_NOTE_BODY_LIMIT) return 'عنوان الملاحظة أو نصها غير صالح';
     return null;
   },
+  personalTasks: ({ auth, before, after }) =>
+    (before && before.ownerId !== auth.user.id) || (after && after.ownerId !== auth.user.id) ? DENIED : null,
   users: usersPolicy,
   roles: rolesPolicy,
   news: newsPolicy,
@@ -681,7 +683,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
 };
 
 const SUPPORT_COLLECTIONS = new Set<CollectionName>(['roles', 'users', 'settings', 'tasks', 'productionCards',
-  'notifications', 'notificationPrefs', 'personalNotes', 'workspacePrefs']);
+  'notifications', 'notificationPrefs', 'personalNotes', 'personalTasks', 'workspacePrefs']);
 
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
@@ -703,6 +705,7 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'savedNewsFilters':
     case 'workspacePrefs':
     case 'personalNotes':
+    case 'personalTasks':
       return data?.ownerId === auth.user.id;
     case 'news':
       return auth.can('news.view');

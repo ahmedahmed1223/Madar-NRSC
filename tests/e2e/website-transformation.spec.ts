@@ -39,6 +39,7 @@ const WORKSPACES: ReadonlyArray<readonly [path: string, heading: string | RegExp
   ['/alerts', 'تنبيهاتي'],
   ['/messages', 'المراسلات'],
   ['/personal-notes', 'ملاحظاتي'],
+  ['/personal-tasks', 'مهامي الشخصية'],
 ];
 
 test('workspace and detail routes render in RTL at eight widths without clipping the page', async ({ browser }) => {

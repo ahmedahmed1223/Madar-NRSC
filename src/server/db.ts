@@ -2,9 +2,9 @@ import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { CollectionName, EntityRow, isCollectionName } from '../shared/collections';
+import { CollectionName, EntityRow, isCollectionName, type PrivateRecordCollection } from '../shared/collections';
 import { logger } from './logger';
-import { ARCHIVE_FILTER, MIGRATIONS, SETTLED_SQL } from './dbMigrations';
+import { ARCHIVE_FILTER, MIGRATIONS, PENDING_PERSONAL_REMINDER, SETTLED_SQL } from './dbMigrations';
 import { withStableBackup } from './databaseRecovery';
 import { archiveTerms, prepareArchiveText, rankArchiveText } from './archiveIndex';
 import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
@@ -485,20 +485,34 @@ export class NewsroomDatabase {
 
   /** Soft-delete (tombstone) so other browsers learn about the removal via the change feed. */
   /** Ownership survives deletion, but private tombstone payloads never leave the server. */
-  privateRecordOwner(collection: 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes', id: string): string | null {
+  privateRecordOwner(collection: PrivateRecordCollection, id: string): string | null {
     const row = this.db.prepare('SELECT data FROM entities WHERE collection = ? AND id = ?').get(collection, id) as { data: string } | undefined;
     if (!row) return null;
     const data = JSON.parse(row.data);
     return typeof data?.ownerId === 'string' ? data.ownerId : null;
   }
 
-  listPrivateRecords(collection: 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes', ownerId: string): EntityRow[] {
+  listPrivateRecords(collection: PrivateRecordCollection, ownerId: string): EntityRow[] {
     if (collection === 'workspacePrefs') {
       const row = this.getRow(collection, ownerId);
       return row ? [row] : [];
     }
     const rows = this.db.prepare(`SELECT * FROM entities WHERE collection = ? AND deleted = 0
       AND json_extract(data, '$.ownerId') = ? ORDER BY position, id`).all(collection, ownerId) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  duePersonalTaskReminders(now: string, limit = 100): EntityRow[] {
+    const rows = this.db.prepare(`SELECT * FROM entities
+      WHERE ${PENDING_PERSONAL_REMINDER} AND json_extract(data, '$.reminderAt') <= ?
+        AND EXISTS (
+          SELECT 1 FROM entities AS owner
+          WHERE owner.collection = 'users' AND owner.deleted = 0
+            AND owner.id = json_extract(entities.data, '$.ownerId')
+            AND COALESCE(json_extract(owner.data, '$.isActive'), 1) = 1
+            AND json_extract(owner.data, '$.deletedAt') IS NULL
+        )
+      ORDER BY json_extract(data, '$.reminderAt'), id LIMIT ?`).all(now, limit) as RawEntityRow[];
     return rows.map(toEntityRow);
   }
 

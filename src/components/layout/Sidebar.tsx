@@ -248,6 +248,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     dashboard: { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, badge: null },
     messages: { id: 'messages', label: 'المراسلات', icon: MessagesSquare, badge: messagesBadge > 0 ? `${messagesBadge > 99 ? '99+' : messagesBadge}` : null, badgeColor: WAITING, count: messagesBadge },
     tasks: { id: 'tasks', label: 'المهام', icon: CheckSquare, badge: tasksBadge > 0 ? `${tasksBadge}` : null, badgeColor: WAITING, count: tasksBadge },
+    'personal-tasks': { id: 'personal-tasks', label: 'مهامي الشخصية', icon: CheckSquare, badge: null },
     cards: { id: 'cards', label: 'التكليفات', icon: ClipboardList, badge: cardsBadge > 0 ? `${cardsBadge}` : null, badgeColor: WAITING, count: cardsBadge },
     requests: { id: 'requests', label: 'طلبات الأقسام', icon: ArrowLeftRight, badge: requestsBadge > 0 ? `${requestsBadge}` : null, badgeColor: WAITING, count: requestsBadge },
     news: { id: 'news', label: 'الأخبار', icon: Newspaper, badge: newsBadgeText, badgeColor: WAITING, count: newsBadge },

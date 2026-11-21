@@ -56,6 +56,7 @@ export const COLLECTIONS = {
   savedNewsFilters: { storageKey: 'madar_saved_news_filters_v1', kind: 'list' },
   workspacePrefs: { storageKey: 'madar_workspace_preferences_v1', kind: 'list' },
   personalNotes: { storageKey: 'madar_personal_notes_v1', kind: 'list' },
+  personalTasks: { storageKey: 'madar_personal_tasks_v1', kind: 'list' },
   shiftHandovers: { storageKey: 'madar_shift_handovers_v1', kind: 'list' },
   handoverReceipts: { storageKey: 'madar_handover_receipts_v1', kind: 'list' },
   /** Planning diary (news agenda): upcoming events, coverage decisions and assignments. */
@@ -75,6 +76,10 @@ export const COLLECTIONS = {
 } as const;
 
 export type CollectionName = keyof typeof COLLECTIONS;
+export type PrivateRecordCollection = 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes' | 'personalTasks';
+
+export const isPrivateRecord = (collection: CollectionName): collection is PrivateRecordCollection =>
+  collection === 'savedNewsFilters' || collection === 'workspacePrefs' || collection === 'personalNotes' || collection === 'personalTasks';
 
 export const COLLECTION_NAMES = Object.keys(COLLECTIONS) as CollectionName[];
 

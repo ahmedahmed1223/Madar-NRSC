@@ -7,6 +7,7 @@ import { normalizeArabic } from './search';
 
 export const NOTIFICATION_CATEGORIES = [
   { id: 'assignment', name: 'التكليفات والمهام', hint: 'مهمة أو تغطية أو حجز مسند إليك' },
+  { id: 'personal-task', name: 'تذكيرات المهام الشخصية', hint: 'حان موعد تذكير سبق أن ضبطته' },
   { id: 'request', name: 'طلبات الأقسام', hint: 'طلب جديد لقسمك أو تغيّر حالة طلبك' },
   { id: 'mention', name: 'الإشارات والتعليقات', hint: 'أشار إليك زميل أو علّق على مادتك' },
   { id: 'message', name: 'الرسائل المباشرة والمجموعات', hint: 'رسالة من زميل أو في مجموعة أنت عضو فيها' },
@@ -48,6 +49,7 @@ export interface NotificationPrefs {
 /** Sensible defaults: push for what needs you now, e-mail only for assignments. */
 export const DEFAULT_CHANNELS: Record<NotificationCategory, { email: boolean; push: boolean }> = {
   assignment: { email: true, push: true },
+  'personal-task': { email: false, push: true },
   request: { email: false, push: true },
   mention: { email: false, push: true },
   message: { email: false, push: true },

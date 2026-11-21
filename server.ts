@@ -9,6 +9,7 @@ import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
+import { sendDuePersonalTaskReminders } from './src/server/personalTaskReminders';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
@@ -124,6 +125,19 @@ async function main() {
     }, 30_000)
   );
   publishDueScheduledNews(db);
+  const reminderJob = 'تذكيرات المهام الشخصية';
+  registerJob(reminderJob, 0.5);
+  const remind = () => {
+    try {
+      sendDuePersonalTaskReminders(db);
+      recordJob(reminderJob);
+    } catch (error) {
+      recordJob(reminderJob, error);
+      logger.error('personal task reminders failed', { error: String(error) });
+    }
+  };
+  timers.push(setInterval(remind, 30_000));
+  remind();
   // Scheduled bulletins (only formats set to create automatically).
   const scheduleBulletins = () => {
     try {

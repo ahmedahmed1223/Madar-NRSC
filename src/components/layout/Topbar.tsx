@@ -145,19 +145,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   const can = (permission: string) => RbacService.hasPermission(currentUser, permission);
   const canOpen = (screen: string) => RbacService.canOpenScreen(currentUser, screen);
 
-  /** A breaking-news alert: the new-story form, flagged so the editor opens in breaking mode. */
-  const createBreaking = () => {
-    try {
-      sessionStorage.setItem('madar-new-news-breaking', '1');
-    } catch {
-      // Storage blocked: the form opens as a normal story.
-    }
-    onNavigate?.('/news/new?breaking=1');
-  };
-
   const createActions = [
     { label: 'خبر صحفي جديد', icon: FileText, run: canOpen('news-editor') && can('news.create') ? onCreateNews : undefined },
-    { label: 'خبر عاجل', icon: Flame, run: onNavigate && canOpen('news-editor') && canRequestBreaking(can) ? createBreaking : undefined },
+    { label: 'خبر عاجل', icon: Flame, run: onNavigate && canOpen('news-editor') && canRequestBreaking(can) ? () => onNavigate('/news/new?breaking=1') : undefined },
     { label: 'تكليف', icon: ClipboardList, run: canOpen('cards') && can('cards.manage') ? onCreateCard : undefined },
     { label: 'برنامج تلفزيوني جديد', icon: Tv, run: canOpen('programs') && can('programs.manage') ? onCreateProgram : undefined },
     { label: 'حلقة برنامج جديدة', icon: Video, run: canOpen('episodes') && can('episodes.create') ? onCreateEpisode : undefined },

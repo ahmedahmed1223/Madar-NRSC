@@ -6,6 +6,10 @@ const LEGACY_TABLES = ['news', 'programs', 'episodes', 'rundown_segments', 'gues
 export const SETTLED_SQL = SETTLED_NEWS_STATUSES.map((s) => `'${s}'`).join(', ');
 export const ARCHIVE_FILTER = `collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') IN (${SETTLED_SQL})
   AND json_extract(data, '$.deletedAt') IS NULL`;
+export const PENDING_PERSONAL_REMINDER = `collection = 'personalTasks' AND deleted = 0
+  AND json_extract(data, '$.completed') = 0
+  AND json_extract(data, '$.reminderAt') IS NOT NULL
+  AND json_extract(data, '$.reminderSentFor') IS NULL`;
 const NEW_ARCHIVE = `NEW.collection = 'news' AND NEW.deleted = 0
   AND json_extract(NEW.data, '$.status') IN (${SETTLED_SQL}) AND json_extract(NEW.data, '$.deletedAt') IS NULL`;
 
@@ -210,6 +214,15 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       WHEN OLD.collection = 'news' BEGIN
         DELETE FROM news_archive_index WHERE id = OLD.id;
       END;
+    `,
+  },
+  {
+    version: 8,
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_personal_tasks_owner ON entities (json_extract(data, '$.ownerId'))
+        WHERE collection = 'personalTasks' AND deleted = 0;
+      CREATE INDEX IF NOT EXISTS idx_personal_tasks_reminder ON entities (json_extract(data, '$.reminderAt'))
+        WHERE ${PENDING_PERSONAL_REMINDER};
     `,
   },
 ];

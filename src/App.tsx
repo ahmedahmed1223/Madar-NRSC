@@ -58,6 +58,7 @@ const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ d
 const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
 const PersonalNotesView = lazyWithRetry(() => import('./views/PersonalNotesView').then((m) => ({ default: m.PersonalNotesView })));
+const PersonalTasksView = lazyWithRetry(() => import('./views/PersonalTasksView').then((m) => ({ default: m.PersonalTasksView })));
 const RequestsView = lazyWithRetry(() => import('./views/RequestsView').then((m) => ({ default: m.RequestsView })));
 const RosterView = lazyWithRetry(() => import('./views/RosterView').then((m) => ({ default: m.RosterView })));
 const BulletinsView = lazyWithRetry(() => import('./views/BulletinsView').then((m) => ({ default: m.BulletinsView })));
@@ -77,7 +78,8 @@ import { NewsroomIntercomDrawer } from './components/common/NewsroomIntercomDraw
 import { NetworkStatusBanner } from './components/common/NetworkStatusBanner';
 import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { isEditingTarget, matchesShortcutKey } from './shared/keyboard';
-import { isKnownScreen, parsePath, routeToPath, screenTitle } from './services/router';
+import { isKnownScreen, notificationAddress, parsePath, routeToPath, sameScreenAddress, screenTitle } from './services/router';
+import { browserAddress, writeBrowserHistory } from './services/browserHistory';
 import { navigateTo, routeChanged, setupCommand, type SetupCommand } from './services/uiEvents';
 import { TourHost } from './components/help/TourHost';
 import { SetupWizard } from './components/setup/SetupWizard';
@@ -161,6 +163,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
   const [reviewQueueIds, setReviewQueueIds] = useState<string[]>([]);
   const [newsReturnDesk, setNewsReturnDesk] = useState<'news' | 'breaking'>('news');
+  const [newBreaking, setNewBreaking] = useState(false);
   const [requestSegmentId, setRequestSegmentId] = useState<string | undefined>();
   useEffect(() => {
     if (activeNav !== 'requests') setRequestSegmentId(undefined);
@@ -394,12 +397,16 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   /** Opens a notification/deep link path ("/tasks", "/episodes/<id>", "/wires/<id>", ...). */
   const openLink = (nav: string) => {
-    const { view, id, episodeSegmentId: linkedSegment } = parsePath(nav);
+    const route = parsePath(nav);
+    const { view, id } = route;
     setFocusId(id);
-    if (view === 'requests') setRequestSegmentId(undefined);
-    if (view === 'episodes' && id) handleSelectEpisode(id, linkedSegment);
+    if (view === 'requests') setRequestSegmentId(route.requestSegmentId);
+    if (view === 'episodes' && !id) setFilterProgramId(route.episodeProgramId || null);
+    if (view === 'on-air') setOnAirShowId(id);
+    if (view === 'studio-screen') setStudioEpisodeId(id);
+    if (view === 'episodes' && id) handleSelectEpisode(id, route.episodeSegmentId);
     else if (view === 'bulletins') openBulletin(id);
-    else if (view === 'news' && id === 'new') handleCreateNewNewsClick();
+    else if (view === 'news' && id === 'new') openNewStory(!!route.newsBreaking);
     else if (view === 'news' && id) handleEditNewsClick(id);
     else if (view === 'programs' && id) handleSelectProgram(id);
     else setActiveNav(isKnownScreen(view) ? view : 'dashboard');
@@ -412,38 +419,37 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const openLinkRef = useRef(openLink);
   openLinkRef.current = openLink;
   useEffect(() => {
-    // Links from e-mails and push notifications arrive as /?open=<path>.
-    const params = new URLSearchParams(window.location.search);
-    const target = params.get('open');
-    if (target && target.startsWith('/')) {
-      params.delete('open');
-      const rest = params.toString();
-      window.history.replaceState(window.history.state, '', `${target.split('?')[0]}${rest ? `?${rest}` : ''}${window.location.hash}`);
-    }
+    const currentAddress = browserAddress();
+    const target = notificationAddress(currentAddress);
+    if (target) writeBrowserHistory('replace', window.history.state, target);
     // Deep link (address typed, bookmarked, reloaded or from a notification): open that screen.
-    const deep = window.location.pathname;
-    if (deep !== '/') {
+    const deep = target || currentAddress;
+    let canonicalize: number | undefined;
+    if (!sameScreenAddress(deep, '/')) {
       replaceNextRoute.current = true;
       openLinkRef.current(deep);
       // A link to something gone or not allowed stays on the current screen: fix the address.
-      window.setTimeout(() => {
+      canonicalize = window.setTimeout(() => {
         if (!replaceNextRoute.current) return;
         replaceNextRoute.current = false;
-        if (window.location.pathname !== routePathRef.current) window.history.replaceState(window.history.state, '', routePathRef.current + window.location.search);
+        if (!sameScreenAddress(browserAddress(), routePathRef.current)) writeBrowserHistory('replace', window.history.state, routePathRef.current);
       }, 300);
     }
     registerServiceWorker();
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type !== 'open-link' || typeof e.data.url !== 'string') return;
-      const url = new URL(e.data.url, window.location.origin);
-      const path = url.searchParams.get('open');
-      if (path && path.startsWith('/')) openLinkRef.current(path);
+      const path = notificationAddress(e.data.url);
+      if (path) openLinkRef.current(path);
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
-    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+    return () => {
+      window.clearTimeout(canonicalize);
+      navigator.serviceWorker?.removeEventListener('message', onMessage);
+    };
   }, []);
 
   const handleConvertWire = (wire: WireItem) => {
+    setNewBreaking(false);
     setNewsReturnDesk('news');
     const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const paragraphs = (wire.summary || '').split('\n').filter(Boolean).map((p) => `<p>${escape(p)}</p>`).join('');
@@ -461,13 +467,15 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     setActiveNav('news-editor');
   };
 
-  const handleCreateNewNewsClick = () => {
+  const openNewStory = (breaking: boolean) => {
+    setNewBreaking(breaking);
     setNewsReturnDesk(activeNav === 'breaking' ? 'breaking' : 'news');
     setNewsSeed(null);
     setNewNewsStoryId(null);
     setSelectedNewsItem(null);
     setActiveNav('news-editor');
   };
+  const handleCreateNewNewsClick = () => openNewStory(false);
 
   const handleEditNewsClick = (itemOrId: NewsItem | string, reviewing = false) => {
     if (activeNav !== 'news-editor') setNewsReturnDesk(activeNav === 'breaking' ? 'breaking' : 'news');
@@ -485,6 +493,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleCreateNewsForStory = (storyId: string) => {
+    setNewBreaking(false);
     setNewsReturnDesk('news');
     setNewsSeed(null);
     setSelectedNewsItem(null);
@@ -709,10 +718,14 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const routePath = routeToPath({
     nav: activeNav,
     newsId: selectedNewsItem?.id,
+    newsBreaking: newBreaking,
     episodeId: selectedEpisodeId,
     episodeSegmentId,
     programId: selectedProgramId,
     bulletinId: activeBulletinId,
+    episodeProgramId: filterProgramId,
+    requestSegmentId,
+    airShowId: activeNav === 'studio-screen' ? studioEpisodeId : onAirShowId,
     focusId,
   });
   const routePathRef = useRef(routePath);
@@ -736,51 +749,42 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Every date and time on screen is formatted during render: redraw when the conventions change.
   const [, setDateFormatTick] = useState(0);
   useEffect(() => onDateFormat(() => setDateFormatTick((t) => t + 1)), []);
-  const routeStarted = useRef(false);
+  const previousRoute = useRef(routePath);
   useEffect(() => {
-    // The first render is still the dashboard; a start-up deep link is being opened instead.
-    if (!routeStarted.current) {
-      routeStarted.current = true;
-      return;
-    }
-    if (window.location.pathname === routePath) {
+    // The first render is still the dashboard. A startup deep link is resolved separately.
+    if (previousRoute.current === routePath) return;
+    previousRoute.current = routePath;
+    if (sameScreenAddress(browserAddress(), routePath)) {
       replaceNextRoute.current = false;
       return;
     }
-    const write = (replace: boolean) => {
-      try {
-        if (replace) window.history.replaceState(window.history.state, '', routePath + window.location.search);
-        else window.history.pushState({ nrcsRoute: routePath }, '', routePath);
-      } catch {
-        // history unavailable (sandboxed frame)
-      }
-    };
     if (replaceNextRoute.current) {
       replaceNextRoute.current = false;
-      write(true);
+      writeBrowserHistory('replace', window.history.state, routePath);
     } else if (window.history.state?.nrcsFormPage) {
       // A form page that just closed is stepping back off its history entry; push after it lands.
       pendingRoute.current = routePath;
       const t = window.setTimeout(() => {
         if (pendingRoute.current === routePath) {
           pendingRoute.current = null;
-          write(false);
+          writeBrowserHistory('push', { nrcsRoute: routePath }, routePath);
         }
       }, 400);
       return () => window.clearTimeout(t);
-    } else write(false);
+    } else writeBrowserHistory('push', { nrcsRoute: routePath }, routePath);
   }, [routePath]);
   useEffect(() => {
     const onPop = () => {
       if (pendingRoute.current) {
         const path = pendingRoute.current;
         pendingRoute.current = null;
-        window.history.pushState({ nrcsRoute: path }, '', path);
+        writeBrowserHistory('push', { nrcsRoute: path }, path);
         return;
       }
       // Entries a form page added share the screen's address; the form handles those itself.
-      if (window.history.state?.nrcsFormPage || window.location.pathname === routePathRef.current) return;
-      openLinkRef.current(window.location.pathname);
+      const address = browserAddress();
+      if (window.history.state?.nrcsFormPage || sameScreenAddress(address, routePathRef.current)) return;
+      openLinkRef.current(notificationAddress(address) || address);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -838,15 +842,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
           breakingCount={newsList.filter((n) => isBreakingLive(n)).length}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
-          onSelectNav={(navId) => {
-            if (navId === 'episodes') {
-              setFilterProgramId(null);
-            }
-            if (navId === 'requests') setRequestSegmentId(undefined);
-            setActiveNav(navId);
-            setFocusId(null);
-            setIsMobileSidebarOpen(false);
-          }}
+          onSelectNav={(navId) => openLink(`/${navId}`)}
           badgeCounts={personalBadgeCounts(currentUser, newsList, tasks, episodes)}
         />
 
@@ -918,10 +914,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onCreateEpisode={() => openCreate('episodes')}
                 onNavigate={(view: any) => {
                   if (String(view).includes('/')) { openLink(String(view).startsWith('/') ? String(view) : `/${view}`); return; }
-                  setFocusId(null);
                   const map: Record<string, string> = { NEWS_LIST: 'news', BREAKING_NEWS: 'breaking' };
-                  if (view === 'episodes' || view === 'EPISODES') setFilterProgramId(null);
-                  setActiveNav(map[view] || String(view).toLowerCase().replace(/_/g, '-'));
+                  openLink(`/${map[view] || String(view).toLowerCase().replace(/_/g, '-')}`);
                 }}
                 onSelectEpisode={handleSelectEpisode}
                 onOpenBulletin={(id) => openBulletin(id)}
@@ -985,6 +979,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 newsList={newsList}
                 focusId={focusId}
                 onCreateNews={(seed) => {
+                  setNewBreaking(false);
                   setSelectedNewsItem(null);
                   setNewNewsStoryId(null);
                   setNewsSeed(seed);
@@ -1001,7 +996,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'news-editor' && (
               <NewsEditorView
-                key={editorNewsItem?.id || `new-${newNewsStoryId || ''}-${newsSeed?.wireId || ''}-${newsSeed?.diaryId || ''}`}
+                key={editorNewsItem?.id || `new-${newBreaking}-${newNewsStoryId || ''}-${newsSeed?.wireId || ''}-${newsSeed?.diaryId || ''}`}
+                initialBreaking={newBreaking}
                 newsItem={editorNewsItem}
                 seed={editorNewsItem ? undefined : newsSeed || undefined}
                 defaultStoryId={newNewsStoryId || undefined}
@@ -1064,6 +1060,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
                 onSelectEpisode={handleSelectEpisode}
                 onSaveEpisode={handleSaveEpisode}
                 filterProgramId={filterProgramId}
+                onFilterProgramChange={setFilterProgramId}
                 onDeleteEpisode={handleDeleteEpisode}
                 openNewRequest={createTarget === 'episodes'}
                 onOpenNewHandled={clearCreateTarget}
@@ -1104,6 +1101,19 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
+            {(activeNav === 'tasks' || activeNav === 'personal-tasks') && RbacService.canOpenScreen(currentUser, 'tasks') && (
+              <nav aria-label="أنواع المهام" className="mb-4 flex flex-wrap gap-2">
+                {[{ id: 'tasks', label: 'مهام العمل' }, { id: 'personal-tasks', label: 'مهامي الشخصية' }].map(({ id, label }) => (
+                  <button key={id} type="button" aria-current={activeNav === id ? 'page' : undefined} onClick={() => openLink(`/${id}`)}
+                    className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${activeNav === id ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            )}
+            {activeNav === 'personal-tasks' && (
+              <PersonalTasksView key={currentUser.id} userId={currentUser.id} focusId={focusId} onClearFocus={() => setFocusId(null)} />
+            )}
             {activeNav === 'tasks' && (
               <TasksView
                 focusId={focusId}
@@ -1227,7 +1237,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'on-air' && (
               <OnAirView
                 currentUser={currentUser}
-                initialShowId={onAirShowId}
+                selectedShowId={onAirShowId}
+                onSelectShow={setOnAirShowId}
                 onOpenStudioScreen={(id) => {
                   setStudioEpisodeId(id);
                   setActiveNav('studio-screen');
@@ -1235,7 +1246,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
-            {activeNav === 'studio-screen' && <StudioScreenView currentUser={currentUser} initialEpisodeId={studioEpisodeId} />}
+            {activeNav === 'studio-screen' && <StudioScreenView currentUser={currentUser} selectedShowId={studioEpisodeId} onSelectShow={setStudioEpisodeId} />}
 
             {activeNav === 'help' && (
               <HelpView currentUser={currentUser} onOpenWhatsNew={() => setActiveNav('whats-new')} onOpenShortcuts={() => setIsKeyboardShortcutsOpen(true)} />
@@ -1283,11 +1294,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        onNavigate={(nav) => {
-          if (nav === 'bulletins') setActiveBulletinId(null);
-          if (nav === 'on-air') setOnAirShowId(null);
-          setActiveNav(nav);
-        }}
+        onNavigate={(nav) => openLink(`/${nav}`)}
         onQuickCreateNews={handleCreateNewNewsClick}
         onOpenLink={openLink}
         newsList={newsList}
@@ -1297,8 +1304,8 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         onSelectNews={handleEditNewsClick}
         onSelectEpisode={handleSelectEpisode}
         onSelectProgram={handleSelectProgram}
-        onSelectGuest={() => setActiveNav('guests')}
-        onSelectTask={() => setActiveNav('tasks')}
+        onSelectGuest={() => openLink('/guests')}
+        onSelectTask={(taskId) => openLink(`/tasks/${encodeURIComponent(taskId)}`)}
         currentUser={currentUser}
       />
 

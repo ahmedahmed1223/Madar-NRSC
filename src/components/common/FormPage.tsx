@@ -5,6 +5,7 @@ import { DraftStatus } from './DraftStatus';
 import type { FormDraftStatus } from '../../hooks/useFormDraft';
 import { confirmDialog } from '../../services/dialogs';
 import { canFocus, tabStops } from '../../shared/focus';
+import { writeBrowserHistory } from '../../services/browserHistory';
 
 interface FormPageProps {
   isOpen: boolean;
@@ -21,8 +22,14 @@ interface FormPageProps {
 export const FORM_PAGE_ROOT_ID = 'form-page-root';
 const OPEN_CLASS = 'form-page-open';
 const openForms: string[] = [];
-// The app restores scroll itself when a page closes; the browser's restoration would fight it.
-if (typeof history !== 'undefined' && 'scrollRestoration' in history) history.scrollRestoration = 'manual';
+// The app restores scroll itself after closing a form when the browser allows it.
+if (typeof window !== 'undefined') {
+  try {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+  } catch {
+    // Embedded previews can restrict History API writes.
+  }
+}
 let seq = 0;
 
 const WIDTHS: Record<string, string> = {
@@ -57,8 +64,7 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     setRoot(document.getElementById(FORM_PAGE_ROOT_ID));
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const openForm = () => {
     const id = `form-page-${++seq}`;
     // Whichever actually scrolls: the content column or the window.
     const column = document.getElementById(FORM_PAGE_ROOT_ID)?.parentElement;
@@ -72,18 +78,15 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
     if (scroller) scroller.scrollTop = 0;
     else window.scrollTo(0, 0);
 
-    try {
-      history.pushState({ ...(history.state || {}), nrcsFormPage: id }, '');
-    } catch {
-      // history unavailable (sandboxed frame): the back button still works
-    }
+    const pushFormEntry = () => writeBrowserHistory('push', { ...(history.state || {}), nrcsFormPage: id });
+    pushFormEntry();
     const onPop = async () => {
       if (openForms.at(-1) !== id || history.state?.nrcsFormPage === id) return;
       closedByHistory = true;
       const closed = await onCloseRef.current();
       if (closed === false) {
         closedByHistory = false;
-        history.pushState({ ...(history.state || {}), nrcsFormPage: id }, '');
+        pushFormEntry();
       }
     };
     window.addEventListener('popstate', onPop);
@@ -134,6 +137,23 @@ export const FormPage: React.FC<FormPageProps> = ({ isOpen, onClose, title, subt
         window.setTimeout(restore, 60); // after the history navigation settles
       }
     };
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    // React Strict Mode replays setup and cleanup before the first paint. Register the
+    // history entry only for the effect that survives, so the replay cannot go Back.
+    queueMicrotask(() => {
+      if (!cancelled) dispose = openForm();
+    });
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
+    // The open form owns its scroll position, trigger and history entry until it closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;

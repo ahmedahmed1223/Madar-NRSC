@@ -4,6 +4,7 @@ import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { confirmDialog } from '../../services/dialogs';
 import { storageClient } from '../../services/storageClient';
+import { writeBrowserHistory } from '../../services/browserHistory';
 import { SINGLETON_ID } from '../../shared/collections';
 import { storageOf, validateStorage, type ResolvedStorageSettings, type StorageStatus } from '../../shared/storage';
 
@@ -62,10 +63,12 @@ export function StorageSettings() {
   useEffect(() => {
     void refresh();
     // Back from Google's consent page.
-    const result = new URLSearchParams(window.location.search).get('storage');
+    const address = new URL(window.location.href);
+    const result = address.searchParams.get('storage');
     if (result && RETURN_MESSAGES[result]) {
       setMessage(RETURN_MESSAGES[result]);
-      window.history.replaceState(window.history.state, '', window.location.pathname);
+      address.searchParams.delete('storage');
+      writeBrowserHistory('replace', window.history.state, address.pathname + address.search + address.hash);
     }
     const t = window.setInterval(refresh, 30_000);
     return () => window.clearInterval(t);

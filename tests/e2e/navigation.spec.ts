@@ -38,6 +38,53 @@ test('the address follows the screen: Back/Forward, reload and deep links', asyn
   await close();
 });
 
+test('workspace history restores filtered episodes, broadcast selections and a breaking-news notification link', async ({ browser }) => {
+  const { page, errors, close } = await signIn(browser, 'admin@akhbar.tv');
+  try {
+    await page.goto('/episodes');
+    const program = page.locator('#episodes-program-filter');
+    await program.selectOption('prg-1');
+    await expect(page).toHaveURL(/\/episodes\?program=prg-1$/);
+    await program.selectOption('prg-2');
+    await expect(page).toHaveURL(/\/episodes\?program=prg-2$/);
+    await page.goBack();
+    await expect(program).toHaveValue('prg-1');
+    await page.goForward();
+    await expect(program).toHaveValue('prg-2');
+    await page.reload();
+    await expect(program).toHaveValue('prg-2');
+
+    await page.goto('/on-air/ep-101');
+    const airShow = page.getByLabel('الحلقة أو النشرة', { exact: true });
+    await expect(airShow).toHaveValue('ep-101');
+    await page.getByRole('button', { name: 'شاشة الاستديو', exact: true }).last().click();
+    await expect(page).toHaveURL(/\/studio-screen\/ep-101$/);
+    await expect(page.getByLabel('الحلقة', { exact: true })).toHaveValue('ep-101');
+    await page.goBack();
+    await expect(airShow).toHaveValue('ep-101');
+
+    await page.goto('/requests?segment=seg-test');
+    await expect(page.getByText(/طلبات الفقرة/)).toBeVisible();
+    await page.getByRole('button', { name: 'عرض جميع الطلبات' }).click();
+    await expect(page).toHaveURL(/\/requests$/);
+    await page.goBack();
+    await expect(page.getByText(/طلبات الفقرة/)).toBeVisible();
+
+    await page.goto('/?open=%2Fnews%2Fnew%3Fbreaking%3D1');
+    await expect(page).toHaveURL(/\/news\/new\?breaking=1$/);
+    const headline = page.getByRole('heading', { name: 'خبر عاجل', exact: true });
+    await expect(headline).toBeVisible();
+    await page.reload();
+    await expect(headline).toBeVisible();
+    await openNav(page, 'الأخبار');
+    await page.goBack();
+    await expect(headline).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    await close();
+  }
+});
+
 test('confirmations are in-app dialogs: Esc cancels, the button confirms, focus stays inside', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'journalist@akhbar.tv');
   await openNav(page, 'حجز الموارد');

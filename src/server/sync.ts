@@ -21,6 +21,7 @@ import {
   SyncOp,
   SyncOpResult,
   isCollectionName,
+  isPrivateRecord,
 } from '../shared/collections';
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
@@ -28,6 +29,7 @@ import { canRead, POLICIES, WriteKind } from './policy';
 import { removeUpload, uploadIdFromMedia } from './uploads';
 import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
 import { sanitizeWorkSections } from '../shared/workContext';
+import { preparePersonalTask } from '../shared/personalTasks';
 import { stampTaskWorkflow } from '../shared/taskWorkflow';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
@@ -284,9 +286,7 @@ function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: str
 
 // These rows all carry working content or parent-specific broadcast state.
 const PRODUCTION_READ_BOUND = new Set<CollectionName>(['programs', 'episodes', 'bulletins', 'bulletinStories', 'onAir', 'offlineAirSessions']);
-const SUPPORT_WRITES = new Set<CollectionName>(['users', 'tasks', 'productionCards', 'notifications', 'notificationPrefs', 'personalNotes', 'workspacePrefs']);
-const isPrivateRecord = (collection: CollectionName): collection is 'savedNewsFilters' | 'workspacePrefs' | 'personalNotes' =>
-  collection === 'savedNewsFilters' || collection === 'workspacePrefs' || collection === 'personalNotes';
+const SUPPORT_WRITES = new Set<CollectionName>(['users', 'tasks', 'productionCards', 'notifications', 'notificationPrefs', 'personalNotes', 'personalTasks', 'workspacePrefs']);
 
 export class SyncService {
   constructor(private db: NewsroomDatabase, private dataDir: string, private newsActiveDays = 0) {}
@@ -827,6 +827,13 @@ export class SyncService {
           const now = new Date().toISOString();
           after = { id, ownerId: auth.user.id, title: typeof after.title === 'string' ? after.title.trim() : '',
             body: after.body, pinned: after.pinned === true, createdAt: before?.createdAt || now, updatedAt: now };
+        }
+        if (collection === 'personalTasks') {
+          try {
+            after = preparePersonalTask(id, auth.user.id, after, before);
+          } catch (error) {
+            throw new SyncReject('INVALID', error instanceof Error ? error.message : 'المهمة الشخصية غير صالحة');
+          }
         }
         if (collection === 'pronunciationTerms') {
           const now = new Date().toISOString();

@@ -49,6 +49,7 @@ interface EpisodesViewProps {
   onSelectEpisode: (episodeId: string) => void;
   onSaveEpisode: (episode: Partial<Episode>) => boolean | Promise<boolean>;
   filterProgramId?: string | null;
+  onFilterProgramChange: (id: string | null) => void;
   onDeleteEpisode?: (episodeId: string) => void;
 }
 
@@ -59,6 +60,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   onSelectEpisode,
   onSaveEpisode,
   filterProgramId,
+  onFilterProgramChange,
   onDeleteEpisode,
   openNewRequest,
   onOpenNewHandled,
@@ -67,7 +69,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   const canEditDetails = RbacService.hasPermission(currentUser, 'episodes.edit');
   // Deleting is its own permission (producers and managers), not part of editing.
   const canDelete = RbacService.hasPermission(currentUser, 'episodes.delete');
-  const [selectedProgId, setSelectedProgId] = useState(filterProgramId || 'ALL');
+  const selectedProgId = filterProgramId || 'ALL';
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -283,7 +285,7 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <select
               id="episodes-program-filter"
               value={selectedProgId}
-              onChange={(e) => setSelectedProgId(e.target.value)}
+              onChange={(e) => onFilterProgramChange(e.target.value === 'ALL' ? null : e.target.value)}
               className="min-h-11 min-w-0 w-full px-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="ALL">جميع البرامج ({programs.length})</option>

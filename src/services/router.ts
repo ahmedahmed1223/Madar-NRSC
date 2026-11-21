@@ -12,20 +12,42 @@ import { messageEntryPath, publicMessageOrigin, splitMessageFocus } from '../sha
 export interface RouteState {
   nav: string;
   newsId?: string | null;
-  /** The news editor is open on a new story. */
-  newsNew?: boolean;
+  newsBreaking?: boolean;
   episodeId?: string | null;
   episodeSegmentId?: string;
   programId?: string | null;
   bulletinId?: string | null;
+  episodeProgramId?: string | null;
+  requestSegmentId?: string;
+  airShowId?: string | null;
   /** Item highlighted on a list screen (diary entry, booking, wire). */
   focusId?: string | null;
 }
 
 /** Screens whose list highlights an item given in the address. */
-const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'cards', 'messages', 'tasks', 'requests', 'media', 'guide']);
+const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'cards', 'tasks', 'personal-tasks', 'media', 'guide']);
 
 const clean = (id: string) => encodeURIComponent(id);
+const validId = (value?: string | null): value is string => !!value && ENTITY_ID_PATTERN.test(value);
+
+/** Unwrap a push/email link while keeping the destination's query and fragment. */
+export function notificationAddress(address: string): string | undefined {
+  try {
+    const localOrigin = 'https://madar.local';
+    const envelope = new URL(address, localOrigin);
+    const target = envelope.searchParams.get('open');
+    if (!target?.startsWith('/') || target.startsWith('//')) return undefined;
+    const destination = new URL(target, localOrigin);
+    if (destination.origin !== localOrigin) return undefined;
+    const originalKeys = new Set(destination.searchParams.keys());
+    for (const [key, value] of envelope.searchParams) {
+      if (key !== 'open' && !originalKeys.has(key)) destination.searchParams.append(key, value);
+    }
+    return destination.pathname + destination.search + (destination.hash || envelope.hash);
+  } catch {
+    return undefined;
+  }
+}
 
 export function routeToPath(s: RouteState): string {
   switch (s.nav) {
@@ -33,7 +55,16 @@ export function routeToPath(s: RouteState): string {
       return '/';
     case 'news-editor':
       if (s.newsId) return `/news/${clean(s.newsId)}`;
-      return '/news/new';
+      return s.newsBreaking ? '/news/new?breaking=1' : '/news/new';
+    case 'episodes':
+      return validId(s.episodeProgramId) ? `/episodes?program=${clean(s.episodeProgramId)}` : '/episodes';
+    case 'requests': {
+      const path = s.focusId ? `/requests/${clean(s.focusId)}` : '/requests';
+      return validId(s.requestSegmentId) ? `${path}?segment=${clean(s.requestSegmentId)}` : path;
+    }
+    case 'on-air':
+    case 'studio-screen':
+      return validId(s.airShowId) ? `/${s.nav}/${clean(s.airShowId)}` : `/${s.nav}`;
     case 'episode-workspace': {
       if (!s.episodeId) return '/episodes';
       const path = `/episodes/${clean(s.episodeId)}`;
@@ -71,9 +102,21 @@ function decodePathPart(value: string): string {
 }
 
 /** Splits an address into the screen and optional item id ("/news/abc" → news, abc). */
-export function parsePath(pathname: string): { view: string; id: string | null; episodeSegmentId?: string } {
-  const [view = '', rawId = '', rawTarget = '', rawSegmentId = '', ...rest] = pathname.split(/[?#]/, 1)[0].replace(/^\/+/, '').split('/');
+export function parsePath(address: string): {
+  view: string; id: string | null; episodeSegmentId?: string; newsBreaking?: boolean;
+  episodeProgramId?: string; requestSegmentId?: string;
+} {
+  const withoutHash = address.split('#', 1)[0];
+  const question = withoutHash.indexOf('?');
+  const path = question < 0 ? withoutHash : withoutHash.slice(0, question);
+  const [view = '', rawId = '', rawTarget = '', rawSegmentId = '', ...rest] = path.replace(/^\/+/, '').split('/');
   const id = decodePathPart(rawId);
+  const params = new URLSearchParams(question < 0 ? '' : withoutHash.slice(question + 1));
+  if (view === 'news' && id === 'new' && params.get('breaking') === '1') return { view, id, newsBreaking: true };
+  const episodeProgramId = params.get('program');
+  if (view === 'episodes' && !id && validId(episodeProgramId)) return { view, id: null, episodeProgramId };
+  const requestSegmentId = params.get('segment');
+  if (view === 'requests' && validId(requestSegmentId)) return { view, id: id || null, requestSegmentId };
   if (view === 'roster' && id === 'handover') {
     const target = decodePathPart(rawTarget);
     if (ENTITY_ID_PATTERN.test(target)) return { view, id: `handover/${target}` };
@@ -109,6 +152,7 @@ const TITLES: Record<string, string> = {
   media: 'مكتبة الوسائط',
   messages: 'المراسلات',
   'personal-notes': 'ملاحظاتي',
+  'personal-tasks': 'مهامي الشخصية',
   cards: 'التكليفات',
   workload: 'متابعة الفرق والتكاليف',
   requests: 'طلبات الأقسام',
@@ -131,11 +175,21 @@ export const APP_TITLE = APP_NAME;
 
 /** Browser tab title: the item's name when known, then the screen, then the app. */
 export function screenTitle(nav: string, itemTitle?: string | null): string {
-  const screen = TITLES[nav] || '';
+  const screen = Object.hasOwn(TITLES, nav) ? TITLES[nav] : '';
   return [itemTitle, screen, APP_TITLE].filter(Boolean).join(' · ');
 }
 
 /** Screens the address may name; anything else falls back to the dashboard. */
 export function isKnownScreen(view: string): boolean {
-  return view in TITLES || view === 'program_detail';
+  return Object.hasOwn(TITLES, view) || view === 'program_detail';
+}
+
+/** Non-routing query parameters and anchors can coexist with a screen address. */
+export function sameScreenAddress(current: string, target: string): boolean {
+  if (current.split(/[?#]/, 1)[0] !== target.split(/[?#]/, 1)[0]) return false;
+  const left = parsePath(current);
+  const right = parsePath(target);
+  return left.newsBreaking === right.newsBreaking &&
+    left.episodeProgramId === right.episodeProgramId &&
+    left.requestSegmentId === right.requestSegmentId;
 }

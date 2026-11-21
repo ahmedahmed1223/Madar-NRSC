@@ -1,7 +1,55 @@
 import { expect, test } from '@playwright/test';
 import express from 'express';
+import { build } from 'esbuild';
 import path from 'node:path';
 import { createTestServer, DEMO_PASSWORD, listen } from '../helpers';
+
+test('opening a new form in React Strict Mode keeps its browser history entry', async ({ page }) => {
+  test.setTimeout(120_000);
+  // The production React bundle omits the effect replay used in development previews.
+  const { outputFiles: [script] } = await build({
+    bundle: true,
+    write: false,
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"development"' },
+    stdin: {
+      loader: 'tsx',
+      resolveDir: process.cwd(),
+      contents: `
+        import { StrictMode, useState } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { FormPage } from './src/components/common/FormPage';
+
+        function SetupEntry() {
+          const [open, setOpen] = useState(false);
+          return <>
+            <main><button onClick={() => setOpen(true)}>فتح المعالج</button></main>
+            <div id="form-page-root" />
+            {open && <FormPage isOpen onClose={() => setOpen(false)} title="معالج الإعداد">
+              <input aria-label="اسم المؤسسة" defaultValue="مدار" />
+            </FormPage>}
+          </>;
+        }
+        createRoot(document.querySelector('#root')).render(<StrictMode><SetupEntry /></StrictMode>);
+      `,
+    },
+  });
+  await page.route('**/setup-history-test', route => route.fulfill({
+    contentType: 'text/html; charset=UTF-8',
+    body: '<style>.form-page-open main { display: none }</style><div id="root"></div><script src="/setup-history-test.js"></script>',
+  }));
+  await page.route('**/setup-history-test.js', route => route.fulfill({ contentType: 'text/javascript; charset=UTF-8', body: script.text }));
+  await page.goto('/setup-history-test');
+
+  const launcher = page.getByRole('button', { name: 'فتح المعالج' });
+  await launcher.click();
+  const organization = page.getByRole('textbox', { name: 'اسم المؤسسة' });
+  await expect(organization).toBeFocused();
+  await expect(organization).toHaveValue('مدار');
+  await page.goBack();
+  await expect(launcher).toBeVisible();
+  await expect(page).toHaveURL(/\/setup-history-test$/);
+});
 
 test('first setup, institutional administrator and demo cleanup use the saved organization', async ({ browser }) => {
   // Cleanup removes samples. Give this journey its own database even when the entire suite runs.

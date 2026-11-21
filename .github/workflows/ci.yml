@@ -33,7 +33,7 @@ jobs:
           tests/e2e/department-work.spec.ts tests/e2e/support-work.spec.ts tests/e2e/task-workflow-settings.spec.ts
           tests/e2e/premerge-integrations.spec.ts tests/e2e/setup-lifecycle.spec.ts
       - name: Daily role and editorial AI workflows
-        run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai app-updates
+        run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai app-updates personal-tasks
       - name: Multi-station production and CSV exports
         run: npx playwright test production-cards
       - name: Bulletin assembly and programme templates
