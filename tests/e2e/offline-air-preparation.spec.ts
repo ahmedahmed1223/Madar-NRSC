@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { signIn, openNav } from './helpers';
 
+test.use({ actionTimeout: 15_000, navigationTimeout: 15_000 });
+
 test('prepares through UI and cancels logout before purging local work', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv');
   let viewer: import('@playwright/test').Page | null = null;
@@ -17,21 +19,23 @@ test('prepares through UI and cancels logout before purging local work', async (
     await expect(selector.locator(`option[value="${id}"]`)).toHaveCount(1);
     await selector.selectOption(id);
     const preparation = page.getByRole('region', { name: 'تجهيز الهواء دون اتصال' });
-    await preparation.locator('summary').click(); // the offline-copy form is collapsed by default
+    const copySummary = preparation.locator('summary').filter({ hasText: 'نسخة الهواء المحلية' });
+    await copySummary.click();
     await preparation.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await preparation.getByRole('checkbox').check();
     await preparation.getByRole('button', { name: 'تجهيز النسخة', exact: true }).click();
     await expect(preparation.getByRole('status')).toContainText('تحقق حفظ النسخة');
-    await expect(preparation.locator('summary')).toContainText('تطابق آخر بيانات متزامنة');
+    await expect(copySummary).toContainText('تطابق آخر بيانات متزامنة');
     const saved = (await (await page.request.get('/api/v1/data')).json()).collections.bulletinStories.find((row: any) => row.id === `${id}-story`);
     const updated = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [
       { c: 'bulletinStories', op: 'upsert', id: saved.id, baseV: saved.v, d: { ...saved.d, slug: 'فقرة محدثة بعد تجهيز النسخة' } },
     ] } });
     expect((await updated.json()).results[0].ok).toBe(true);
-    await expect(preparation.locator('summary')).toContainText('تختلف عن آخر بيانات متزامنة');
-    const popup = page.waitForEvent('popup');
-    await preparation.getByRole('link', { name: 'فتح النسخة المحلية', exact: true }).click();
-    viewer = await popup;
+    await expect(copySummary).toContainText('تختلف عن آخر بيانات متزامنة');
+    const localCopyLink = preparation.getByRole('link', { name: 'فتح النسخة المحلية', exact: true });
+    await expect(localCopyLink).toHaveAttribute('target', '_blank');
+    await expect(localCopyLink).toHaveAttribute('href', /^\/offline-air\.html\?packet=.+/);
+    [viewer] = await Promise.all([page.waitForEvent('popup', { timeout: 15_000 }), localCopyLink.click()]);
     await viewer.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await viewer.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
     await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).toBeVisible();
@@ -43,12 +47,13 @@ test('prepares through UI and cancels logout before purging local work', async (
     await viewer.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
     await expect(viewer.getByLabel('لون النص')).toHaveValue('cyan');
     await expect(viewer.getByRole('button', { name: 'المرآة', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: /^حساب/ }).click();
+    const account = page.getByRole('button', { name: /^الحساب / });
+    await account.click();
     await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
     const confirmation = page.getByRole('alertdialog');
     await confirmation.getByRole('button', { name: 'البقاء', exact: true }).click();
     await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).toBeVisible();
-    if (!await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).isVisible()) await page.getByRole('button', { name: /^حساب/ }).click();
+    if (!await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).isVisible()) await account.click();
     await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
     await confirmation.getByRole('button', { name: 'حذف النسخ وتسجيل الخروج', exact: true }).click();
     await expect(page.locator('#login-email')).toBeVisible();
