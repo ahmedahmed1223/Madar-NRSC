@@ -18,8 +18,11 @@ import type { Episode, User } from '../types';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { useLiveData } from '../hooks/useLiveData';
-import { DEPARTMENTS, departmentName } from '../shared/departments';
-import { canControlOnAir, CUE_PRESETS, Cue, formatClock, liveTiming } from '../shared/onair';
+import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
+import { canControlOnAir, CUE_PRESETS, Cue, formatClock, liveTiming, PRESENTER_INSTRUCTIONS } from '../shared/onair';
+import { usePresenterPaces } from '../hooks/usePresenterPaces';
+import { estimatedSegmentRead, presenterKey, rundownBackTimes } from '../shared/presenterTiming';
+import { bulletinTiming, clockOf, minutesOfDay, storyTiming } from '../shared/bulletins';
 import { episodeReadiness } from '../shared/production';
 import { stationTimeZone } from '../shared/dates';
 import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
@@ -64,7 +67,7 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
 };
 
 const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, selectedShowId, onSelectShow }) => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings'], 1000);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings', 'users'], 1000);
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
@@ -93,6 +96,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const [commandPending, setCommandPending] = useState(false);
   const [cueText, setCueText] = useState('');
   const [cueTargets, setCueTargets] = useState<string[]>([]);
+  const [instructionText, setInstructionText] = useState('');
+  const [instructionRecipient, setInstructionRecipient] = useState<{ showId: string; userId: string }>();
 
   const episode = episodes.find((e) => e.id === episodeId) as Episode | undefined;
   const state = episode ? apiService.getOnAir(episode.id) : null;
@@ -100,12 +105,31 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const live = state?.status === 'LIVE';
   const pastShow = !!episode && episode.broadcastDate < today && !live;
   const timing = liveTiming(state, episode);
-  const showLength = programmeSeconds(episode as any);
   const untilStart = episode && !live && state?.status !== 'ENDED' ? secondsUntilStart(episode.broadcastDate, episode.startTime, nowMs, stationZone) : null;
   const isBulletin = (episode as any)?.kind === 'bulletin';
   const bulletin = isBulletin && episode ? apiService.getBulletins().find(b => b.id === episode.id) : undefined;
   const bulletinStories = bulletin ? apiService.getBulletinStories(bulletin.id) : [];
-  const issues = bulletin ? evaluateBulletinReadiness(bulletin, bulletinStories, apiService.getNews(), apiService.getMedia(), new Date(nowMs)) : [];
+  const showLength = bulletin?.plannedSeconds || programmeSeconds(episode);
+  const paces = usePresenterPaces();
+  const bulletinPace = (story: (typeof bulletinStories)[number]) => paces.get(presenterKey(story.anchorName || bulletin?.anchors[0]))?.wpm;
+  const bulletinForecast = bulletin && bulletinStories.some(story => bulletinPace(story) && storyTiming(story).read)
+    ? bulletinTiming(bulletin, bulletinStories, bulletinPace).rows : undefined;
+  const programmeForecast = !isBulletin && episode?.startTime && showLength > 0 && rundown.some(segment => estimatedSegmentRead(segment, paces, episode.presenterName) !== null)
+    ? rundownBackTimes(rundown, minutesOfDay(episode.startTime) * 60 + showLength, paces, episode.presenterName) : undefined;
+  const currentOrFirst = timing?.current || rundown[0];
+  const presenter = currentOrFirst?.presenterName || episode?.presenterName;
+  const readingPace = paces.get(presenterKey(presenter));
+  const currentStory = bulletinStories.find(story => story.id === currentOrFirst?.id && story.status === 'APPROVED');
+  const estimatedRead = currentStory && readingPace ? storyTiming(currentStory, readingPace.wpm).read || null
+    : currentOrFirst ? estimatedSegmentRead(currentOrFirst, paces, presenter) : null;
+  const presenters = apiService.getUsers().filter(user => !user.deletedAt && user.isActive !== false && user.id !== currentUser.id && (user.role === 'PRESENTER' || departmentIdOf(user) === 'presenters'));
+  const matchedPresenters = presenter ? presenters.filter(user => presenterKey(user.fullName) === presenterKey(presenter)) : [];
+  const episodePresenterAccount = presenters.find(user => user.id === episode?.presenterId);
+  const assigned = matchedPresenters.length === 1 ? matchedPresenters[0].id : !currentOrFirst?.presenterName ? episodePresenterAccount?.id : undefined;
+  const manuallySelected = instructionRecipient?.showId === episodeId ? instructionRecipient?.userId : undefined;
+  const selectedRecipient = manuallySelected !== undefined && (manuallySelected === '' || presenters.some(user => user.id === manuallySelected)) ? manuallySelected : assigned || '';
+  const activeSession = live && state ? { showId: state.episodeId, startedAt: state.startedAt } : undefined;
+  const issues = bulletin ? evaluateBulletinReadiness(bulletin, bulletinStories, apiService.getNews(), apiService.getMedia(), new Date(nowMs), stationZone, activeSession) : [];
   const bulletinBlocked = isBulletin && (!bulletin || rundown.length === 0 || issues.some(issue => issue.severity === 'blocker'));
   const canOpenBulletin = RbacService.canOpenScreen(currentUser, 'bulletins');
   const canOpenEpisode = RbacService.canOpenScreen(currentUser, 'episode-workspace');
@@ -123,6 +147,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const myCues = apiService
     .getCues()
     .filter((c) => c.fromId === currentUser.id && (!episode || !c.episodeId || c.episodeId === episode.id))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 5);
 
   const run = async (fn: () => any, collection: 'onAir' | 'cues' = 'onAir') => {
@@ -130,7 +155,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
     setCommandPending(true);
     try {
       setError(null);
-      const saved = fn();
+      const saved = await fn();
       if (saved?.id) {
         const outcome = await dataStore.awaitWrite(collection, saved.id);
         if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم الأمر');
@@ -181,6 +206,10 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const sendCue = async (message: string, level: Cue['level']) => {
     if (await run(() => apiService.sendCue(message, level, cueTargets, episode?.id), 'cues')) setCueText('');
   };
+
+  const sendInstruction = (message: string, level: Cue['level']) => run(() => apiService.sendPresenterInstruction(
+    episodeId, message, level, selectedRecipient || undefined,
+  ), 'cues');
 
   const remainingCls = !timing ? '' : timing.remaining < 0 ? 'text-red-400' : timing.remaining <= 30 ? 'text-amber-300' : 'text-emerald-300';
   const selectedTitle = episode ? `${episode.programName} — ${episode.title}` : '';
@@ -274,6 +303,9 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     {timing.current.presenterName || ''}
                     {segmentGuests(timing.current).length ? ` · ${segmentGuests(timing.current).map((g) => g.guestName).join('، ')}` : ''}
                   </p>
+                  {estimatedRead !== null && readingPace && <p className="text-xs text-slate-300" title={`${readingPace.samples} قراءات في ${readingPace.sessions} عمليات بث`}>
+                    زمن الإلقاء المقدّر {formatClock(estimatedRead)} · {readingPace.wpm} كلمة/دقيقة
+                  </p>}
                 </div>
                 <div className="text-center">
                   <span className="text-xs font-bold text-slate-300 block">المتبقي للفقرة</span>
@@ -333,6 +365,10 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               <ol>
                 {rundown.map((seg, i) => {
                   const logged = state?.log?.filter((l) => l.segmentId === seg.id).pop();
+                  const bulletinRow = bulletinForecast?.get(seg.id);
+                  const programmeRow = programmeForecast?.get(seg.id);
+                  const forecast = bulletinRow || programmeRow;
+                  const estimate = bulletinRow?.duration ?? programmeRow?.estimatedRead;
                   const actual = logged ? Math.round(((logged.endedAt ? new Date(logged.endedAt).getTime() : Date.now()) - new Date(logged.startedAt).getTime()) / 1000) : null;
                   const isCurrent = live && timing?.index === i;
                   const done = !!logged?.endedAt && !isCurrent;
@@ -345,6 +381,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                       <span className="flex-1 min-w-0">
                         <strong className="block truncate text-slate-800">{seg.title}</strong>
                         <span className="text-slate-500">{seg.presenterName || ''}</span>
+                        {forecast && <span className="block text-slate-600">أقصى بدء للحاق بنهاية البث <bdi>{clockOf(forecast.back)}</bdi></span>}
+                        {estimate != null && estimate !== seg.durationSeconds && <span className="block text-slate-600">المدة المقدّرة <bdi>{formatClock(estimate)}</bdi></span>}
                       </span>
                       <span className="font-mono text-slate-500" dir="ltr">
                         {formatClock(seg.durationSeconds || 0)}
@@ -375,6 +413,24 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
               </h2>
               {canControl || RbacService.hasPermission(currentUser, 'tasks.intercom_broadcast') ? (
                 <>
+                  <fieldset disabled={!connected || commandPending} className="min-w-0 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 disabled:opacity-60">
+                    <legend className="px-1 text-xs font-bold text-amber-900">توجيه المذيع</legend>
+                    <select aria-label="المذيع المستهدف" value={selectedRecipient} onChange={e => setInstructionRecipient({ showId: episodeId, userId: e.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs">
+                      <option value="">المذيعون والاستوديو</option>
+                      {presenters.map(user => <option key={user.id} value={user.id}>{user.fullName} والاستوديو</option>)}
+                    </select>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRESENTER_INSTRUCTIONS.map(preset => <button key={preset.message} type="button" onClick={() => void sendInstruction(preset.message, preset.level)} className="min-h-11 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-slate-800">{preset.message}</button>)}
+                    </div>
+                    <form onSubmit={async e => {
+                      e.preventDefault();
+                      if (instructionText.trim() && await sendInstruction(instructionText, 'info')) setInstructionText('');
+                    }} className="flex gap-2">
+                      <input value={instructionText} onChange={e => setInstructionText(e.target.value)} maxLength={120} aria-label="نص توجيه المذيع" placeholder="توجيه قصير…" className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs" />
+                      <button type="submit" disabled={!instructionText.trim()} className="min-h-11 shrink-0 rounded-lg bg-slate-800 px-2 text-xs font-bold text-white disabled:opacity-50">إرسال</button>
+                    </form>
+                  </fieldset>
+                  {!connected && <p role="status" className="text-xs text-slate-600">يتطلب إرسال التوجيهات اتصالاً بالخادم.</p>}
                   <div className="flex flex-wrap gap-1" role="group" aria-label="الأقسام المستهدفة">
                     <button type="button" onClick={() => setCueTargets([])} aria-pressed={cueTargets.length === 0} className={`min-h-11 px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.length === 0 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}>
                       الجميع
@@ -393,7 +449,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {CUE_PRESETS.map((p) => (
-                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} className={`min-h-11 px-2 py-2 rounded-lg text-2xs font-bold border text-start ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      <button key={p.message} type="button" onClick={() => sendCue(p.message, p.level)} disabled={!connected || commandPending} className={`min-h-11 px-2 py-2 rounded-lg text-2xs font-bold border text-start disabled:opacity-60 ${p.level === 'urgent' ? 'border-red-200 bg-red-50 text-red-700' : p.level === 'standby' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
                         {p.message}
                       </button>
                     ))}
@@ -406,13 +462,13 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                     className="flex gap-2"
                   >
                     <input value={cueText} onChange={(e) => setCueText(e.target.value)} maxLength={300} placeholder="تنبيه مخصص..." aria-label="نص التنبيه" className="min-h-11 min-w-0 flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs" />
-                    <button type="submit" disabled={!cueText.trim()} className="min-h-11 shrink-0 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 disabled:opacity-50">إرسال</button>
+                    <button type="submit" disabled={!cueText.trim() || !connected || commandPending} className="min-h-11 shrink-0 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 disabled:opacity-50">إرسال</button>
                   </form>
                   <div className="space-y-1.5">
                     {myCues.map((c) => (
                       <div key={c.id} className="text-2xs p-2 rounded-lg bg-slate-50 border border-slate-100">
                         <strong className="text-slate-800">{c.message}</strong>
-                        <span className="text-slate-500"> → {c.targetDepartmentIds.length ? c.targetDepartmentIds.map(departmentName).join('، ') : 'الجميع'}</span>
+                        <span className="text-slate-500"> → {[apiService.getUserById(c.targetUserId || '')?.fullName, ...c.targetDepartmentIds.map(departmentName)].filter(Boolean).join('، ') || 'الجميع'}</span>
                         <span className="block text-emerald-700">{c.acks.length ? `استلم: ${c.acks.map((a) => a.userName).join('، ')}` : 'لم يستلمه أحد بعد'}</span>
                       </div>
                     ))}

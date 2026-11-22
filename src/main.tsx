@@ -1,4 +1,4 @@
-import {StrictMode} from 'react';
+import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
 import AppShell from './AppShell.tsx';
 import { ErrorBoundary } from './components/common/ErrorBoundary.tsx';
@@ -9,11 +9,16 @@ import { takeOrphanedLocks } from './services/heldLocks';
 import { apiService } from './services/api';
 import { registerAppServiceWorker } from './services/serviceWorker';
 
-installArabicValidation();
-registerAppServiceWorker();
+const ExternalIntakeView = lazy(() => import('./views/ExternalIntakeView').then(module => ({ default: module.ExternalIntakeView })));
+const externalIntake = window.location.pathname.replace(/\/$/, '') === '/intake';
+
+if (!externalIntake) {
+  installArabicValidation();
+  registerAppServiceWorker();
+}
 
 // Locks the previous page in this tab held when it reloaded (an editor still open takes it again).
-takeOrphanedLocks().forEach((id) => apiService.releaseLockIdOnServer(id));
+if (!externalIntake) takeOrphanedLocks().forEach((id) => apiService.releaseLockIdOnServer(id));
 
 // Pictures that fail to load (dead links, offline hosts) are hidden instead of showing a broken icon.
 document.addEventListener(
@@ -28,7 +33,7 @@ document.addEventListener(
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <AppShell />
+      {externalIntake ? <Suspense fallback={<p role="status">جارٍ تحميل الرابط…</p>}><ExternalIntakeView /></Suspense> : <AppShell />}
       <DialogHost />
     </ErrorBoundary>
   </StrictMode>,

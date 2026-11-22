@@ -53,7 +53,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
   const [requestDraft, setRequestDraft] = useState<RequestDraft | null>(null);
   const canRequest = !!episodeId && RbacService.hasPermission(apiService.getCurrentUser(), 'requests.create');
   const episodeRecord = episodeId ? apiService.getEpisodes().find((e) => e.id === episodeId) : undefined;
-  const readinessCtx = { requests: apiService.getRequests(), media: apiService.getMedia() as any[] };
+  const readinessCtx = { requests: apiService.getRequests(), media: apiService.getMedia(), timeZone: apiService.getSettings().defaultTimezone };
   const [editingSegment, setEditingSegment] = useState<RundownSegment | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncingDb, setIsSyncingDb] = useState(false);
@@ -578,6 +578,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
                                 setRequestDraft({
                                   title: '',
                                   link: { kind: 'segment', episodeId, segmentId: seg.id, title: `${episodeRecord?.title || 'حلقة'} — ${seg.title}` },
+                                  sourceMediaIds: (seg.mediaIds || []).filter(id => readinessCtx.media.some(asset => asset.id === id && (asset.mediaType === 'AUDIO' || asset.mediaType === 'VIDEO'))),
                                 })
                               }
                               className="text-2xs font-bold px-1.5 py-0.5 rounded-md border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50"

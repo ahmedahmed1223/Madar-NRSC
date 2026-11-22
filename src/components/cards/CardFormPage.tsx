@@ -12,12 +12,14 @@ import { WorkReminderFields } from '../common/WorkReminderFields';
 import type { User } from '../../types';
 import { INPUT, LABEL } from './cardUi';
 import { useConfirmedCardSave } from './useConfirmedCardSave';
+import { MessageOriginLabel } from '../messages/MessageOriginLabel';
 
 interface CardFormPageProps {
   isOpen: boolean;
   onClose: () => void;
   /** Card being edited; absent for a new card. */
   card?: ProductionCard | null;
+  draft?: Pick<ProductionCard, 'title' | 'brief' | 'mediaIds' | 'messageOrigin'> & { id?: string };
   users: User[];
   currentUser: User;
   onSaved: (card: ProductionCard, message: string) => void;
@@ -30,7 +32,7 @@ const fromInput = (value: string) => (value ? fromLocalInputValue(value) : undef
 const targetOf = (step: CardStep) => (step.assigneeId ? `u:${step.assigneeId}` : step.stationId ? `s:${step.stationId}` : '');
 
 /** Creates a production card or edits its details, deadlines and steps (supervisors only). */
-export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, card, users, currentUser, onSaved }) => {
+export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, card, draft, users, currentUser, onSaved }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
@@ -51,10 +53,10 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
 
   useEffect(() => {
     if (!isOpen) return;
-    setTitle(card?.title || '');
+    setTitle(card?.title || draft?.title || '');
     setKind(card?.kind || 'NEWS');
     setTarget(card?.target);
-    setBrief(card?.brief || '');
+    setBrief(card?.brief || draft?.brief || '');
     setUrgent(card?.priority === 'URGENT');
     setOwnerId(card?.ownerId || currentUser.id);
     setDueAt(localInput(card?.dueAt));
@@ -110,7 +112,8 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const saved = await save((id) => ({
-        ...(card || { id, status: 'OPEN' as const, log: [] }),
+        ...(card || { id: draft?.id ?? id, status: 'OPEN' as const, log: [] }),
+        ...(draft && !card ? { mediaIds: draft.mediaIds, messageOrigin: draft.messageOrigin } : {}),
         title: title.trim(),
         kind,
         brief: brief.trim() || undefined,
@@ -132,6 +135,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   return (
     <FormPage isOpen={isOpen} onClose={() => { if (pending.current) return false; onClose(); }} title={card ? 'تعديل التكليف' : 'تكليف حر جديد'} subtitle="تكليف واحد يرافق المادة بين المحطات والأقسام" maxWidth="4xl">
       <form onSubmit={submit} className="space-y-5 text-xs">
+        <MessageOriginLabel origin={card?.messageOrigin || draft?.messageOrigin} />
         <fieldset disabled={saving} className="min-w-0 space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">

@@ -1,10 +1,12 @@
-import { prefsError } from '../shared/notifications';
+import { NEWS_KEYWORD_NOTICE_PREFIX, prefsError } from '../shared/notifications';
+import { CATEGORY_HAS_CHILDREN, categoryParentError } from '../shared/newsCategories';
 import { savedNewsFilterError } from '../shared/savedNewsFilters';
 import { guestFollowUpError } from '../shared/guestFollowUp';
 import { pronunciationError } from '../shared/pronunciation';
 import { normalizeArabic } from '../shared/search';
 import { normalizeProductionName, productionPersonError } from '../shared/productionPeople';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { firstMediaRightsBlocker, mediaEditorialError, mediaRightsIssue, plannedMediaAirAt, segmentMediaIds } from '../shared/mediaEditorial';
 import { reviewThreadError } from '../shared/reviewThreads';
 import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
@@ -12,10 +14,11 @@ import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, departmentsError, departmentsOf, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
 import { DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
-import { canControlOnAir } from '../shared/onair';
+import { canControlOnAir, isCueForUser, isPresenterAccount, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
 import { bulletinError, findShow, formatError, isApprover, nextApprovalStep, canActOnStep, approvalStepName, plainText, storyError, storyStatusError } from '../shared/bulletins';
 import { rosterEntryError } from '../shared/roster';
 import type { CollectionName } from '../shared/collections';
+import { messageWorkMediaIds, type PrivateMessageMedia } from '../shared/messageActions';
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
@@ -242,10 +245,22 @@ const episodesPolicy: Policy = ({ auth, kind, before, after, list }) => {
       const followUpError = guestFollowUpError(guest, list?.('users') || [], previous);
       if (followUpError) return followUpError;
     }
+    if (changed(before, after, 'rundown')) {
+      const media = list?.('media') || [];
+      const previous = new Map<string, any>((Array.isArray(before?.rundown) ? before.rundown : []).map((segment: any) => [segment.id, segment]));
+      for (const segment of Array.isArray(after.rundown) ? after.rundown : []) {
+        if (!segment) continue;
+        const old = previous.get(segment.id);
+        const priorIds = old ? segmentMediaIds(old, before.id, media) : new Set<string>();
+        const airAt = plannedMediaAirAt(after.broadcastDate, after.startTime, list?.('settings')[0]?.defaultTimezone, segment.startTimeOffset);
+        const blocker = firstMediaRightsBlocker([...segmentMediaIds(segment, after.id, media)].filter(id => !priorIds.has(id)), media, new Date(), airAt);
+        if (blocker) return `لا يمكن إرفاق المادة بالرانداون: ${blocker}`;
+      }
+    }
   }
   // An episode is only declared ready for air when every department has delivered.
   if (after?.status === 'READY_FOR_BROADCAST' && before?.status !== 'READY_FOR_BROADCAST' && !after?.deletedAt) {
-    const readiness = episodeReadiness(after, { requests: list?.('requests') || [], media: list?.('media') || [] });
+    const readiness = episodeReadiness(after, { requests: list?.('requests') || [], media: list?.('media') || [], timeZone: list?.('settings')[0]?.defaultTimezone });
     if (!readiness.ready) {
       const first = readiness.blockers[0];
       return readiness.total === 0
@@ -296,8 +311,15 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     return approver || auth.can('bulletins.manage') || (actor.canEdit && before?.writerId === auth.user.id) ? null : 'حذف القصة لكاتبها أو لمحرر النشرة';
   }
   if (!bulletin || bulletin.deletedAt) return 'النشرة غير موجودة';
+  if (after.remoteGuest?.guestId && after.remoteGuest.guestId !== before?.remoteGuest?.guestId &&
+      !(list?.('guests') || []).some(guest => guest.id === after.remoteGuest.guestId && !guest.deletedAt)) return 'ضيف النشرة غير موجود';
   if (!actor.canEdit && !approver) return 'صلاحياتك لا تسمح بتعديل قصص النشرة';
   if (before && before.bulletinId !== after.bulletinId) return 'لا يمكن نقل القصة بين النشرات؛ انسخها بدلاً من ذلك';
+  if (after.clipMediaId && changed(before, after, 'clipMediaId')) {
+    const airAt = plannedMediaAirAt(bulletin.date, bulletin.startTime, list?.('settings')[0]?.defaultTimezone);
+    const blocker = firstMediaRightsBlocker([after.clipMediaId], list?.('media') || [], new Date(), airAt);
+    if (blocker) return `لا يمكن إرفاق المادة بالرانداون: ${blocker}`;
+  }
     const pending = nextApprovalStep(bulletin, before);
     if (before && after.status === 'APPROVED' && pending && !canActOnStep(pending, bulletin, actor)) return `القصة بانتظار اعتماد: ${approvalStepName(pending, bulletin)}`;
   return storyError(after) || storyStatusError(before, after, bulletin, actor);
@@ -334,6 +356,14 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
 };
 
 const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
+  if (kind === 'create' && (after.privateMessageMedia || String(after.id).startsWith('msgmedia-'))) return 'يسجل الخادم مراجع مرفقات الرسائل';
+  if (kind !== 'delete' && changed(before, after, 'privateMessageMedia')) return 'لا يمكن تغيير مرجع مرفق الرسالة';
+  if (before?.privateMessageMedia && before.ownerId !== auth.user.id) return DENIED;
+  if (kind !== 'delete' && before?.privateMessageMedia && (changed(before, after, 'url') || changed(before, after, 'fileUrl'))) return 'لا يمكن تغيير مصدر مرفق الرسالة';
+  if (kind !== 'delete' && changed(before, after, 'rights') && !(auth.can('news.approve') || auth.can('media.delete'))) return 'تعديل حقوق البث لمن يملك صلاحية الاعتماد أو إدارة الوسائط';
+  if (kind !== 'delete' && changed(before, after, 'transcript')) return 'يحفظ الخادم نتيجة التفريغ';
+  if (kind !== 'delete' && changed(before, after, 'autoTranscriptionJob')) return 'يجدول الخادم التفريغ التلقائي';
+  if (kind !== 'delete' && changed(before, after, 'broadcastUse')) return 'يسجل الخادم استخدام التصاريح لمرة واحدة';
   if (kind === 'delete' || isSoftDelete(before, after)) {
     const isOwner = [before?.ownerId, before?.uploadedById].includes(auth.user.id);
     return auth.can('media.delete') || (isOwner && auth.can('media.upload')) ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
@@ -342,10 +372,19 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
   // Approving a video for air (or withdrawing that approval) is an editorial decision.
   const approvalChanged = (before?.videoStatus === 'APPROVED') !== (after?.videoStatus === 'APPROVED');
   if (approvalChanged && !(auth.can('news.approve') || auth.can('media.delete'))) return 'اعتماد الفيديو للبث لمن يملك صلاحية الاعتماد';
-  return null;
+  if (before?.rights && !(auth.can('news.approve') || auth.can('media.delete')) &&
+    (changed(before, after, 'url') || changed(before, after, 'fileUrl'))) return 'تغيير مصدر مادة تحمل حقوق بث لمن يملك صلاحية الاعتماد أو إدارة الوسائط';
+  return mediaEditorialError(after);
 };
 
 const notificationsPolicy: Policy = ({ auth, kind, before, after }) => {
+  if (before?.category === 'news-keyword') {
+    if (before.userId !== auth.user.id) return DENIED;
+    if (kind === 'delete') return null;
+    const allowed = new Set(['isRead', 'deletedAt']);
+    return Object.keys({ ...before, ...after }).some(key => !allowed.has(key) && changed(before, after, key)) ? DENIED : null;
+  }
+  if (after?.category === 'news-keyword' || after?.id?.startsWith(NEWS_KEYWORD_NOTICE_PREFIX)) return DENIED;
   if (assignedWorkOnly(auth.can)) {
     if (kind === 'create' || before?.userId !== auth.user.id) return DENIED;
     if (kind === 'delete') return null;
@@ -367,6 +406,18 @@ const referencedPolicy = (field: 'categoryId' | 'sourceId', label: string): Poli
     .flatMap((c) => list?.(c as CollectionName) || [])
     .filter((n) => !n.deletedAt && n[field] === before.id).length;
   return inUse > 0 ? `لا يمكن حذف ${label} لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة؛ انقل المواد إلى ${label} آخر أولاً` : null;
+};
+
+const categoryReferences = referencedPolicy('categoryId', 'القسم');
+const categoryPolicy: Policy = (input) => {
+  const denial = categoryReferences(input);
+  if (denial) return denial;
+  const { before, after, kind, list } = input;
+  if (kind === 'delete' || isSoftDelete(before, after)) {
+    return list?.('categories').some(category => !category.deletedAt && category.parentId === before?.id) ? CATEGORY_HAS_CHILDREN : null;
+  }
+  if (after?.deletedAt || after?.parentId == null) return null;
+  return categoryParentError(after, (list?.('categories') || []).filter(category => !category.deletedAt));
 };
 
 const notificationPrefsPolicy: Policy = ({ auth, kind, after, before }) => {
@@ -471,7 +522,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   guests: require('guests.manage'),
   tasks: tasksPolicy,
   media: mediaPolicy,
-  categories: referencedPolicy('categoryId', 'القسم'),
+  categories: categoryPolicy,
   productionPeople: ({ auth, kind, before, after, list }) => {
     if (!auth.can('system.settings')) return DENIED;
     if (kind === 'delete' || after?.deletedAt) return 'عطّل الاسم بدلاً من حذفه';
@@ -553,28 +604,48 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
     if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
     if (after.status === 'LIVE') {
+      const session = before?.status === 'LIVE' ? { showId: episode.id, startedAt: after.startedAt } : undefined;
       const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
       if (bulletin) {
         const starting = before?.status !== 'LIVE';
         const stories = (list?.('bulletinStories') || []).filter((s: any) =>
           s.bulletinId === bulletin.id && (starting || s.id === after.currentSegmentId));
-        const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date()).find(i => i.severity === 'blocker');
+        const blocker = evaluateBulletinReadiness(bulletin, stories, list?.('news') || [], list?.('media') || [], new Date(), list?.('settings')[0]?.defaultTimezone, session).find(i => i.severity === 'blocker');
         if (blocker) return `${starting ? 'النشرة غير جاهزة للبث' : 'الفقرة غير جاهزة للبث'}: ${blocker.message}`;
         if (starting && episode.rundown[0]?.id !== after.currentSegmentId) {
           return 'تغيّر ترتيب النشرة. أعد المحاولة بعد مزامنة ترتيب الفقرات.';
+        }
+      } else {
+        const media = list?.('media') || [];
+        const requests = list?.('requests') || [];
+        const segments = before?.status !== 'LIVE' ? episode.rundown : episode.rundown.filter(segment => segment.id === after.currentSegmentId);
+        for (const segment of segments) {
+          const airAt = plannedMediaAirAt(episode.broadcastDate, episode.startTime, list?.('settings')[0]?.defaultTimezone, segment.startTimeOffset);
+          const blocker = firstMediaRightsBlocker(segmentMediaIds(segment, episode.id, media, requests), media, new Date(), airAt, session);
+          if (blocker) return `حقوق مواد الفقرة «${segment.title}» تمنع البث: ${blocker}`;
         }
       }
     }
     return null;
   },
-  cues: ({ auth, kind, before, after }) => {
+  cues: ({ auth, kind, before, after, list }) => {
     if (kind === 'create') {
       if (!canControlOnAir(auth.user, auth.can) && !auth.can('tasks.intercom_broadcast')) return 'إرسال تنبيهات الهواء للمخرج والكنترول';
       if (typeof after?.message !== 'string' || !after.message.trim() || after.message.length > 300) return 'نص التنبيه غير صالح';
       if (!Array.isArray(after?.targetDepartmentIds) || !after.targetDepartmentIds.every(isDepartmentId)) return 'القسم المستهدف غير معروف';
+      if (after.expiresAt !== undefined || after.targetUserId !== undefined) {
+        if (after.message.length > 120) return 'اكتب توجيهاً لا يتجاوز 120 حرفاً';
+        const ttl = Date.parse(after.expiresAt) - Date.now();
+        if (!(ttl > 0 && ttl <= PRESENTER_INSTRUCTION_MS + 5000)) return 'انتهت مهلة إرسال التوجيه. أرسله مجدداً عند عودة الاتصال.';
+        if (!after.episodeId || !findShow(after.episodeId, (c) => list?.(c) || [])) return 'التوجيه غير مرتبط بحلقة أو نشرة';
+        const expected = after.targetUserId === undefined ? ['studio', 'presenters'] : ['studio'];
+        if (after.targetDepartmentIds.length !== expected.length || expected.some(id => !after.targetDepartmentIds.includes(id))) return 'وجهة التوجيه غير صالحة';
+        if (after.targetUserId !== undefined && !(list?.('users') || []).some(user => user.id === after.targetUserId && !user.deletedAt && user.isActive !== false && isPresenterAccount(user))) return 'حساب المذيع المحدد غير متاح';
+      }
       return null;
     }
     if (kind === 'delete') return auth.can('onair.control') ? null : DENIED;
+    if (!before || !isCueForUser(before, auth.user)) return DENIED;
     // Recipients may only acknowledge (the server records who and when).
     const { acks: _a, ...restBefore } = before || {};
     const { acks: _b, ...restAfter } = after || {};
@@ -588,11 +659,24 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (kind === 'create' && !auth.can('requests.create')) return 'صلاحياتك لا تسمح بإرسال طلبات للأقسام';
     const denied = requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
     if (denied) return denied;
+    if (after.sourceMediaIds?.length && changed(before, after, 'sourceMediaIds')) {
+      if (!any(auth, 'media.view', 'media.upload')) return 'ربط مصادر المونتاج يتطلب الوصول إلى مكتبة الوسائط';
+      const existing = new Set(before?.sourceMediaIds || []);
+      const media = list?.('media') || [];
+      if (after.sourceMediaIds.some((id: string) => !existing.has(id) && !media.some(asset => asset.id === id && !asset.deletedAt && ['VIDEO', 'AUDIO'].includes(asset.mediaType) && (!asset.privateMessageMedia || asset.ownerId === auth.user.id)))) return 'ملف مصدر المونتاج غير متاح في مكتبة الوسائط';
+    }
     const resultId = after.resultMediaId;
     const completingWithResult = after.status === 'DONE' && (before?.status !== 'DONE' || changed(before, after, 'resultMediaId'));
     if (completingWithResult && resultId != null && resultId !== '' &&
       (typeof resultId !== 'string' || !list?.('media').some(asset => asset.id === resultId && !asset.deletedAt))) {
       return 'مادة التسليم غير متاحة.';
+    }
+    if (completingWithResult && after.type === 'MONTAGE' && after.link?.segmentId && resultId) {
+      const episode = (list?.('episodes') || []).find(item => item.id === after.link.episodeId && !item.deletedAt);
+      const segment = episode?.rundown?.find((item: any) => item.id === after.link.segmentId);
+      const airAt = plannedMediaAirAt(episode?.broadcastDate, episode?.startTime, list?.('settings')[0]?.defaultTimezone, segment?.startTimeOffset);
+      const issue = mediaRightsIssue((list?.('media') || []).find(asset => asset.id === resultId), new Date(), airAt);
+      if (issue) return `لا يمكن تسليم المادة إلى الرانداون: ${issue}`;
     }
     return null;
   },
@@ -753,10 +837,27 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'onAir':
     case 'offlineAirSessions':
       return showVisible(data?.episodeId || data?.showId || data?.id);
+    case 'cues':
+      return !data?.expiresAt || data.fromId === auth.user.id || isCueForUser(data, auth.user);
     case 'guests':
       return any(auth, 'guests.view', 'guests.manage');
-    case 'media':
-      return any(auth, 'media.view', 'media.upload');
+    case 'media': {
+      if (!any(auth, 'media.view', 'media.upload')) return false;
+      const reference: PrivateMessageMedia | undefined = data?.privateMessageMedia;
+      if (!reference) return true;
+      const message = lookup?.('messages', reference.messageId);
+      if (message?.deletedAt || !message?.attachments?.some((attachment: { id: string }) => attachment.id === reference.uploadId)) return false;
+      if (data.ownerId === auth.user.id && canReadMessage(message, auth.user.id)) return true;
+      if (!reference.work || !auth.can('media.view')) return false;
+      const { collection, id } = reference.work;
+      const work = lookup?.(collection, id);
+      if (!work || work.deletedAt || work.messageOrigin?.messageId !== reference.messageId || !messageWorkMediaIds(collection, work).includes(data.id)) return false;
+      if (collection === 'requests') {
+        return auth.can('requests.manage') || any(auth, 'requests.view', 'requests.create') &&
+          (work.departmentId === departmentIdOf(auth.user) || work.requesterId === auth.user.id);
+      }
+      return canRead(auth, collection, work, lookup);
+    }
     case 'tasks': {
       const team = auth.departmentTaskMembers?.();
       return team ? team.has(data?.assigneeId || data?.assignedToId) || taskAssignedTo(data, auth.user.id) : auth.can('tasks.view') || auth.can('tasks.create_assign');
@@ -775,6 +876,7 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'wires':
       return auth.can('news.view') || auth.can('news.create');
     case 'notifications':
+      if (data?.category === 'news-keyword') return data.userId === auth.user.id && auth.can('news.view') && !assignedWorkOnly(auth.can);
       return !data?.userId || data.userId === auth.user.id || data.userId === 'all';
     case 'notificationPrefs':
       return data?.userId === auth.user.id;

@@ -7,7 +7,8 @@ import { Maximize2 } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { useLiveData } from '../hooks/useLiveData';
-import { CUE_ACTIVE_MS, formatClock, isCueForUser, liveTiming } from '../shared/onair';
+import { formatClock, isCueActive, isCueForUser, liveTiming } from '../shared/onair';
+import { PresenterInstruction, PresenterInstructionSound } from '../components/onair/PresenterInstruction';
 import { stationTimeZone } from '../shared/dates';
 import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
 import { DriftIndicator } from '../components/onair/DriftIndicator';
@@ -56,7 +57,7 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
   const questions = seg && episode ? segmentQuestions(episode, seg).filter((q: any) => !q.isAsked).slice(0, 4) : [];
   const cue = apiService
     .getCues()
-    .filter((c) => Date.now() - new Date(c.createdAt).getTime() < CUE_ACTIVE_MS && (!c.episodeId || c.episodeId === effectiveId))
+    .filter((c) => !c.expiresAt && isCueActive(c) && (!c.episodeId || c.episodeId === effectiveId))
     .filter((c) => c.targetDepartmentIds.length === 0 || ['studio', 'presenters'].some((d) => c.targetDepartmentIds.includes(d)) || isCueForUser(c, currentUser))[0];
 
   const remainingCls = !timing ? 'text-slate-200' : timing.remaining < 0 ? 'text-red-500' : timing.remaining <= 30 ? 'text-amber-300' : 'text-emerald-300';
@@ -95,6 +96,8 @@ export const StudioScreenView: React.FC<StudioScreenViewProps> = ({ currentUser,
       <div ref={ref} data-testid="studio-wall" className="theme-fixed bg-black text-white rounded-2xl min-h-[70vh] p-6 sm:p-10 flex flex-col gap-6 overflow-auto">
         <AirSourceStatus connected={connected} />
         <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
+        <PresenterInstructionSound user={currentUser} />
+        <PresenterInstruction user={currentUser} showId={effectiveId} studio />
         {cue && (
           <div className={`rounded-2xl px-6 py-4 text-center text-2xl sm:text-4xl xl:text-5xl font-black ${cue.level === 'urgent' ? 'bg-red-600 animate-pulse' : cue.level === 'standby' ? 'bg-amber-400 text-black' : 'bg-sky-600'}`} role="alert">
             {cue.message}

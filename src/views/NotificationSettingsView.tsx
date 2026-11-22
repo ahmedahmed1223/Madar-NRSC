@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, Mail, Moon, Plus, Radio, Save, Send, Smartphone, Trash2, X, Zap } from 'lucide-react';
+import { BellRing, Mail, Moon, Newspaper, Plus, Radio, Save, Send, Smartphone, Trash2, X, Zap } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
 import { notify } from '../services/notify';
 import { confirmSaved } from '../services/confirmSave';
 import { currentPushSubscription, disablePush, enablePush, pushSupport } from '../services/push';
 import { useLiveData } from '../hooks/useLiveData';
-import { DEFAULT_CHANNELS, MAX_WATCH_WORDS, NOTIFICATION_CATEGORIES, NotificationCategory, NotificationPrefs, wantsDelivery } from '../shared/notifications';
+import { DEFAULT_CHANNELS, MAX_WATCH_WORDS, normalizeWatchPhrase, NOTIFICATION_CATEGORIES, NotificationCategory, NotificationPrefs, wantsDelivery } from '../shared/notifications';
 
 type Delivery = Awaited<ReturnType<typeof apiService.getDeliveryStatus>>;
 
@@ -17,7 +17,62 @@ const deviceName = (ua?: string) => {
   return `${os}${browser ? ` — ${browser}` : ''}`;
 };
 
-/** Each colleague chooses what reaches them by e-mail and on their devices, and which wires to watch. */
+function WatchWordsEditor({ label, words, disabled, onChange }: {
+  label: string;
+  words: string[];
+  disabled: boolean;
+  onChange: (words: string[]) => void;
+}) {
+  const [input, setInput] = useState('');
+  const add = () => {
+    const word = input.trim();
+    if (!word) return;
+    const key = normalizeWatchPhrase(word);
+    if (!key) return notify({ type: 'warning', message: 'أدخل كلمة أو عبارة للمتابعة' });
+    if (words.some(existing => normalizeWatchPhrase(existing) === key)) return setInput('');
+    if (words.length >= MAX_WATCH_WORDS) return notify({ type: 'warning', message: `الحد الأقصى ${MAX_WATCH_WORDS} كلمة` });
+    onChange([...words, word]);
+    setInput('');
+  };
+  return (
+    <div>
+      {words.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5 mb-2" aria-label={label}>
+          {words.map((word, index) => (
+            <li key={`${index}-${word}`} className="inline-flex min-w-0 items-center gap-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-2 py-1">
+              <span className="break-all">{word}</span>
+              <button type="button" disabled={disabled} className="grid size-11 shrink-0 place-items-center rounded" aria-label={`حذف ${word}`} onClick={() => onChange(words.filter((_, position) => position !== index))}>
+                <X className="w-3 h-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              add();
+            }
+          }}
+          maxLength={60}
+          disabled={disabled}
+          placeholder="مثال: الخرطوم أو وزير الطاقة"
+          aria-label={label}
+          className="min-h-11 min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs"
+        />
+        <button type="button" disabled={disabled} onClick={add} className="inline-flex min-h-11 items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold">
+          <Plus className="w-3.5 h-3.5" /> إضافة
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Each colleague manages delivery and chooses which newsroom stories and agency wires to watch. */
 export const NotificationSettingsView: React.FC<{ currentUser: User }> = ({ currentUser }) => <AccountNotificationSettings key={currentUser.id} currentUser={currentUser} />;
 
 function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
@@ -25,7 +80,6 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
   const [prefs, setPrefs] = useState<NotificationPrefs>(() => apiService.getMyNotificationPrefs());
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [word, setWord] = useState('');
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [deliveryError, setDeliveryError] = useState('');
   const [thisDevice, setThisDevice] = useState<string | null>(null);
@@ -73,15 +127,6 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
     }
   };
 
-  const addWord = () => {
-    const w = word.trim();
-    if (!w) return;
-    if (prefs.watchWords.includes(w)) return setWord('');
-    if (prefs.watchWords.length >= MAX_WATCH_WORDS) return notify({ type: 'warning', message: `الحد الأقصى ${MAX_WATCH_WORDS} كلمة` });
-    update({ watchWords: [...prefs.watchWords, w] });
-    setWord('');
-  };
-
   const run = async (key: string, fn: () => Promise<void>, ok: string) => {
     setBusy(key);
     const testing = key === 'test-push' || key === 'test-mail';
@@ -123,6 +168,15 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
           {saving ? 'بانتظار تأكيد الخادم…' : 'حفظ الإعدادات'}
         </button>
       </div>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-labelledby="news-watch-words-heading">
+        <h2 id="news-watch-words-heading" className="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <Newspaper className="w-4 h-4 text-blue-600" />
+          كلمات متابعة الأخبار
+        </h2>
+        <p className="text-xs text-slate-600">يظهر تنبيه في الجرس فور حفظ خبر جديد أو تحديث يضيف كلمة تتابعها إلى العنوان أو الملخص أو النص أو الوسوم.</p>
+        <WatchWordsEditor label="كلمة لمتابعة الأخبار" words={prefs.newsWatchWords || []} disabled={saving} onChange={newsWatchWords => update({ newsWatchWords })} />
+      </section>
 
       {/* Devices */}
       <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-label="الأجهزة والبريد">
@@ -213,7 +267,7 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {NOTIFICATION_CATEGORIES.map((c) => (
+            {NOTIFICATION_CATEGORIES.filter(c => c.id !== 'news-keyword').map((c) => (
               <tr key={c.id}>
                 <td className="p-3">
                   <p className="font-bold text-slate-800">{c.name}</p>
@@ -248,40 +302,8 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
           <Zap className="w-3.5 h-3.5 text-red-600" />
           نبّهني فور وصول مادة عاجلة من أي وكالة
         </label>
-        <div>
-          <p className="text-xs text-slate-600 mb-2">نبّهني عندما تحوي مادة إحدى هذه الكلمات أو الأسماء (تُطابق دون اعتبار للتشكيل والهمزات):</p>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {prefs.watchWords.map((w) => (
-              <span key={w} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-2 py-1">
-                {w}
-                <button type="button" disabled={saving} className="grid size-11 place-items-center rounded" aria-label={`حذف ${w}`} onClick={() => update({ watchWords: prefs.watchWords.filter((x) => x !== w) })}>
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-            {!prefs.watchWords.length && <span className="text-2xs text-slate-500">لا كلمات بعد</span>}
-          </div>
-          <div className="flex gap-2">
-            <input
-              value={word}
-              onChange={(e) => setWord(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addWord();
-                }
-              }}
-              maxLength={60}
-              disabled={saving}
-              placeholder="مثال: الخرطوم، وزير الطاقة، أوبك"
-              aria-label="كلمة متابعة"
-              className="min-h-11 min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs"
-            />
-            <button type="button" disabled={saving} onClick={addWord} className="inline-flex min-h-11 items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold">
-              <Plus className="w-3.5 h-3.5" /> إضافة
-            </button>
-          </div>
-        </div>
+        <p className="text-xs text-slate-600">نبّهني عندما تحوي مادة وكالة إحدى هذه الكلمات أو الأسماء. يُطابق النص دون اعتبار للتشكيل والهمزات.</p>
+        <WatchWordsEditor label="كلمة متابعة" words={prefs.watchWords} disabled={saving} onChange={watchWords => update({ watchWords })} />
       </section>
 
       {/* Quiet hours */}

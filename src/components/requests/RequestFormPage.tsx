@@ -5,13 +5,20 @@ import { departmentName } from '../../shared/departments';
 import { DeptRequest, REQUEST_TYPES, RequestLink, RequestType, requestTypeOf } from '../../shared/production';
 import { toLocalInputValue, fromLocalInputValue } from '../../shared/dates';
 import { confirmSaved } from '../../services/confirmSave';
+import { MediaPicker } from '../media/MediaPicker';
+import { MediaEditRanges } from '../media/MediaEditorialPanel';
+import { RbacService } from '../../services/rbacService';
+import { MessageOriginLabel } from '../messages/MessageOriginLabel';
 
 export interface RequestDraft {
+  id?: string;
   type?: RequestType;
   title?: string;
   details?: string;
   link?: RequestLink;
   lines?: string[];
+  sourceMediaIds?: string[];
+  messageOrigin?: DeptRequest['messageOrigin'];
 }
 
 interface RequestFormPageProps {
@@ -31,6 +38,8 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
   const [urgent, setUrgent] = useState(false);
   const [dueAt, setDueAt] = useState('');
   const [lines, setLines] = useState('');
+  const [sourceMediaIds, setSourceMediaIds] = useState<string[]>([]);
+  const [mediaPicker, setMediaPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -41,6 +50,7 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
       setTitle(editing.title || '');
       setDetails(editing.details || '');
       setLines((editing.lines || []).join('\n'));
+      setSourceMediaIds(editing.sourceMediaIds || []);
       setUrgent(editing.priority === 'URGENT');
       setDueAt(editing.dueAt ? toLocalInputValue(editing.dueAt) : '');
       setError(null);
@@ -50,6 +60,7 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
     setTitle(draft?.title || '');
     setDetails(draft?.details || '');
     setLines((draft?.lines || []).join('\n'));
+    setSourceMediaIds(draft?.sourceMediaIds || []);
     setUrgent(false);
     setDueAt('');
     setError(null);
@@ -59,6 +70,7 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
     e.preventDefault();
     if (saving) return;
     setError(null);
+    if (type === 'MONTAGE' && sourceMediaIds.length > 25) { setError('يمكن اختيار 25 ملف مصدر لكل طلب.'); return; }
     if (editing) {
       setSaving(true);
       try {
@@ -69,6 +81,7 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
           priority: urgent ? 'URGENT' : 'NORMAL',
           dueAt: dueAt ? fromLocalInputValue(dueAt) : undefined,
           ...(type === 'GRAPHICS' ? { lines: lines.split('\n').filter((l) => l.trim()) } : {}),
+          ...(type === 'MONTAGE' ? { sourceMediaIds: sourceMediaIds.length ? sourceMediaIds : undefined } : {}),
         });
         if (await confirmSaved('requests', editing.id, 'حُفظت تعديلات الطلب')) {
           onCreated?.('حُفظت تعديلات الطلب');
@@ -83,28 +96,42 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
       }
       return;
     }
+    if (draft?.messageOrigin) setSaving(true);
     try {
       const req = apiService.createRequest({
+        id: draft?.id,
         type,
         title,
         details,
         priority: urgent ? 'URGENT' : 'NORMAL',
         link: draft?.link,
         lines: type === 'GRAPHICS' ? lines.split('\n') : undefined,
+        sourceMediaIds: type === 'MONTAGE' && sourceMediaIds.length ? sourceMediaIds : undefined,
+        messageOrigin: draft?.messageOrigin,
         dueAt: dueAt ? fromLocalInputValue(dueAt) : undefined,
       });
+      if (draft?.messageOrigin && !(await confirmSaved('requests', req.id))) {
+        setError('لم يؤكد الخادم حفظ الطلب بعد.');
+        return;
+      }
       onCreated?.(`أُرسل الطلب إلى ${departmentName(req.departmentId)}`);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'تعذر إرسال الطلب');
+    } finally {
+      setSaving(false);
     }
   };
 
   const target = requestTypeOf(type);
+  const me = apiService.getCurrentUser();
+  const canViewMedia = RbacService.hasPermission(me, 'media.view') || RbacService.hasPermission(me, 'media.upload');
+  const library = isOpen && type === 'MONTAGE' && canViewMedia ? apiService.getMedia() : [];
 
   return (
     <FormPage isOpen={isOpen} onClose={onClose} title={editing ? 'تعديل الطلب' : 'طلب من قسم'} subtitle={(editing?.link || draft?.link) ? `مرتبط بـ: ${(editing?.link || draft?.link)!.title}` : undefined} maxWidth="xl">
       <form onSubmit={submit} className="space-y-4 text-xs">
+        <MessageOriginLabel origin={editing?.messageOrigin || draft?.messageOrigin} />
         <div>
           <span className="block font-bold text-slate-700 mb-1.5">نوع الطلب</span>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" role="radiogroup" aria-label="نوع الطلب">
@@ -143,6 +170,18 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
           </div>
         )}
 
+        {type === 'MONTAGE' && canViewMedia && <section className="space-y-2" aria-label="ملفات مصدر المونتاج">
+          <h3 className="font-bold text-slate-700">ملفات المصدر وعلامات المونتاج</h3>
+          {sourceMediaIds.map(id => {
+            const asset = library.find(item => item.id === id);
+            return <div key={id} className="p-2 border border-slate-200 rounded-lg">
+              <p className="font-bold [overflow-wrap:anywhere]">{asset?.title || asset?.fileName || 'مادة غير متاحة'}</p>
+              <MediaEditRanges ranges={asset?.editRanges} />
+            </div>;
+          })}
+          <button type="button" className="min-h-10 px-3 rounded-lg border border-slate-300 font-bold text-blue-700" onClick={() => setMediaPicker(true)}>اختيار ملفات المصدر</button>
+        </section>}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="request-due" className="block font-bold text-slate-700 mb-1">مطلوب قبل</label>
@@ -164,6 +203,8 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
           </button>
         </div>
       </form>
+      {type === 'MONTAGE' && canViewMedia && <MediaPicker isOpen={isOpen && mediaPicker} onClose={() => setMediaPicker(false)} selectedIds={sourceMediaIds}
+        onPick={setSourceMediaIds} montageSource canUpload={false} />}
     </FormPage>
   );
 };

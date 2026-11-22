@@ -1,6 +1,8 @@
 import { countLabel } from '../../shared/arabicPlural';
 import { LongTextField } from '../common/TextSizeControls';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { BulletinRemoteGuest } from '../../shared/bulletins';
+import { BulletinGuestFields } from './BulletinGuestFields';
 import { dataStore } from '../../services/dataStore';
 import { ReviewThreads } from '../editor/ReviewThreads';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -68,6 +70,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
 
   const [slug, setSlug] = useState('');
   const [type, setType] = useState<StoryType>('READER');
+  const [remoteGuest, setRemoteGuest] = useState<BulletinRemoteGuest>();
   const [anchorName, setAnchorName] = useState('');
   const [script, setScript] = useState('');
   const [clipMediaId, setClipMediaId] = useState<string | undefined>();
@@ -91,6 +94,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
     if (!story) { setInitialized(''); return; }
     setSlug(story.slug || '');
     setType((story.type as StoryType) || 'READER');
+    setRemoteGuest(story.remoteGuest);
     setAnchorName(story.anchorName || '');
     setScript(story.script || '');
     setClipMediaId(story.clipMediaId);
@@ -122,6 +126,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
     ...(story?.wireId ? { wireId: story.wireId } : {}),
     slug: slug.trim(),
     type,
+    remoteGuest: type === 'LIVE' || type === 'PHONE' ? remoteGuest : undefined,
     anchorName: anchorName.trim() || undefined,
     script,
     clipMediaId: meta.clip ? clipMediaId : undefined,
@@ -132,11 +137,12 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   });
 
   const recovery = useFormDraft(`bulletin-story:${currentUser.id}:${story?.id || bulletin.id}`, isOpen && canEdit && initialized === (story?.id || `new:${bulletin.id}`),
-    { slug, type, script, anchorName, clipMediaId: clipMediaId || '', clipSeconds, manualSeconds, graphics, directorNotes, newsStamp: newsStamp || '', sourceSnapshot: sourceSnapshot ?? '' },
+    { slug, type, script, anchorName, clipMediaId: clipMediaId || '', clipSeconds, manualSeconds, graphics, directorNotes, newsStamp: newsStamp || '', sourceSnapshot: sourceSnapshot ?? '', remoteGuest },
     value => {
       setSlug(value.slug); setType(value.type); setScript(value.script); setAnchorName(value.anchorName);
       setClipMediaId(value.clipMediaId || undefined); setClipSeconds(value.clipSeconds); setManualSeconds(value.manualSeconds);
       setGraphics(value.graphics); setDirectorNotes(value.directorNotes); setNewsStamp(value.newsStamp || undefined); setSourceSnapshot(value.sourceSnapshot || undefined);
+      setRemoteGuest(value.remoteGuest);
     });
   const save = async (statusChange?: BulletinStory['status'], extra: Partial<BulletinStory> = {}) => {
     if (saving || !canEdit) return;
@@ -303,6 +309,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             </div>
             <p className="text-2xs text-slate-500 mt-1">{meta.hint}</p>
           </div>
+          {story && (type === 'LIVE' || type === 'PHONE') && <BulletinGuestFields value={remoteGuest} onChange={setRemoteGuest} story={story} bulletinId={bulletin.id} editorId={bulletin.editorId} disabled={!canEdit || saving} />}
 
           {meta.read && (
             <LongTextField
@@ -478,6 +485,7 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
             isOpen={pickerOpen}
             onClose={() => setPickerOpen(false)}
             selectedIds={clipMediaId ? [clipMediaId] : []}
+            forBroadcast
             canUpload={RbacService.hasPermission(currentUser, 'media.upload')}
             onPick={(ids) => {
               const id = ids.find((x) => x !== clipMediaId) || ids[0];

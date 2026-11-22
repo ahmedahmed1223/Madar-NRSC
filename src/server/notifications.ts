@@ -1,7 +1,11 @@
+import { createHash } from 'node:crypto';
 import type { NewsroomDatabase } from './db';
+import { buildAuthContext } from './auth';
+import { canRead } from './policy';
 import { newId } from '../shared/ids';
-import { NotificationCategory, isFlashWire, watchWordHits, WIRE_ALERT_MAX_AGE_MS, NotificationPrefs } from '../shared/notifications';
-import type { WireItem } from '../types/index';
+import { NotificationCategory, isFlashWire, watchWordHits, WIRE_ALERT_MAX_AGE_MS, NEWS_KEYWORD_NOTICE_PREFIX, NotificationPrefs } from '../shared/notifications';
+import { plainText } from '../shared/newsWorkflow';
+import type { NewsItem, WireItem } from '../types/index';
 
 export interface NewNotification {
   userId: string;
@@ -45,6 +49,44 @@ const activeUsers = (db: NewsroomDatabase) =>
 
 export function prefsOf(db: NewsroomDatabase, userId: string): NotificationPrefs | undefined {
   return db.getRow('notificationPrefs', userId)?.d as NotificationPrefs | undefined;
+}
+
+function keywordFields(news: Partial<NewsItem>) {
+  const keywords = Array.isArray(news.keywords) ? news.keywords : [];
+  return [news.title, news.shortTitle, plainText(news.summary), plainText(news.content), ...keywords]
+    .filter((field): field is string => typeof field === 'string' && !!field.trim());
+}
+
+/** Called within the news write transaction so the alert arrives with the committed story. */
+export function alertForNewsKeywords(db: NewsroomDatabase, before: NewsItem | null, after: NewsItem) {
+  if (after.deletedAt || before?.deletedAt) return;
+  const fields = keywordFields(after);
+  if (!fields.length) return;
+  const previous = before ? keywordFields(before) : [];
+  if (fields.length === previous.length && fields.every((field, index) => field === previous[index])) return;
+
+  for (const row of db.listCollection('notificationPrefs')) {
+    const prefs = row.d as NotificationPrefs;
+    if (!Array.isArray(prefs?.newsWatchWords) || !prefs.newsWatchWords.length) continue;
+    const user = db.getRow('users', prefs.userId)?.d;
+    if (!user || user.isActive === false || user.deletedAt || !canRead(buildAuthContext(db, user, ''), 'news', after)) continue;
+    const digest = createHash('sha256').update(JSON.stringify([after.id, user.id])).digest('hex');
+    const id = NEWS_KEYWORD_NOTICE_PREFIX + digest;
+    if (db.getRow('notifications', id, true)) continue;
+
+    const words = [...new Set(prefs.newsWatchWords)];
+    const oldHits = new Set(previous.flatMap(field => watchWordHits(field, words)));
+    const newWords = words.filter(word => !oldHits.has(word));
+    const hits = [...new Set(fields.flatMap(field => watchWordHits(field, newWords)))];
+    if (!hits.length) continue;
+    writeNotification(db, {
+      userId: user.id,
+      title: `خبر يطابق «${hits.slice(0, 3).join('، ')}»`,
+      message: typeof after.title === 'string' && after.title.trim() ? after.title : 'خبر بلا عنوان',
+      linkUrl: `/news/${encodeURIComponent(after.id)}`,
+      category: 'news-keyword',
+    }, { id, createdAt: new Date().toISOString() });
+  }
 }
 
 /**

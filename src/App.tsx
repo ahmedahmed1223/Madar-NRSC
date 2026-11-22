@@ -54,6 +54,7 @@ const SettingsView = lazyWithRetry(() => import('./views/SettingsView').then((m)
 const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) => ({ default: m.TestingView })));
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
 const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
+const WallboardView = lazyWithRetry(() => import('./views/WallboardView').then((m) => ({ default: m.WallboardView })));
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
 const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
@@ -811,6 +812,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav) || !!assignedProduction && !assignedWorkOnly((permission) => RbacService.hasPermission(currentUser, permission)) &&
     apiService.getCards().some((card) => cardProductionAssignment(card, currentUser.id) === assignedProduction);
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
+
+  if (activeNav === 'wallboard' && screenAllowed) {
+    return <ViewErrorBoundary key={activeNav}><Suspense fallback={<p role="status">جارٍ تحميل شاشة غرفة الأخبار…</p>}><WallboardView /></Suspense></ViewErrorBoundary>;
+  }
 
   return (
     <div className="app-shell h-dvh overflow-hidden bg-slate-100 flex flex-col font-sans" dir="rtl">

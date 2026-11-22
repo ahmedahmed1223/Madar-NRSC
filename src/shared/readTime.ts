@@ -24,8 +24,8 @@ export function spokenWords(summary: string | undefined, bodyHtml: string | unde
   return countWords(summary) + countWords(bodyHtml);
 }
 
-export function readingSeconds(words: number): number {
-  return words > 0 ? Math.max(1, Math.round((words / BROADCAST_WPM) * 60)) : 0;
+export function readingSeconds(words: number, wpm = BROADCAST_WPM): number {
+  return words > 0 ? Math.max(1, Math.round((words / wpm) * 60)) : 0;
 }
 
 /** «45 ثانية», «دقيقة واحدة و10 ثوانٍ», «3 دقائق» — never «00:24 دقيقة». */

@@ -2,6 +2,7 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { pronunciationDraftConflict } from '../shared/pronunciation';
 import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
 import type { NewsArchiveFilters } from '../shared/newsArchive';
+import { CATEGORY_HAS_CHILDREN, categoryParentError } from '../shared/newsCategories';
 import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
 import { preparePersonalTask, type PersonalTask, type PersonalTaskInput } from '../shared/personalTasks';
 import { assignmentScope } from '../shared/assignmentScope';
@@ -90,7 +91,7 @@ import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type Card
 import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
 import { applyDepartmentSettings, departmentIdOf } from '../shared/departments';
 import { rememberStationSettings } from '../shared/stations';
-import { canControlOnAir, Cue, OnAirState } from '../shared/onair';
+import { canControlOnAir, Cue, OnAirState, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
 import {
   Bulletin,
   bulletinAsShow,
@@ -435,6 +436,7 @@ export class ApiService {
       content: data.content || '',
       summary: data.summary || '',
       mainImageUrl: data.mainImageUrl || '',
+      digitalPackage: data.digitalPackage,
       videoUrl: data.videoUrl,
       videos: data.videos,
       storyId: data.storyId,
@@ -457,6 +459,7 @@ export class ApiService {
         ? data.breakingUntil || new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString()
         : undefined,
       internalNotes: data.internalNotes || '',
+      messageOrigin: data.messageOrigin,
       workflowLogs: [
         {
           id: newId('log'),
@@ -1246,6 +1249,23 @@ export class ApiService {
     return cue;
   }
 
+  /** Time-sensitive instructions are sent directly so an offline queue cannot replay them. */
+  static async sendPresenterInstruction(episodeId: string, message: string, level: Cue['level'], targetUserId?: string): Promise<void> {
+    const id = newId('cue');
+    const cue = {
+      id, episodeId, message: message.trim(), level, targetUserId,
+      targetDepartmentIds: targetUserId ? ['studio'] : ['studio', 'presenters'],
+      expiresAt: new Date(Date.now() + PRESENTER_INSTRUCTION_MS).toISOString(),
+    };
+    const response = await apiFetch<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
+      method: 'POST', json: { ops: [{ c: 'cues', op: 'upsert', id, d: cue }] },
+      signal: AbortSignal.timeout(5000),
+    });
+    const result = response.results[0];
+    if (!result?.ok) throw new Error(result && 'message' in result ? result.message : 'لم يؤكد الخادم إرسال التوجيه');
+    void dataStore.pull();
+  }
+
   static ackCue(id: string): void {
     const me = this.getCurrentUser();
     const all = this.getCues();
@@ -1455,6 +1475,8 @@ export class ApiService {
       requesterName: me.fullName,
       link: data.link,
       lines: data.lines?.filter((l) => l.trim()),
+      sourceMediaIds: type.id === 'MONTAGE' && data.sourceMediaIds?.length ? data.sourceMediaIds : undefined,
+      messageOrigin: data.messageOrigin,
       dueAt: data.dueAt,
       ...(data.addressedToId ? { addressedToId: data.addressedToId, addressedToName: data.addressedToName } : {}),
       createdAt: now,
@@ -1672,6 +1694,8 @@ export class ApiService {
           color: colorVal,
           colorCode: colorVal,
         };
+        const parentError = categoryParentError(updated, all);
+        if (parentError) throw new Error(parentError);
         all[idx] = updated;
         setStored(STORAGE_KEYS.CATEGORIES, all);
 
@@ -1684,6 +1708,7 @@ export class ApiService {
     const newCat: Category = {
       id: newId('cat'),
       nameAr: cat.nameAr || 'قسم جديد',
+      parentId: cat.parentId,
       nameEn: cat.nameEn || 'New Category',
       slug: (cat.slug || cat.nameEn || 'new-cat').toLowerCase().replace(/\s+/g, '-'),
       color: colorVal,
@@ -1691,6 +1716,8 @@ export class ApiService {
       description: cat.description || '',
       orderIndex: cat.orderIndex || all.length + 1,
     };
+    const parentError = categoryParentError(newCat, all);
+    if (parentError) throw new Error(parentError);
     all.push(newCat);
     setStored(STORAGE_KEYS.CATEGORIES, all);
     this.logActivity('إضافة قسم إخباري جديد', 'CATEGORY', newCat.id, newCat.nameAr, `تم إنشاء تصنيف إخباري جديد (${newCat.nameAr}) باللون المخصص.`);
@@ -1705,9 +1732,10 @@ export class ApiService {
   }
 
   static deleteCategory(id: string): void {
+    const all = this.getCategories();
+    if (all.some(category => category.parentId === id)) throw new Error(CATEGORY_HAS_CHILDREN);
     const inUse = this.countReferences('categoryId', id);
     if (inUse > 0) throw new Error(`لا يمكن حذف القسم لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة`);
-    const all = this.getCategories();
     const target = all.find((c) => c.id === id);
     const filtered = all.filter((c) => c.id !== id);
     setStored(STORAGE_KEYS.CATEGORIES, filtered);

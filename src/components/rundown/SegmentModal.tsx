@@ -17,6 +17,8 @@ import { isRequestClosed } from '../../shared/production';
 import {
   EpisodeTopic,
   GUEST_ROLES,
+  FIELD_SIGNAL_PROVIDERS,
+  FIELD_SIGNAL_STATUSES,
   GuestRole,
   REPORT_SOURCES,
   ReportBrief,
@@ -206,6 +208,8 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
           ...report,
           reporterName: report.source === 'ASSIGNED' ? reporters.find((u) => u.id === report.reporterId)?.fullName : undefined,
           reporterId: report.source === 'ASSIGNED' ? report.reporterId : undefined,
+          signalProvider: ['FIELD', 'ASSIGNED'].includes(report.source) ? report.signalProvider : undefined,
+          signalStatus: ['FIELD', 'ASSIGNED'].includes(report.source) ? report.signalStatus : undefined,
           targetSeconds: reportTarget.trim() ? parseTimeToSeconds(reportTarget) : undefined,
         }
       : undefined;
@@ -504,6 +508,24 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
                 {reporters.length === 0 && <p className="text-2xs text-rose-600 mt-1">لا يوجد مستخدمون في قسم المراسلين.</p>}
               </div>
             )}
+            {(report.source === 'FIELD' || report.source === 'ASSIGNED') && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs font-bold text-slate-700">
+                  وسيلة الربط الميداني
+                  <select value={report.signalProvider || ''} onChange={e => setReport({ ...report, signalProvider: (e.target.value || undefined) as ReportBrief['signalProvider'] })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs">
+                    <option value="">غير محددة</option>
+                    {Object.entries(FIELD_SIGNAL_PROVIDERS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs font-bold text-slate-700">
+                  حالة الاتصال (تحديث يدوي)
+                  <select value={report.signalStatus || ''} onChange={e => setReport({ ...report, signalStatus: (e.target.value || undefined) as ReportBrief['signalStatus'] })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs">
+                    <option value="">لم يُفحص</option>
+                    {Object.entries(FIELD_SIGNAL_STATUSES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label htmlFor="report-location" className="block text-2xs font-bold text-slate-700 mb-1">موقع التصوير</label>
@@ -601,7 +623,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({
         </div>
 
         <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/60">
-          <AttachmentsPanel mediaIds={mediaIds} onChange={handleMediaChange} currentUser={currentUser} title="فيديو ومواد الفقرة" />
+          <AttachmentsPanel mediaIds={mediaIds} onChange={handleMediaChange} currentUser={currentUser} title="فيديو ومواد الفقرة" forBroadcast />
         </div>
 
         {/* Autocue / Script Text with Live Reading Pace Calculator */}

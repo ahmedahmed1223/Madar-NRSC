@@ -11,6 +11,9 @@ import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
 import { sendDuePersonalTaskReminders } from './src/server/personalTaskReminders';
 import { sendDueWorkReminders } from './src/server/workReminders';
+import { sendShiftGapNotices } from './src/server/shiftGapNotices';
+import { sendDueGuestTechnicalInvitations } from './src/server/guestTechInvitations';
+import { startAutoMediaTranscription } from './src/server/autoMediaTranscription';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
@@ -152,6 +155,34 @@ async function main() {
   };
   timers.push(setInterval(remindWork, 30_000));
   remindWork();
+  const shiftGapJob = 'رصد نواقص مناوبات البث';
+  registerJob(shiftGapJob, 5);
+  const checkShiftGaps = () => {
+    try {
+      sendShiftGapNotices(db);
+      recordJob(shiftGapJob);
+    } catch (error) {
+      recordJob(shiftGapJob, error);
+      logger.error('shift gap checks failed', { error: String(error) });
+    }
+  };
+  timers.push(setInterval(checkShiftGaps, 5 * 60_000));
+  checkShiftGaps();
+  if (config.autoGuestTechnicalEmail && config.mail && config.appUrl) {
+    const guestJob = 'الفحص التقني قبل البث';
+    registerJob(guestJob, 1);
+    let sendingInvitations = false;
+    const invite = async () => {
+      if (sendingInvitations) return;
+      sendingInvitations = true;
+      try { await trackJob(guestJob, () => sendDueGuestTechnicalInvitations(db, config)); }
+      catch (error) { logger.error('guest technical invitations failed', { error: String(error) }); }
+      finally { sendingInvitations = false; }
+    };
+    timers.push(setInterval(invite, 60_000));
+    void invite();
+  }
+  const stopMediaTranscription = startAutoMediaTranscription(db, config, () => changeBus.emit('rev', db.currentRev()));
   // Scheduled bulletins (only formats set to create automatically).
   const scheduleBulletins = () => {
     try {
@@ -222,6 +253,7 @@ async function main() {
     app.locals.beginShutdown();
     logger.info('shutting down', { signal });
     timers.forEach(clearInterval);
+    stopMediaTranscription();
     const force = setTimeout(() => {
       logger.warn('forcing shutdown after timeout');
       db.close();

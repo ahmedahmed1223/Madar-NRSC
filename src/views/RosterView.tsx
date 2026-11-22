@@ -10,6 +10,7 @@ import { onDutyAt, SHIFTS, ShiftId, RosterEntry } from '../shared/roster';
 import { addDaysIso, arabicDate, localDateString } from '../shared/dates';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { ShiftHandovers } from '../components/roster/ShiftHandovers';
+import { ShiftGapPanel } from '../components/roster/ShiftGapPanel';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 
 interface RosterViewProps {
@@ -241,6 +242,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
           </button>
         </div>
       )}
+
+      <ShiftGapPanel currentUser={currentUser} users={users} roster={entries} canManage={canManage} />
 
       {/* Department selector */}
       <FilterTabs<string>

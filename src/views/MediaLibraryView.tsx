@@ -11,6 +11,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, discardMediaUpload, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
 import { storageClient } from '../services/storageClient';
 import { ExternalFilePicker, availableSources } from '../components/media/ExternalFilePicker';
+import { MediaEditorialPanel } from '../components/media/MediaEditorialPanel';
+import { MediaQuoteDialog } from '../components/media/MediaQuoteDialog';
+import { ExternalLinkPanel } from '../components/common/ExternalLinkPanel';
+import { mediaRightsIssue, type MediaTranscriptSegment } from '../shared/mediaEditorial';
 import { TARGET_NAMES, type StorageCopy, type StorageStatus } from '../shared/storage';
 import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive, Download } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
@@ -104,6 +108,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [quote, setQuote] = useState<{ asset: MediaAsset; segment: MediaTranscriptSegment }>();
+  const canQuote = (RbacService.hasPermission(currentUser, 'news.create') && RbacService.canOpenScreen(currentUser, 'news')) ||
+    (RbacService.hasPermission(currentUser, 'requests.create') && RbacService.canOpenScreen(currentUser, 'requests'));
+  useEffect(() => {
+    setPreviewAsset(previous => previous ? mediaAssets.find(asset => asset.id === previous.id) || previous : previous);
+  }, [mediaAssets]);
+  const previewPlayer = useRef<HTMLMediaElement | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   useEffect(() => {
     if (!focusId) return;
@@ -369,6 +380,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           رفع مادة وسائط جديدة
         </button>
         )}
+        {canUpload && <ExternalLinkPanel kind="upload" />}
       </div>
 
       {/* Filter Bar */}
@@ -467,6 +479,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                     <Eye className="w-5 h-5 shrink-0 text-blue-700" aria-hidden="true" />
                   </button>
                 </h2>
+                {mediaRightsIssue(asset) && <p className="mt-1 text-2xs font-bold text-amber-800">{mediaRightsIssue(asset)}</p>}
                 {(asset.mediaType === 'VIDEO' || usageCount(asset.id) > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-2xs font-bold">
                     {asset.mediaType === 'VIDEO' && (
@@ -800,6 +813,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               />
             ) : previewAsset.mediaType === 'VIDEO' ? (
               <video
+                ref={element => { previewPlayer.current = element; }}
                 key={previewAsset.id}
                 src={previewAsset.fileUrl || previewAsset.url}
                 controls
@@ -814,6 +828,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <Music className="w-10 h-10 mx-auto text-purple-400" aria-hidden="true" />
                 <p className="text-xs font-mono">{previewAsset.fileName}</p>
                 <audio
+                  ref={element => { previewPlayer.current = element; }}
                   key={previewAsset.id}
                   src={previewAsset.fileUrl || previewAsset.url}
                   controls
@@ -830,6 +845,23 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 <p className="text-xs font-mono">{previewAsset.fileName}</p>
               </div>
             )}
+
+            <MediaEditorialPanel key={previewAsset.id} asset={previewAsset} player={previewPlayer} canEdit={canUpload} canManageRights={canApproveVideo}
+              onQuote={canQuote ? segment => setQuote({ asset: previewAsset, segment }) : undefined}
+              onSave={async patch => {
+                const current = apiService.getMedia().find(asset => asset.id === previewAsset.id);
+                if (!current) throw new Error('المادة لم تعد متاحة في المكتبة.');
+                const field = patch.editRanges ? 'editRanges' : 'rights';
+                if (JSON.stringify(current[field] ?? null) !== JSON.stringify(previewAsset[field] ?? null)) {
+                  setPreviewAsset(current);
+                  throw new Error('تغيّرت بيانات المادة لدى زميل. راجع النسخة المحدّثة ثم أعد الحفظ.');
+                }
+                apiService.updateMedia(previewAsset.id, patch);
+                const saved = await confirmSaved('media', previewAsset.id, 'حُفظت بيانات المادة');
+                const latest = apiService.getMedia().find(asset => asset.id === previewAsset.id);
+                if (latest) setPreviewAsset(previous => previous?.id === latest.id ? latest : previous);
+                return saved;
+              }} />
 
             {canUpload && (
               <form onSubmit={handleSaveDetails} className="p-3 rounded-xl border border-slate-200 space-y-3" aria-label="بيانات المادة">
@@ -1018,6 +1050,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           </div>
         </Modal>
       )}
+      {quote && <MediaQuoteDialog asset={quote.asset} segment={quote.segment} user={currentUser} onClose={() => setQuote(undefined)} />}
     </div>
   );
 };

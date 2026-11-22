@@ -263,6 +263,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     guests: { id: 'guests', label: 'الضيوف', icon: Users, badge: null },
     'on-air': { id: 'on-air', label: 'وضع الهواء', icon: Radio, badge: liveCount > 0 ? 'مباشر' : null, badgeColor: ON_AIR, count: liveCount },
     'studio-screen': { id: 'studio-screen', label: 'شاشة الاستديو', icon: MonitorPlay, badge: null },
+    wallboard: { id: 'wallboard', label: 'شاشة غرفة الأخبار', icon: MonitorPlay, badge: null },
     media: { id: 'media', label: 'مكتبة الوسائط', icon: ImageIcon, badge: null },
     bookings: { id: 'bookings', label: 'حجز الموارد', icon: CalendarRange, badge: null },
     roster: { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },

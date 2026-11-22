@@ -149,6 +149,7 @@ const TITLES: Record<string, string> = {
   guests: 'الضيوف',
   'on-air': 'وضع الهواء',
   'studio-screen': 'شاشة الاستديو',
+  wallboard: 'شاشة غرفة الأخبار',
   media: 'مكتبة الوسائط',
   messages: 'المراسلات',
   'personal-notes': 'ملاحظاتي',

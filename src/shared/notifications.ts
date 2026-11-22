@@ -13,6 +13,7 @@ export const NOTIFICATION_CATEGORIES = [
   { id: 'mention', name: 'الإشارات والتعليقات', hint: 'أشار إليك زميل أو علّق على مادتك' },
   { id: 'message', name: 'الرسائل المباشرة والمجموعات', hint: 'رسالة من زميل أو في مجموعة أنت عضو فيها' },
   { id: 'news', name: 'سير عمل الأخبار', hint: 'إعادة خبرك للتعديل أو اعتماده' },
+  { id: 'news-keyword', name: 'كلمات متابعة الأخبار', hint: 'خبر يطابق كلمة تتابعها' },
   { id: 'bulletin', name: 'النشرات', hint: 'قصة جاهزة للاعتماد أو أعيدت إليك' },
   { id: 'wire', name: 'المواد العاجلة وكلمات المتابعة', hint: 'مادة عاجلة أو تحوي كلمة تتابعها' },
   { id: 'booking', name: 'حجز الموارد', hint: 'حجز استوديو أو كاميرا أو طاقم باسمك' },
@@ -21,6 +22,7 @@ export const NOTIFICATION_CATEGORIES = [
 ] as const;
 
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number]['id'];
+export const NEWS_KEYWORD_NOTICE_PREFIX = 'notif-news-keyword-';
 export const NOTIFICATION_CATEGORY_IDS = NOTIFICATION_CATEGORIES.map((c) => c.id) as NotificationCategory[];
 export const isNotificationCategory = (v: unknown): v is NotificationCategory => NOTIFICATION_CATEGORY_IDS.includes(v as NotificationCategory);
 export const categoryName = (id: string | undefined) => NOTIFICATION_CATEGORIES.find((c) => c.id === id)?.name || 'تنبيه';
@@ -39,6 +41,8 @@ export interface NotificationPrefs {
   channels: Partial<Record<NotificationCategory, { email?: boolean; push?: boolean }>>;
   /** Words or names to watch for in incoming agency wires. */
   watchWords: string[];
+  /** Words or phrases to watch for in newsroom stories. Older accounts have no news subscriptions. */
+  newsWatchWords?: string[];
   /** Alert me when an agency sends an urgent/flash wire. */
   flashAlerts: boolean;
   /** Quiet hours (local HH:MM) when e-mail/push wait; urgent items still go through. */
@@ -56,6 +60,7 @@ export const DEFAULT_CHANNELS: Record<NotificationCategory, { email: boolean; pu
   mention: { email: false, push: true },
   message: { email: false, push: true },
   news: { email: false, push: true },
+  'news-keyword': { email: false, push: false },
   bulletin: { email: false, push: true },
   wire: { email: false, push: true },
   booking: { email: true, push: true },
@@ -64,11 +69,12 @@ export const DEFAULT_CHANNELS: Record<NotificationCategory, { email: boolean; pu
 };
 
 export function defaultPrefs(userId: string): NotificationPrefs {
-  return { id: userId, userId, channels: {}, watchWords: [], flashAlerts: false };
+  return { id: userId, userId, channels: {}, watchWords: [], newsWatchWords: [], flashAlerts: false };
 }
 
 export function wantsDelivery(prefs: NotificationPrefs | undefined, category: string | undefined, channel: DeliveryChannel): boolean {
   const cat: NotificationCategory = isNotificationCategory(category) ? category : 'system';
+  if (cat === 'news-keyword') return false;
   const own = prefs?.channels?.[cat]?.[channel];
   return typeof own === 'boolean' ? own : DEFAULT_CHANNELS[cat][channel];
 }
@@ -98,6 +104,10 @@ export function prefsError(p: any, userId: string): string | null {
   }
   if (!Array.isArray(p.watchWords) || p.watchWords.length > MAX_WATCH_WORDS) return `كلمات المتابعة قائمة بحد أقصى ${MAX_WATCH_WORDS} كلمة`;
   if (p.watchWords.some((w: unknown) => typeof w !== 'string' || !w.trim() || w.length > 60)) return 'كل كلمة متابعة نص قصير (حتى 60 حرفاً)';
+  if (p.newsWatchWords !== undefined) {
+    if (!Array.isArray(p.newsWatchWords) || p.newsWatchWords.length > MAX_WATCH_WORDS) return `كلمات متابعة الأخبار قائمة بحد أقصى ${MAX_WATCH_WORDS} كلمة`;
+    if (p.newsWatchWords.some((w: unknown) => typeof w !== 'string' || w.length > 60 || !normalizeWatchPhrase(w))) return 'كل كلمة متابعة للأخبار نص قصير (حتى 60 حرفاً)';
+  }
   if (typeof p.flashAlerts !== 'boolean') return 'خيار المواد العاجلة غير صالح';
   for (const k of ['quietFrom', 'quietTo']) if (p[k] !== undefined && p[k] !== '' && !HHMM.test(p[k])) return 'ساعات الهدوء بصيغة HH:MM';
   return null;
@@ -113,11 +123,13 @@ export function isFlashWire(wire: { title?: string; categories?: string[] }): bo
   return (wire.categories || []).some((c) => /^(عاجل|urgent|flash|breaking)$/i.test(c.trim()));
 }
 
-/** The watch words that appear in the wire (Arabic-normalised, whole-phrase match). */
+export const normalizeWatchPhrase = (text: string) => normalizeArabic(text).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/** Watch words that appear in the given text (Arabic-normalised, whole-phrase match). */
 export function watchWordHits(text: string, words: string[]): string[] {
-  const hay = ` ${normalizeArabic(text).replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+  const hay = ` ${normalizeWatchPhrase(text)} `;
   return words.filter((w) => {
-    const needle = normalizeArabic(w).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const needle = normalizeWatchPhrase(w);
     if (!needle) return false;
     // Arabic attaches prefixes: a conjunction (و/ف), a preposition (ب/ل/ك) and the article (ال/لل).
     const stem = needle.startsWith('ال') && needle.length > 3 ? needle.slice(2) : needle;

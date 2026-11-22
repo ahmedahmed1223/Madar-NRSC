@@ -72,4 +72,31 @@ describe('on-air alerts', () => {
     expect(after.message).toBe('دقيقة واحدة');
     expect(after.acks.map((a: any) => a.userId)).toEqual(['usr-5']);
   });
+
+  it('delivers an instruction only to the selected presenter and studio, and drops stale sends', async () => {
+    const control = await loginAgent(server.app, 'director@akhbar.tv');
+    const presenter = await loginAgent(server.app, 'presenter@akhbar.tv');
+    const studio = await loginAgent(server.app, 'crew@akhbar.tv');
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const episodeId = server.db.listCollection('episodes')[0].id;
+    const cue = { episodeId, targetUserId: 'usr-5', targetDepartmentIds: ['studio'], message: 'اختصر خلال 30 ث', level: 'urgent' };
+    const op = (id: string, ms: number) => ({ c: 'cues', op: 'upsert', id, d: { ...cue, id, expiresAt: new Date(Date.now() + ms).toISOString() } });
+    expect((await sync(control, [op('fresh-instruction', 45_000)])).body.results[0].ok).toBe(true);
+    expect((await sync(control, [op('stale-instruction', -2_000)])).body.results[0].ok).toBe(false);
+    const data = (agent: request.Agent) => agent.get('/api/v1/data').set(H).expect(200);
+    const presenterRows = JSON.stringify((await data(presenter)).body);
+    const studioRows = JSON.stringify((await data(studio)).body);
+    const journalistRows = JSON.stringify((await data(journalist)).body);
+    expect(presenterRows).toContain('fresh-instruction');
+    expect(studioRows).toContain('fresh-instruction');
+    expect(journalistRows).not.toContain('fresh-instruction');
+
+    const account = server.db.getRow('users', 'usr-5')!;
+    server.db.writeRow('users', account.id, { ...account.d, role: 'PRESENTER', departmentId: 'production' }, account.p, null);
+    const group = op('group-instruction', 45_000);
+    const { targetUserId: _selected, ...groupData } = group.d;
+    const sent = await sync(control, [{ ...group, d: { ...groupData, targetDepartmentIds: ['studio', 'presenters'] } }]);
+    expect(sent.body.results[0].ok).toBe(true);
+    expect(JSON.stringify((await data(presenter)).body)).toContain('group-instruction');
+  });
 });

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, FileText, Gavel,
 import { apiService } from '../../services/api';
 import { CardBriefReview } from './CardBriefReview';
 import { CardTimingValues } from './CardTimingValues';
+import { MessageOriginLabel } from '../messages/MessageOriginLabel';
 import { stepLaborMinutes } from '../../shared/cardExecutionTiming';
 import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
@@ -271,6 +272,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
         </button>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-slate-900 leading-8">{card.title}</h1>
+          <MessageOriginLabel origin={card.messageOrigin} />
           <p className="text-xs text-slate-500">تكليف — {cardKindName(card.kind)}{card.ownerStationId ? ` — محطة ${stationName(stations, card.ownerStationId)}` : ''}</p>
         </div>
       </header>
@@ -630,6 +632,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                       <X className="w-4 h-4" />
                     </button>
                   )}
+                  {!!item?.editRanges?.length && <div className="basis-full ps-6"><MediaEditRanges ranges={item.editRanges} /></div>}
                 </li>
               ))}
             </ul>
@@ -804,3 +807,4 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     </article>
   );
 };
+import { MediaEditRanges } from '../media/MediaEditorialPanel';

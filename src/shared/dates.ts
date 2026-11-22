@@ -34,8 +34,7 @@ export function toLocalInputValue(value: string | Date = new Date()): string {
 }
 
 /** Converts a datetime-local value (station's or device's time) to an ISO timestamp; '' when invalid. */
-export function fromLocalInputValue(value: string): string {
-  const zone = basisZone();
+export function fromLocalInputValue(value: string, zone = basisZone()): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || '');
   if (!zone || !m) {
     const d = new Date(value);

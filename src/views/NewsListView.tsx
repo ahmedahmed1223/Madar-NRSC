@@ -10,6 +10,7 @@ import { useNewsListPreferences } from '../hooks/useNewsListPreferences';
 import { useWorkContext } from '../hooks/useWorkContext';
 import { workContextPage, type WorkContext } from '../shared/workContext';
 import { NEWS_COLUMNS, sanitizeNewsListPreferences } from '../shared/newsListPreferences';
+import { categoryBranchIds, categoryTree, resolveCategoryId } from '../shared/newsCategories';
 import { confirmDialog } from '../services/dialogs';
 import { canEditNewsContent, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
@@ -104,10 +105,13 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(currentUser.id, 'news'));
   // Categories are filtered by id; a name saved by an earlier version is mapped to its id.
-  const [selectedCategory, setSelectedCategory] = useState(() => {
-    const saved = textValue('selectedCategory', 'ALL');
-    return saved === 'ALL' || categories.some((c) => c.id === saved) ? saved : categories.find((c) => c.nameAr === saved)?.id || saved;
-  });
+  const [categorySelection, setSelectedCategory] = useState(() => textValue('selectedCategory', 'ALL'));
+  const selectedCategory = resolveCategoryId(categories, categorySelection);
+  const categoryOptions = useMemo(() => categoryTree(categories), [categories]);
+  const categoryIds = useMemo(
+    () => selectedCategory === 'ALL' ? null : categoryBranchIds(categories, selectedCategory),
+    [categories, selectedCategory],
+  );
   const [selectedSource, setSelectedSource] = useState(() => textValue('selectedSource', 'ALL'));
   const [selectedPriority, setSelectedPriority] = useState(() => textValue('selectedPriority', 'ALL'));
   const [onlyMine, setOnlyMine] = useState(savedContext.definition.onlyMine === true);
@@ -175,7 +179,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     if (activeTab === 'BREAKING') {
       if (!isBreakingLive(item)) return false;
     } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
-    if (selectedCategory !== 'ALL' && item.categoryId !== selectedCategory) return false;
+    if (categoryIds && !categoryIds.has(item.categoryId || resolveCategoryId(categories, item.categoryName || ''))) return false;
     if (selectedSource !== 'ALL' && item.sourceId !== selectedSource) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
     if (onlyMine && item.authorId !== currentUser.id) return false;
@@ -509,12 +513,12 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               id="news-list-category-select"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="min-h-11 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
+              className="min-h-11 max-w-48 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium transition-all"
             >
               <option value="ALL">جميع الأقسام</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nameAr}
+              {categoryOptions.map(({ category, path }) => (
+                <option key={category.id} value={category.id}>
+                  {path}
                 </option>
               ))}
             </select>
@@ -592,7 +596,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         definition={{ activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }}
         onApply={filter => {
           setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
-          setSelectedCategory(categories.find(category => category.nameAr === filter.selectedCategory)?.id || filter.selectedCategory);
+          setSelectedCategory(resolveCategoryId(categories, filter.selectedCategory));
           setSelectedSource(filter.selectedSource || 'ALL'); setSelectedPriority(filter.selectedPriority);
           setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
           setFromDate(filter.fromDate); setToDate(filter.toDate);

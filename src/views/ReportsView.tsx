@@ -16,6 +16,7 @@ import { useLiveData } from '../hooks/useLiveData';
 import type { NewsReport } from '../shared/newsReport';
 import { BarChart3, Clock, Tv, FileText, Users, Calendar, Printer, Download } from 'lucide-react';
 import { Episode, Guest, Category } from '../types';
+import { AiringOutcomes } from '../components/reports/AiringOutcomes';
 
 const PERIODS = [
   { id: 'today', name: 'اليوم' },
@@ -360,6 +361,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         />
         <Metric label="الضيوف في الدليل" scope="العدد الكلي" icon={Users} value={guests.length} note="لا يتأثر بالفترة ولا بالمحطة." />
       </div>
+      <AiringOutcomes accepts={(session, item) => inPeriod(session.startedAt) &&
+        (seesAll || !!item.stationId && scope.has(item.stationId)) && inStation(item.stationId) &&
+        (selectedCategory === 'ALL' || item.categoryId === selectedCategory)} />
       {records && <section className="no-print space-y-3 rounded-xl border border-slate-200 bg-white p-4" aria-label="سجلات تقرير الأخبار">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-slate-900">سجلات تقرير الأخبار</h2>

@@ -1,11 +1,14 @@
 /** Live broadcast coordination shared by the server (authority) and every screen. */
 import { departmentIdOf } from './departments';
+import type { PresenterReading } from './presenterTiming';
 
 export interface OnAirLogEntry {
   segmentId: string;
   title: string;
   startedAt: string;
   endedAt?: string;
+  /** Captured when the director takes the segment. Null means it is not a whole-segment read. */
+  reading?: PresenterReading | null;
 }
 
 /** One row per episode (id = episodeId). Times are stamped by the server. */
@@ -89,6 +92,9 @@ export interface Cue {
   episodeId?: string;
   /** Empty = everyone. */
   targetDepartmentIds: string[];
+  targetUserId?: string;
+  /** Presenter instructions expire promptly even when delivery was delayed by a disconnection. */
+  expiresAt?: string;
   message: string;
   level: 'info' | 'standby' | 'urgent';
   fromId: string;
@@ -96,6 +102,14 @@ export interface Cue {
   createdAt: string;
   acks: { userId: string; userName: string; at: string }[];
 }
+
+export const PRESENTER_INSTRUCTION_MS = 60_000;
+
+export const PRESENTER_INSTRUCTIONS: { message: string; level: Cue['level'] }[] = [
+  { message: 'اختصر خلال 30 ث', level: 'urgent' },
+  { message: 'انتقل للضيف', level: 'info' },
+  { message: 'التجهيز للفاصل', level: 'standby' },
+];
 
 export const CUE_PRESETS: { message: string; level: Cue['level'] }[] = [
   { message: 'استعداد — الفقرة التالية بعد دقيقة', level: 'standby' },
@@ -111,7 +125,26 @@ export const CUE_PRESETS: { message: string; level: Cue['level'] }[] = [
 /** Alerts stay prominent for a few minutes; older ones are history. */
 export const CUE_ACTIVE_MS = 10 * 60 * 1000;
 
-export function isCueForUser(cue: Cue, user: { id: string; departmentId?: string; department?: string }): boolean {
+export function isCueActive(cue: Cue, now = Date.now()): boolean {
+  const created = Date.parse(cue.createdAt);
+  const expires = cue.expiresAt ? Date.parse(cue.expiresAt) : created + CUE_ACTIVE_MS;
+  return Number.isFinite(created) && now < expires;
+}
+
+type CueRecipient = { id: string; role?: string; departmentId?: string; department?: string };
+
+export function isPresenterAccount(user: CueRecipient): boolean {
+  return user.role === 'PRESENTER' || departmentIdOf(user) === 'presenters';
+}
+
+export function isPresenterInstructionRecipient(cue: Cue, user: CueRecipient): boolean {
+  if (!cue.expiresAt || cue.fromId === user.id) return false;
+  if (cue.targetUserId) return cue.targetUserId === user.id;
+  return cue.targetDepartmentIds.includes('presenters') && isPresenterAccount(user);
+}
+
+export function isCueForUser(cue: Cue, user: CueRecipient): boolean {
   if (cue.fromId === user.id) return false;
+  if (cue.targetUserId === user.id || isPresenterInstructionRecipient(cue, user)) return true;
   return cue.targetDepartmentIds.length === 0 || cue.targetDepartmentIds.includes(departmentIdOf(user));
 }

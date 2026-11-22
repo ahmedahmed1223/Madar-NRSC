@@ -16,6 +16,8 @@ import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departmen
 import { DeptRequest, isRequestClosed, isVideoReady, requestStatusName, requestTypeOf } from '../shared/production';
 import { RequestFormPage } from '../components/requests/RequestFormPage';
 import { MediaPicker } from '../components/media/MediaPicker';
+import { MediaEditRanges } from '../components/media/MediaEditorialPanel';
+import { MessageOriginLabel } from '../components/messages/MessageOriginLabel';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fromLocalInputValue } from '../shared/dates';
 
@@ -146,7 +148,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
 
   const newsById = new Map(canSeeNews && list.some(request => request.link?.kind === 'news') ? apiService.getNews().map(item => [item.id, item] as const) : []);
   const episodesById = new Map(canSeeEpisodes && list.some(request => request.link?.episodeId) ? apiService.getEpisodes().map(item => [item.id, item] as const) : []);
-  const mediaById = new Map(canSeeMedia && list.some(request => request.resultMediaId) ? apiService.getMedia().map(item => [item.id, item] as const) : []);
+  const mediaById = new Map(canSeeMedia && list.some(request => request.resultMediaId || request.sourceMediaIds?.length) ? apiService.getMedia().map(item => [item.id, item] as const) : []);
   const inboxCount = requests.filter((r) => r.departmentId === myDept && (pendingIds.has(r.id) || !isRequestClosed(r.status))).length;
 
   return (
@@ -261,7 +263,19 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                 <span className="text-slate-500 mr-auto">{when(r.createdAt)}</span>
               </div>
               <h2 className="text-sm font-bold text-slate-900 break-words">{r.title}</h2>
+              <MessageOriginLabel origin={r.messageOrigin} />
               {r.details && <p className="text-xs text-slate-600 whitespace-pre-line break-words">{r.details}</p>}
+              {!!r.sourceMediaIds?.length && <div className="space-y-1.5">
+                <h3 className="text-xs font-bold text-slate-700">ملفات المصدر وعلامات المونتاج</h3>
+                {r.sourceMediaIds.map(id => {
+                  const source = mediaById.get(id);
+                  return <div key={id} className="p-2 border border-slate-200 rounded-lg text-xs">
+                    {source ? <button type="button" className="min-h-9 text-blue-700 hover:underline text-start [overflow-wrap:anywhere]" onClick={() => navigateTo.emit(`/media/${encodeURIComponent(id)}`)}>{source.title || source.fileName}</button>
+                      : <span className="text-slate-500">مادة غير متاحة</span>}
+                    <MediaEditRanges ranges={source?.editRanges} />
+                  </div>;
+                })}
+              </div>}
               {r.lines && r.lines.length > 0 && (
                 <ul className="text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 pr-6 space-y-0.5 font-bold text-slate-700 list-disc marker:text-slate-400">
                   {r.lines.map((l, i) => (

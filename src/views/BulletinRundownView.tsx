@@ -1,5 +1,7 @@
 import { arabicDate } from '../shared/dates';
 import { evaluateBulletinReadiness, stationClock, storyPresenter, timingDelta } from '../shared/bulletinReadiness';
+import { usePresenterPaces } from '../hooks/usePresenterPaces';
+import { presenterKey } from '../shared/presenterTiming';
 import { AR, countLabel } from '../shared/arabicPlural';
 import { stationTimeZone } from '../shared/dates';
 import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
@@ -11,7 +13,7 @@ import { confirmDialog, promptDialog } from '../services/dialogs';
 import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor';
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { dataStore } from '../services/dataStore';
 import {
   ArrowDown,
@@ -168,7 +170,9 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const canManage = can('bulletins.manage') || (!!bulletin?.editorId && bulletin.editorId === currentUser.id);
   const canRunAir = canControlOnAir(currentUser, can);
 
-  const timing = useMemo(() => (bulletin ? bulletinTiming(bulletin, all) : null), [bulletin, all]);
+  const paces = usePresenterPaces();
+  const paceFor = (story: BulletinStory) => paces.get(presenterKey(bulletin ? storyPresenter(bulletin, story) : story.anchorName));
+  const timing = bulletin ? bulletinTiming(bulletin, all, story => paceFor(story)?.wpm) : null;
   if (!bulletin || !timing) {
     return (
       <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center text-sm text-slate-500">
@@ -272,7 +276,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
       .filter(story => picked.includes(story.id))
       .map(story => ({ story, origin }))).sort((a, b) => picked.indexOf(a.story.id) - picked.indexOf(b.story.id))
     : [];
-  const copyDuration = copySelection.reduce((total, { story }) => total + storyTiming(story).total, 0);
+  const copyDuration = copySelection.reduce((total, { story }) => total + storyTiming(story, paceFor(story)?.wpm).total, 0);
   const materialSource = (story: BulletinStory) => story.newsId ? `news:${story.newsId}` : story.wireId ? `wire:${story.wireId}` : `story:${story.sourceStoryId || story.id}`;
   const targetSources = new Set(all.filter(story => !story.killed).map(materialSource));
   const selectedSourceCounts = new Map<string, number>();
@@ -649,7 +653,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               </tr>
             )}
             {visible.map((s) => {
-              const st = storyTiming(s);
+              const pace = paceFor(s);
+              const st = storyTiming(s, pace?.wpm);
               const row = timing.rows.get(s.id);
               const n = air.findIndex((x) => x.id === s.id);
               const t = storyTypeOf(s.type);
@@ -755,7 +760,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   </td>
                   <td className="p-2 text-center font-mono hidden md:table-cell" dir="ltr">{mmss(st.read)}</td>
                   <td className="p-2 text-center font-mono hidden md:table-cell" dir="ltr">{st.clip || st.manual ? mmss(st.clip + st.manual) : '—'}</td>
-                  <td className="p-2 text-center font-mono font-bold" dir="ltr">{mmss(st.total)}</td>
+                  <td className="p-2 text-center font-mono font-bold" dir="ltr" title={pace && st.read ? `تقدير القراءة: ${pace.wpm} كلمة/دقيقة من ${pace.samples} قراءات في ${pace.sessions} عمليات بث` : undefined}>{mmss(st.total)}</td>
                   <td className="p-2 text-center font-mono text-slate-600 hidden sm:table-cell" dir="ltr">{row ? clockOf(row.front) : '—'}</td>
                   <td className="p-2 text-center font-mono text-slate-600 hidden md:table-cell" dir="ltr">{row ? clockOf(row.back) : '—'}</td>
                   <td className="p-2">
@@ -943,7 +948,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
           </ul>
           {!!copySelection.length && (
             <section aria-label="معاينة القصص المحددة" className="rounded-lg border border-slate-200 p-3 space-y-2 text-xs">
-              <p className="font-bold text-slate-800">المدة المضافة {mmss(copyDuration)} · المدة بعد الإضافة {mmss(air.reduce((total, story) => total + storyTiming(story).total, 0) + copyDuration)}</p>
+              <p className="font-bold text-slate-800">المدة المضافة {mmss(copyDuration)} · المدة بعد الإضافة {mmss(timing.total + copyDuration)}</p>
               <p className="text-slate-700">تُضاف النسخ كمسودات في النشرة الحالية.</p>
               <ol className="list-decimal ps-5">
                 {copySelection.map(({ story, origin }) => (

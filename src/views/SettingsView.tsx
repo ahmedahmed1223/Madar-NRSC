@@ -13,6 +13,8 @@ import { settingsError } from '../shared/settings';
 import { matchesQuery } from '../shared/search';
 import { sanitizeDateSettings } from '../shared/dateFormat';
 import { DEFAULT_BREAKING_HOURS } from '../shared/newsWorkflow';
+import { CATEGORY_HAS_CHILDREN, categoryBranchIds, categoryTree } from '../shared/newsCategories';
+import { EditorialPublishingSettings } from '../components/settings/EditorialPublishingSettings';
 import { themePreference, setThemePreference, reducedMotion, setReducedMotion, setTextScale, TEXT_SCALES, textScale, type TextScale } from '../services/theme';
 import { apiFetch } from '../services/http';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -336,6 +338,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // New Category Form State
   const [newCatNameAr, setNewCatNameAr] = useState('');
+  const [newCatParentId, setNewCatParentId] = useState('');
   const [newCatNameEn, setNewCatNameEn] = useState('');
   const [newCatSlug, setNewCatSlug] = useState('');
   const [newCatColor, setNewCatColor] = useState('#2563eb');
@@ -344,6 +347,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Edit Category Modal State
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editNameAr, setEditNameAr] = useState('');
+  const [editParentId, setEditParentId] = useState('');
   const [editNameEn, setEditNameEn] = useState('');
   const [editSlug, setEditSlug] = useState('');
   const [editColor, setEditColor] = useState('#2563eb');
@@ -392,20 +396,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return counts;
   }, [newsList]);
 
-  // Categories in their editorial order (orderIndex), stored order breaking ties.
-  const orderedCategories = useMemo(
-    () => categories
-      .map((c, i) => ({ c, i }))
-      .sort((a, b) => (a.c.orderIndex ?? Number.MAX_SAFE_INTEGER) - (b.c.orderIndex ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
-      .map(({ c }) => c),
-    [categories]
+  const categoryEntries = useMemo(() => categoryTree(categories), [categories]);
+  const editingBranch = useMemo(
+    () => editingCategory ? categoryBranchIds(categories, editingCategory.id) : null,
+    [categories, editingCategory],
   );
+  const categorySiblings = (cat: Category) =>
+    categoryEntries.map(({ category }) => category).filter(category => (category.parentId ?? null) === (cat.parentId ?? null));
 
   // Filtered categories
   const filteredCategories = useMemo(() => {
-    if (!categorySearch.trim()) return orderedCategories;
-    return orderedCategories.filter((c) => matchesQuery(categorySearch, c.nameAr, c.nameEn, c.slug, c.description));
-  }, [orderedCategories, categorySearch]);
+    if (!categorySearch.trim()) return categoryEntries;
+    return categoryEntries.filter(({ category: c, path }) => matchesQuery(categorySearch, path, c.nameEn, c.slug, c.description));
+  }, [categoryEntries, categorySearch]);
 
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -539,6 +542,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSavingCategory(true);
     const saved = await saveCategory({
       nameAr: newCatNameAr.trim(),
+      parentId: newCatParentId || null,
       nameEn: newCatNameEn.trim() || newCatNameAr.trim(),
       slug,
       color: newCatColor,
@@ -552,6 +556,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     // Reset Form
     setNewCatNameAr('');
+    setNewCatParentId('');
     setNewCatNameEn('');
     setNewCatSlug('');
     setNewCatDesc('');
@@ -562,6 +567,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleStartEdit = (cat: Category) => {
     setEditingCategory(cat);
     setEditNameAr(cat.nameAr);
+    setEditParentId(cat.parentId || '');
     setEditNameEn(cat.nameEn || '');
     setEditSlug(cat.slug || '');
     setEditColor(cat.colorCode || cat.color || '#2563eb');
@@ -577,6 +583,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const saved = await saveCategory({
       id: editingCategory.id,
       nameAr: editNameAr.trim(),
+      parentId: editParentId || null,
       nameEn: editNameEn.trim() || editNameAr.trim(),
       slug: editSlug.trim() || editNameAr.trim().toLowerCase().replace(/\s+/g, '-'),
       color: editColor,
@@ -591,6 +598,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Move a category one step up or down the editorial order: swap orderIndex with its neighbour.
   const moveCategory = async (cat: Category, direction: -1 | 1) => {
     if (reordering) return;
+    const orderedCategories = categorySiblings(cat);
     const index = orderedCategories.findIndex((c) => c.id === cat.id);
     const neighbour = orderedCategories[index + direction];
     if (index < 0 || !neighbour) return;
@@ -835,6 +843,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       {section === 'editorial' && <NewsTemplatesSettings />}
+      {section === 'editorial' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <EditorialPublishingSettings />}
       {section === 'editorial' && <PronunciationSettings />}
       {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && (
         <TaskWorkflowSettings
@@ -915,6 +924,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </button>
                   )}
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="new-cat-parent" className="block font-bold text-slate-700 mb-1">التصنيف الرئيسي</label>
+                <select id="new-cat-parent" value={newCatParentId} onChange={(e) => setNewCatParentId(e.target.value)} className="w-full min-h-11 px-3 py-2 border border-slate-300 rounded-xl bg-white">
+                  <option value="">بدون تصنيف رئيسي</option>
+                  {categoryEntries.map(({ category, path }) => <option key={category.id} value={category.id}>{path}</option>)}
+                </select>
               </div>
 
               {/* English Name & Slug */}
@@ -1122,9 +1139,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   لا توجد تصنيفات مطابقة لـ«{categorySearch}».
                 </div>
               ) : (
-                filteredCategories.map((cat) => {
+                filteredCategories.map(({ category: cat, path, depth }) => {
                   const color = cat.colorCode || cat.color || '#2563eb';
-                  const position = orderedCategories.findIndex((c) => c.id === cat.id);
+                  const siblings = categorySiblings(cat);
+                  const position = siblings.findIndex((c) => c.id === cat.id);
                   const countById = newsCountByCategory[cat.id] || 0;
                   const countByName = newsCountByCategory[cat.nameAr] || 0;
                   const totalNews = Math.max(countById, countByName);
@@ -1132,6 +1150,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   return (
                     <div
                       key={cat.id}
+                      style={{ marginInlineStart: Math.min(depth, 3) * 8 }}
                       className="p-3.5 bg-white hover:bg-slate-50/60 rounded-xl border border-slate-200 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300 group"
                     >
                       <div className="flex items-start sm:items-center gap-3 min-w-0">
@@ -1169,6 +1188,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </span>
                           </div>
 
+                          {depth > 0 && <p className="text-2xs text-slate-600 break-words">{path}</p>}
                           {cat.description ? (
                             <p className="text-2xs text-slate-500 line-clamp-1">{cat.description}</p>
                           ) : (
@@ -1200,7 +1220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            disabled={reordering || position < 0 || position >= orderedCategories.length - 1}
+                            disabled={reordering || position < 0 || position >= siblings.length - 1}
                             onClick={() => void moveCategory(cat, 1)}
                             className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                             aria-label={`نقل تصنيف ${cat.nameAr} إلى الأسفل`}
@@ -1222,6 +1242,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="button"
                             aria-label={`حذف تصنيف ${cat.nameAr}`}
                             onClick={() => {
+                              if (categories.some(category => category.parentId === cat.id)) {
+                                notify({ type: 'warning', message: CATEGORY_HAS_CHILDREN });
+                                return;
+                              }
                               const inUse = (newsList || []).filter((n) => n.categoryId === cat.id).length;
                               if (inUse > 0) {
                                 notify({ type: 'warning', message: `لا يمكن حذف تصنيف (${cat.nameAr}) لأنه مرتبط بـ${countLabel(inUse, AR.item)}. انقل المواد إلى تصنيف آخر أولاً.` });
@@ -1498,7 +1522,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           isOpen={true}
           onClose={() => { if (savingCategory) return false; setEditingCategory(null); }}
           title={`تعديل التصنيف: ${editingCategory.nameAr}`}
-          subtitle="تعديل اسم وتخصيص لون التصنيف لتحديثه في كافة شاشات العمل"
+          subtitle="تعديل اسم التصنيف ولونه وموقعه ضمن التصنيفات"
           maxWidth="lg"
         >
           <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
@@ -1514,6 +1538,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setEditNameAr(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
               />
+            </div>
+
+            <div>
+              <label htmlFor="edit-cat-parent" className="block font-bold text-slate-700 mb-1">التصنيف الرئيسي</label>
+              <select id="edit-cat-parent" value={editParentId} onChange={(e) => setEditParentId(e.target.value)} className="w-full min-h-11 px-3 py-2 border border-slate-300 rounded-xl bg-white">
+                <option value="">بدون تصنيف رئيسي</option>
+                {categoryEntries.filter(({ category }) => !editingBranch?.has(category.id)).map(({ category, path }) => <option key={category.id} value={category.id}>{path}</option>)}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
