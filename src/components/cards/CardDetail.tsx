@@ -33,6 +33,7 @@ import {
   type ProductionCard,
 } from '../../shared/productionCards';
 import { stationName, stationScope, stationsOf } from '../../shared/stations';
+import { assignmentScope } from '../../shared/assignmentScope';
 import { minutesLabel } from '../../shared/workload';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { CARD_STATE_STYLE, INPUT, LABEL, STEP_STATUS_STYLE, candidateLabel, cardCandidates, when } from './cardUi';
@@ -118,6 +119,8 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, open, actor.stationId]);
   const personLabel = (p: (typeof people)[number]) => candidateLabel(p, stations);
+  const eligibility = assignmentScope(apiService.getCurrentUser(), settings);
+  const eligiblePeople = new Set(apiService.getUsers().filter(user => !eligibility.errorFor(user)).map(user => user.id));
 
   const library = useMemo(() => apiService.getMedia().filter((m: any) => !m.deletedAt), [card.mediaIds]);
   const attached = (card.mediaIds || []).map((id) => ({ id, item: library.find((m) => m.id === id) }));
@@ -476,7 +479,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                         <label htmlFor={`reassign-${step.id}`} className={LABEL}>إسناد «{stepTypeName(stepTypes, step.type)}» إلى</label>
                         <select id={`reassign-${step.id}`} value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className={INPUT}>
                           <option value="">اختر زميلاً…</option>
-                          {people.filter((p) => p.id !== step.assigneeId).map((p) => (
+                          {people.filter(p => p.id !== step.assigneeId && eligiblePeople.has(p.id)).map((p) => (
                             <option key={p.id} value={p.id}>{personLabel(p)}</option>
                           ))}
                           {actor.canManage && (

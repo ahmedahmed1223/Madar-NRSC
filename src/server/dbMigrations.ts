@@ -225,4 +225,30 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         WHERE ${PENDING_PERSONAL_REMINDER};
     `,
   },
+  {
+    version: 9,
+    sql: `
+      CREATE TABLE work_reminders (
+        collection TEXT NOT NULL CHECK (collection IN ('tasks', 'productionCards')),
+        entity_id TEXT NOT NULL,
+        slot TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('deadline', 'overdue')),
+        user_id TEXT NOT NULL,
+        fire_at TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        sent_at TEXT,
+        PRIMARY KEY (collection, entity_id, slot, kind)
+      );
+      CREATE INDEX idx_work_reminders_pending ON work_reminders(fire_at)
+        WHERE enabled = 1 AND sent_at IS NULL;
+      CREATE TRIGGER work_reminders_tombstone AFTER UPDATE OF deleted ON entities
+        WHEN NEW.deleted = 1 AND NEW.collection IN ('tasks', 'productionCards') BEGIN
+          DELETE FROM work_reminders WHERE collection = NEW.collection AND entity_id = NEW.id;
+        END;
+      CREATE TRIGGER work_reminders_delete AFTER DELETE ON entities
+        WHEN OLD.collection IN ('tasks', 'productionCards') BEGIN
+          DELETE FROM work_reminders WHERE collection = OLD.collection AND entity_id = OLD.id;
+        END;
+    `,
+  },
 ];

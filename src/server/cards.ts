@@ -207,6 +207,9 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
       if (prev?.assigneeId) push(prev.assigneeId, `سُحبت منك «${name}»`, `${after.title} — صارت متاحة لمحطتها`);
       stationPeople(step).forEach((id) => push(id, `${urgent ? 'عاجل — ' : ''}مهمة متاحة ل${step.departmentId ? 'قسمك' : 'محطتك'}: ${name}`, `${after.title} — استلمها من التكليفات`));
     }
+    if (prev && prev.dueAt !== step.dueAt && prev.assigneeId === step.assigneeId && isStepOpen(step)) {
+      pushStep(step, 'تغيّر موعد تسليم مهمة', `${after.title} — ${name}`);
+    }
 
     if (prev && prev.status !== step.status && step.status === 'BLOCKED') {
       const message = `${after.title} — ${name}: ${step.blockedReason || ''}`;
@@ -240,6 +243,9 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
       else if (next && next.id === firstOpen.id) pushStep(next, `وصلتك المادة: ${stepTypeName(stepTypes, next.type)}`, handoff);
     }
   });
+  if (before && before.dueAt !== after.dueAt && before.ownerId === after.ownerId) {
+    push(decider, 'تغيّر موعد تسليم التكليف', after.title);
+  }
 
   // Notes: the owner and whoever holds the current step; a decision reaches everyone on the card.
   const known = new Set((before?.log || []).map((e) => e.id));

@@ -5,7 +5,10 @@ import { apiService } from '../../services/api';
 import { newId } from '../../shared/ids';
 import { fromLocalInputValue, toLocalInputValue } from '../../shared/dates';
 import { CARD_KINDS, CARD_STEP_PRESETS, COMPLEXITIES, MAX_CARD_STEPS, stepTypesOf, type CardKind, type CardLink, type CardStep, type CardTarget, type ProductionCard } from '../../shared/productionCards';
-import { stationScope, stationsOf } from '../../shared/stations';
+import { stationsOf } from '../../shared/stations';
+import { assignmentScope } from '../../shared/assignmentScope';
+import type { WorkReminderOptions } from '../../shared/workReminders';
+import { WorkReminderFields } from '../common/WorkReminderFields';
 import type { User } from '../../types';
 import { INPUT, LABEL } from './cardUi';
 import { useConfirmedCardSave } from './useConfirmedCardSave';
@@ -37,6 +40,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   const [urgent, setUrgent] = useState(false);
   const [ownerId, setOwnerId] = useState('');
   const [dueAt, setDueAt] = useState('');
+  const [reminderOptions, setReminderOptions] = useState<WorkReminderOptions>();
   const [airAt, setAirAt] = useState('');
   const [steps, setSteps] = useState<CardStep[]>([]);
   const [links, setLinks] = useState<CardLink[]>([]);
@@ -54,6 +58,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
     setUrgent(card?.priority === 'URGENT');
     setOwnerId(card?.ownerId || currentUser.id);
     setDueAt(localInput(card?.dueAt));
+    setReminderOptions(card?.reminderOptions);
     setAirAt(localInput(card?.airAt));
     setSteps(card?.steps || CARD_STEP_PRESETS[1].types.filter((t) => stepTypes.some((x) => x.id === t)).map(newStep));
     setLinks(card?.links || []);
@@ -63,8 +68,9 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   }, [isOpen, card?.id]);
 
   // Supervisors distribute work inside the stations they follow.
-  const scope = useMemo(() => stationScope(stations, currentUser), [stations, currentUser]);
-  const people = useMemo(() => users.filter((u) => u.isActive !== false && !u.deletedAt && (!u.stationId || scope.has(u.stationId))), [users, scope]);
+  const eligibility = useMemo(() => assignmentScope(currentUser, settings), [currentUser, settings]);
+  const scope = eligibility.stations;
+  const people = useMemo(() => users.filter(u => !eligibility.errorFor(u)), [users, eligibility]);
   const groups = useMemo(
     () => [
       ...stations.filter((s) => scope.has(s.id)).map((s) => ({ station: s, members: people.filter((u) => u.stationId === s.id) })),
@@ -111,6 +117,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         priority: urgent ? 'URGENT' : 'NORMAL',
         ownerId: ownerId || undefined,
         dueAt: fromInput(dueAt),
+        reminderOptions,
         airAt: fromInput(airAt),
         target,
         steps,
@@ -181,6 +188,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
           <div>
             <label htmlFor="card-owner" className={LABEL}>صاحب القرار عند التعطل</label>
             <select id="card-owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={INPUT}>
+              {card?.ownerId && !people.some(user => user.id === card.ownerId) && <option value={card.ownerId}>{card.ownerName || 'صاحب القرار الحالي'}</option>}
               {people.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
               ))}
@@ -192,6 +200,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
           </label>
         </div>
 
+        <WorkReminderFields value={reminderOptions} onChange={setReminderOptions} />
         <fieldset className="space-y-2">
           <legend className="font-bold text-slate-800 text-sm">مهام التكليف بالترتيب</legend>
           <p className="text-2xs text-slate-500">كل مهمة تُسند لزميل بعينه، أو لمحطة ليستلمها أحد أفرادها. عند إنجاز مهمة يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>

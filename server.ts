@@ -10,6 +10,7 @@ import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
 import { sendDuePersonalTaskReminders } from './src/server/personalTaskReminders';
+import { sendDueWorkReminders } from './src/server/workReminders';
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
@@ -138,6 +139,19 @@ async function main() {
   };
   timers.push(setInterval(remind, 30_000));
   remind();
+  const workReminderJob = 'تذكيرات التكليفات والمهام';
+  registerJob(workReminderJob, 0.5);
+  const remindWork = () => {
+    try {
+      sendDueWorkReminders(db);
+      recordJob(workReminderJob);
+    } catch (error) {
+      recordJob(workReminderJob, error);
+      logger.error('work reminders failed', { error: String(error) });
+    }
+  };
+  timers.push(setInterval(remindWork, 30_000));
+  remindWork();
   // Scheduled bulletins (only formats set to create automatically).
   const scheduleBulletins = () => {
     try {

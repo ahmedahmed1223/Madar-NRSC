@@ -17,6 +17,9 @@ import { takeMessageTask, type MessageTaskOrigin } from '../services/messageWork
 import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 import { assignedWorkOnly } from '../shared/assignedWork';
+import { assignmentScope } from '../shared/assignmentScope';
+import type { WorkReminderOptions } from '../shared/workReminders';
+import { WorkReminderFields } from '../components/common/WorkReminderFields';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import { normalizeTaskStatus, taskDurationLabel, taskTiming } from '../shared/taskWorkflow';
 import { dataStore } from '../services/dataStore';
@@ -99,8 +102,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
   const scope = departmentWorkScope(currentUser.id, departmentsOf(settings));
   const scopedManager = !assignedOnly && scope.led.length > 0 && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN';
-  const assignableUsers = apiService.getUsers().filter(user => user.isActive !== false && !user.deletedAt && (!scopedManager || scope.departmentFor(user)));
-  const teamIds = scopedManager ? new Set(assignableUsers.map(user => user.id)) : null;
+  const allUsers = apiService.getUsers();
+  const teamIds = scopedManager ? new Set(allUsers.filter(user => scope.departmentFor(user)).map(user => user.id)) : null;
+  const eligibility = assignmentScope(currentUser, settings);
+  const assignableUsers = allUsers.filter(user => (!teamIds || teamIds.has(user.id)) && !eligibility.errorFor(user));
   const canAssign = scopedManager || RbacService.hasPermission(currentUser, 'tasks.create_assign');
   const canManage = (task: EditorialTask) => teamIds ? teamIds.has(task.assigneeId || task.assignedToId || '') : canAssign;
   const [activeTab, setActiveTabState] = useState<TaskView>(() => focusId ? 'LIST' : savedTaskView());
@@ -135,6 +140,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<NewsPriority>('NORMAL');
   const [dueDate, setDueDate] = useState(toLocalInputValue());
+  const [reminderOptions, setReminderOptions] = useState<WorkReminderOptions>();
   const [assigneeId, setAssigneeId] = useState(currentUser.id);
   const [status, setStatus] = useState<TaskStatus>('TODO');
   const [blockedReason, setBlockedReason] = useState('');
@@ -144,10 +150,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const moving = useRef(new Set<string>());
   const [movingTasks, setMovingTasks] = useState<ReadonlySet<string>>(new Set());
   const draft = useFormDraft(`task:${currentUser.id}:${editingTask?.id || (messageOrigin ? `message:${messageOrigin.channel}:${messageOrigin.messageId}` : 'new')}`, isModalOpen,
-    { title, description, priority, dueDate, assigneeId, status, blockedReason }, value => {
+    { title, description, priority, dueDate, assigneeId, status, blockedReason, reminderOptions }, value => {
       setTitle(value.title); setDescription(value.description); setPriority(value.priority);
       setDueDate(value.dueDate); setAssigneeId(value.assigneeId); setStatus(normalizeTaskStatus(value.status));
       setBlockedReason(value.blockedReason || '');
+      setReminderOptions(value.reminderOptions);
     });
 
   const TASK_TEMPLATES = [
@@ -173,6 +180,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setDescription('');
     setPriority('NORMAL');
     setDueDate(toLocalInputValue(new Date(Date.now() + 86400000)));
+    setReminderOptions(undefined);
     setAssigneeId(teamIds && !teamIds.has(currentUser.id) ? assignableUsers[0]?.id || '' : currentUser.id);
     setStatus('TODO');
     setBlockedReason('');
@@ -203,6 +211,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setDescription(t.description || '');
     setPriority(t.priority);
     setDueDate(toLocalInputValue(t.dueDate || new Date()));
+    setReminderOptions(t.reminderOptions);
     setAssigneeId(t.assigneeId || t.assignedToId || currentUser.id);
     setStatus(normalizeTaskStatus(t.status) as TaskStatus);
     setBlockedReason(t.blockedReason || '');
@@ -226,7 +235,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
       setSaveError('الحالة المختارة غير متاحة لهذه المهمة. اختر حالة من القائمة.');
       return;
     }
-    const assignee = assignableUsers.find(u => u.id === assigneeId);
+    const originalAssignee = editingTask?.assigneeId || editingTask?.assignedToId;
+    const assignee = (assigneeId === originalAssignee ? allUsers : assignableUsers).find(u => u.id === assigneeId);
     if (!assignee) { setSaveError('اختر مسؤولًا نشطًا عن المهمة.'); return; }
     const deadline = fromLocalInputValue(dueDate);
     if (!deadline) { setSaveError('حدد موعد تسليم صالحًا.'); return; }
@@ -241,6 +251,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       description,
       priority,
       dueDate: deadline,
+      reminderOptions,
       assignedToName: assignee.fullName,
       assigneeName: assignee.fullName,
       status,
@@ -813,7 +824,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               onChange={(e) => setAssigneeId(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              {!assignableUsers.some(user => user.id === assigneeId) && <option value={assigneeId} disabled>اختر مسؤولًا نشطًا</option>}
+              {!assignableUsers.some(user => user.id === assigneeId) && <option value={assigneeId} disabled>{allUsers.find(user => user.id === assigneeId)?.fullName || 'اختر مسؤولًا نشطًا'}</option>}
               {assignableUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.fullName} — {u.jobTitle}
@@ -900,6 +911,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             />
           </div>
 
+          <WorkReminderFields value={reminderOptions} onChange={setReminderOptions} />
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"

@@ -503,6 +503,7 @@ export interface EditorialTask {
   status: TaskStatus;
   startDate?: string;
   dueDate?: string;
+  reminderOptions?: import('../shared/workReminders').WorkReminderOptions;
   relatedEntityType?: 'NEWS' | 'EPISODE' | 'PROGRAM' | 'GENERAL' | 'BULLETIN' | 'BULLETIN_STORY' | 'MESSAGE';
   relatedEntityId?: string;
   relatedEntityTitle?: string;

@@ -41,6 +41,11 @@ it('rehearses and restores schema 5 while classifying old uploads', async () => 
   const probe = new Database(source);
   try {
     probe.exec(`
+      DROP TRIGGER work_reminders_tombstone;
+      DROP TRIGGER work_reminders_delete;
+      DROP TABLE work_reminders;
+      DROP INDEX idx_personal_tasks_owner;
+      DROP INDEX idx_personal_tasks_reminder;
       DROP TRIGGER news_archive_entity_insert;
       DROP TRIGGER news_archive_entity_update;
       DROP TRIGGER news_archive_entity_delete;
@@ -63,6 +68,7 @@ it('rehearses and restores schema 5 while classifying old uploads', async () => 
   await server.db.restoreBackup(snapshot.fileName, 20, rehearsal.body.data.sha256);
   expect(server.db.getUpload(id)?.scope).toBe('chat');
   expect(searchArchive(server.db, '2099-01-01T00:00:00.000Z', 'التجريبي', 10, 0).items.map(row => row.id)).toContain('legacy-index');
+  expect(server.db.dueWorkReminders('2099-01-01T00:00:00.000Z')).toEqual([]);
   expect(server.db.isHealthy()).toBe(true);
   expect(fs.readFileSync(source)).toEqual(original);
 });

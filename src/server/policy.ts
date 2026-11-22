@@ -29,6 +29,8 @@ import { handledChangeError, manualWireError } from '../shared/wires';
 import { PERSONAL_NOTE_BODY_LIMIT, PERSONAL_NOTE_TITLE_LIMIT } from '../shared/personalWorkspace';
 import { taskTransitionError } from '../shared/taskWorkflow';
 import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
+import { assignmentScope } from '../shared/assignmentScope';
+import { workReminderError, workReminderInstant } from '../shared/workReminders';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -306,11 +308,17 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   const inTeam = (task: any) => team?.has(task?.assigneeId || task?.assignedToId) === true;
   const canManage = team ? (!before || inTeam(before)) && (kind === 'delete' || inTeam(after)) : auth.can('tasks.create_assign');
   if (after && kind !== 'delete') {
+    const reminder = workReminderError(after.reminderOptions, Number.isFinite(workReminderInstant(after.dueDate)));
+    if (reminder) return reminder;
     const rules = list?.('settings')[0]?.taskWorkflow;
     const transition = taskTransitionError(before, after, rules, canManage);
     if (transition) return transition;
     const assigneeId = after.assigneeId || after.assignedToId;
-    if (assigneeId && (before?.assigneeId || before?.assignedToId) !== assigneeId && !(list?.('users') || []).some((u: any) => u.id === assigneeId && u.isActive !== false && !u.deletedAt)) return 'المكلف غير موجود أو موقوف';
+    if (assigneeId && (before?.assigneeId || before?.assignedToId) !== assigneeId) {
+      const scope = assignmentScope(auth.user, list?.('settings')[0]);
+      const error = scope.errorFor((list?.('users') || []).find(u => u.id === assigneeId));
+      if (error) return error;
+    }
     const targets: Record<string, CollectionName> = { NEWS: 'news', EPISODE: 'episodes', PROGRAM: 'programs', BULLETIN: 'bulletins', BULLETIN_STORY: 'bulletinStories' };
     const target = Object.hasOwn(targets, after.relatedEntityType) ? targets[after.relatedEntityType] : undefined;
     if (target && (before?.relatedEntityType !== after.relatedEntityType || before?.relatedEntityId !== after.relatedEntityId)
@@ -319,7 +327,7 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (canManage) return null;
   // Assignees may progress their own tasks.
   if ((auth.can('tasks.view') || team) && kind === 'update' && taskAssignedTo(before, auth.user.id) && taskAssignedTo(after, auth.user.id) && !isSoftDelete(before, after)) {
-    const protectedFields = ['title', 'description', 'assigneeId', 'assignedToId', 'assignedToName', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority'];
+    const protectedFields = ['title', 'description', 'assigneeId', 'assignedToId', 'assignedToName', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority', 'reminderOptions'];
     return protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
   }
   return 'صلاحياتك لا تسمح بإدارة المهام';
@@ -668,13 +676,33 @@ export const POLICIES: Record<CollectionName, Policy> = {
       }
     }
     const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
-    const ctx = cardContextOf(list?.('settings')[0], list?.('users') || []);
+    const settings = list?.('settings')[0];
+    const users = list?.('users') || [];
+    const ctx = cardContextOf(settings, users);
     if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
       if (!canManage) return 'حذف التكليفات واستعادتها لمسؤولي التكليف';
       // A branch deletes or restores only the cards it governs (its own and those of the branches it follows).
-      return !before || canGovernCard(before, actor, ctx.stations) ? null : GOVERN_DENIED;
+      if (before && !canGovernCard(before, actor, ctx.stations)) return GOVERN_DENIED;
+      if (kind === 'delete') return null;
     }
-    return cardChangeError(before, after, actor, ctx);
+    const error = cardChangeError(before, after, actor, ctx);
+    if (error) return error;
+    const scope = assignmentScope(auth.user, settings);
+    const recipients = new Set<string>();
+    if (after.ownerId && after.ownerId !== before?.ownerId) recipients.add(after.ownerId);
+    const previous = new Map<string, { assigneeId?: string; stationId?: string }>((before?.steps || []).map(step => [step.id, step]));
+    for (const step of after.steps) {
+      const prior = previous.get(step.id);
+      if (step.assigneeId && step.assigneeId !== prior?.assigneeId) recipients.add(step.assigneeId);
+      if (!step.assigneeId && step.stationId && step.stationId !== prior?.stationId && !scope.stations.has(step.stationId)) {
+        return 'محطة التكليف خارج نطاق المحطات التي تديرها أو ترتبط بها';
+      }
+    }
+    for (const id of recipients) {
+      const denied = scope.errorFor(users.find(u => u.id === id));
+      if (denied) return denied;
+    }
+    return null;
   },
   workflowTemplates: ({ auth, kind, before, after }) => {
     if (kind === 'delete') return auth.can('cards.manage') ? null : 'قوالب سير العمل لمسؤولي التكليف';

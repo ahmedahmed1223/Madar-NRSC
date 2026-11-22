@@ -6,7 +6,10 @@ import { fromLocalInputValue } from '../../shared/dates';
 import { cardKindName, stepAssigneeLabel, stepTypeName, stepTypesOf, type ProductionCard } from '../../shared/productionCards';
 import { cardFromTemplate, defaultPick, ruleCandidates, RULE_KINDS, type WorkflowTemplate } from '../../shared/workflowTemplates';
 import { departmentName } from '../../shared/departments';
-import { stationName, stationScope, stationsOf } from '../../shared/stations';
+import { stationName, stationsOf } from '../../shared/stations';
+import { assignmentScope } from '../../shared/assignmentScope';
+import type { WorkReminderOptions } from '../../shared/workReminders';
+import { WorkReminderFields } from '../common/WorkReminderFields';
 import type { User } from '../../types';
 import { INPUT, LABEL, candidateLabel, cardCandidates, when } from './cardUi';
 import { useConfirmedCardSave } from './useConfirmedCardSave';
@@ -28,13 +31,15 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
   const templates = useMemo(() => (isOpen ? apiService.getWorkflowTemplates().filter((t) => !t.archived) : []), [isOpen]);
-  const scope = useMemo(() => stationScope(stations, currentUser.stationId), [stations, currentUser.stationId]);
+  const eligibility = useMemo(() => assignmentScope(currentUser, settings), [currentUser, settings]);
+  const scope = eligibility.stations;
   // Managers hand work to colleagues in the stations they follow.
-  const people = useMemo(() => (isOpen ? cardCandidates().filter((p) => !p.stationId || scope.has(p.stationId)) : []), [isOpen, scope]);
+  const people = useMemo(() => (isOpen ? cardCandidates(user => !eligibility.errorFor(user)) : []), [isOpen, eligibility]);
   const [chosen, setChosen] = useState('');
   const [title, setTitle] = useState('');
   const [brief, setBrief] = useState('');
   const [dueAt, setDueAt] = useState('');
+  const [reminderOptions, setReminderOptions] = useState<WorkReminderOptions>();
   const [airAt, setAirAt] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [stationId, setStationId] = useState('');
@@ -50,6 +55,7 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
     setTitle('');
     setBrief('');
     setDueAt('');
+    setReminderOptions(undefined);
     setAirAt('');
     setOwnerId(currentUser.id);
     setStationId(currentUser.stationId || '');
@@ -74,10 +80,11 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
     if (!template) return;
     const saved = await save((id) => {
       let stepIndex = 0;
-      return cardFromTemplate(template, { ...input, title }, people, {
+      const card = cardFromTemplate(template, { ...input, title }, people, {
         cardId: id,
         newStepId: () => `${id}-step-${stepIndex++}`,
       });
+      return { ...card, reminderOptions };
     });
     if (saved) {
       notify({ type: 'success', message: 'أُنشئ التكليف ووصل التنبيه للمكلفين' });
@@ -140,6 +147,7 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
               </select>
             </div>
           </div>
+          <WorkReminderFields value={reminderOptions} onChange={setReminderOptions} />
           <label className="inline-flex items-center gap-2 font-bold text-slate-700 min-h-11">
             <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
             تكليف عاجل

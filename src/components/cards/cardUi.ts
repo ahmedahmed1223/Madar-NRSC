@@ -6,6 +6,7 @@ import { departmentIdOf } from '../../shared/departments';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
+import type { User } from '../../types';
 
 /** Day and time in the station's format, e.g. «19 نوفمبر 21:15». */
 export const when = (iso?: string) => (iso ? new Date(iso).toLocaleString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -37,11 +38,11 @@ export const INPUT = 'w-full px-3 py-2 border border-slate-300 rounded-xl bg-whi
 export const LABEL = 'block font-bold text-slate-700 mb-1';
 
 /** Colleagues who work on assignments, with their open-step load, for pickers and template resolution. */
-export function cardCandidates(): Candidate[] {
+export function cardCandidates(allowed: (user: User) => boolean = () => true): Candidate[] {
   const load = openStepLoad(apiService.getCards());
   return apiService
     .getUsers()
-    .filter((u) => u.isActive !== false && !u.deletedAt && RbacService.hasPermission(u, 'cards.work'))
+    .filter((u) => u.isActive !== false && !u.deletedAt && RbacService.hasPermission(u, 'cards.work') && allowed(u))
     .map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, role: u.role, departmentId: departmentIdOf(u), canManage: RbacService.hasPermission(u, 'cards.manage'), load: load.get(u.id) || 0 }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }

@@ -31,6 +31,7 @@ import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/product
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
 import { stampTaskWorkflow } from '../shared/taskWorkflow';
+import { updateWorkReminders } from './workReminders';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
 import { departmentIdOf } from '../shared/departments';
@@ -999,6 +1000,9 @@ export class SyncService {
         }
 
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
+        if ((collection === 'tasks' || collection === 'productionCards') && (before?.reminderOptions || after.reminderOptions)) {
+          updateWorkReminders(this.db, collection, id, after.deletedAt ? null : row.d);
+        }
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
         if (collection === 'productionCards' && !after.deletedAt) {
           const settings = this.db.getRow('settings', SINGLETON_ID)?.d;

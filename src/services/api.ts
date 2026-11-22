@@ -4,6 +4,8 @@ import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRo
 import type { NewsArchiveFilters } from '../shared/newsArchive';
 import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
 import { preparePersonalTask, type PersonalTask, type PersonalTaskInput } from '../shared/personalTasks';
+import { assignmentScope } from '../shared/assignmentScope';
+import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import { sanitizeWorkSections, type WorkSectionPreferences } from '../shared/workContext';
 import { savedFilterRequest } from './savedNewsFilterTransport';
 import { handoverRequest } from './handoverTransport';
@@ -977,18 +979,33 @@ export class ApiService {
   static saveTask(task: Partial<EditorialTask>, user?: User): EditorialTask {
     const all = this.getTasks();
     const currentUser = user || this.getCurrentUser();
-    const canAssign = RbacService.hasPermission(currentUser, 'tasks.create_assign');
     const existingTask = task.id ? all.find((t) => t.id === task.id) : undefined;
-    // Same rule as the server: assignees may progress their own tasks, everything else needs tasks.create_assign.
-    if (!canAssign && !(existingTask && existingTask.assigneeId === currentUser.id && (!task.assigneeId || task.assigneeId === currentUser.id))) {
+    const existingAssignee = existingTask?.assigneeId || existingTask?.assignedToId;
+    const nextAssignee = task.assigneeId || task.assignedToId || existingAssignee || currentUser.id;
+    const users = this.getUsers();
+    const recipient = users.find(member => member.id === nextAssignee);
+    const settings = this.getSettings();
+    const team = RbacService.leadsDepartment(currentUser) && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN'
+      ? departmentWorkScope(currentUser.id, departmentsOf(settings)) : null;
+    const isInTeam = (id?: string) => {
+      const member = users.find(candidate => candidate.id === id);
+      return !!member && !!team?.departmentFor(member);
+    };
+    const canAssign = team ? (!existingTask || isInTeam(existingAssignee)) && isInTeam(nextAssignee)
+      : RbacService.hasPermission(currentUser, 'tasks.create_assign');
+    if (!canAssign && !(existingAssignee === currentUser.id && nextAssignee === currentUser.id)) {
       throw new Error('صلاحياتك لا تسمح بإنشاء المهام أو تعديلها');
+    }
+    if (nextAssignee !== existingAssignee) {
+      const error = assignmentScope(currentUser, settings).errorFor(recipient);
+      if (error) throw new Error(error);
     }
     const now = new Date().toISOString();
 
     if (task.id) {
       const idx = all.findIndex((t) => t.id === task.id);
       if (idx !== -1) {
-        all[idx] = { ...all[idx], ...task };
+        all[idx] = { ...all[idx], ...task, assigneeId: nextAssignee, assignedToId: nextAssignee };
         setStored(STORAGE_KEYS.TASKS, all);
         this.logActivity('تحديث مهمة', 'TASK', task.id, all[idx].title, `تحديث حالة المهمة إلى: ${all[idx].status}`);
         return all[idx];
@@ -999,8 +1016,9 @@ export class ApiService {
       id: task.id || newId('tsk'),
       title: task.title || 'مهمة جديدة',
       description: task.description || '',
-      assigneeId: task.assigneeId || currentUser.id,
-      assigneeName: task.assigneeName || currentUser.fullName,
+      assigneeId: nextAssignee,
+      assignedToId: nextAssignee,
+      assigneeName: recipient?.fullName || task.assigneeName || currentUser.fullName,
       assigneeAvatar: task.assigneeAvatar,
       creatorId: currentUser.id,
       creatorName: currentUser.fullName,
@@ -1008,6 +1026,7 @@ export class ApiService {
       status: task.status || 'TODO',
       startDate: task.startDate || now,
       dueDate: task.dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      reminderOptions: task.reminderOptions,
       relatedEntityType: task.relatedEntityType || 'GENERAL',
       relatedEntityId: task.relatedEntityId,
       relatedEntityTitle: task.relatedEntityTitle,

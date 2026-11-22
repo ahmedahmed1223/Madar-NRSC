@@ -5,6 +5,7 @@ import path from 'path';
 import { CollectionName, EntityRow, isCollectionName, type PrivateRecordCollection } from '../shared/collections';
 import { logger } from './logger';
 import { ARCHIVE_FILTER, MIGRATIONS, PENDING_PERSONAL_REMINDER, SETTLED_SQL } from './dbMigrations';
+import type { WorkReminder, WorkReminderCollection } from './workReminders';
 import { withStableBackup } from './databaseRecovery';
 import { archiveTerms, prepareArchiveText, rankArchiveText } from './archiveIndex';
 import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
@@ -514,6 +515,41 @@ export class NewsroomDatabase {
         )
       ORDER BY json_extract(data, '$.reminderAt'), id LIMIT ?`).all(now, limit) as RawEntityRow[];
     return rows.map(toEntityRow);
+  }
+
+  replaceWorkReminders(collection: WorkReminderCollection, entityId: string, jobs: WorkReminder[]) {
+    const previous = this.db.prepare('SELECT slot, kind FROM work_reminders WHERE collection = ? AND entity_id = ?')
+      .all(collection, entityId) as Pick<WorkReminder, 'slot' | 'kind'>[];
+    const keys = new Set(jobs.map(job => `${job.slot}/${job.kind}`));
+    const remove = this.db.prepare('DELETE FROM work_reminders WHERE collection = ? AND entity_id = ? AND slot = ? AND kind = ?');
+    for (const job of previous) if (!keys.has(`${job.slot}/${job.kind}`)) remove.run(collection, entityId, job.slot, job.kind);
+    if (!jobs.length) return;
+    const save = this.db.prepare(`
+      INSERT INTO work_reminders(collection, entity_id, slot, kind, user_id, fire_at, enabled)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(collection, entity_id, slot, kind) DO UPDATE SET
+        sent_at = CASE WHEN work_reminders.user_id = excluded.user_id AND work_reminders.fire_at = excluded.fire_at
+          THEN work_reminders.sent_at ELSE NULL END,
+        user_id = excluded.user_id, fire_at = excluded.fire_at, enabled = excluded.enabled
+    `);
+    for (const job of jobs) save.run(collection, entityId, job.slot, job.kind, job.userId, job.fireAt, job.enabled);
+  }
+
+  dueWorkReminders(now: string, limit = 100) {
+    return this.db.prepare(`
+      SELECT reminder.collection, entity_id AS entityId, slot, kind, user_id AS userId
+      FROM work_reminders AS reminder
+      JOIN entities AS owner ON owner.collection = 'users' AND owner.id = reminder.user_id AND owner.deleted = 0
+      WHERE enabled = 1 AND sent_at IS NULL AND fire_at <= ?
+        AND COALESCE(json_extract(owner.data, '$.isActive'), 1) = 1
+        AND json_extract(owner.data, '$.deletedAt') IS NULL
+      ORDER BY fire_at, entity_id, slot, kind LIMIT ?
+    `).all(now, limit) as (Pick<WorkReminder, 'slot' | 'kind' | 'userId'> & { collection: WorkReminderCollection; entityId: string })[];
+  }
+
+  markWorkReminderSent(job: Pick<WorkReminder, 'slot' | 'kind'> & { collection: WorkReminderCollection; entityId: string }, at: string) {
+    this.db.prepare('UPDATE work_reminders SET sent_at = ? WHERE collection = ? AND entity_id = ? AND slot = ? AND kind = ?')
+      .run(at, job.collection, job.entityId, job.slot, job.kind);
   }
 
   assignedWorkIds(userId: string): string[] {

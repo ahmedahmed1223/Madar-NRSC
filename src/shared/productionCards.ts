@@ -9,6 +9,7 @@
  */
 import { stationName, stationScope, stationsOf, type Station } from './stations';
 import { departmentName } from './departments';
+import { workReminderError, workReminderInstant, type WorkReminderOptions } from './workReminders';
 
 export const CARD_KINDS = [
   { id: 'NEWS', name: 'خبر' },
@@ -198,6 +199,7 @@ export interface ProductionCard {
   ownerStationId?: string;
   /** Delivery deadline for the finished item. */
   dueAt?: string;
+  reminderOptions?: WorkReminderOptions;
   /** When it airs. */
   airAt?: string;
   script?: string;
@@ -498,6 +500,8 @@ export function cardError(card: ProductionCard): string | null {
   }
   if (card.mediaIds !== undefined && (!Array.isArray(card.mediaIds) || card.mediaIds.length > 100 || card.mediaIds.some((id) => typeof id !== 'string' || !ID.test(id)))) return 'مواد المكتبة المرفقة غير صالحة';
   if (!Array.isArray(card.steps) || card.steps.length > MAX_CARD_STEPS) return `الحد الأقصى ${MAX_CARD_STEPS} مهمة في التكليف`;
+  const reminderError = workReminderError(card.reminderOptions, [card.dueAt, card.airAt, ...card.steps.map(step => step?.dueAt)].some(date => Number.isFinite(workReminderInstant(date))));
+  if (reminderError) return reminderError;
   const stepIds = new Set<string>();
   for (const step of card.steps) {
     if (!step || typeof step.id !== 'string' || !ID.test(step.id) || stepIds.has(step.id)) return 'معرّف المهمة غير صالح أو مكرر';
@@ -534,7 +538,7 @@ export function cardError(card: ProductionCard): string | null {
   return null;
 }
 
-const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target', 'templateId', 'templateName'] as const;
+const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target', 'templateId', 'templateName', 'reminderOptions'] as const;
 const STEP_LOCKED = ['type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId', 'departmentId'] as const;
 
 /**
@@ -645,7 +649,7 @@ export function cardChangeError(before: ProductionCard | null, after: Production
 // Writes based on an older version (made offline, or while a colleague saved)
 // ---------------------------------------------------------------------------
 
-const MERGED_CARD_FIELDS = ['title', 'kind', 'brief', 'priority', 'ownerId', 'dueAt', 'airAt', 'target', 'script', 'scriptApproved', 'links', 'mediaIds'] as const;
+const MERGED_CARD_FIELDS = ['title', 'kind', 'brief', 'priority', 'ownerId', 'dueAt', 'airAt', 'target', 'script', 'scriptApproved', 'links', 'mediaIds', 'reminderOptions'] as const;
 
 /** Takes the sender's change to one value unless the stored value changed differently meanwhile. */
 function mergeValue<T>(base: T, mine: T, current: T): { ok: boolean; value: T } {
