@@ -11,7 +11,11 @@ it('accepts valid station and editorial defaults', () => {
 });
 it.each([{ organizationName: ' ' }, { defaultTimezone: 'invalid/zone' },
   { defaultSegmentDurationSeconds: 0 }, { breakingDurationHours: 100 },
-  { defaultNewsPriority: 'INVALID' }, { enableAuditLog: false }])('rejects unsafe settings %j', patch => {
+  { defaultNewsPriority: 'INVALID' }, { enableAuditLog: false },
+  { moduleAccess: { settings: { mode: 'disabled' } } },
+  { moduleAccess: { assignments: { mode: 'selected' } } },
+  { moduleAccess: { programmes: { mode: 'selected', roleIds: ['invalid id'] } } },
+])('rejects unsafe settings %j', patch => {
   expect(check(patch)).toBeTruthy();
 });
 it('requires settings permission and forbids deleting settings', () => {

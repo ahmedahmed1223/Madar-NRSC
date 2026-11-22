@@ -13,7 +13,7 @@ import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
 import { departmentIdOf, departmentsError, departmentsOf, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
-import { DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
+import { DEFAULT_ROLE_DEFINITIONS, findUserRole } from '../shared/rbac';
 import { canControlOnAir, isCueForUser, isPresenterAccount, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
 import { bulletinError, findShow, formatError, isApprover, nextApprovalStep, canActOnStep, approvalStepName, plainText, storyError, storyStatusError } from '../shared/bulletins';
 import { rosterEntryError } from '../shared/roster';
@@ -22,6 +22,8 @@ import { messageWorkMediaIds, type PrivateMessageMedia } from '../shared/message
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
+import { allowsModule, moduleForRecord, moduleRule, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
+import { moduleAllowed } from './moduleAccess';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
 import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
@@ -343,8 +345,10 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
     }
     const targets: Record<string, CollectionName> = { NEWS: 'news', EPISODE: 'episodes', PROGRAM: 'programs', BULLETIN: 'bulletins', BULLETIN_STORY: 'bulletinStories' };
     const target = Object.hasOwn(targets, after.relatedEntityType) ? targets[after.relatedEntityType] : undefined;
-    if (target && (before?.relatedEntityType !== after.relatedEntityType || before?.relatedEntityId !== after.relatedEntityId)
-      && !(list?.(target) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
+    if (target && (before?.relatedEntityType !== after.relatedEntityType || before?.relatedEntityId !== after.relatedEntityId)) {
+      if ((target === 'episodes' || target === 'programs') && !moduleAllowed(auth, 'programmes')) return MODULE_UNAVAILABLE;
+      if (!(list?.(target) || []).some((r: any) => r.id === after.relatedEntityId && !r.deletedAt)) return 'موضع التكليف غير متاح';
+    }
   }
   if (canManage) return null;
   // Assignees may progress their own tasks.
@@ -475,6 +479,17 @@ const settingsPolicy: Policy = (input) => {
   const invalid = settingsError(after);
   if (invalid) return invalid;
   const users = (list?.('users') || []).filter((u: any) => u && !u.deletedAt);
+  const previousProgrammes = moduleRule(before?.moduleAccess, 'programmes');
+  const nextProgrammes = moduleRule(after?.moduleAccess, 'programmes');
+  if (JSON.stringify(previousProgrammes) !== JSON.stringify(nextProgrammes) && nextProgrammes.mode !== 'everyone') {
+    const running = new Set((list?.('onAir') || []).filter(state => state.status === 'LIVE' && !state.deletedAt).map(state => state.episodeId || state.id));
+    if (running.size && (list?.('episodes') || []).some(episode => !episode.deletedAt && running.has(episode.id)) &&
+        users.some(user => user.isActive &&
+          allowsModule(before?.moduleAccess, 'programmes', user.id, findUserRole(user, input.auth.roles)?.id) &&
+          !allowsModule(after?.moduleAccess, 'programmes', user.id, findUserRole(user, input.auth.roles)?.id))) {
+      return 'أوقف بث الحلقة المباشر قبل تقييد إتاحة البرامج';
+    }
+  }
   const removedStations = stationsOf(before).filter((s) => !stationsOf(after).some((x) => x.id === s.id));
   for (const station of removedStations) {
     const members = users.filter((u: any) => u.stationId === station.id).length;
@@ -659,6 +674,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (kind === 'create' && !auth.can('requests.create')) return 'صلاحياتك لا تسمح بإرسال طلبات للأقسام';
     const denied = requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
     if (denied) return denied;
+    if (after.link?.episodeId && changed(before, after, 'link') && !moduleAllowed(auth, 'programmes')) return MODULE_UNAVAILABLE;
     if (after.sourceMediaIds?.length && changed(before, after, 'sourceMediaIds')) {
       if (!any(auth, 'media.view', 'media.upload')) return 'ربط مصادر المونتاج يتطلب الوصول إلى مكتبة الوسائط';
       const existing = new Set(before?.sourceMediaIds || []);
@@ -783,8 +799,12 @@ export const POLICIES: Record<CollectionName, Policy> = {
       }
     }
     for (const id of recipients) {
-      const denied = scope.errorFor(users.find(u => u.id === id));
+      const recipient = users.find(u => u.id === id);
+      const denied = scope.errorFor(recipient);
       if (denied) return denied;
+      if (recipient && !allowsModule(settings?.moduleAccess, 'assignments', id, findUserRole(recipient, auth.roles)?.id)) {
+        return 'التكليفات غير متاحة لأحد الزملاء المختارين';
+      }
     }
     return null;
   },
@@ -799,6 +819,8 @@ const SUPPORT_COLLECTIONS = new Set<CollectionName>(['roles', 'users', 'settings
 
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
+  const module = moduleForRecord(collection, data?.id, data, id => !!lookup?.('episodes', id));
+  if (module && !moduleAllowed(auth, module)) return false;
   if (assignedWorkOnly(auth.can)) {
     if (!SUPPORT_COLLECTIONS.has(collection)) return false;
     if (collection === 'users') return data?.id === auth.user.id;

@@ -809,8 +809,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     : activeNav === 'bulletins' && activeBulletinId && apiService.getBulletins().some((bulletin) => bulletin.id === activeBulletinId)
       ? `bulletin:${activeBulletinId}`
       : null;
-  const screenAllowed = RbacService.canOpenScreen(currentUser, activeNav) || !!assignedProduction && !assignedWorkOnly((permission) => RbacService.hasPermission(currentUser, permission)) &&
-    apiService.getCards().some((card) => cardProductionAssignment(card, currentUser.id) === assignedProduction);
+  const screenModuleAvailable = RbacService.isScreenModuleAvailable(currentUser, activeNav);
+  const screenAllowed = screenModuleAvailable && (RbacService.canOpenScreen(currentUser, activeNav) ||
+    !!assignedProduction && RbacService.canUseModule(currentUser, 'assignments') &&
+    !assignedWorkOnly((permission) => RbacService.hasPermission(currentUser, permission)) &&
+    apiService.getCards().some((card) => cardProductionAssignment(card, currentUser.id) === assignedProduction));
   const activeProgram = selectedProgramId ? programs.find((p) => p.id === selectedProgramId) : programs[0];
 
   if (activeNav === 'wallboard' && screenAllowed) {
@@ -885,8 +888,10 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             >
             {!screenAllowed && (
               <div className="max-w-xl mx-auto text-center space-y-3 py-20">
-                <h1 className="text-lg font-bold text-slate-900">هذه الصفحة ليست ضمن صفحات دورك</h1>
-                <p className="text-sm text-slate-600">تُحدَّد صفحات كل دور من «المستخدمون والصلاحيات». إن احتجت إليها في عملك فاطلبها من مدير النظام.</p>
+                <h1 className="text-lg font-bold text-slate-900">{screenModuleAvailable ? 'هذه الصفحة ليست ضمن صفحات دورك' : 'هذه الوحدة غير متاحة لهذا الحساب'}</h1>
+                <p className="text-sm text-slate-600">{screenModuleAvailable
+                  ? 'تُحدَّد صفحات كل دور من «المستخدمون والصلاحيات». إن احتجت إليها في عملك فاطلبها من مدير النظام.'
+                  : 'يتحكم مدير النظام في إتاحة الوحدات من الإعدادات العامة.'}</p>
                 <button type="button" onClick={() => setActiveNav('dashboard')} className="min-h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-bold">
                   العودة إلى الرئيسية
                 </button>

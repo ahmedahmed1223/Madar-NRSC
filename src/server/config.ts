@@ -32,6 +32,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     PORT: int(3000, 1),
     HOST: z.string().default('0.0.0.0'),
     DATA_DIR: z.string().default(path.join(process.cwd(), 'data')),
+    DATABASE_ENGINE: z.enum(['sqlite', 'postgresql']).default('sqlite'),
+    POSTGRES_URL: z.string().trim().refine(value => !value || /^postgres(?:ql)?:\/\//.test(value), 'must be a PostgreSQL connection URL').optional(),
+    POSTGRES_SCHEMA: z.string().regex(/^[a-z][a-z0-9_]{0,45}$/).default('madar'),
     APP_URL: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default(isProduction ? 'info' : 'debug'),
@@ -49,6 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ADMIN_EMAIL: z.string().email().optional().or(z.literal('').transform(() => undefined)),
     ADMIN_PASSWORD: z.string().optional(),
     ADMIN_NAME: z.string().default('مدير النظام'),
+    INSTALL_SETUP_TOKEN: z.string().trim().min(32).max(200).optional().or(z.literal('').transform(() => undefined)),
 
     SEED_DEMO_DATA: bool(!isProduction),
     DEMO_USER_PASSWORD: z.string().default('Madar@Demo2026'),
@@ -128,6 +132,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   if (c.ADMIN_PASSWORD && c.ADMIN_PASSWORD.length < 10) {
     throw new Error('ADMIN_PASSWORD must be at least 10 characters');
   }
+  if (c.INSTALL_SETUP_TOKEN && (c.ADMIN_PASSWORD || c.SEED_DEMO_DATA)) {
+    throw new Error('INSTALL_SETUP_TOKEN requires SEED_DEMO_DATA=false and an empty ADMIN_PASSWORD');
+  }
   if (isProduction && c.SEED_DEMO_DATA && !c.ALLOW_DEMO_IN_PRODUCTION) {
     throw new Error('SEED_DEMO_DATA=true is refused in production: demo accounts share a published password. Set SEED_DEMO_DATA=false (or ALLOW_DEMO_IN_PRODUCTION=true for a demo server only).');
   }
@@ -156,6 +163,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     port: c.PORT,
     host: c.HOST,
     dataDir: path.resolve(c.DATA_DIR),
+    database: { defaultEngine: c.DATABASE_ENGINE, postgresUrl: c.POSTGRES_URL || undefined, postgresSchema: c.POSTGRES_SCHEMA },
     appUrl: c.APP_URL,
     trustProxy,
     logLevel: c.LOG_LEVEL,
@@ -170,6 +178,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     timeZone: env.TZ || undefined,
     cookieSecure: c.COOKIE_SECURE,
     admin: { email: c.ADMIN_EMAIL, password: c.ADMIN_PASSWORD, name: c.ADMIN_NAME },
+    installSetupToken: c.INSTALL_SETUP_TOKEN,
     seedDemoData: c.SEED_DEMO_DATA,
     demoUserPassword: c.DEMO_USER_PASSWORD,
     enableSqlConsole: c.ENABLE_SQL_CONSOLE,

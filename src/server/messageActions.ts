@@ -3,6 +3,8 @@ import path from 'node:path';
 import { Router } from 'express';
 import { requireAuth, requirePermission, type AuthContext } from './auth';
 import { canRead } from './policy';
+import { moduleAllowed } from './moduleAccess';
+import { MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { sendStoredFile } from './storage';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
@@ -57,6 +59,7 @@ export function messageActionsRouter(db: NewsroomDatabase, config: AppConfig, ch
     const auth = req.auth!;
     const { action, includeAttachments, workId } = req.body ?? {};
     if (typeof action !== 'string' || !Object.hasOwn(actionPermissions, action) || typeof includeAttachments !== 'boolean') throw new HttpError(400, 'إجراء الرسالة غير صالح');
+    if (action === 'card' && !moduleAllowed(auth, 'assignments')) throw new HttpError(403, MODULE_UNAVAILABLE);
     if (!auth.can(actionPermissions[action as Action])) throw new HttpError(403, 'صلاحياتك لا تسمح بهذا الإجراء');
     if (includeAttachments && (!auth.can('media.upload') || !auth.can('media.view'))) throw new HttpError(403, 'صلاحياتك لا تسمح بحفظ مرفقات الرسالة في المكتبة');
     const message = readableActionMessage(db, auth, req.params.id);

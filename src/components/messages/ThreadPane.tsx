@@ -449,12 +449,14 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
         </fieldset>
       </form>
 
-      <RefPicker isOpen={refOpen} onClose={() => setRefOpen(false)} onPick={(picked) => (setRef(picked), setRefOpen(false))} canSeeCards={RbacService.hasPermission(currentUser, 'cards.view')} />
+      <RefPicker isOpen={refOpen} onClose={() => setRefOpen(false)} onPick={(picked) => (setRef(picked), setRefOpen(false))}
+        canSeeCards={RbacService.canUseModule(currentUser, 'assignments') && RbacService.hasPermission(currentUser, 'cards.view')}
+        canSeeEpisodes={RbacService.canUseModule(currentUser, 'programmes')} />
     </section>
   );
 };
 
-const RefPicker: React.FC<{ isOpen: boolean; onClose: () => void; onPick: (ref: ChatRef) => void; canSeeCards: boolean }> = ({ isOpen, onClose, onPick, canSeeCards }) => {
+const RefPicker: React.FC<{ isOpen: boolean; onClose: () => void; onPick: (ref: ChatRef) => void; canSeeCards: boolean; canSeeEpisodes: boolean }> = ({ isOpen, onClose, onPick, canSeeCards, canSeeEpisodes }) => {
   const [query, setQuery] = useState('');
   useEffect(() => setQuery(''), [isOpen]);
   const results = useMemo(() => {
@@ -463,10 +465,10 @@ const RefPicker: React.FC<{ isOpen: boolean; onClose: () => void; onPick: (ref: 
       ...apiService.getNews().filter((n) => !n.deletedAt).map((n) => ({ kind: 'news' as const, id: n.id, title: n.title || 'خبر بلا عنوان' })),
       ...(canSeeCards ? apiService.getCards().map((c) => ({ kind: 'card' as const, id: c.id, title: c.title })) : []),
       ...apiService.getBulletins().map((b) => ({ kind: 'bulletin' as const, id: b.id, title: `${b.title} ${b.date || ''}`.trim() })),
-      ...apiService.getEpisodes().filter((e) => !e.deletedAt).map((e) => ({ kind: 'episode' as const, id: e.id, title: `${e.programName ? `${e.programName} — ` : ''}${e.title}` })),
+      ...(canSeeEpisodes ? apiService.getEpisodes().filter((e) => !e.deletedAt).map((e) => ({ kind: 'episode' as const, id: e.id, title: `${e.programName ? `${e.programName} — ` : ''}${e.title}` })) : []),
     ];
     return rows.filter((r) => matchesQuery(query, r.title)).slice(0, 30);
-  }, [isOpen, query, canSeeCards]);
+  }, [isOpen, query, canSeeCards, canSeeEpisodes]);
   return (
     <FormPage isOpen={isOpen} onClose={onClose} title="إشارة إلى مادة" subtitle="يظهر في الرسالة رابط يفتح المادة مباشرة لمن يملك صلاحية رؤيتها" maxWidth="md">
       <div className="space-y-3">

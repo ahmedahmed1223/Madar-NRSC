@@ -10,6 +10,7 @@ import {
   collectionForStorageKey,
 } from '../shared/collections';
 import { ApiError, apiFetch } from './http';
+import { moduleForCollection, moduleForRecord, MODULE_UNAVAILABLE, type ModuleAvailability, type ModuleId } from '../shared/moduleAccess';
 
 interface RowMeta {
   /** Server version; 0 while a locally created row awaits its first acknowledgement. */
@@ -154,6 +155,7 @@ export class DataStore {
   private listeners = new Set<Listener>();
   private rev = 0;
   private accessRevision?: string;
+  private modules?: ModuleAvailability;
   private userId: string | null = null;
   private ready = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -293,6 +295,17 @@ export class DataStore {
     this.emit({ type: 'sync-status', ...this.syncState() });
   }
 
+  moduleAvailability(userId: string, module: ModuleId): boolean | undefined {
+    return this.userId === userId ? this.modules?.[module] : undefined;
+  }
+
+  private allowsLocalRecord(collection: CollectionName, id?: string, data?: unknown): boolean {
+    if (!this.modules) return true;
+    const module = moduleForRecord(collection, id, data, showId => !!showId &&
+      (this.meta.get('episodes')?.has(showId) === true || this.meta.get('bulletins')?.has(showId) !== true));
+    return !module || this.modules[module];
+  }
+
   // --- Lifecycle -------------------------------------------------------------
 
   private starting: Promise<void> | null = null;
@@ -331,26 +344,40 @@ export class DataStore {
     this.meta.clear();
     this.dirty.clear();
     this.inFlight.clear();
+    this.journal.clear();
+    this.journalDbId = null;
+    this.journalRev = 0;
     this.ready = false;
     this.userId = null;
     this.starting = null;
     this.rev = 0;
     this.accessRevision = undefined;
+    this.modules = undefined;
   }
 
   private async bootstrap() {
-    const res = await this.request<{ rev: number; dbId?: string; access?: string; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
+    const res = await this.request<{ rev: number; dbId?: string; access?: string; modules?: ModuleAvailability; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
     this.checkDb(res.dbId);
     this.accessRevision = res.access;
+    this.modules = res.modules;
     // Unsent local edits survive a full reload: they are laid back over the server copy.
     const pendingKeys = [...this.dirty.keys(), ...this.inFlight];
     const pending = pendingKeys
       .map((k) => {
         const [c, id] = k.split('\u0000') as [CollectionName, string];
         const m = this.meta.get(c)?.get(id);
+        if (!this.allowsLocalRecord(c, id, m && JSON.parse(m.json))) {
+          this.dirty.delete(k);
+          this.settleWaiters(k, { ok: false, message: MODULE_UNAVAILABLE });
+          return null;
+        }
         return m ? { c, id, m } : null;
       })
       .filter(Boolean) as { c: CollectionName; id: string; m: RowMeta }[];
+    const journalSize = this.journal.size;
+    for (const [key, entry] of this.journal) {
+      if (!this.allowsLocalRecord(entry.c, entry.id, entry.d)) this.journal.delete(key);
+    }
     this.data.clear();
     this.meta.clear();
     for (const name of COLLECTION_NAMES) {
@@ -371,6 +398,8 @@ export class DataStore {
       if (!this.meta.has(c)) continue;
       this.replaceLocal(c, { c, id, v: m.v, p: m.p, d: JSON.parse(m.json) });
     }
+    if (this.journal.size !== journalSize) this.persistJournal();
+    if (pendingKeys.length) this.persistPending();
   }
 
   private watchConnectivity() {
@@ -442,6 +471,8 @@ export class DataStore {
   get<T>(storageKey: string, fallback: T): T {
     const c = collectionForStorageKey(storageKey);
     if (!c) return fallback;
+    const module = moduleForCollection(c);
+    if (module && this.modules?.[module] === false) return [] as unknown as T;
     const value = this.data.get(c);
     if (value === undefined || value === null) {
       return COLLECTIONS[c].kind === 'list' ? ([] as unknown as T) : fallback;
@@ -453,6 +484,8 @@ export class DataStore {
     const c = collectionForStorageKey(storageKey);
     if (!c) throw new Error(`Unknown collection key ${storageKey}`);
     if (!this.ready) throw new Error('البيانات لم تُحمّل بعد من الخادم');
+    const module = moduleForCollection(c);
+    if (module && this.modules?.[module] === false) throw new Error(MODULE_UNAVAILABLE);
     const metaMap = this.meta.get(c)!;
 
     if (COLLECTIONS[c].kind === 'singleton') {
@@ -744,6 +777,11 @@ export class DataStore {
   private handleResult(op: SyncOp, result: SyncOpResult, touched: Set<CollectionName>) {
     const metaMap = this.meta.get(op.c)!;
     const k = keyOf(op.c, op.id);
+    if (!this.allowsLocalRecord(op.c, op.id, op.d)) {
+      this.removeLocal(op.c, op.id);
+      this.settleWaiters(k, { ok: false, message: MODULE_UNAVAILABLE });
+      return;
+    }
     if (result.ok) {
       const { row } = result as Extract<SyncOpResult, { ok: true }>;
       if (!this.dirty.has(k)) this.settleWaiters(k, { ok: true });
@@ -821,6 +859,7 @@ export class DataStore {
   }
 
   private replaceLocal(c: CollectionName, row: EntityRow) {
+    if (!this.allowsLocalRecord(c, row.id, row.d)) return;
     const metaMap = this.meta.get(c)!;
     metaMap.set(row.id, { v: row.v, p: row.p, json: JSON.stringify(row.d) });
     if (COLLECTIONS[c].kind === 'singleton') {
@@ -863,7 +902,7 @@ export class DataStore {
     results.forEach((result, i) => {
       if (!result.ok) return;
       const op = ops[i];
-      if (op.c === 'editLocks') return;
+      if (op.c === 'editLocks' || !this.allowsLocalRecord(op.c, op.id, op.d)) return;
       const { row } = result as Extract<SyncOpResult, { ok: true }>;
       this.journal.set(keyOf(op.c, op.id), { c: op.c, id: op.id, op: op.op, d: op.op === 'delete' ? undefined : row?.d ?? op.d, p: row?.p ?? op.p, v: row?.v ?? 0, at: now });
     });
@@ -984,7 +1023,7 @@ export class DataStore {
     for (const op of saved.ops) {
       // Leases belong to the open editor, never to recovered content drafts.
       if (op.c === 'editLocks' && op.op !== 'delete') continue;
-      if (!this.meta.has(op.c)) continue;
+      if (!this.meta.has(op.c) || !this.allowsLocalRecord(op.c, op.id, op.d)) continue;
       const metaMap = this.meta.get(op.c)!;
       const known = metaMap.get(op.id);
       if (op.op === 'delete') {

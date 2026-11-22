@@ -5,7 +5,8 @@ import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
 import type { AuditLog, Episode, User } from '../types/index';
-import { DEMO_COLLECTIONS, demoAccounts, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
+import { DEMO_COLLECTIONS, createDemoAccountReader, demoInventory, demoUsersPresent, removeDemoData, seedDatabase } from './seed';
+import { createFirstAdministrator, loginSetupMode } from './loginSetup';
 import { AI_PROVIDERS, type AiProvider, type AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger, getRecentErrors, errorJournalHealth } from './logger';
@@ -25,6 +26,8 @@ import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds } from '../shared/mediaEditorial';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
+import { moduleAllowed } from './moduleAccess';
+import { MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { createAiBudget } from './aiBudget';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
@@ -32,6 +35,7 @@ import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
 import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
 import { externalIntakeRouter } from './externalIntake';
+import { databaseEngineStatus, readDatabaseEngineState, scheduleDatabaseEngine } from './databaseEngineState';
 import { createResumableUploadRouter } from './resumableUploads';
 import { mediaTranscriptionRouter } from './mediaTranscription';
 import { messageActionsRouter } from './messageActions';
@@ -80,7 +84,7 @@ import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.4.0';
+export const APP_VERSION = '4.4.1';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -408,11 +412,34 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true });
   });
 
-  // Demo installations only: which accounts can be tried (never listed when demo data is off or removed).
-  app.get('/api/v1/auth/demo-accounts', (_req, res) => {
+  const demoAccounts = createDemoAccountReader(db, config.demoUserPassword);
+  app.get('/api/v1/auth/setup', wrap(async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ success: true, data: config.seedDemoData ? { password: config.demoUserPassword, accounts: demoAccounts(db) } : { accounts: [] } });
+    const mode = await loginSetupMode(db, config, async () => (await demoAccounts()).some((user) => user.canStartSetup));
+    res.json({ success: true, data: { mode } });
+  }));
+
+  const setupLimiter = createRateLimiter({
+    windowMs: 15 * 60_000,
+    max: 10,
+    key: (req) => `setup:${req.ip}`,
+    message: 'محاولات إعداد كثيرة من هذا العنوان، يرجى الانتظار 15 دقيقة',
   });
+  app.post('/api/v1/auth/setup/administrator', setupLimiter, wrap(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const result = await createFirstAdministrator(db, config, req.body, (user) => {
+      audit(user, 'USER_CREATED', 'USER', user.id, 'SECURITY', 'إنشاء حساب المسؤول الأول', req.ip);
+    });
+    if ('error' in result) throw new HttpError(result.status, result.error);
+    res.status(result.status).json({ success: true });
+  }));
+
+  // Demo installations only: which accounts can be tried (never listed when demo data is off or removed).
+  app.get('/api/v1/auth/demo-accounts', wrap(async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const accounts = config.seedDemoData ? await demoAccounts() : [];
+    res.json({ success: true, data: accounts.length ? { password: config.demoUserPassword, accounts } : { accounts } });
+  }));
 
   /** Public: the station's name, time zone and date/time conventions (clock on the sign-in screen). */
   app.get('/api/v1/auth/station', (_req, res) => {
@@ -748,6 +775,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post('/api/v1/data/locks/release', requireAuth, (req, res) => {
     const id = req.body?.id;
     if (typeof id !== 'string' || !/^(news|episodes|bulletinStories):[^\s]{1,200}$/.test(id)) throw new HttpError(400, 'معرّف القفل غير صالح');
+    if (id.startsWith('episodes:') && !moduleAllowed(req.auth!, 'programmes')) throw new HttpError(403, MODULE_UNAVAILABLE);
     const lock = db.getRow('editLocks', id);
     const released = !!lock && !lock.deleted && lock.d?.userId === req.auth!.user.id;
     if (released) sync.apply(req.auth!, [{ c: 'editLocks', op: 'delete', id } as SyncOp], req.ip);
@@ -1016,7 +1044,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     aiLimiter,
     wrap(async (req, res) => {
       const mode = req.body?.mode as CopilotMode;
-      if (!canUseCopilot(mode, (permission) => req.auth!.can(permission))) throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
+      if (!canUseCopilot(mode, permission => req.auth!.can(permission) &&
+        (permission !== 'cards.work' || moduleAllowed(req.auth!, 'assignments')) &&
+        (!permission.startsWith('episodes.') || moduleAllowed(req.auth!, 'programmes')))) {
+        throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
+      }
       if (!COPILOT_MODES.includes(mode)) throw new HttpError(400, 'وضع غير مدعوم');
       const provider = req.body?.provider as AiProvider | undefined;
       if (provider !== undefined && !AI_PROVIDERS.includes(provider)) throw new HttpError(400, 'خدمة ذكاء اصطناعي غير معروفة');
@@ -1079,8 +1111,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!current.can('system.database_manage')) throw new HttpError(403, 'ليس لديك صلاحية إدارة قاعدة البيانات');
     return current;
   };
-  const requireAirEnded = (req: Request) => {
-    if (broadcastActive()) throw new HttpError(409, 'توجد جلسة بث نشطة؛ أنهِ جميع جلسات الهواء قبل الاستعادة أو إعادة التهيئة', 'AIR_ACTIVE');
+  const requireAirEnded = (req: Request, operation = 'الاستعادة أو إعادة التهيئة') => {
+    if (broadcastActive()) throw new HttpError(409, `توجد جلسة بث نشطة؛ أنهِ جميع جلسات الهواء قبل ${operation}`, 'AIR_ACTIVE');
     if (req.body?.localAirEnded !== true) throw new HttpError(400, 'أكد انتهاء جلسات الهواء المحلية غير المتصلة أيضاً', 'LOCAL_AIR_CONFIRMATION');
   };
   const authorizeDestructive = (req: Request, action: 'restore' | 'reset', sha256?: string) => {
@@ -1194,6 +1226,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       data: { ...db.stats(), sqlConsoleEnabled: config.enableSqlConsole, resetEnabled: config.allowDbReset,
         confirmationTotpRequired: db.getCredentials(req.auth!.user.id)?.totpEnabled === true },
     });
+  });
+
+  app.get('/api/v1/db/engine', dbAdmin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: databaseEngineStatus(readDatabaseEngineState(db.dataDir, config.database), config.database) });
+  });
+
+  app.post('/api/v1/db/engine', dbAdmin, (req, res) => {
+    const engine = req.body?.engine;
+    if (engine !== 'sqlite' && engine !== 'postgresql') throw new HttpError(400, 'اختر محرك قاعدة بيانات صالحًا');
+    if (engine === 'postgresql' && !config.database.postgresUrl) throw new HttpError(409, 'اضبط رابط اتصال PostgreSQL في إعدادات الخادم');
+    if (engine !== db.engine) requireAirEnded(req, 'تبديل محرك القاعدة');
+    const data = scheduleDatabaseEngine(db.dataDir, config.database, engine);
+    audit(req.auth!.user, 'DB_ENGINE_SCHEDULED', 'DATABASE', engine, 'SECURITY',
+      data.pending ? 'جدولة التبديل بين محركات قاعدة البيانات عند التشغيل القادم' : 'إلغاء التبديل المجدول لمحرك قاعدة البيانات', req.ip);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data });
   });
 
   app.get('/api/v1/db/export', dbAdmin, (req, res) => {

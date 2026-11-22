@@ -1,9 +1,12 @@
 import { StationClock } from '../common/StationClock';
 import { configureDateFormat } from '../../shared/dateFormat';
 import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import type { LoginSetupMode } from '../../shared/setup';
+import { apiFetch } from '../../services/http';
 import { ThemeToggle } from '../common/ThemeToggle';
+import { FirstAdministratorForm } from './FirstAdministratorForm';
 import React, { useEffect, useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
+import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string, totp?: string) => Promise<void>;
@@ -17,6 +20,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState('');
+  const [setupMode, setSetupMode] = useState<LoginSetupMode>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [savingAdministrator, setSavingAdministrator] = useState(false);
+  const [administratorCreated, setAdministratorCreated] = useState(false);
+  const creatingAdministrator = setupOpen && setupMode === 'browser';
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    apiFetch<{ data?: { mode: LoginSetupMode } }>('/api/v1/auth/setup', { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setSetupMode(result?.data?.mode ?? null); })
+      .catch(() => undefined)
+      .finally(() => clearTimeout(timer));
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, []);
 
   // Demo installations list their real accounts (name, e-mail and role as they are now).
   const [demo, setDemo] = useState<{ password?: string; accounts: { email: string; fullName: string; jobTitle?: string; roleName: string; department?: string }[] } | null>(null);
@@ -40,11 +58,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
       .catch(() => undefined);
   }, []);
 
-  const submit = async (mail: string, pass: string) => {
+  const submit = async (mail: string, pass: string, totp?: string) => {
     setError(null);
     setIsSubmitting(true);
     try {
-      await onLogin(mail.trim(), pass, needsCode ? code.trim() : undefined);
+      await onLogin(mail.trim(), pass, totp);
     } catch (err: any) {
       if (err?.code === 'TOTP_REQUIRED') {
         setNeedsCode(true);
@@ -57,7 +75,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               ? 'تعذر الاتصال بالخادم؛ تحقق من الشبكة ثم أعد المحاولة'
               : err?.message || 'تعذر تسجيل الدخول'
         );
-        if (needsCode) setCode('');
+        if (totp !== undefined) setCode('');
         else setPassword('');
       }
     } finally {
@@ -67,7 +85,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void submit(email, password);
+    void submit(email, password, needsCode ? code.trim() : undefined);
   };
 
   return (
@@ -85,7 +103,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           </div>
           <div>
             <h1 className="text-lg font-bold text-slate-900 leading-tight">{APP_NAME} · {APP_TAGLINE}</h1>
-            <p className="text-xs text-slate-500">سجّل الدخول بحسابك المؤسسي</p>
+            <p className="text-xs text-slate-500">{creatingAdministrator ? 'إنشاء حساب المسؤول الأول' : 'سجّل الدخول بحسابك المؤسسي'}</p>
           </div>
         </div>
 
@@ -93,7 +111,44 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-semibold">{notice}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {setupMode && (
+          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+            <button
+              type="button"
+              aria-expanded={setupOpen}
+              aria-controls="login-setup"
+              disabled={isSubmitting || savingAdministrator}
+              onClick={() => { setSetupOpen(!setupOpen); if (setupMode === 'demo') setDemoOpen(true); }}
+              className="flex min-h-9 w-full items-center gap-2 text-start text-sm font-bold text-blue-800 hover:text-blue-950 disabled:opacity-60"
+            >
+              <Settings2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>{creatingAdministrator ? 'العودة إلى تسجيل الدخول' : 'بدء إعداد النظام'}</span>
+            </button>
+            <div id="login-setup" hidden={!setupOpen} className="mt-2 space-y-3">
+              <p className="text-sm leading-relaxed text-slate-700">
+                {setupMode === 'browser' && 'أدخل رمز إعداد الخادم وأنشئ حساب المسؤول. بعد الدخول يبدأ المعالج بمراجعة بيانات المؤسسة والمحطات الافتراضية.'}
+                {setupMode === 'sign-in' && 'سجّل الدخول ببريد المسؤول وكلمة المرور الأولى التي عيّنها مشغّل الخادم أو ولّدها الخادم في سجل بدء التشغيل. بعد تغييرها، يفتح معالج إعداد المؤسسة.'}
+                {setupMode === 'demo' && 'اختر حساب مدير النظام من حسابات التجربة أدناه لتجربة المعالج. يعرض النظام بيانات نموذجية يمكنك حذفها من الإعدادات بعد إنشاء حساب إدارة خاص بالمؤسسة.'}
+              </p>
+              {creatingAdministrator && <FirstAdministratorForm saving={savingAdministrator} onSavingChange={setSavingAdministrator} onCreated={(mail, pass) => {
+                setSetupMode(null);
+                setSetupOpen(false);
+                setSavingAdministrator(false);
+                setAdministratorCreated(true);
+                setEmail(mail);
+                setPassword(pass);
+                setNeedsCode(false);
+                setCode('');
+                void submit(mail, pass);
+              }} />}
+            </div>
+          </div>
+        )}
+
+        {administratorCreated && (
+          <p role="status" className="mb-4 rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800">أُنشئ حساب المسؤول. سجّل الدخول به لإكمال الإعداد.</p>
+        )}
+        {!creatingAdministrator && <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="login-email" className="block text-xs font-bold text-slate-700 mb-1.5">
               البريد الإلكتروني
@@ -169,7 +224,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
             <span>{isSubmitting ? 'جارٍ الدخول…' : 'تسجيل الدخول'}</span>
           </button>
-        </form>
+        </form>}
 
         {demo && demo.accounts.length > 0 && demo.password && (
           <div className="mt-5 pt-4 border-t border-slate-100">
@@ -194,6 +249,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                       onClick={() => {
                         setEmail(a.email);
                         setPassword(demo.password!);
+                        setNeedsCode(false);
+                        setCode('');
                         void submit(a.email, demo.password!);
                       }}
                       aria-label={`الدخول بحساب ${a.fullName} — ${a.roleName}`}

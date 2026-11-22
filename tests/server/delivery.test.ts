@@ -80,6 +80,18 @@ describe('notification delivery', () => {
     expect(server.db.listCollection('notifications').some(row => row.d.userId === 'usr-1' && row.d.title === 'تعذّر توصيل أحد تنبيهاتك')).toBe(true);
   });
 
+  it('skips queued assignment notifications while the module is disabled', async () => {
+    const settings = server.db.getRow('settings', 'singleton')!;
+    server.db.savePushSubscription('usr-6', { endpoint, ...browserKeys() }, 'test');
+    writeNotification(server.db, { userId: 'usr-6', title: 'تكليف', message: '', linkUrl: '/cards/example', category: 'assignment', urgent: true });
+    server.db.writeRow('settings', settings.id, { ...settings.d, moduleAccess: { assignments: { mode: 'disabled' } } }, settings.p, null);
+    try {
+      expect(await deliverPending(server.db, server.config)).toEqual({ push: 0, email: 0, skipped: 1 });
+    } finally {
+      server.db.writeRow('settings', settings.id, settings.d, settings.p, null);
+    }
+  });
+
   it('builds a safe Arabic e-mail with a deep link', () => {
     const mail = notificationEmail({ title: '<b>عنوان</b>', message: 'نص', category: 'diary', linkUrl: '/diary/d1' }, server.config);
     expect(mail.subject).toContain('عنوان');

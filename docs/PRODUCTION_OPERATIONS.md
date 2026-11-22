@@ -80,7 +80,17 @@ Monitor disk capacity, backup failures, HTTP latency, 429/503 rates and sync err
 عيّن حساب مشرف مستقل رئيسًا للقسم، ثم افتح «متابعة الفرق والتكاليف» بحسابه. تحقّق من ظهور مهمة موظف وخطوته في تكليف مشترك من «أعمال فريقي»، واستبعاد موظف قسم مستقل أو محطة تقع خارج نطاق القسم. يستطيع رئيس القسم إسناد مهام فريقه وإدارتها من شاشة «المهام». جرّب تغيير رئيس القسم والتحقق من زوال نطاق المتابعة في الطلب التالي. تظل إدارة المهام العامة متاحة لحسابات الإدارة العامة المخوّلة.
 
 CI now runs critical browser workflows in addition to unit tests, type checks, build and
-production smoke tests. Keep a single application instance with persistent SQLite storage.
+production smoke tests. Run one active application instance and persist `DATA_DIR` with either database engine.
+
+### Database engine selection and switching
+
+SQLite is the default for a fresh installation. To start a new deployment directly on PostgreSQL, configure `DATABASE_ENGINE=postgresql` and `POSTGRES_URL` before the first startup. The PostgreSQL account must own the configured schema or be able to create application schemas. `POSTGRES_SCHEMA` defaults to `madar`. Supply the connection URL through the deployment's secret configuration.
+
+For an existing deployment, configure `POSTGRES_URL` and choose the destination engine in Database Administration or the organization step of the setup wizard. End active broadcasts first. The request schedules the transfer for the next server startup. The existing deployment keeps serving from its current engine until it is stopped and restarted. Run only one instance against the deployment's `DATA_DIR` during the switch.
+
+Startup checks the local upload inventory, copies the authoritative tables to a fresh destination, compares record counts and checksums, and publishes the selection after the transfer succeeds. The original store remains available. A failed transfer leaves it active and shows a failed status in Database Administration. To return to SQLite after new PostgreSQL writes, schedule a reverse transfer from the active PostgreSQL database. The reverse transfer includes those writes.
+
+Keep `DATA_DIR` mounted across restarts. It contains the engine selection, local uploads and backup files. The `.sqlite` backup format remains portable across both engines. The PostgreSQL backup and database export assemble a logical SQLite snapshot. Schedule snapshots of large deployments outside live broadcasts and measure their impact on request latency. PostgreSQL SQL-console previews use a read-only snapshot of operational tables.
 Load testing, metrics/alerts, automatic failover and server-side pagination are separate
 remaining work; these changes do not promise zero downtime or zero data loss.
 
@@ -111,6 +121,16 @@ For an automated update in production, Madar requires evidence of a complete, ve
 delivered to the configured external destination within the last 24 hours. Configure
 `BACKUP_DIRECTORY` or `BACKUP_REMOTE` and run a full backup before requesting deployment.
 The existing environment and storage configuration remain part of the deployment workflow.
+For a manual update from a Git checkout, run `git pull --ff-only`, then rebuild and restart with
+the same environment, `DATA_DIR` and storage mounts. Keep a custom `DATA_DIR` outside the checkout
+so replacing or cleaning that checkout leaves its data in place.
+
+When an established SQLite database needs a schema upgrade, startup saves a local
+`_premigration.sqlite` snapshot in `DATA_DIR/backups` before applying the pending migrations in
+one transaction. A failed snapshot or migration stops startup with the original schema and
+records intact. This snapshot covers the database. Continue taking the full backup described
+above to protect the uploads as well.
+
 Before replacing the app, verify a full backup (SQLite and uploads) stored outside the running
 container, preserve the deployment environment and secrets, and keep the same `DATA_DIR` backed
 by the same durable storage. For Compose, build the exact release from a clean checkout and keep
@@ -143,6 +163,10 @@ existing installation.
 - **First administrator.** Whether generated or from `ADMIN_PASSWORD`, the first password must be changed
   at first sign-in. Remove `ADMIN_PASSWORD` from `.env` afterwards. A generated password is printed once
   in the log: rotate the log or change it promptly.
+- **Browser setup on a fresh database.** Set `SEED_DEMO_DATA=false`, leave `ADMIN_PASSWORD` empty, and
+  set `INSTALL_SETUP_TOKEN` to a private value generated with `openssl rand -hex 32` before the first
+  start. In the HTTPS sign-in page, choose **بدء إعداد النظام** and enter the token to create the first
+  administrator with their own password. Remove the token from the environment afterwards.
 - **Temporary passwords.** While an account must change its password, the server answers every API
   call except `/auth/me`, `/auth/logout` and `/auth/change-password` with 403
   `PASSWORD_CHANGE_REQUIRED`. Temporary passwords issued by an administrator expire after

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { KeyRound, AlertCircle, Loader2, LogOut } from 'lucide-react';
+import { validatePasswordStrength } from '../../shared/passwords';
 
 interface ChangePasswordViewProps {
   forced?: boolean;
@@ -18,8 +19,9 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (newPassword !== confirmPassword) {
-      setError('تأكيد كلمة المرور غير مطابق');
+    const weak = validatePasswordStrength(newPassword);
+    if (weak || newPassword !== confirmPassword) {
+      setError(weak || 'تأكيد كلمة المرور غير مطابق');
       return;
     }
     setIsSubmitting(true);
@@ -60,7 +62,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
           <div>
             <h1 className="text-lg font-bold text-slate-900 leading-tight">تغيير كلمة المرور</h1>
             <p className="text-xs text-slate-500">
-              {forced ? 'يجب تعيين كلمة مرور جديدة قبل المتابعة' : '10 أحرف على الأقل، تحتوي على حروف وأرقام'}
+              {forced ? 'عيّن كلمة مرور جديدة قبل المتابعة. ' : ''}استخدم 10 أحرف على الأقل، على أن تتضمن حروفاً وأرقاماً.
             </p>
           </div>
         </div>

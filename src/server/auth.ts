@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { User } from '../types/index';
-import { computeEffectivePermissions, evaluatePermission, RoleDefinition, DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
+import { computeEffectivePermissions, evaluatePermission, findUserRole, RoleDefinition, DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
+import { allowsModule, type ModuleId } from '../shared/moduleAccess';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
 import { MIN_PASSWORD_LENGTH, temporaryPassword, validatePasswordStrength } from '../shared/passwords';
@@ -87,6 +88,7 @@ export interface AuthContext {
   roles: RoleDefinition[];
   can: (permission: string) => boolean;
   permissions: string[];
+  moduleAllowed?: (id: ModuleId) => boolean;
   productionAssignments?: () => ReadonlySet<string>;
   departmentTaskMembers?: () => ReadonlySet<string> | null;
 }
@@ -107,6 +109,9 @@ export function loadRoles(db: NewsroomDatabase): RoleDefinition[] {
 
 export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: string): AuthContext {
   const roles = loadRoles(db);
+  const roleId = findUserRole(user, roles)?.id;
+  const settings = db.getRow('settings', 'singleton')?.d;
+  const moduleAllowed = (id: ModuleId) => allowsModule(settings?.moduleAccess, id, user.id, roleId);
   const decisions = new Map<string, boolean>();
   const can = (permission: string) => {
     let allowed = decisions.get(permission);
@@ -124,20 +129,21 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
     roles,
     can,
     permissions: computeEffectivePermissions(user, roles),
+    moduleAllowed,
     departmentTaskMembers: () => {
       if (team !== undefined) return team;
       if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || assignedWorkOnly(can)) return team = null;
-      const scope = departmentWorkScope(user.id, departmentsOf(db.getRow('settings', 'singleton')?.d));
+      const scope = departmentWorkScope(user.id, departmentsOf(settings));
       if (!scope.led.length) return team = null;
       return team = new Set(db.listCollection('users').filter(row => scope.departmentFor(row.d)).map(row => row.id));
     },
     productionAssignments: () => {
       if (assignments) return assignments;
       assignments = new Set();
-      if (can('rundown.view') || !can('cards.view') || assignedWorkOnly(can)) return assignments;
+      if (!moduleAllowed('assignments') || can('rundown.view') || !can('cards.view') || assignedWorkOnly(can)) return assignments;
       for (const { d } of db.listCollection('productionCards')) {
         const target = cardProductionAssignment(d as ProductionCard, user.id);
-        if (target) assignments.add(target);
+        if (target && (moduleAllowed('programmes') || !target.startsWith('episode:'))) assignments.add(target);
       }
       return assignments;
     },

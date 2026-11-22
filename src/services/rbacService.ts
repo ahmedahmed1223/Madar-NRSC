@@ -12,6 +12,7 @@ import { assignedWorkOnly } from '../shared/assignedWork';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
+import { allowsModule, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
 
 export * from '../shared/rbac';
 
@@ -86,9 +87,22 @@ export class RbacService {
     return evaluatePermission(user, permissionCode, this.getRoleDefinitions());
   }
 
+  static canUseModule(user: User | undefined | null, id: ModuleId): boolean {
+    if (!user?.isActive) return false;
+    const effective = dataStore.moduleAvailability(user.id, id);
+    if (effective !== undefined) return effective;
+    const settings = dataStore.get<SystemSettings | null>(COLLECTIONS.settings.storageKey, null);
+    return allowsModule(settings?.moduleAccess, id, user.id, findUserRole(user, this.getRoleDefinitions())?.id);
+  }
+
+  static isScreenModuleAvailable(user: User | undefined | null, nav: string): boolean {
+    const module = moduleForScreen(nav);
+    return !module || this.canUseModule(user, module);
+  }
+
   /** Whether the user's role opens a screen (the sidebar, the search and the address bar all ask here). */
   static canOpenScreen(user: User | undefined | null, nav: string, includeDepartmentWork = true): boolean {
-    if (!user) return false;
+    if (!user || !this.isScreenModuleAvailable(user, nav)) return false;
     const roles = this.getRoleDefinitions();
     if ((nav === 'workload' || nav === 'tasks') && includeDepartmentWork && this.leadsDepartment(user)) return true;
     return canOpenScreen(nav, findUserRole(user, roles), (permission) => evaluatePermission(user, permission, roles), user.role === 'SUPER_ADMIN');

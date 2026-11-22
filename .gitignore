@@ -16,6 +16,11 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite-journal
+newsroom_backup_*.sqlite.bundle/
+newsroom_backup_*.sqlite.bundle.pending/
+database-engine.json
+database-engine.json.*.tmp
 
 # Browser (E2E) test runs
 tests/e2e/.data/

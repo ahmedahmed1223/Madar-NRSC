@@ -160,6 +160,7 @@ const SETTING_LABELS: Record<string, string> = {
   dateTime: 'التاريخ والوقت', defaultSegmentDurationSeconds: 'مدة الفقرة الافتراضية', defaultNewsPriority: 'أولوية الخبر الافتراضية',
   breakingDurationHours: 'مدة العاجل', newsTemplates: 'قوالب الأخبار', cardStepTypes: 'أنواع مهام البطاقات', setup: 'الإعداد السريع',
   storage: 'التخزين', onAirDisplayMode: 'عرض الهواء', studioDisplayMode: 'عرض الاستديو', allowOfflineScriptEdits: 'التعديل المحلي على الهواء',
+  moduleAccess: 'إتاحة الوحدات',
   logoUrl: 'الشعار', allowGuestProposals: 'مقترحات الضيوف', autoSaveIntervalSeconds: 'الحفظ التلقائي', defaultLanguage: 'اللغة',
 };
 const SCALAR = new Set(['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'onAirDisplayMode', 'studioDisplayMode']);
@@ -188,7 +189,7 @@ export function settingsAuditEntries(before: any, after: any): AuditEntryDraft[]
       }
       return label;
     });
-    out.push({ actionType: 'SETTINGS_UPDATE', targetEntity: 'SETTINGS', targetId: 'singleton', severity: keys.includes('storage') ? 'SECURITY' : 'INFO', details: `تعديل الإعدادات: ${parts.join('؛ ')}` });
+    out.push({ actionType: 'SETTINGS_UPDATE', targetEntity: 'SETTINGS', targetId: 'singleton', severity: keys.includes('storage') || keys.includes('moduleAccess') ? 'SECURITY' : 'INFO', details: `تعديل الإعدادات: ${parts.join('؛ ')}` });
   }
   const stations = stationsAuditText(before, after);
   if (stations) out.push({ actionType: 'STATION_CHANGE', targetEntity: 'STATION', targetId: 'stations', severity: 'WARNING', details: stations });

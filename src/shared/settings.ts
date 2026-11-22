@@ -7,8 +7,11 @@ import { validateStorage } from './storage';
 import { stepTypesError } from './productionCards';
 import { taskWorkflowError } from './taskWorkflow';
 import { editorialPublishingError } from './editorialStylebook';
+import { moduleAccessError } from './moduleAccess';
 
 export function settingsError(settings: Partial<SystemSettings>): string | null {
+  const modulesError = moduleAccessError(settings.moduleAccess);
+  if (modulesError) return modulesError;
   const editorialError = editorialPublishingError(settings.editorialPublishing);
   if (editorialError) return editorialError;
   const workflowError = taskWorkflowError(settings.taskWorkflow);

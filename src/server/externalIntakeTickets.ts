@@ -3,6 +3,7 @@ import { bookingStatusOf, episodeGuestList, guestKey } from '../shared/episodePl
 import type { Episode, User } from '../types';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import type { NewsroomDatabase } from './db';
+import { moduleAllowedForUser } from './moduleAccess';
 
 export type IntakeTicket = {
   kind: 'upload' | 'guest';
@@ -54,7 +55,8 @@ export function bulletinIntakeTarget(db: NewsroomDatabase, storyId?: string, gue
   return bulletin && !bulletin.deletedAt && bulletin.status !== 'DONE' ? { kind: 'bulletin' as const, row: row!, story, bulletin } : null;
 }
 
-export function intakeGuestTarget(db: NewsroomDatabase, subject: Pick<IntakeTicket, 'episodeId' | 'guestId' | 'bulletinStoryId'>) {
-  return subject.bulletinStoryId ? bulletinIntakeTarget(db, subject.bulletinStoryId, subject.guestId)
-    : guestIntakeTarget(db, subject.episodeId, subject.guestId);
+export function intakeGuestTarget(db: NewsroomDatabase, subject: Pick<IntakeTicket, 'issuer' | 'episodeId' | 'guestId' | 'bulletinStoryId'>) {
+  if (subject.bulletinStoryId) return bulletinIntakeTarget(db, subject.bulletinStoryId, subject.guestId);
+  if (!moduleAllowedForUser(db, 'programmes', subject.issuer)) return null;
+  return guestIntakeTarget(db, subject.episodeId, subject.guestId);
 }
