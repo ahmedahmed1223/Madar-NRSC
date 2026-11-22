@@ -142,13 +142,13 @@ test('mobile producer follows the preparation checklist and confirms the linked 
 
     await page.getByRole('button', { name: 'تكليف متابعة الحلقة' }).click();
     await form.getByLabel('عنوان التكليف').fill('مراجعة أسئلة الضيف البديل');
-    const editor = data.users.find((row: any) => row.d.email === 'editor@akhbar.tv');
-    await form.getByLabel('المسؤول عن التكليف').selectOption(editor.id);
+    const colleague = data.users.find((row: any) => row.d.email === 'journalist@akhbar.tv');
+    await form.getByRole('combobox', { name: 'المسؤول عن التكليف', exact: true }).selectOption(colleague.id);
     await form.getByLabel('موعد التسليم').fill('2036-06-15T09:00');
     await form.getByRole('button', { name: 'حفظ التكليف' }).click();
     await page.getByText(/^متابعة التكليفات والطلبات/).click();
     const followUp = page.getByRole('listitem').filter({ hasText: 'مراجعة أسئلة الضيف البديل' });
-    await expect(followUp).toContainText(editor.d.fullName);
+    await expect(followUp).toContainText(colleague.d.fullName);
     await expect(followUp).toContainText(/2036|٢٠٣٦/);
     const after = await rows(page);
     expect(after.bookings.some((row: any) => row.d.resourceId === resourceId && row.d.link?.id === episode.id && row.d.status === 'CONFIRMED')).toBe(true);

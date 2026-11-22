@@ -9,11 +9,13 @@ test('task draft survives browser Back and an immediate reload without saving a 
   await page.goBack();
   await page.getByRole('button', { name: 'تكليف بمهمة', exact: true }).click();
   await expect(page.locator('#task-title-input')).toHaveValue('مسودة مهمة محمية');
+  await page.getByRole('combobox', { name: 'التذكير بالموعد', exact: true }).selectOption('60');
   page.removeAllListeners('dialog');
   page.on('dialog', dialog => void dialog.accept());
   await page.reload();
   await page.getByRole('button', { name: 'تكليف بمهمة', exact: true }).click();
   await expect(page.locator('#task-title-input')).toHaveValue('مسودة مهمة محمية');
+  await expect(page.getByRole('combobox', { name: 'التذكير بالموعد', exact: true })).toHaveValue('60');
   await close();
 });
 
@@ -144,10 +146,11 @@ test('on-air defaults to a current show rather than yesterday and warns on past 
   await openNav(page, 'وضع الهواء');
   const select = page.getByLabel('الحلقة أو النشرة');
   const initialId = await select.inputValue();
-  const oldId = await select.locator('option').evaluateAll(options => options.find(option => option.textContent?.includes('المشهد السياسي'))?.getAttribute('value'));
-  expect(oldId).toBeTruthy();
+  const oldId = 'ep-101'; // The demo episode seeded for the day before the demo anchor.
+  await expect(select.locator(`option[value="${oldId}"]`)).toHaveCount(1);
+  expect(initialId).toBeTruthy();
   expect(initialId).not.toBe(oldId);
-  await select.selectOption(oldId!);
+  await select.selectOption(oldId);
   await expect(page.getByRole('alert')).toContainText('موعد سابق');
   expect(errors).toEqual([]);
   await close();

@@ -81,10 +81,14 @@ test('a team prepares a program and a bulletin in parallel, supervises a handoff
     await manager.page.getByRole('button', { name: 'تكليف إعداد النشرة', exact: true }).click();
     const taskForm = manager.page.locator('#form-page-root');
     await taskForm.getByLabel('عنوان التكليف', { exact: true }).fill('تدقيق تجهيز القصة');
-    await taskForm.getByLabel('المسؤول عن التكليف', { exact: true }).selectOption(editorId);
+    const assignee = taskForm.getByRole('combobox', { name: 'المسؤول عن التكليف', exact: true });
+    await expect(assignee.locator(`option[value="${editorId}"]`)).toHaveCount(0);
+    const writerId = (await (await writer.page.request.get('/api/v1/auth/me')).json()).user.id;
+    await assignee.selectOption(writerId);
     await taskForm.getByLabel('موعد التسليم', { exact: true }).fill(`${new Date().toISOString().slice(0, 10)}T23:00`);
     await taskForm.getByRole('button', { name: 'حفظ التكليف', exact: true }).click();
     await expect(manager.page.getByText('حُفظ التكليف وأُرسل للمسؤول', { exact: true })).toBeVisible();
+    await expect.poll(async () => (await data(writer.page)).collections.tasks.find((row: any) => row.d.relatedEntityId === bulletinId)?.d.assigneeId).toBe(writerId);
     await manager.page.getByRole('button', { name: `فتح ${headline}`, exact: true }).click();
     await manager.page.getByTestId('story-editor').getByRole('button', { name: 'حفظ وإرسال للاعتماد', exact: true }).click();
     await expect(manager.page.getByTestId('story-editor')).not.toBeVisible();

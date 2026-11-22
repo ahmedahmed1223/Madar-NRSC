@@ -37,7 +37,8 @@ export function useFormDraft<T>(key: string, active: boolean, value: T, restore:
           const valid = draft.version === 1 && draft.value != null &&
             typeof draft.value === typeof value &&
             (typeof value !== 'object' || Object.keys(value as object).every(k =>
-              k in draft.value && typeof draft.value[k] === typeof (value as any)[k]));
+              // An unset optional field is omitted from JSON and may have been added to an older draft.
+              (value as any)[k] === undefined || (k in draft.value && typeof draft.value[k] === typeof (value as any)[k])));
           if (valid && JSON.stringify(draft.value) !== serialized) {
             current.restoring = serialized;
             restore(draft.value);
