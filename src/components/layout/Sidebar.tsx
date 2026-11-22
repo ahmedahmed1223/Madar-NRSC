@@ -303,7 +303,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return next;
     });
   const activeSection = sectionOfScreen(activeIdentifier);
-  const navGroups = order.map((id) => ({ ...NAV_SECTIONS[id], entries: NAV_SECTIONS[id].items.map((item) => ITEMS[item]).filter(Boolean) }));
+  const programmesHidden = !!currentUser && !RbacService.canUseModule(currentUser, 'programmes');
+  const navGroups = order.map((id) => ({
+    ...NAV_SECTIONS[id],
+    label: id === 'programs' && programmesHidden ? 'جدول البث والضيوف' : NAV_SECTIONS[id].label,
+    entries: NAV_SECTIONS[id].items.map((item) => ITEMS[item]).filter(Boolean),
+  }));
 
   const navButton = (item: NavItem) => {
     const Icon = item.icon;

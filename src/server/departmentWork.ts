@@ -5,6 +5,7 @@ import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import type { DepartmentWork, DepartmentWorkItem, DepartmentWorkMember } from '../shared/departmentWork';
 import { cardState, type ProductionCard } from '../shared/productionCards';
 import { stepLaborMinutes } from '../shared/cardExecutionTiming';
+import { moduleAllowed } from './moduleAccess';
 import { normalizeTaskStatus, taskTiming } from '../shared/taskWorkflow';
 import type { EditorialTask, User } from '../types';
 
@@ -70,7 +71,7 @@ export function readDepartmentWork(db: NewsroomDatabase, auth: AuthContext, now 
     items.push({ id, kind: 'task', title: task.title, assigneeId, status: normalizeTaskStatus(task.status), dueAt: task.dueDate,
       activeSeconds: task.execution?.startedAt ? taskTiming(task, now).activeSeconds : null, blockedReason: task.blockedReason, entityId: id });
   }
-  const teamCards = new Set(Array.from(members.keys()).flatMap(id => snapshot.cards.get(id) || []));
+  const teamCards = moduleAllowed(auth, 'assignments') ? new Set(Array.from(members.keys()).flatMap(id => snapshot.cards.get(id) || [])) : [];
   for (const card of teamCards) {
     const id = card.id;
     for (const step of card.steps || []) {

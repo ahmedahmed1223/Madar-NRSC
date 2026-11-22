@@ -18,6 +18,7 @@ import { temporaryPassword, validatePasswordStrength, webRandom } from '../../sh
 import { confirmDialog } from '../../services/dialogs';
 import { stationsOf } from '../../shared/stations';
 import { AdministratorSetup } from './AdministratorSetup';
+import { DatabaseEnginePanel } from '../database/DatabaseEnginePanel';
 
 const INPUT = 'w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
 const LABEL = 'block text-sm font-bold text-slate-700 mb-1';
@@ -249,6 +250,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
               {message.text}
             </p>
           )}
+
+          {stepId === 'organization' && RbacService.hasPermission(currentUser, 'system.database_manage') && <DatabaseEnginePanel />}
 
           {stepId === 'organization' && (
             <form

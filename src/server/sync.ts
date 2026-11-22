@@ -23,7 +23,7 @@ import {
   isCollectionName,
   isPrivateRecord,
 } from '../shared/collections';
-import type { AuthContext } from './auth';
+import { buildAuthContext, type AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { removeUpload, uploadIdFromMedia } from './uploads';
@@ -58,6 +58,8 @@ import { cardNotices, stampCard, type CardNoticeContext } from './cards';
 import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
 import { prepareDigitalPackage } from '../shared/digitalPublishing';
 import { presenterReading } from '../shared/presenterTiming';
+import { moduleForLink, moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
+import { moduleAvailability, moduleAllowed, moduleAllowedForUser } from './moduleAccess';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -319,7 +321,7 @@ export class SyncService {
     const assigned = assignedWorkOnly(auth.can) ? this.db.assignedWorkIds(auth.user.id) : [];
     const team = auth.departmentTaskMembers?.();
     const teamTasks = team ? departmentTaskIds(this.db, auth.user.id, team) : null;
-    const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks]);
+    const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks, moduleAvailability(auth)]);
     return createHash('sha256').update(access).digest('base64url');
   }
 
@@ -329,16 +331,26 @@ export class SyncService {
     // A changed assigned-work scope prompts a fresh bootstrap; no hidden IDs travel as tombstones.
     if (row.deleted && assignedWorkOnly(auth.can)) return false;
     if (row.deleted && row.c === 'tasks' && auth.departmentTaskMembers?.()) return false;
-    return row.deleted ? true : canRead(auth, row.c, row.d, this.lookup);
+    if (row.deleted) {
+      const module = moduleForRecord(row.c, row.id, row.d, id => !!this.lookup('episodes', id));
+      return !module || moduleAllowed(auth, module);
+    }
+    return canRead(auth, row.c, row.d, this.lookup);
   }
 
   private readableRow(auth: AuthContext, row: EntityRow): EntityRow {
+    if (row.c === 'settings' && row.d?.moduleAccess && !auth.can('system.settings')) {
+      const { moduleAccess: _moduleAccess, ...settings } = row.d;
+      return { ...row, d: settings };
+    }
     if (row.c !== 'guests' || row.deleted || auth.can('guests.manage')) return row;
     const { phone: _phone, email: _email, notes: _notes, ...profile } = row.d;
     return { ...row, d: profile };
   }
 
   private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false, senderId?: string) {
+    const module = moduleForLink(linkUrl);
+    if (module && !moduleAllowedForUser(this.db, module, userId)) return;
     writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK', senderId });
   }
 
@@ -684,7 +696,7 @@ export class SyncService {
       }
       collections[name] = rows.filter((r) => this.visible(auth, r)).map((r) => this.readableRow(auth, r));
     }
-    return { rev, access: this.accessRevision(auth), collections };
+    return { rev, access: this.accessRevision(auth), modules: moduleAvailability(auth), collections };
   }
 
   changes(auth: AuthContext, since: number, knownAccess?: string) {
@@ -714,6 +726,7 @@ export class SyncService {
     this.applySettings();
     const results = ops.map((op): SyncOpResult => {
       const result = this.applyOne(auth, op, ip);
+      if (result.ok && op.c === 'settings') auth = buildAuthContext(this.db, auth.user, auth.sessionId);
       if (result.ok === false && result.current && !this.visible(auth, result.current)) {
         return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' };
       }
@@ -744,6 +757,9 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
+        const module = moduleForRecord(collection, id, before, key => !!this.lookup('episodes', key)) ??
+          moduleForRecord(collection, id, op.d, key => !!this.lookup('episodes', key));
+        if (module && !moduleAllowed(auth, module)) return { ok: false, code: 'FORBIDDEN', message: MODULE_UNAVAILABLE } as SyncOpResult;
         if (isPrivateRecord(collection)) {
           const owner = this.db.privateRecordOwner(collection, id);
           if ((owner && owner !== auth.user.id) || (collection === 'workspacePrefs' && id !== auth.user.id)) {

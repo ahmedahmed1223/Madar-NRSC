@@ -115,7 +115,8 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
   }, [wires, query, sourceFilter, only, watchWords, currentUser.id]);
   const todoCount = useMemo(() => wires.filter((w) => !w.deletedAt && !isHandledBy(w, currentUser.id)).length, [wires, currentUser.id]);
   const colleagues = useMemo(() => apiService.getUsers().filter((u) => u.id !== currentUser.id && u.isActive !== false).sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar')), [currentUser.id]);
-  const openCards = useMemo(() => (can('cards.work') || can('cards.manage') ? apiService.getCards().filter((c) => c.status === 'OPEN') : []), [panel?.kind]);
+  const canWorkWithCards = RbacService.canUseModule(currentUser, 'assignments') && (can('cards.work') || can('cards.manage'));
+  const openCards = useMemo(() => canWorkWithCards ? apiService.getCards().filter((c) => c.status === 'OPEN') : [], [panel?.kind, canWorkWithCards]);
   const manualSourceNames = useMemo(() => [...new Set(wires.filter((w) => w.manual).map((w) => w.sourceName))].slice(0, 30), [wires]);
 
   /** Writes, then reports what the server said (offline: kept on this device). */
@@ -587,7 +588,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                   <Send className="w-3.5 h-3.5" />
                   إرسال لزميل
                 </button>
-                {(can('cards.work') || can('cards.manage')) && (
+                {canWorkWithCards && (
                   <button type="button" aria-expanded={panel?.wireId === w.id && panel.kind === 'card'} onClick={() => openPanel(w.id, 'card')} className="inline-flex items-center gap-1 min-h-9 px-3 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50">
                     <ClipboardList className="w-3.5 h-3.5" />
                     إضافة إلى تكليف
@@ -622,7 +623,7 @@ export const WiresView: React.FC<WiresViewProps> = ({ wires, sources, newsList, 
                   </button>
                 )}
               </div>
-              {panel?.wireId === w.id && (
+              {panel?.wireId === w.id && (panel.kind !== 'card' || canWorkWithCards) && (
                 <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
                   <select
                     aria-label={panel.kind === 'send' ? 'الزميل' : 'التكليف'}

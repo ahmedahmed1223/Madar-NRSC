@@ -611,6 +611,7 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  moduleAccess?: import('../shared/moduleAccess').ModuleAccessSettings;
   editorialPublishing?: import('../shared/editorialStylebook').EditorialPublishingSettings;
   taskWorkflow?: import('../shared/taskWorkflow').TaskWorkflowRules;
   /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */

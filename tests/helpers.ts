@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'net';
 import type { Express } from 'express';
 import request from 'supertest';
@@ -15,9 +16,16 @@ export const DEMO_PASSWORD = 'Madar@Demo2026';
 export async function createTestServer(env: Record<string, string> = {}) {
   setLogLevel('error');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nrcs-test-'));
+  const usePostgres = process.env.TEST_DATABASE_ENGINE === 'postgresql';
+  const postgresUrl = usePostgres ? process.env.POSTGRES_TEST_URL : undefined;
+  const pgSchema = `madar_test_${randomBytes(6).toString('hex')}`;
+  if (usePostgres && !postgresUrl) throw new Error('POSTGRES_TEST_URL is required for PostgreSQL fixtures');
   const config = loadConfig({
     NODE_ENV: 'test',
     DATA_DIR: dir,
+    DATABASE_ENGINE: usePostgres ? 'postgresql' : 'sqlite',
+    POSTGRES_URL: postgresUrl,
+    POSTGRES_SCHEMA: pgSchema,
     SEED_DEMO_DATA: 'true',
     DEMO_USER_PASSWORD: DEMO_PASSWORD,
     LOGIN_RATE_LIMIT_PER_15MIN: '1000',
@@ -25,7 +33,8 @@ export async function createTestServer(env: Record<string, string> = {}) {
     BACKUP_INTERVAL_HOURS: '0',
     ...env,
   });
-  const db = new NewsroomDatabase(config.dataDir);
+  const db = usePostgres ? new NewsroomDatabase(config.dataDir, { engine: 'postgresql', schema: pgSchema }, postgresUrl)
+    : new NewsroomDatabase(config.dataDir);
   await seedDatabase(db, config);
   const { app } = createApp(db, config);
   return {

@@ -1,13 +1,52 @@
 import { afterEach, expect, it } from 'vitest';
-import { createTestServer, loginAgent } from '../helpers';
+import request from 'supertest';
+import { createTestServer, DEMO_PASSWORD, loginAgent } from '../helpers';
 import { seedDatabase } from '../../src/server/seed';
 
 const H = { 'X-NRCS-Client': 'web' };
+const INSTALL_TOKEN = 'example-test-setup-token-1234567890';
+const setupStatus = '/api/v1/auth/setup';
+const setupAdministrator = '/api/v1/auth/setup/administrator';
 let server: Awaited<ReturnType<typeof createTestServer>> | undefined;
 afterEach(() => { server?.close(); server = undefined; });
 
+it('allows a token holder to claim an opted-in clean installation exactly once', async () => {
+  server = await createTestServer({ SEED_DEMO_DATA: 'false', INSTALL_SETUP_TOKEN: INSTALL_TOKEN });
+  const { app, db, config } = server;
+  const data = { fullName: 'مسؤول المؤسسة', email: 'owner@example.com', password: 'PrivateOwner2026' };
+  expect(db.countCredentials()).toBe(0);
+  await seedDatabase(db, config);
+  const client = request(app);
+  const setup = await client.get(setupStatus).expect(200).expect('Cache-Control', /no-store/);
+  expect(setup.body.data).toEqual({ mode: 'browser' });
+  await client.post(setupAdministrator).send({ ...data, token: INSTALL_TOKEN }).expect(403);
+  await client.post(setupAdministrator).set(H).send({ ...data, token: 'wrong' }).expect(403);
+  await client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, password: 'weak' }).expect(400);
+  expect(db.countCredentials()).toBe(0);
+  const results = await Promise.all([
+    client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, role: 'ADMIN' }),
+    client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, role: 'ADMIN' }),
+  ]);
+  expect(results.map((res) => res.status).sort()).toEqual([201, 409]);
+  expect(db.countCredentials()).toBe(1);
+  await seedDatabase(db, config);
+  expect((await client.get(setupStatus).expect(200)).body.data).toEqual({ mode: null });
+  await client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN }).expect(409);
+  const owner = await loginAgent(app, data.email, data.password);
+  const session = (await owner.get('/api/v1/auth/me').expect(200)).body;
+  expect(session.user.role).toBe('SUPER_ADMIN');
+  expect(session.mustChangePassword).toBe(false);
+  expect(session.setupReviewId).toEqual(expect.any(String));
+});
+
 it('offers setup on a clean install after the bootstrap password change and remembers a displayed review across restarts', async () => {
   server = await createTestServer({ SEED_DEMO_DATA: 'false', ADMIN_EMAIL: 'owner@example.com', ADMIN_PASSWORD: 'InitialPass2026' });
+  const client = request(server.app);
+  const status = await client.get(setupStatus).expect(200);
+  expect(status.body.data).toEqual({ mode: 'sign-in' });
+  await client.post(setupAdministrator).set(H).send({ token: INSTALL_TOKEN }).expect(409);
+  await seedDatabase(server.db, { ...server.config, installSetupToken: INSTALL_TOKEN });
+  expect(server.db.countCredentials()).toBe(1);
   const owner = await loginAgent(server.app, 'owner@example.com', 'InitialPass2026');
   const session = (await owner.get('/api/v1/auth/me')).body;
   expect(session.mustChangePassword).toBe(true);
@@ -16,13 +55,22 @@ it('offers setup on a clean install after the bootstrap password change and reme
   await owner.post('/api/v1/admin/setup/review-shown').set(H).send({ id: session.setupReviewId }).expect(200);
   await seedDatabase(server.db, server.config);
   expect((await owner.get('/api/v1/auth/me')).body.setupReviewId).toBeUndefined();
+  expect((await client.get(setupStatus)).body.data).toEqual({ mode: null });
+  expect((await client.get('/api/v1/auth/demo-accounts')).body.data).toEqual({ accounts: [] });
 });
 
 it('keeps real administrators and settings after cleanup, ignores stale acknowledgements, and never prompts ordinary staff', async () => {
   server = await createTestServer();
   const { app, db } = server;
+  const client = request(app);
+  expect((await client.get(setupStatus).expect(200)).body.data).toEqual({ mode: 'demo' });
+  expect((await client.get('/api/v1/auth/demo-accounts')).body.data.password).toBe(DEMO_PASSWORD);
   const admin = await loginAgent(app, 'admin@akhbar.tv');
   const staff = await loginAgent(app, 'journalist@akhbar.tv');
+  await staff.post('/api/v1/auth/change-password').set(H).send({ currentPassword: DEMO_PASSWORD, newPassword: 'PrivateStaff2026' }).expect(200);
+  const available = (await client.get('/api/v1/auth/demo-accounts').expect(200)).body.data;
+  expect(available.accounts).toContainEqual(expect.objectContaining({ email: 'admin@akhbar.tv' }));
+  expect(available.accounts).not.toContainEqual(expect.objectContaining({ email: 'journalist@akhbar.tv' }));
   const begin = (await admin.get('/api/v1/auth/me')).body.setupReviewId;
   expect(begin).toEqual(expect.any(String));
   expect((await staff.get('/api/v1/auth/me')).body.setupReviewId).toBeUndefined();
@@ -45,6 +93,8 @@ it('keeps real administrators and settings after cleanup, ignores stale acknowle
   expect(next).not.toBe(begin);
   expect(db.getRow('settings', 'singleton')?.d).toEqual(original);
   expect(db.getCredentialsByEmail('admin@akhbar.tv')).toBeNull();
+  expect((await client.get(setupStatus)).body.data).toEqual({ mode: null });
+  expect((await client.get('/api/v1/auth/demo-accounts')).body.data).toEqual({ accounts: [] });
   await owner.post('/api/v1/admin/setup/review-shown').set(H).send({ id: begin }).expect(200);
   expect((await owner.get('/api/v1/auth/me')).body.setupReviewId).toBe(next);
   await owner.post('/api/v1/admin/setup/review-shown').set(H).send({ id: next }).expect(200);

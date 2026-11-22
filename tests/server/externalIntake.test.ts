@@ -55,6 +55,12 @@ it('stores the result on the ticket’s confirmed online guest and prevents repl
   const submit = (uploadMbps: unknown) => external.post(prefix + '/guest-result').set(headers).send({
     token, camera: true, microphone: true, light: true, uploadMbps,
   });
+  const settings = fixture.db.getRow('settings', 'singleton')!;
+  fixture.db.writeRow('settings', settings.id, { ...settings.d, moduleAccess: { programmes: { mode: 'disabled' } } }, settings.p, null);
+  await external.post(prefix + '/info').set(headers).send({ token }).expect(410);
+  await submit(4).expect(410);
+  expect(fixture.db.getRow('episodes', id)?.d.guests[0].technicalCheckStatus).toBeUndefined();
+  fixture.db.writeRow('settings', settings.id, settings.d, settings.p, null);
   await submit(-1).expect(400);
   expect((await submit(4).expect(200)).body.ready).toBe(true);
   await submit(4).expect(410);
@@ -63,6 +69,8 @@ it('stores the result on the ticket’s confirmed online guest and prevents repl
 
 it('sends one direct test-check invitation for a confirmed bulletin guest and stores a failed check', async () => {
   const db = fixture.db;
+  const settings = db.getRow('settings', 'singleton')!;
+  db.writeRow('settings', settings.id, { ...settings.d, moduleAccess: { programmes: { mode: 'disabled' } } }, settings.p, null);
   for (const episode of db.listCollection('episodes')) {
     db.writeRow('episodes', episode.id, { ...episode.d, status: 'CANCELLED' }, episode.p, null);
   }

@@ -44,7 +44,7 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
       bulletinStoryId: typeof bulletinStoryId === 'string' ? bulletinStoryId : undefined,
       guestId: typeof guestId === 'string' ? guestId : undefined,
     };
-    const target = kind === 'guest' && subject.guestId ? intakeGuestTarget(db, subject) : null;
+    const target = kind === 'guest' && subject.guestId ? intakeGuestTarget(db, { ...subject, issuer: auth.user.id }) : null;
     const canInvite = target?.kind === 'episode' ? mayIssueGuestCheck(req, target.episode)
       : target?.kind === 'bulletin' && (auth.can('bulletins.manage') || auth.can('bulletins.edit') && [target.bulletin.editorId, target.story.writerId].includes(auth.user.id));
     if (!target || !canInvite) return res.status(404).json({ success: false, error: 'اختر ضيفًا مؤكدًا يشارك عبر الإنترنت.' });

@@ -4,7 +4,7 @@ import path from 'path';
 import { loadConfig } from './src/server/config';
 import { logger, setLogLevel, setErrorJournal } from './src/server/logger';
 import { ErrorJournal } from './src/server/errorJournal';
-import { NewsroomDatabase } from './src/server/db';
+import { openConfiguredDatabase } from './src/server/openDatabase';
 import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
@@ -35,13 +35,13 @@ async function main() {
   const journal = await ErrorJournal.open(path.join(config.dataDir, 'error-journal'));
   setErrorJournal(journal);
 
-  const db = new NewsroomDatabase(config.dataDir);
+  const db = openConfiguredDatabase(config.dataDir, config.database);
   await cleanupRehearsals(path.join(config.dataDir, 'rehearsals'));
   await seedDatabase(db, config);
-  logger.info('database ready', { file: db.filePath, rev: db.currentRev() });
+  logger.info('database ready', { engine: db.engine, rev: db.currentRev() });
   if (process.env.K_SERVICE) {
-    // Cloud Run: every instance has its own disk. SQLite needs exactly one instance and a mounted volume.
-    logger.warn('running on Cloud Run: set max-instances=1 and put DATA_DIR on a mounted persistent volume, otherwise saves can disappear between instances', {
+    // Runtime state, uploads, and backups need a persistent volume with both engines.
+    logger.warn('running on Cloud Run: use one active instance and keep DATA_DIR on a persistent volume', {
       dataDir: config.dataDir,
       dbId: db.dbId,
     });

@@ -8,6 +8,7 @@ import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { sendEmail } from './delivery';
 import { activeIntakeIssuer, bulletinIntakeTarget, guestIntakeTarget, issueIntakeTicket, type IntakeTicket } from './externalIntakeTickets';
+import { moduleAllowedForUser } from './moduleAccess';
 
 export function guestTechnicalEmail(appUrl: string, path: string) {
   const url = new URL(path, appUrl).href;
@@ -34,7 +35,7 @@ function upcomingGuestChecks(db: NewsroomDatabase, now: number, zone?: string): 
     if (!soon(episode.broadcastDate, episode.startTime)) continue;
     const program = db.getRow('programs', episode.programId)?.d as Program | undefined;
     const issuer = episode.producerId || program?.producerId;
-    if (!issuer || !activeIntakeIssuer(db, issuer)) continue;
+    if (!issuer || !activeIntakeIssuer(db, issuer) || !moduleAllowedForUser(db, 'programmes', issuer)) continue;
     for (const guest of episodeGuestList(episode)) {
       const id = guestKey(guest);
       if (guest.technicalCheckStatus !== 'PASSED' && guestIntakeTarget(db, episode.id, id)) {

@@ -103,6 +103,38 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('removes cached rows and pending edits when the server revokes a module', async () => {
+  const episode = { c: 'episodes', id: 'ep-example', v: 1, p: 0, d: { id: 'ep-example', title: 'حلقة' } };
+  const net = new FakeConnectivity();
+  let restricted = false;
+  const transport = (async (url: string) => {
+    if (url === '/api/v1/data') return {
+      rev: restricted ? 2 : 1,
+      access: restricted ? 'restricted' : 'open',
+      modules: { programmes: !restricted, assignments: true },
+      collections: { episodes: restricted ? [] : [episode] },
+    };
+    if (url.startsWith('/api/v1/data/changes')) return { rev: 2, reset: true };
+    if (url === '/api/v1/data/sync') throw new TypeError('Temporary connection loss during the write');
+    throw new Error(`Unexpected request ${url}`);
+  }) as Transport;
+  const store = new DataStore(transport, false, { connectivity: net });
+  try {
+    await store.start('producer');
+    const episodes = COLLECTIONS.episodes.storageKey;
+    expect(store.get(episodes, [])).toEqual([episode.d]);
+    store.set(episodes, [{ ...episode.d, title: 'تعديل معلّق' }]);
+    expect(store.pendingCount()).toBe(1);
+    restricted = true;
+    await store.pull();
+    expect(store.moduleAvailability('producer', 'programmes')).toBe(false);
+    expect(store.get(episodes, [])).toEqual([]);
+    expect(store.pendingCount()).toBe(0);
+  } finally {
+    store.stop();
+  }
+});
+
 describe('sync while the connection is down', () => {
   it('backs off exponentially when the network fails but the browser claims to be online', async () => {
     const h = harness();

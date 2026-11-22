@@ -27,7 +27,8 @@ import { validZone } from '../shared/dateFormat';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { departmentIdOf, departmentName } from '../shared/departments';
-import { generatePassword, hashPassword, validatePasswordStrength } from './auth';
+import { buildAuthContext, generatePassword, hashPassword, validatePasswordStrength, verifyPassword } from './auth';
+import { browserSetupAvailable, closeBrowserSetup, prepareBrowserSetup } from './loginSetup';
 import { BUILT_IN_TEMPLATES } from '../shared/workflowTemplates';
 import { logger } from './logger';
 
@@ -96,6 +97,7 @@ export async function seedDatabase(db: NewsroomDatabase, config: AppConfig) {
     BASE_COLLECTIONS.forEach(([c, items]) => seedList(db, c, items));
     const settings = db.getRow('settings', SINGLETON_ID);
     if (!settings) {
+      prepareBrowserSetup(db, config);
       db.writeRow('settings', SINGLETON_ID, INITIAL_SETTINGS, 0, null);
       db.setMeta('setup_review', newId('setup'));
     } else if (db.getMeta('setup_review') === null && db.getMeta('demo_removed') === '1' && !settings.d.setup) {
@@ -166,16 +168,45 @@ async function ensureDemoUsers(db: NewsroomDatabase, config: AppConfig) {
   });
 }
 
-/** Sign-in cards for demo installations: the real accounts (name, e-mail, role) as they are now. */
-export function demoAccounts(db: NewsroomDatabase) {
-  if (db.getMeta('demo_removed') === '1') return [];
-  const roles = db.listCollection('roles').map((r) => r.d);
-  return INITIAL_USERS.map((u) => db.getRow('users', u.id)?.d)
-    .filter((u: any) => u && u.isActive !== false && db.getCredentialsByEmail(u.email))
-    .map((u: any) => {
-      const role = roles.find((r: any) => (u.customRoleId ? r.id === u.customRoleId : r.roleCode === u.role));
-      return { email: u.email, fullName: u.fullName, jobTitle: u.jobTitle, roleName: String(role?.nameAr || u.role).split(' (')[0], department: u.department };
+/** Only advertise seeded accounts that can still sign in with the shared demo password. */
+export function createDemoAccountReader(db: NewsroomDatabase, password: string) {
+  // Multiple seeded users share one hash. Recheck only when a credential changes.
+  const checked = new Map<string, Promise<boolean>>();
+  const getCandidate = (id: string) => {
+    const user = db.getRow('users', id)?.d as User | undefined;
+    const cred = db.getCredentials(id);
+    return user && user.isActive !== false && !user.deletedAt && cred && !cred.mustChangePassword
+      && !cred.totpEnabled && cred.email === user.email.toLowerCase()
+      ? { user, hash: cred.passwordHash }
+      : null;
+  };
+  return async () => {
+    if (db.getMeta('demo_removed') === '1') return [];
+    const candidates = INITIAL_USERS.map(({ id }) => getCandidate(id)).filter((entry) => entry !== null);
+    const hashes = new Set(candidates.map(({ hash }) => hash));
+    for (const hash of checked.keys()) if (!hashes.has(hash)) checked.delete(hash);
+    for (const hash of hashes) {
+      if (!checked.has(hash)) checked.set(hash, verifyPassword(password, hash).catch(() => false));
+    }
+    const matched = await Promise.all(candidates.map(async (entry) => await checked.get(entry.hash) ? entry : null));
+    if (db.getMeta('demo_removed') === '1') return [];
+    const roles = db.listCollection('roles').map((r) => r.d);
+    return matched.flatMap((entry) => {
+      if (!entry) return [];
+      const current = getCandidate(entry.user.id);
+      if (!current || current.hash !== entry.hash) return [];
+      const { user } = current;
+      const role = roles.find((r) => user.customRoleId ? r.id === user.customRoleId : r.roleCode === user.role);
+      return [{
+        email: user.email,
+        fullName: user.fullName,
+        jobTitle: user.jobTitle,
+        roleName: String(role?.nameAr || user.role).split(' (')[0],
+        department: user.department,
+        canStartSetup: buildAuthContext(db, user, '').can('system.settings'),
+      }];
     });
+  };
 }
 
 /** Demo bulletins arrived after the first demo release: added once to demo databases. */
@@ -364,7 +395,7 @@ function reconcileTwoFactorFlags(db: NewsroomDatabase) {
 
 /** Guarantees at least one account can sign in on a fresh installation. */
 async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
-  if (db.countCredentials() > 0) return;
+  if (db.countCredentials() > 0 || browserSetupAvailable(db, config)) return;
 
   const email = (config.admin.email || 'admin@madar.local').toLowerCase();
   const generated = !config.admin.password;
@@ -393,6 +424,7 @@ async function ensureAdministrator(db: NewsroomDatabase, config: AppConfig) {
     }
     // Whether generated or taken from ADMIN_PASSWORD (which stays in a file on disk), it is changed at first sign-in.
     db.setPassword(userId, email, hash, true);
+    closeBrowserSetup(db);
   });
 
   if (generated) {

@@ -7,9 +7,15 @@ import { logger } from './logger';
 import { ARCHIVE_FILTER, MIGRATIONS, PENDING_PERSONAL_REMINDER, SETTLED_SQL } from './dbMigrations';
 import type { WorkReminder, WorkReminderCollection } from './workReminders';
 import { withStableBackup } from './databaseRecovery';
-import { archiveTerms, prepareArchiveText, rankArchiveText } from './archiveIndex';
 import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
 import type { NewsArchiveFilters } from '../shared/newsArchive';
+import type { DatabaseTarget } from './databaseEngineState';
+import { transferDatabase, type TransferStore } from './databaseTransfer';
+import { PostgresDatabase } from './postgres/driver';
+import { initializePostgresSchema } from './postgres/schema';
+import { applySqliteMigrations, openSqliteDatabase } from './sqliteDatabase';
+import { rankPostgresArchive, rebuildPostgresArchive, updatePostgresArchiveEntry } from './postgresArchive';
+import { postgresStorageStats } from './postgresStats';
 
 function archiveScopeSql(filters: NewsArchiveFilters) {
   const publishedDay = "substr(COALESCE(NULLIF(json_extract(e.data, '$.publishDate'), ''), e.updated_at), 1, 10)";
@@ -127,22 +133,24 @@ function toEntityRow(raw: RawEntityRow): EntityRow {
 }
 
 /**
- * Durable SQLite store (better-sqlite3, WAL mode). Every mutation runs synchronously
- * inside the Node process, so concurrent HTTP requests are naturally serialized and
- * each write is atomic.
+ * Durable newsroom store for one active application instance. Both engines preserve
+ * the synchronous transaction boundary used by sync, authentication and scheduled jobs.
  */
 export class NewsroomDatabase {
   readonly dataDir: string;
   readonly filePath: string;
   readonly backupsDir: string;
-  private db!: Database.Database;
+  readonly engine: DatabaseTarget['engine'];
+  private db!: Database.Database | PostgresDatabase;
   generation = 0;
   private archiveVocabularyCache?: { revision: number; before: string; vocabulary: Vocabulary };
   private newsReportCache = { revision: -1, periods: new Map<string | null, NewsReportGroup[]>() };
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, private readonly target: DatabaseTarget = { engine: 'sqlite', filename: 'newsroom.sqlite' },
+    private readonly postgresUrl?: string, private readonly startupIdentity?: string) {
     this.dataDir = dataDir;
-    this.filePath = path.join(dataDir, 'newsroom.sqlite');
+    this.engine = target.engine;
+    this.filePath = path.join(dataDir, target.engine === 'sqlite' ? target.filename : 'newsroom.sqlite');
     this.backupsDir = path.join(dataDir, 'backups');
     fs.mkdirSync(this.backupsDir, { recursive: true });
     this.open();
@@ -152,33 +160,64 @@ export class NewsroomDatabase {
     this.generation += 1;
     this.archiveVocabularyCache = undefined;
     this.newsReportCache = { revision: -1, periods: new Map() };
-    this.db = new Database(this.filePath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('foreign_keys = ON');
-    this.db.pragma('busy_timeout = 5000');
-    this.migrate();
+    if (this.target.engine === 'sqlite') {
+      if (this.startupIdentity) {
+        const probe = new Database(this.filePath, { readonly: true, fileMustExist: true });
+        try { this.verifyStartupIdentity(probe.prepare("SELECT value FROM meta WHERE key = 'db_id'").get()); }
+        finally { probe.close(); }
+      }
+      this.db = openSqliteDatabase(this.filePath);
+      return;
+    }
+    if (!this.postgresUrl) throw new Error('يتطلب تشغيل PostgreSQL رابط اتصال مضبوطًا على الخادم');
+    const postgres = new PostgresDatabase(this.postgresUrl, { schema: this.target.schema });
+    try {
+      if (this.startupIdentity) {
+        let identity: unknown;
+        try { identity = postgres.query("SELECT value FROM meta WHERE key = 'db_id'").rows[0]; }
+        catch { throw new Error('قاعدة PostgreSQL المتصلة لا تحتوي على هوية القاعدة النشطة'); }
+        this.verifyStartupIdentity(identity);
+      }
+      initializePostgresSchema(postgres);
+      this.db = postgres;
+    } catch (error) {
+      postgres.close();
+      throw error;
+    }
   }
 
-  private migrate() {
-    this.applyMigrations(this.db);
+  private verifyStartupIdentity(row: unknown) {
+    if ((row as { value?: string } | undefined)?.value !== this.startupIdentity) {
+      throw new Error('هوية قاعدة البيانات المتصلة تختلف عن القاعدة النشطة');
+    }
   }
 
-  private applyMigrations(database: Database.Database) {
-    database.function('nrcs_archive_prepare', { deterministic: true }, prepareArchiveText);
-    database.function('nrcs_archive_terms', { deterministic: true }, archiveTerms);
-    database.function('nrcs_archive_rank', { deterministic: true }, rankArchiveText);
-    database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
-    const applied = new Set(
-      (database.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]).map((r) => r.version)
-    );
-    for (const m of MIGRATIONS) {
-      if (applied.has(m.version)) continue;
-      database.transaction(() => {
-        database.exec(m.sql);
-        database.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(m.version, new Date().toISOString());
-      })();
-      logger.info('database migration applied', { version: m.version });
+  importFrom(source: NewsroomDatabase) {
+    const target = this.db;
+    if (target instanceof PostgresDatabase) {
+      return this.transaction(() => {
+        target.query('SET LOCAL synchronous_commit = on');
+        const evidence = transferDatabase(source.db, source.engine, target, 'postgresql');
+        rebuildPostgresArchive(target);
+        return evidence;
+      });
+    }
+    const synchronous = Number(target.pragma('synchronous', { simple: true }));
+    target.pragma('synchronous = FULL');
+    try {
+      const evidence = transferDatabase(source.db, source.engine, target, 'sqlite');
+      target.pragma('wal_checkpoint(TRUNCATE)');
+      return evidence;
+    } finally { target.pragma(`synchronous = ${synchronous}`); }
+  }
+
+  verifyLocalUploadInventory() {
+    const rows = this.db.prepare('SELECT stored_name, size_bytes FROM uploads WHERE local_evicted = 0')
+      .all() as { stored_name: string; size_bytes: number }[];
+    for (const { stored_name, size_bytes } of rows) {
+      if (path.basename(stored_name) !== stored_name) throw new Error('Invalid upload filename during database transfer');
+      const file = fs.lstatSync(path.join(this.dataDir, 'uploads', stored_name));
+      if (!file.isFile() || file.size !== size_bytes) throw new Error('Upload inventory could not be verified');
     }
   }
 
@@ -187,7 +226,8 @@ export class NewsroomDatabase {
   }
 
   transaction<T>(fn: () => T): T {
-    return this.db.transaction(fn)();
+    const database: TransferStore = this.db;
+    return database.transaction(fn)();
   }
 
   isHealthy(): boolean {
@@ -240,6 +280,11 @@ export class NewsroomDatabase {
   }
 
   pruneExternalIntake(prefix: string, now: string) {
+    if (this.db instanceof PostgresDatabase) {
+      this.db.query(`DELETE FROM meta WHERE left(key, length($1)) = $1 AND
+        CASE WHEN left(key, length($1)) = $1 THEN value::jsonb ->> 'expiresAt' END <= $2`, [prefix, now]);
+      return;
+    }
     this.db.prepare("DELETE FROM meta WHERE key GLOB ? AND json_extract(value, '$.expiresAt') <= ?").run(prefix + '*', now);
   }
 
@@ -300,6 +345,9 @@ export class NewsroomDatabase {
   }
 
   rankNewsArchive(before: string, query: string, match: string, limit: number, offset: number, filters: NewsArchiveFilters = {}) {
+    if (this.db instanceof PostgresDatabase) {
+      return rankPostgresArchive(this.db, query, archiveScopeSql(filters), { before, ...filters }, limit, offset);
+    }
     const from = match
       ? 'news_archive_fts JOIN news_archive_index AS a ON a.key = news_archive_fts.rowid'
       : 'news_archive_index AS a';
@@ -360,10 +408,10 @@ export class NewsroomDatabase {
     // Only the unfiltered groups are shared. The report service applies each reader's scope.
     const groups = this.db.prepare(`
       ${this.newsReportSource()}
-      SELECT stationId, categoryId, status, COUNT(*) AS total,
-        COUNT(CASE WHEN durationMs >= 0 THEN 1 END) AS approvalCount,
-        COALESCE(SUM(CASE WHEN durationMs >= 0 THEN durationMs END), 0) AS approvalMs
-      FROM report_news GROUP BY stationId, categoryId, status
+      SELECT station_id AS "stationId", category_id AS "categoryId", status, COUNT(*) AS total,
+        COUNT(CASE WHEN duration_ms >= 0 THEN 1 END) AS "approvalCount",
+        COALESCE(SUM(CASE WHEN duration_ms >= 0 THEN duration_ms END), 0) AS "approvalMs"
+      FROM report_news GROUP BY station_id, category_id, status
     `).all({ since: cutoff }) as NewsReportGroup[];
     if (cache.periods.size >= 8) cache.periods.delete(cache.periods.keys().next().value!);
     cache.periods.set(cutoff, groups);
@@ -371,27 +419,32 @@ export class NewsroomDatabase {
   }
 
   private newsReportSource() {
+    const calendarDay = this.engine === 'postgresql' ? 'madar_julianday' : 'julianday';
     return `WITH report_news AS (
       SELECT n.id, json_extract(n.data, '$.title') AS title, json_extract(n.data, '$.summary') AS summary,
-        COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt')) AS updatedAt,
-        json_extract(u.data, '$.stationId') AS stationId,
-        json_extract(n.data, '$.categoryId') AS categoryId, json_extract(n.data, '$.status') AS status,
-        ROUND((julianday(json_extract(n.data, '$.approvedAt')) - julianday(json_extract(n.data, '$.createdAt'))) * 86400000) AS durationMs
+        COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt')) AS report_updated_at,
+        json_extract(u.data, '$.stationId') AS station_id,
+        json_extract(n.data, '$.categoryId') AS category_id, json_extract(n.data, '$.status') AS status,
+        ROUND((${calendarDay}(json_extract(n.data, '$.approvedAt')) - ${calendarDay}(json_extract(n.data, '$.createdAt'))) * 86400000) AS duration_ms
       FROM entities AS n
       LEFT JOIN entities AS u ON u.collection = 'users' AND u.deleted = 0 AND u.id = json_extract(n.data, '$.authorId')
       WHERE n.collection = 'news' AND n.deleted = 0 AND COALESCE(json_extract(n.data, '$.deletedAt'), '') = ''
-        AND (@since IS NULL OR julianday(COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt'))) >= julianday(@since))
+        AND (CAST(@since AS TEXT) IS NULL OR ${calendarDay}(COALESCE(NULLIF(json_extract(n.data, '$.updatedAt'), ''), json_extract(n.data, '$.createdAt'))) >= ${calendarDay}(@since))
     )`;
   }
 
   newsReportRecords(filters: { since?: string; stations: (string | null)[]; category: string; status: string; offset: number; limit: number }) {
+    const postgres = this.engine === 'postgresql';
+    const inScope = postgres ? 'jsonb_array_elements_text(CAST(@stations AS jsonb)) WHERE value IS NOT DISTINCT FROM station_id'
+      : 'json_each(@stations) WHERE value IS station_id';
+    const calendarDay = postgres ? 'madar_julianday' : 'julianday';
     return this.db.prepare(`${this.newsReportSource()}
-      SELECT id, title, substr(summary, 1, 400) AS summary, updatedAt, stationId, status
+      SELECT id, title, substr(summary, 1, 400) AS summary, report_updated_at AS "updatedAt", station_id AS "stationId", status
       FROM report_news
-      WHERE EXISTS (SELECT 1 FROM json_each(@stations) WHERE value IS stationId)
-        AND (@category = 'ALL' OR categoryId = @category)
+      WHERE EXISTS (SELECT 1 FROM ${inScope})
+        AND (@category = 'ALL' OR category_id = @category)
         AND (@status = 'ALL' OR status = @status)
-      ORDER BY julianday(updatedAt) DESC, id LIMIT @limit OFFSET @offset
+      ORDER BY ${calendarDay}(report_updated_at) DESC${postgres ? ' NULLS LAST' : ''}, id LIMIT @limit OFFSET @offset
     `).all({ ...filters, since: filters.since ?? null, stations: JSON.stringify(filters.stations) });
   }
 
@@ -429,6 +482,13 @@ export class NewsroomDatabase {
 
   /** Insert or replace a row, bumping its version. Caller handles concurrency checks. */
   writeRow(collection: CollectionName, id: string, data: unknown, position: number, userId: string | null): EntityRow {
+    if (this.db instanceof PostgresDatabase && collection === 'news') {
+      return this.transaction(() => this.writeEntity(collection, id, data, position, userId));
+    }
+    return this.writeEntity(collection, id, data, position, userId);
+  }
+
+  private writeEntity(collection: CollectionName, id: string, data: unknown, position: number, userId: string | null): EntityRow {
     const now = new Date().toISOString();
     const rev = this.nextRev();
     const json = JSON.stringify(data);
@@ -450,6 +510,7 @@ export class NewsroomDatabase {
         )
         .run(collection, id, json, position, rev, now, now, userId);
     }
+    if (this.db instanceof PostgresDatabase && collection === 'news') updatePostgresArchiveEntry(this.db, id, data);
     return this.getRow(collection, id)!;
   }
 
@@ -557,6 +618,17 @@ export class NewsroomDatabase {
   }
 
   assignedWorkIds(userId: string): string[] {
+    if (this.db instanceof PostgresDatabase) {
+      const { rows } = this.db.query(`SELECT collection || ':' || id AS key FROM entities AS item WHERE deleted = 0 AND (
+        (collection = 'tasks' AND COALESCE(NULLIF(item.data::jsonb ->> 'assigneeId', ''), item.data::jsonb ->> 'assignedToId') = $1)
+        OR (collection = 'productionCards' AND (item.data::jsonb ->> 'ownerId' = $1 OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(item.data::jsonb -> 'steps') = 'array'
+            THEN item.data::jsonb -> 'steps' ELSE '[]'::jsonb END) AS step
+          WHERE step.value ->> 'assigneeId' = $1 AND COALESCE(step.value ->> 'status', '') <> 'SKIPPED'
+        )))
+      ) ORDER BY key`, [userId]);
+      return rows.map(row => String(row.key));
+    }
     const rows = this.db.prepare(`SELECT collection || ':' || id AS key FROM entities AS item
       WHERE deleted = 0 AND (
         (collection = 'tasks' AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
@@ -570,6 +642,13 @@ export class NewsroomDatabase {
   }
 
   deleteRow(collection: CollectionName, id: string, userId: string | null): EntityRow | null {
+    if (this.db instanceof PostgresDatabase && collection === 'news') {
+      return this.transaction(() => this.tombstoneEntity(collection, id, userId));
+    }
+    return this.tombstoneEntity(collection, id, userId);
+  }
+
+  private tombstoneEntity(collection: CollectionName, id: string, userId: string | null): EntityRow | null {
     const rev = this.nextRev();
     const res = this.db
       .prepare(
@@ -578,6 +657,7 @@ export class NewsroomDatabase {
       )
       .run(rev, new Date().toISOString(), userId, collection, id);
     if (res.changes === 0) return null;
+    if (this.db instanceof PostgresDatabase && collection === 'news') updatePostgresArchiveEntry(this.db, id);
     return this.getRow(collection, id, true);
   }
 
@@ -598,6 +678,7 @@ export class NewsroomDatabase {
     const stmt = this.db.prepare('DELETE FROM entities WHERE collection = ?');
     this.transaction(() => {
       collections.forEach((c) => stmt.run(c));
+      if (this.db instanceof PostgresDatabase && collections.includes('news')) this.db.prepare('DELETE FROM news_archive_index').run();
       // Force every connected browser to re-bootstrap.
       const rev = this.nextRev();
       this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor'`).run(String(rev));
@@ -822,13 +903,13 @@ export class NewsroomDatabase {
       `INSERT INTO share_index (path, name, size_bytes, modified_at, seen_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(path) DO UPDATE SET name = excluded.name, size_bytes = excluded.size_bytes, modified_at = excluded.modified_at, seen_at = excluded.seen_at`
     );
-    this.db.transaction(() => {
+    this.transaction(() => {
       for (const f of files) put.run(f.path, f.name, f.sizeBytes, f.modifiedAt ?? null, now);
       if (finished) {
         this.db.prepare('DELETE FROM share_index WHERE seen_at < ?').run(scanStartedAt);
         this.setMeta('storage.share.indexedAt', now);
       }
-    })();
+    });
   }
 
   searchShareIndex(query: string, limit = 50): ShareIndexRow[] {
@@ -1074,6 +1155,13 @@ export class NewsroomDatabase {
   // --- Administration ------------------------------------------------------
 
   stats() {
+    if (this.db instanceof PostgresDatabase) {
+      const stats = postgresStorageStats(this.db);
+      return { ...stats, filePath: this.target.engine === 'postgresql' ? this.target.schema : '',
+        fileSizeFormatted: formatSize(stats.fileSizeBytes), totalTables: stats.tables.length,
+        totalRows: stats.tables.reduce((sum, table) => sum + table.rowCount, 0),
+        lastSyncAt: new Date().toISOString(), isHealthy: this.isHealthy() };
+    }
     const tableNames = (
       this.db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`).all() as {
         name: string;
@@ -1115,7 +1203,12 @@ export class NewsroomDatabase {
 
   /** Consistent snapshot of the whole database as a Buffer. */
   serialize(): Buffer {
-    return this.db.serialize();
+    if (!(this.db instanceof PostgresDatabase)) return this.db.serialize();
+    const snapshot = openSqliteDatabase(':memory:', false);
+    try {
+      transferDatabase(this.db, 'postgresql', snapshot, 'sqlite');
+      return snapshot.serialize();
+    } finally { snapshot.close(); }
   }
 
   /**
@@ -1129,8 +1222,13 @@ export class NewsroomDatabase {
     if (/\b(user_credentials|sessions|totp_secret)\b/i.test(trimmed)) {
       throw new Error('لا يُسمح بالاستعلام عن جداول بيانات الدخول والجلسات');
     }
-    const ro = new Database(this.filePath, { readonly: true, fileMustExist: true });
+    const ro = this.db instanceof PostgresDatabase ? openSqliteDatabase(':memory:', false)
+      : new Database(this.filePath, { readonly: true, fileMustExist: true });
     try {
+      if (this.db instanceof PostgresDatabase) {
+        transferDatabase(this.db, 'postgresql', ro, 'sqlite', ['entities', 'uploads', 'entity_history', 'upload_copies',
+          'share_index', 'share_fetches', 'work_reminders']);
+      }
       const stmt = ro.prepare(trimmed);
       if (!stmt.readonly || !stmt.reader) {
         throw new Error('وحدة الاستعلام للقراءة فقط: يُسمح بجمل SELECT فقط');
@@ -1154,7 +1252,13 @@ export class NewsroomDatabase {
     const fileName = `newsroom_backup_${stamp}${kind ? `_${kind}` : ''}.sqlite`;
     const target = path.join(this.backupsDir, fileName);
     try {
-      await this.db.backup(target);
+      if (this.db instanceof PostgresDatabase) {
+        const pending = `${target}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+        try {
+          await fs.promises.writeFile(pending, this.serialize(), { mode: 0o600, flag: 'wx' });
+          await fs.promises.rename(pending, target);
+        } finally { if (fs.existsSync(pending)) fs.unlinkSync(pending); }
+      } else await this.db.backup(target);
       this.setMeta('backup_last_attempt', JSON.stringify({ at: now.toISOString(), status: 'ok' }));
     } catch (error) {
       this.setMeta('backup_last_attempt', JSON.stringify({ at: now.toISOString(), status: 'failed' }));
@@ -1225,43 +1329,74 @@ export class NewsroomDatabase {
     if (versions.length < MIGRATIONS.length) {
       // The caller owns a temporary copy. Keep all migrated pages in the file we may publish.
       probe.pragma('journal_mode = DELETE');
-      this.applyMigrations(probe);
+      applySqliteMigrations(probe);
     }
-    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
-    for (const { name } of tables) {
-      const escaped = name.replace(/"/g, '""');
-      const required = this.db.prepare(`PRAGMA table_info("${escaped}")`).all() as { name: string; type: string; pk: number }[];
-      const actual = probe.prepare(`PRAGMA table_info("${escaped}")`).all() as typeof required;
-      if (!required.every(column => actual.some(c => c.name === column.name && c.type === column.type && c.pk === column.pk))) throw new Error('Incompatible snapshot');
-    }
+    const expected = this.db instanceof PostgresDatabase ? openSqliteDatabase(':memory:', false) : this.db;
+    try {
+      const tables = expected.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
+      for (const { name } of tables) {
+        const escaped = name.replace(/"/g, '""');
+        const required = expected.prepare(`PRAGMA table_info("${escaped}")`).all() as { name: string; type: string; pk: number }[];
+        const actual = probe.prepare(`PRAGMA table_info("${escaped}")`).all() as typeof required;
+        if (!required.every(column => actual.some(c => c.name === column.name && c.type === column.type && c.pk === column.pk))) throw new Error('Incompatible snapshot');
+      }
+    } finally { if (expected !== this.db) expected.close(); }
   }
 
   /** Replace the live database with a validated backup (a safety backup is taken first). */
   async restoreBackup(fileName: string, retention = 20, expectedHash?: string, beforeReplace?: () => void) {
     await withStableBackup(this, fileName, path.join(this.dataDir, 'rehearsals'), async (source, sha256) => {
-    if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
-    const probe = new Database(source, { fileMustExist: true });
-    try {
-      if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
-      this.checkBackupSchema(probe);
-    } finally { probe.close(); }
-    await this.createBackup('prerestore', retention);
-    beforeReplace?.();
-    this.db.close();
-    try {
-      for (const suffix of ['-wal', '-shm']) {
-        if (fs.existsSync(this.filePath + suffix)) fs.unlinkSync(this.filePath + suffix);
+      if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
+      const probe = new Database(source, { fileMustExist: true });
+      try {
+        if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
+        this.checkBackupSchema(probe);
+      } finally { probe.close(); }
+      await this.createBackup('prerestore', retention);
+      beforeReplace?.();
+      const revision = this.currentRev();
+      const identity = this.dbId;
+      const refresh = () => {
+        const nextRevision = Math.max(revision, this.currentRev()) + 1;
+        this.setMeta('db_id', identity);
+        this.setMeta('rev', String(nextRevision));
+        this.setMeta('tombstone_floor', String(nextRevision));
+      };
+      const target = this.db;
+      if (target instanceof PostgresDatabase) {
+        const snapshot = new Database(source, { readonly: true, fileMustExist: true });
+        try {
+          this.transaction(() => {
+            transferDatabase(snapshot, 'sqlite', target, 'postgresql');
+            rebuildPostgresArchive(target);
+            refresh();
+          });
+          this.generation++;
+          this.archiveVocabularyCache = undefined;
+          this.newsReportCache = { revision: -1, periods: new Map() };
+        } finally { snapshot.close(); }
+        return;
       }
-      // Same-volume rename never leaves a partially overwritten live database.
-      fs.renameSync(source, this.filePath);
-    } finally {
-      this.open();
-    }
-    // Clients must re-bootstrap after a restore.
-    this.transaction(() => {
-      const rev = this.nextRev();
-      this.db.prepare(`UPDATE meta SET value = ? WHERE key = 'tombstone_floor'`).run(String(rev));
-    });
+      const finalized = new Database(source, { fileMustExist: true });
+      try {
+        finalized.pragma('journal_mode = DELETE');
+        finalized.pragma('synchronous = FULL');
+        const value = finalized.prepare("SELECT value FROM meta WHERE key = 'rev'").get() as { value: string };
+        const nextRevision = String(Math.max(revision, Number(value.value)) + 1);
+        finalized.transaction(() => {
+          const put = finalized.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+          put.run('db_id', identity);
+          put.run('rev', nextRevision);
+          put.run('tombstone_floor', nextRevision);
+        })();
+      } finally { finalized.close(); }
+      target.close();
+      try {
+        for (const suffix of ['-wal', '-shm']) {
+          if (fs.existsSync(this.filePath + suffix)) fs.unlinkSync(this.filePath + suffix);
+        }
+        fs.renameSync(source, this.filePath);
+      } finally { this.open(); }
     });
   }
 }

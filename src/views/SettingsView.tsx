@@ -67,6 +67,7 @@ import { Category, NewsSource, User, NewsItem } from '../types';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SourceFeedEditor } from '../components/settings/SourceFeedEditor';
 import { PronunciationSettings } from '../components/settings/PronunciationSettings';
+import { ModuleAccessSettings } from '../components/settings/ModuleAccessSettings';
 import { apiService } from '../services/api';
 import { AR, countLabel } from '../shared/arabicPlural';
 
@@ -732,6 +733,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         <label className="flex items-center gap-2 min-h-11 text-sm font-bold text-slate-700"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
       </section>}
+      {section === 'system' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ModuleAccessSettings />}
       {section === 'system' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-system-title">
         <div>
           <h2 id="settings-system-title" className="text-base font-bold text-slate-900">حالة الأمان والخادم</h2>
@@ -853,7 +855,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         />
       )}
       {section === 'production' && <ProductionListsSettings currentUser={apiService.getCurrentUser()} />}
-      {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ProgramTypesSettings currentUser={apiService.getCurrentUser()} />}
+      {section === 'production' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') &&
+        RbacService.canUseModule(apiService.getCurrentUser(), 'programmes') && <ProgramTypesSettings currentUser={apiService.getCurrentUser()} />}
       {section === 'airDisplay' && <AirDisplaySettings />}
       {section === 'stations' && <StationsSettings />}
       {section === 'departments' && <DepartmentsSettings />}

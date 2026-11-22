@@ -11,6 +11,8 @@ import { logger } from './logger';
 import { prefsOf, writeNotification } from './notifications';
 import { categoryName, inQuietHours, wantsDelivery } from '../shared/notifications';
 import { validZone } from '../shared/dateFormat';
+import { moduleForLink } from '../shared/moduleAccess';
+import { moduleAllowedForUser } from './moduleAccess';
 
 const CURSOR_KEY = 'notify_delivery_rev';
 /** Notifications older than this when the worker sees them (e.g. after downtime) stay in the bell only. */
@@ -161,6 +163,11 @@ export function deliverPending(db: NewsroomDatabase, config: AppConfig, now = Da
         }
         const user = db.getRow('users', n.userId)?.d;
         if (!user || user.isActive === false) continue;
+        const module = moduleForLink(n.linkUrl);
+        if (module && !moduleAllowedForUser(db, module, n.userId)) {
+          stats.skipped++;
+          continue;
+        }
         const prefs = prefsOf(db, n.userId);
         if (!n.urgent && inQuietHours(prefs, stationMinutes(db, now))) {
           stats.skipped++;

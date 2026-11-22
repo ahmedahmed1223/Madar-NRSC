@@ -1,6 +1,7 @@
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseErrorsPanel } from '../components/database/DatabaseErrorsPanel';
+import { DatabaseEnginePanel } from '../components/database/DatabaseEnginePanel';
 import { DatabaseOperationConfirmation, type DatabaseOperation } from '../components/database/DatabaseOperationConfirmation';
 import type { BackupStatus, BackupRehearsal } from '../shared/databaseDiagnostics';
 import { BackupReadinessEvidence } from '../components/settings/BackupReadinessSummary';
@@ -274,6 +275,7 @@ export const DatabaseManagerView: React.FC = () => {
           )}
         </div>
       </div>
+      <DatabaseEnginePanel />
       {backupHealth && (backupHealth.overdue || !backupHealth.count || backupHealth.lastAttempt?.status === 'failed' || backupHealth.lastDelivery?.status === 'failed') && <div role="alert" className="border border-amber-300 bg-amber-50 text-amber-900 p-3 rounded-md text-sm space-y-1">
         {!backupHealth.count && <p>لا توجد نسخة احتياطية محفوظة؛ أنشئ نسخة قبل العمليات الحساسة.</p>}
         {backupHealth.overdue && <p>تأخر النسخ الاحتياطي عن الفترة المحددة ({backupHealth.intervalHours} ساعة).</p>}
@@ -285,7 +287,7 @@ export const DatabaseManagerView: React.FC = () => {
       {backupHealth?.incidents?.filter(incident => !incident.active && incident.recoveredAt).map(incident => <p key={incident.id} className="text-xs text-emerald-800">تمت معالجة تنبيه {incident.id === 'delivery-failure' ? 'الحزمة الكاملة' : incident.id === 'overdue' ? 'تأخر النسخ' : 'إنشاء النسخة'}: {new Date(incident.recoveredAt!).toLocaleString(appLocale(), zoneOptions())}</p>)}
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden border border-slate-200 bg-slate-200 text-xs">
         {([
-          ['مسار ملف التخزين', stats?.filePath || '—', true],
+          ['موقع التخزين', stats?.filePath || '—', true],
           ['حجم قاعدة البيانات', stats?.fileSizeFormatted || '—', true],
           ['الجداول', stats ? countLabel(stats.totalTables ?? 0, { one: 'جدول واحد', two: 'جدولان', few: 'جداول', many: 'جدولاً' }) : '—', false],
           ['السجلات المخزنة', stats ? countLabel(stats.totalRows || 0, { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' }) : '—', false],

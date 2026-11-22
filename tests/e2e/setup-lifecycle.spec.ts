@@ -2,7 +2,64 @@ import { expect, test } from '@playwright/test';
 import express from 'express';
 import { build } from 'esbuild';
 import path from 'node:path';
-import { createTestServer, DEMO_PASSWORD, listen } from '../helpers';
+import { createTestServer, listen } from '../helpers';
+
+for (const mode of ['browser', 'sign-in'] as const) {
+  test(`starts ${mode} setup directly from Login and reaches the organization wizard`, async ({ browser }) => {
+    const token = 'example-browser-setup-token-1234567890';
+    const email = 'first-owner@example.com';
+    const temporary = 'InitialOwner2026';
+    const password = 'PrivateOwner2026';
+    const instance = await createTestServer({
+      SEED_DEMO_DATA: 'false',
+      ...(mode === 'browser' ? { INSTALL_SETUP_TOKEN: token } : { ADMIN_EMAIL: email, ADMIN_PASSWORD: temporary }),
+    });
+    const dist = path.resolve('dist');
+    instance.app.use(express.static(dist));
+    instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    const http = await listen(instance.app);
+    const context = await browser.newContext({ baseURL: http.baseUrl, viewport: { width: 390, height: 844 } });
+    try {
+      const page = await context.newPage();
+      await page.goto('/');
+      const launcher = page.getByRole('button', { name: 'بدء إعداد النظام' });
+      await launcher.click();
+      if (mode === 'browser') {
+        await page.getByLabel('اسم المسؤول').fill('مدير غرفة الأخبار');
+        await page.getByLabel('بريد المسؤول').fill(email);
+        await page.getByLabel('رمز إعداد الخادم').fill(token);
+        await page.getByLabel('كلمة المرور', { exact: true }).fill(password);
+        await page.getByLabel('تأكيد كلمة المرور').fill(password);
+        await page.getByRole('button', { name: 'إنشاء الحساب والمتابعة' }).click();
+      } else {
+        await expect(page.getByText(/كلمة المرور الأولى التي عيّنها مشغّل الخادم/)).toBeVisible();
+        await page.getByLabel('البريد الإلكتروني').fill(email);
+        await page.getByLabel('كلمة المرور', { exact: true }).fill(temporary);
+        await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'تغيير كلمة المرور' })).toBeVisible();
+        await page.getByLabel('كلمة المرور الحالية').fill(temporary);
+        await page.getByLabel('كلمة المرور الجديدة', { exact: true }).fill(password);
+        await page.getByLabel('تأكيد كلمة المرور الجديدة').fill(password);
+        await page.getByRole('button', { name: 'حفظ كلمة المرور' }).click();
+      }
+      const wizard = page.getByRole('region', { name: 'الإعداد السريع للنظام' });
+      await expect(wizard.getByLabel('اسم المؤسسة *')).toBeVisible();
+      await expect(page.getByText('حسابات التجربة', { exact: true })).toHaveCount(0);
+      const freshPage = await browser.newPage({ baseURL: http.baseUrl });
+      try {
+        await freshPage.goto('/');
+        await expect(freshPage.getByRole('button', { name: 'تسجيل الدخول', exact: true })).toBeVisible();
+        await expect(freshPage.getByRole('button', { name: 'بدء إعداد النظام' })).toHaveCount(0);
+      } finally {
+        await freshPage.close();
+      }
+    } finally {
+      await context.close();
+      await http.close();
+      instance.close();
+    }
+  });
+}
 
 test('opening a new form in React Strict Mode keeps its browser history entry', async ({ page }) => {
   test.setTimeout(120_000);
@@ -62,9 +119,9 @@ test('first setup, institutional administrator and demo cleanup use the saved or
   try {
     const page = await context.newPage();
     await page.goto('/');
-    await page.locator('#login-email').fill('admin@akhbar.tv');
-    await page.locator('#login-password').fill(DEMO_PASSWORD);
-    await page.locator('button[type=submit]').click();
+    await page.getByRole('button', { name: 'بدء إعداد النظام' }).click();
+    await expect(page.getByText(/اختر حساب مدير النظام من حسابات التجربة/)).toBeVisible();
+    await page.getByRole('list', { name: 'حسابات التجربة' }).getByRole('button').filter({ hasText: 'admin@akhbar.tv' }).click();
     const wizard = page.getByRole('region', { name: 'الإعداد السريع للنظام' });
     const name = wizard.getByLabel('اسم المؤسسة *');
     await expect(name).not.toHaveValue('');

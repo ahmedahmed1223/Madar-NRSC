@@ -4,6 +4,9 @@
  * a team), or when the administrator confirmed it in the wizard.
  */
 
+/** The setup entry point a signed-out visitor can use on this installation. */
+export type LoginSetupMode = 'browser' | 'sign-in' | 'demo' | null;
+
 export const SETUP_STEPS = [
   { id: 'organization', title: 'المؤسسة', hint: 'اسم المؤسسة والقناة والمنطقة الزمنية' },
   { id: 'administrator', title: 'حساب المسؤول', hint: 'مراجعة حساب الإدارة أو إنشاء حساب مؤسسي' },
