@@ -87,6 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
     MAIL_FROM: z.string().optional(),
+    GUEST_TECH_AUTO_EMAIL: bool(false),
     // Web Push (VAPID). Generated and stored in the database when not provided.
     VAPID_PUBLIC_KEY: z.string().optional(),
     VAPID_PRIVATE_KEY: z.string().optional(),
@@ -98,6 +99,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_MODEL: z.string().trim().min(1).max(120).default('gpt-4.1-mini'),
+    MEDIA_TRANSCRIPTION_AZURE_REGION: z.string().trim().regex(/^[a-z0-9]{2,35}$/).optional().or(z.literal('')),
+    MEDIA_TRANSCRIPTION_AZURE_KEY: z.string().trim().optional(),
+    MEDIA_TRANSCRIPTION_FFMPEG: z.string().trim().optional(),
+    MEDIA_TRANSCRIPTION_AUTO: bool(false),
     OPENROUTER_API_KEY: z.string().optional(),
     OPENROUTER_MODEL: z.string().trim().min(1).max(120).default('openai/gpt-4.1-mini'),
     AI_DEFAULT_PROVIDER: z.enum(AI_PROVIDERS).optional().or(z.literal('').transform(() => undefined)),
@@ -188,6 +193,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPer15Min: c.LOGIN_RATE_LIMIT_PER_15MIN,
     mediaMaxUploadBytes: c.MEDIA_MAX_UPLOAD_MB * 1024 * 1024,
+    mediaTranscription: c.MEDIA_TRANSCRIPTION_AZURE_REGION && c.MEDIA_TRANSCRIPTION_AZURE_KEY ? {
+      region: c.MEDIA_TRANSCRIPTION_AZURE_REGION,
+      key: c.MEDIA_TRANSCRIPTION_AZURE_KEY,
+      ffmpeg: c.MEDIA_TRANSCRIPTION_FFMPEG || undefined,
+    } : undefined,
+    mediaTranscriptionAuto: c.MEDIA_TRANSCRIPTION_AUTO && !!(c.MEDIA_TRANSCRIPTION_AZURE_REGION && c.MEDIA_TRANSCRIPTION_AZURE_KEY),
     storageSyncSeconds: c.STORAGE_SYNC_SECONDS,
     ...providers,
     defaultAiProvider,
@@ -208,6 +219,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       subject: c.VAPID_SUBJECT || (c.MAIL_FROM && /@/.test(c.MAIL_FROM) ? `mailto:${c.MAIL_FROM.replace(/^.*<|>.*$/g, '')}` : c.APP_URL || 'mailto:admin@localhost'),
     },
     deliverySeconds: c.NOTIFY_DELIVERY_SECONDS,
+    autoGuestTechnicalEmail: c.GUEST_TECH_AUTO_EMAIL,
   };
 }
 

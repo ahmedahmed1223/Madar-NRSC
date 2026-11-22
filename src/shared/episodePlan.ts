@@ -177,6 +177,9 @@ export const REPORT_SOURCES = [
 export type ReportSource = (typeof REPORT_SOURCES)[number]['id'];
 export const reportSourceOf = (id?: string) => REPORT_SOURCES.find((s) => s.id === id);
 
+export const FIELD_SIGNAL_PROVIDERS = { LIVEU: 'LiveU', DEJERO: 'Dejero', OTHER: 'وسيلة أخرى' } as const;
+export const FIELD_SIGNAL_STATUSES = { CHECKING: 'جارٍ الفحص', CONNECTED: 'الاتصال مؤكد', DISCONNECTED: 'الاتصال منقطع' } as const;
+
 export interface ReportBrief {
   source: ReportSource;
   reporterId?: string;
@@ -188,12 +191,16 @@ export interface ReportBrief {
   targetSeconds?: number;
   sourceNote?: string;
   dueAt?: string;
+  signalProvider?: keyof typeof FIELD_SIGNAL_PROVIDERS;
+  signalStatus?: keyof typeof FIELD_SIGNAL_STATUSES;
 }
 
 export function reportBriefError(r: any): string | null {
   if (!r) return null;
   if (!reportSourceOf(r.source)) return 'مصدر التقرير غير معروف';
   if (r.source === 'ASSIGNED' && !r.reporterId) return 'اختر المراسل المكلف بالتقرير';
+  if (r.signalProvider !== undefined && !Object.hasOwn(FIELD_SIGNAL_PROVIDERS, r.signalProvider)) return 'وسيلة الربط الميداني غير معروفة';
+  if (r.signalStatus !== undefined && !Object.hasOwn(FIELD_SIGNAL_STATUSES, r.signalStatus)) return 'حالة الربط الميداني غير معروفة';
   return null;
 }
 

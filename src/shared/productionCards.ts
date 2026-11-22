@@ -186,6 +186,7 @@ export function cardProductionAssignment(card: ProductionCard, userId: string): 
 }
 
 export interface ProductionCard {
+  messageOrigin?: import('./messageActions').MessageActionOrigin;
   id: string;
   title: string;
   kind: CardKind;

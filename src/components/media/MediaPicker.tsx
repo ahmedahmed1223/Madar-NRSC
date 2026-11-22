@@ -9,6 +9,7 @@ import type { MediaFile } from '../../types';
 import { videoStatusName } from '../../shared/production';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { newId } from '../../shared/ids';
+import { mediaRightsIssue } from '../../shared/mediaEditorial';
 
 const TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة' };
 
@@ -35,6 +36,8 @@ interface MediaPickerProps {
   canUpload: boolean;
   initialFiles?: File[];
   resultMode?: 'video' | 'any';
+  montageSource?: boolean;
+  forBroadcast?: boolean;
 }
 
 function queueFiles(files: File[]): QueuedUpload[] {
@@ -47,7 +50,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ isOpen, ...props }) =>
   return <OpenMediaPicker {...props} />;
 };
 
-const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, selectedIds, onPick, canUpload, initialFiles = [], resultMode }) => {
+const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, selectedIds, onPick, canUpload, initialFiles = [], resultMode, montageSource, forBroadcast }) => {
   const [query, setQuery] = useState('');
   const [type, setType] = useState(resultMode === 'video' ? 'VIDEO' : 'ALL');
   const [picked, setPicked] = useState<string[]>(resultMode ? selectedIds.slice(0, 1) : selectedIds);
@@ -64,10 +67,11 @@ const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, 
     return apiService
       .getMedia()
       .filter((m: any) => !m.deletedAt)
+      .filter(m => !montageSource || m.mediaType === 'VIDEO' || m.mediaType === 'AUDIO')
       .filter((m) => type === 'ALL' || m.mediaType === type)
       .filter((m) => !q || matchesQuery(q, m.title, m.fileName, m.tags || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, type, version]);
+  }, [query, type, version, montageSource]);
 
   const toggle = (id: string) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : resultMode ? [id] : [...p, id]);
 
@@ -189,9 +193,9 @@ const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, 
           {resultMode !== 'video' && <select value={type} onChange={(e) => setType(e.target.value)} aria-label="نوع المادة" className="px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white">
             <option value="ALL">كل الأنواع</option>
             <option value="VIDEO">فيديو</option>
-            <option value="IMAGE">صور</option>
+            {!montageSource && <option value="IMAGE">صور</option>}
             <option value="AUDIO">صوت</option>
-            <option value="DOCUMENT">مستندات</option>
+            {!montageSource && <option value="DOCUMENT">مستندات</option>}
           </select>}
           {canUpload && (
             <>
@@ -260,12 +264,14 @@ const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, 
           {items.map((m) => {
             const Icon = mediaIcon(m.mediaType);
             const on = picked.includes(m.id);
+            const rightsIssue = mediaRightsIssue(m);
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => toggle(m.id)}
                 aria-pressed={on}
+                disabled={!!(forBroadcast && rightsIssue && !on)}
                 className={`relative text-right rounded-xl border overflow-hidden transition-all ${on ? 'border-blue-500 ring-2 ring-blue-400/50' : 'border-slate-200 hover:border-slate-300'}`}
               >
                 <div className="theme-fixed h-24 bg-slate-900 flex items-center justify-center overflow-hidden">
@@ -280,6 +286,7 @@ const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, 
                   <span className="block text-2xs text-slate-500">
                     {m.mediaType === 'VIDEO' ? videoStatusName(m.videoStatus) : TYPE_NAMES[m.mediaType] || m.mediaType}
                   </span>
+                  {rightsIssue && <span className="block text-2xs font-bold text-amber-800">{rightsIssue}</span>}
                 </div>
                 {on && (
                   <span className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center">

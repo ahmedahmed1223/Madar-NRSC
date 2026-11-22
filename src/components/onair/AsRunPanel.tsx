@@ -6,11 +6,14 @@ import { apiService } from '../../services/api';
 import { useLiveData } from '../../hooks/useLiveData';
 import { asRunForDay } from '../../shared/asrun';
 import { arabicDate, addDaysIso, localDateString } from '../../shared/dates';
-import { mmss } from '../../shared/bulletins';
+import { mmss, plainText } from '../../shared/bulletins';
 import { ExportMenu, docContext } from '../common/ExportMenu';
 import { asRunDoc } from '../../services/documents/builders';
 import { dataStore } from '../../services/dataStore';
 import { COLLECTIONS } from '../../shared/collections';
+import { segmentGuests } from '../../shared/episodePlan';
+import { downloadBroadcastArchive } from '../../services/broadcastArchiveExport';
+import { notify } from '../../services/notify';
 
 const addDays = addDaysIso;
 const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
@@ -19,10 +22,31 @@ const tone = (n: number | null) => (n === null || Math.abs(n) < 30 ? 'text-slate
 
 /** What actually aired on a day, segment by segment, against the plan. */
 export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'offlineAirSessions'], 5000);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'offlineAirSessions', 'newsCorrections'], 5000);
   const [day, setDay] = useState(localDateString());
-  const shows = asRunForDay(apiService.getOnAirStates(), apiService.getAirShows(), day);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const states = apiService.getOnAirStates();
+  const rundownShows = apiService.getAirShows();
+  const shows = asRunForDay(states, rundownShows, day);
   const offline = dataStore.get<any[]>(COLLECTIONS.offlineAirSessions.storageKey, []).filter(row => localDateString(new Date(row.importedAt)) === day);
+  const exportRun = async (id: string) => {
+    const state = states.find(row => row.episodeId === id && row.status === 'ENDED');
+    if (!state || exporting) return;
+    setExporting(id);
+    try {
+      const show = rundownShows.find(row => row.id === id);
+      const fallback = (show?.rundown || []).map(segment => ({
+        id: segment.id, title: segment.title, plannedSeconds: Number(segment.durationSeconds) || 0,
+        script: plainText(segment.scriptText || segment.script || ''), newsId: segment.newsId,
+        guestNames: segmentGuests(segment).map(guest => guest.guestName).filter(Boolean),
+      }));
+      await downloadBroadcastArchive(state, fallback, apiService.getNewsCorrections());
+    } catch {
+      notify({ type: 'error', message: 'تعذر تجهيز حزمة أرشيف البث.' });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <div className="space-y-4" data-testid="asrun">
@@ -62,6 +86,7 @@ export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
                 </span>
               )}
               {s.operatorName && <span className="text-slate-500">التشغيل: {s.operatorName}</span>}
+              {s.status === 'ENDED' && <button type="button" disabled={!!exporting} className="rounded-md border border-slate-300 bg-white px-2 py-1 min-h-9 font-semibold text-blue-700 disabled:opacity-60" onClick={() => void exportRun(s.id)}>{exporting === s.id ? 'جارٍ تجهيز الحزمة…' : 'تنزيل أرشيف البث ZIP'}</button>}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[640px]">

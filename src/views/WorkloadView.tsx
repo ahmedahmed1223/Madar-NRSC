@@ -7,6 +7,7 @@ import { RbacService } from '../services/rbacService';
 import { downloadCsv } from '../services/csvExport';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { DepartmentWorkPanel } from '../components/workload/DepartmentWorkPanel';
+import { AiringOutcomes } from '../components/reports/AiringOutcomes';
 import { useLiveData } from '../hooks/useLiveData';
 import { stationDay, timeOnly, when } from '../components/cards/cardUi';
 import { formatDay } from '../shared/dateFormat';
@@ -696,6 +697,8 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
       {tab === 'OUTPUT' && canView && (
         <div className="space-y-5">
           <PrintHeading title="الإنتاج" detail={`الفترة: ${periodLabel}`} />
+          <AiringOutcomes accepts={(session, item) => inPeriod(session.startedAt, period) &&
+            (seesEverything || !!item.stationId && scope.has(item.stationId)) && inStation(item.stationId)} />
           <div role="group" aria-label="تصفية الإنتاج وتصديره" className={FILTER_BAR}>
             {periodFilter}
             <span className={EXPORT_TOOLS}>

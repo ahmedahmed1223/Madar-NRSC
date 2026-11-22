@@ -547,7 +547,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({
           isOpen
           onClose={() => setDetailStory(null)}
           title={`ملف التغطية: ${detailStory.title}`}
-          subtitle="الأخبار والوسائط وطلبات الأقسام والحلقات ونقاش الفريق حول هذه التغطية"
+          subtitle="مواد التغطية وغرفة العمليات ونقاش الفريق"
           maxWidth="6xl"
         >
           <CoverageHub

@@ -15,6 +15,7 @@ import { navigateTo } from '../services/uiEvents';
 import { useLiveData } from '../hooks/useLiveData';
 import { bookingStatusName, bookingStatusOf, connectionName, episodeGuestList, guestKey } from '../shared/episodePlan';
 import { stationWall } from '../shared/stationTime';
+import { airedGuestAppearances, guestAppearanceHistory, type GuestAppearance } from '../shared/guestAppearances';
 import type { Episode, EpisodeGuest } from '../types';
 
 interface GuestsViewProps {
@@ -32,7 +33,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 }) => {
   const canManage = RbacService.hasPermission(currentUser, 'guests.manage');
   const canSeeEpisode = RbacService.canOpenScreen(currentUser, 'episode-workspace');
-  useLiveData(['episodes', 'users', 'settings'], 60_000);
+  const canSeeBulletins = RbacService.canOpenScreen(currentUser, 'bulletins');
+  useLiveData(['episodes', 'bulletins', 'bulletinStories', 'onAir', 'users', 'settings'], 60_000);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -132,11 +134,18 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const guestPage = useIncremental(filteredGuests, 48, `${searchQuery}|${selectedSpecialty}`);
   const zone = stationTimeZone(apiService.getSettings().defaultTimezone);
   const today = stationWall(Date.now(), zone).date;
+  const episodes = canSeeEpisode ? apiService.getEpisodes() : [];
+  const bulletins = canSeeBulletins ? apiService.getAirShows().filter(show => show.kind === 'bulletin') : [];
+  const showPaths = new Map<string, string>([
+    ...episodes.map(episode => [episode.id, `/episodes/${encodeURIComponent(episode.id)}`] as const),
+    ...bulletins.map(bulletin => [bulletin.id, `/bulletins/${encodeURIComponent(bulletin.id)}`] as const),
+  ]);
+  const airedAppearances = airedGuestAppearances([...episodes, ...bulletins], apiService.getOnAirStates(), zone);
   const followUps = new Map<string, { episode: Episode; booking: EpisodeGuest }>();
   if (canSeeEpisode) {
-    const episodes = apiService.getEpisodes().filter(episode => episode.broadcastDate >= today && !['CANCELLED', 'BROADCASTED', 'ARCHIVED'].includes(episode.status))
+    const upcoming = episodes.filter(episode => episode.broadcastDate >= today && !['CANCELLED', 'BROADCASTED', 'ARCHIVED'].includes(episode.status))
       .sort((a, b) => `${a.broadcastDate}${a.startTime}`.localeCompare(`${b.broadcastDate}${b.startTime}`));
-    for (const episode of episodes) for (const booking of episodeGuestList(episode) as EpisodeGuest[]) {
+    for (const episode of upcoming) for (const booking of episodeGuestList(episode) as EpisodeGuest[]) {
       const key = guestKey(booking);
       if (key && !followUps.has(key)) followUps.set(key, { episode, booking });
     }
@@ -205,7 +214,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
 
       {/* Guests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-        {guestPage.visible.map((guest) => { const followUp = followUps.get(guest.id); return (
+        {guestPage.visible.map((guest) => {
+          const followUp = followUps.get(guest.id);
+          const history = guestAppearanceHistory(guest, airedAppearances.get(guest.id));
+          const latest = history[0]?.date || guest.lastAppearanceDate;
+          return (
           <article
             key={guest.id}
             className="min-w-0 bg-white rounded-xl border border-slate-200 p-3 sm:p-4 flex flex-col"
@@ -228,9 +241,10 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   </Badge>
                 )}
                 <p className="text-2xs text-slate-500">
-                  {guest.lastAppearanceDate ? `آخر ظهور: ${arabicDate(guest.lastAppearanceDate)}` : 'لم يظهر بعد'}
+                  {latest ? `آخر ظهور: ${arabicDate(latest)}` : 'لم يُسجل ظهور'}
                 </p>
               </div>
+              <AppearanceHistory entries={history} month={today.slice(0, 7)} showPaths={showPaths} />
 
               {followUp && <div className="space-y-1 pt-2 border-t border-slate-200 text-xs text-slate-700" aria-label="متابعة الظهور">
                 <p className="font-bold">{bookingStatusName(bookingStatusOf(followUp.booking))}{followUp.booking.connectionType ? ` · ${connectionName(followUp.booking.connectionType)}` : ''}</p>
@@ -504,3 +518,31 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     </div>
   );
 };
+
+function AppearanceHistory({ entries, month, showPaths }: {
+  entries: GuestAppearance[];
+  month: string;
+  showPaths: ReadonlyMap<string, string>;
+}) {
+  const thisMonth = entries.filter(entry => entry.date.startsWith(month)).length;
+  return (
+    <details className="border-t border-slate-100 text-xs text-slate-700">
+      <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 font-semibold">
+        <span>سجل الظهور</span><span className="text-slate-600">هذا الشهر <bdi>{thisMonth}</bdi></span>
+      </summary>
+      {entries.length === 0 ? <p className="pb-2">لا توجد مشاركات موثقة.</p> : (
+        <ul className="space-y-2 pb-2">
+          {entries.slice(0, 5).map(entry => (
+            <li key={entry.episodeId} className="min-w-0 rounded-md bg-slate-50 p-2 [overflow-wrap:anywhere]">
+              <p>{arabicDate(entry.date)}{entry.programName ? ` · ${entry.programName}` : ''}</p>
+              {showPaths.has(entry.episodeId) ? (
+                <button type="button" className="min-h-11 text-start font-semibold text-blue-700 hover:underline" onClick={() => navigateTo.emit(showPaths.get(entry.episodeId)!)}>{entry.episodeTitle}</button>
+              ) : <p className="mt-1 font-semibold">{entry.episodeTitle}</p>}
+              {entry.topics.length > 0 && <p>{entry.topics.join('، ')}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}

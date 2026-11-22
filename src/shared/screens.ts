@@ -26,6 +26,7 @@ const ALWAYS_OPEN = new Set(['dashboard', 'help', 'guide', 'whats-new', 'alerts'
 /** Pages inside another screen follow that screen. */
 const PARENT_SCREEN: Record<string, string> = {
   'news-editor': 'news',
+  wallboard: 'news',
   'episode-workspace': 'episodes',
   'program-detail': 'programs',
   program_detail: 'programs',

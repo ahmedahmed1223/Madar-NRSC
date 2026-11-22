@@ -97,7 +97,7 @@ export const EpisodePlanner: React.FC<EpisodePlannerProps> = ({
   const topics = episode.topics || [];
   const rundown = episode.rundown || [];
   const groups = useMemo(() => groupByTopic(episode), [episode]);
-  const ctx = { requests: apiService.getRequests(), media: apiService.getMedia() as any[] };
+  const ctx = { requests: apiService.getRequests(), media: apiService.getMedia(), timeZone: apiService.getSettings().defaultTimezone };
 
   // Brief
   const [briefOpen, setBriefOpen] = useState(!episode.brief?.idea);

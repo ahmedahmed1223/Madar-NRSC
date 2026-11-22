@@ -4,7 +4,7 @@ import { Megaphone } from 'lucide-react';
 import type { User } from '../../types';
 import { apiService } from '../../services/api';
 import { useLiveData } from '../../hooks/useLiveData';
-import { CUE_ACTIVE_MS, isCueForUser } from '../../shared/onair';
+import { isCueActive, isCueForUser } from '../../shared/onair';
 
 /** A short tone so an on-air alert is noticed even when eyes are elsewhere. */
 function beep(level: string) {
@@ -31,7 +31,7 @@ export const CueAlertOverlay: React.FC<{ currentUser: User }> = ({ currentUser }
   const beeped = useRef(new Set<string>());
   const pending = apiService
     .getCues()
-    .filter((c) => Date.now() - new Date(c.createdAt).getTime() < CUE_ACTIVE_MS)
+    .filter((c) => !c.expiresAt && isCueActive(c))
     .filter((c) => isCueForUser(c, currentUser) && !c.acks.some((a) => a.userId === currentUser.id))
     .slice(0, 3);
 

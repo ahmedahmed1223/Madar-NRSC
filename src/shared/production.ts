@@ -67,6 +67,7 @@ export interface RequestLink {
 }
 
 export interface DeptRequest {
+  messageOrigin?: import('./messageActions').MessageActionOrigin;
   id: string;
   type: RequestType;
   departmentId: DepartmentId;
@@ -87,6 +88,8 @@ export interface DeptRequest {
   lines?: string[];
   /** Media produced for the request (e.g. the edited package). */
   resultMediaId?: string;
+  /** Source files and their non-destructive edit marks, for montage. */
+  sourceMediaIds?: string[];
   resolution?: string;
   dueAt?: string;
   proposedDueAt?: string | null;
@@ -104,7 +107,7 @@ interface Actor {
   canManage: boolean;
 }
 
-const CONTENT_FIELDS = ['title', 'details', 'priority', 'dueAt', 'lines', 'link'] as const;
+const CONTENT_FIELDS = ['title', 'details', 'priority', 'dueAt', 'lines', 'link', 'sourceMediaIds'] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
@@ -117,6 +120,9 @@ export function requestChangeError(before: DeptRequest | null, after: DeptReques
   if (after.departmentId !== type.departmentId) return 'القسم لا يطابق نوع الطلب';
   if (typeof after.title !== 'string' || !after.title.trim()) return 'عنوان الطلب مطلوب';
   if (!REQUEST_STATUSES.some((s) => s.id === after.status)) return 'حالة الطلب غير معروفة';
+  if (after.sourceMediaIds !== undefined && (after.type !== 'MONTAGE' || !Array.isArray(after.sourceMediaIds) ||
+      after.sourceMediaIds.length > 25 || new Set(after.sourceMediaIds).size !== after.sourceMediaIds.length ||
+      after.sourceMediaIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(id)))) return 'ملفات المصدر للطلب غير صالحة';
 
   if (!before) return after.status === 'OPEN' && !after.proposedDueAt ? null : 'الطلب الجديد يبدأ بحالة «جديد» ويمكن اقتراح موعد بديل بعد إرساله';
 
@@ -173,7 +179,8 @@ export interface ReadinessItem {
 
 interface ReadinessContext {
   requests: DeptRequest[];
-  media: { id: string; mediaType?: string; videoStatus?: string; title?: string; fileName?: string; deletedAt?: string | null }[];
+  media: { id: string; mediaType?: string; videoStatus?: string; title?: string; fileName?: string; deletedAt?: string | null; rights?: MediaRights | null }[];
+  timeZone?: string;
 }
 
 /** Segment types that are played out as a package and therefore need an edited video. */
@@ -182,6 +189,10 @@ export const VIDEO_SEGMENT_TYPES = new Set(['REPORT']);
 export function segmentReadiness(segment: any, episode: any, ctx: ReadinessContext): ReadinessItem[] {
   if (!segment || segment.segmentType === 'BREAK') return [];
   const items: ReadinessItem[] = [];
+
+  const rightsBlocker = firstMediaRightsBlocker(segmentMediaIds(segment, episode?.id, ctx.media, ctx.requests), ctx.media,
+    new Date(), plannedMediaAirAt(episode?.broadcastDate, episode?.startTime, ctx.timeZone, segment.startTimeOffset));
+  if (rightsBlocker) items.push({ key: 'media-rights', label: 'حقوق البث', departmentId: 'montage', state: 'missing', detail: rightsBlocker });
 
   const hasText = !!((segment.scriptText || segment.script || '').trim() || segment.newsId);
   items.push({
@@ -283,3 +294,4 @@ export function episodeReadiness(episode: any, ctx: ReadinessContext) {
   const warnings = (episode?.guests || []).flatMap((g: any) => guestFollowUpWarnings(g).map(detail => ({ guestId: guestKey(g), guestName: g.guestName, detail })));
   return { total: segments.length, readySegments, blockers, warnings, ready: segments.length > 0 && blockers.length === 0 };
 }
+import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds, type MediaRights } from './mediaEditorial';

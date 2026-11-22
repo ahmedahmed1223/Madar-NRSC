@@ -239,6 +239,10 @@ export class NewsroomDatabase {
     this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
   }
 
+  pruneExternalIntake(prefix: string, now: string) {
+    this.db.prepare("DELETE FROM meta WHERE key GLOB ? AND json_extract(value, '$.expiresAt') <= ?").run(prefix + '*', now);
+  }
+
   // --- Entities ------------------------------------------------------------
 
   getRow(collection: CollectionName, id: string, includeDeleted = false): EntityRow | null {

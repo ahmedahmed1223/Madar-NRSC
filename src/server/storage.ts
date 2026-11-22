@@ -141,10 +141,10 @@ export function isLocalRequest(db: NewsroomDatabase, req: Request): boolean {
 }
 
 /** Copies to queue for a file a colleague just uploaded to the library. */
-export function queueCopiesForUpload(db: NewsroomDatabase, record: UploadRecord, req: Request) {
+export function queueCopiesForUpload(db: NewsroomDatabase, record: UploadRecord, req?: Request) {
   for (const cloud of activeClouds(db)) db.queueCopy(record.id, cloud);
   const share = settingsOf(db).share;
-  if (share.enabled && shareMode(db) !== 'none' && req.get('x-storage-share') === '1' && isLocalRequest(db, req)) db.queueCopy(record.id, 'share');
+  if (req && share.enabled && shareMode(db) !== 'none' && req.get('x-storage-share') === '1' && isLocalRequest(db, req)) db.queueCopy(record.id, 'share');
 }
 
 // ---------------------------------------------------------------------------

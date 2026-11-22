@@ -6,6 +6,7 @@ import { VIDEO_STATUSES, videoStatusName, isVideoReady } from '../../shared/prod
 import type { MediaFile, User } from '../../types';
 import { MediaPicker, mediaIcon } from './MediaPicker';
 import { ACCEPTED_UPLOAD_TYPES } from '../../services/mediaUpload';
+import { mediaRightsIssue } from '../../shared/mediaEditorial';
 
 interface AttachmentsPanelProps {
   mediaIds: string[];
@@ -16,10 +17,11 @@ interface AttachmentsPanelProps {
   onRequestMontage?: (media: MediaFile) => void;
   title?: string;
   directUpload?: boolean;
+  forBroadcast?: boolean;
 }
 
 /** Library items attached to a story or a segment, with the video workflow state. */
-export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, onChange, currentUser, readOnly, onRequestMontage, title = 'المرفقات من مكتبة الوسائط', directUpload }) => {
+export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, onChange, currentUser, readOnly, onRequestMontage, title = 'المرفقات من مكتبة الوسائط', directUpload, forBroadcast }) => {
   const [picker, setPicker] = useState<{ userId: string; files: File[] } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [, setTick] = useState(0);
@@ -111,7 +113,13 @@ export const AttachmentsPanel: React.FC<AttachmentsPanelProps> = ({ mediaIds, on
         })}
       </ul>
       {missing > 0 && <p className="text-2xs text-amber-700">{missing} مرفق لم يعد موجوداً في المكتبة.</p>}
-      {picker?.userId === currentUser.id && !readOnly && <MediaPicker key={currentUser.id} isOpen onClose={() => setPicker(null)} selectedIds={mediaIds} onPick={onChange} canUpload={canUpload} initialFiles={picker.files} />}
+      {forBroadcast && attached.some(item => mediaRightsIssue(item)) && <ul className="space-y-1 text-xs font-bold text-amber-800" aria-label="تنبيهات حقوق البث">
+        {attached.map(item => {
+          const issue = mediaRightsIssue(item);
+          return issue && <li key={item.id}>{library.find(asset => asset.id === item.id)?.title || item.fileName} — {issue}</li>;
+        })}
+      </ul>}
+      {picker?.userId === currentUser.id && !readOnly && <MediaPicker key={currentUser.id} isOpen onClose={() => setPicker(null)} selectedIds={mediaIds} onPick={onChange} canUpload={canUpload} initialFiles={picker.files} forBroadcast={forBroadcast} />}
     </div>
   );
 };

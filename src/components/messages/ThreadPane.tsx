@@ -13,6 +13,7 @@ import { formatDay } from '../../shared/dateFormat';
 import { matchesQuery } from '../../shared/search';
 import { clearSentMessageDraft, messagePosition, queueMessageTask, rememberMessagePosition, scrollToMessage } from '../../services/messageWorkspace';
 import { dataStore } from '../../services/dataStore';
+import { MessageActionsDialog } from './MessageActionsDialog';
 import {
   CHAT_REF_KINDS, CHAT_UPLOAD_TYPES, MAX_ATTACHMENTS, MAX_MESSAGE_CHARS,
   chatFileUrl, chatRefLink, isPrivateChannel, publicMessageOrigin, type ChatAttachment, type ChatMessage,
@@ -125,6 +126,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
   const [showSearch, setShowSearch] = useState(false);
   const [query, setQuery] = useState('');
   const [older, setOlder] = useState<ChatMessage[]>([]);
+  const [actionMessage, setActionMessage] = useState<ChatMessage>();
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
   const savedPosition = useRef(focusMessageId || messagePosition(me, thread.channel));
   const [atLatest, setAtLatest] = useState(!savedPosition.current);
@@ -346,6 +348,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
                   )}
                   <div className="flex flex-wrap items-center gap-x-2">
                     <p className={`text-2xs tabular-nums ${mine ? 'text-white' : 'text-slate-500'}`}>{timeOnly(m.timestamp)}</p>
+                    {!dataStore.hasPendingWrite('messages', m.id) && <button type="button" className={`min-h-11 px-1 text-xs font-semibold hover:underline ${mine ? 'text-white' : 'text-blue-700'}`} onClick={() => setActionMessage(m)}>إجراءات الرسالة</button>}
                     {canPin && pin?.messageId !== m.id && !dataStore.hasPendingWrite('messages', m.id) && <button type="button" disabled={pinBusy} className={`min-h-11 px-1 text-xs font-semibold hover:underline ${mine ? 'text-white' : 'text-blue-700'}`} onClick={() => void updatePin(m.id, false)}>تثبيت البلاغ</button>}
                     {canCreateTask && publicMessageOrigin(thread.channel, m.id) && !dataStore.hasPendingWrite('messages', m.id) && <button type="button" className={`min-h-11 inline-flex items-center gap-1 px-1 text-xs font-semibold hover:underline ${mine ? 'text-white' : 'text-blue-700'}`} onClick={() => {
                       queueMessageTask(me, { channel: thread.channel, messageId: m.id, label: thread.name, suggestedTitle: m.text.replace(/\s+/g, ' ').trim().slice(0, 120) });
@@ -358,6 +361,7 @@ export const ThreadPane: React.FC<ThreadPaneProps> = ({ thread, group, currentUs
           );
         })}
       </div>
+      {actionMessage && <MessageActionsDialog key={actionMessage.id} message={actionMessage} user={currentUser} onClose={() => setActionMessage(undefined)} onNavigate={onOpenLink} />}
       {!atLatest && !searching && <button type="button" className="min-h-11 self-center px-4 text-xs font-bold text-blue-700 hover:underline" onClick={() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
         setAtLatest(true);

@@ -80,6 +80,7 @@ export type NewsStatus =
 export interface Category {
   id: string;
   nameAr: string;
+  parentId?: string | null;
   nameEn?: string;
   slug?: string;
   color?: string;
@@ -190,6 +191,7 @@ export interface NewsWorkflowLog {
 }
 
 export interface NewsItem {
+  messageOrigin?: import('../shared/messageActions').MessageActionOrigin;
   id: string;
   storyId?: string; // Optional link to a parent Story
   title: string;
@@ -198,6 +200,7 @@ export interface NewsItem {
   content: string;
   summary: string;
   mainImageUrl: string;
+  digitalPackage?: import('../shared/digitalPublishing').DigitalPublishingPackage;
   /** First playable clip (kept for screens that show one video); the full list is `videos`. */
   videoUrl?: string;
   /** Video clips in playout order: links, library items, or written locations. */
@@ -400,6 +403,7 @@ export interface EpisodeGuest {
   orderIndex?: number;
   notes?: string;
   bookingStatus?: BookingStatus;
+  bookingChangedAt?: string;
   backupGuestId?: string;
   backupGuestName?: string;
   contactLog?: ContactLogEntry[];
@@ -544,6 +548,12 @@ export interface MediaFile {
   editorId?: string;
   editorName?: string;
   createdAt?: string;
+  rights?: import('../shared/mediaEditorial').MediaRights | null;
+  broadcastUse?: import('../shared/mediaEditorial').MediaBroadcastUse;
+  editRanges?: import('../shared/mediaEditorial').MediaEditRange[];
+  transcript?: import('../shared/mediaEditorial').MediaTranscript;
+  autoTranscriptionJob?: import('../shared/mediaEditorial').AutoTranscriptionJob;
+  privateMessageMedia?: import('../shared/messageActions').PrivateMessageMedia;
 }
 
 export type MediaAsset = MediaFile & {
@@ -601,6 +611,7 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  editorialPublishing?: import('../shared/editorialStylebook').EditorialPublishingSettings;
   taskWorkflow?: import('../shared/taskWorkflow').TaskWorkflowRules;
   /** The administrator's quick setup: steps confirmed and when it was finished (see shared/setup). */
   setup?: import('../shared/setup').SetupState;

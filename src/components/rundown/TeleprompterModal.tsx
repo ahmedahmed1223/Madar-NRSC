@@ -2,6 +2,10 @@ import { useLiveData } from '../../hooks/useLiveData';
 import { useAirConnection } from '../../hooks/useAirConnection';
 import { AirSourceStatus } from '../onair/AirSourceStatus';
 import { apiService } from '../../services/api';
+import { PresenterInstruction, PresenterInstructionSound } from '../onair/PresenterInstruction';
+import { usePresenterPaces } from '../../hooks/usePresenterPaces';
+import { anchorScriptWords, presenterKey } from '../../shared/presenterTiming';
+import { readingSeconds } from '../../shared/readTime';
 import { PronunciationPanel } from './PronunciationPanel';
 import { matchingPronunciations } from '../../shared/pronunciation';
 import React, { useState, useEffect, useRef } from 'react';
@@ -78,6 +82,11 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
   const animationFrameRef = useRef<number | null>(null);
 
   const activeSegment = segments[currentSegmentIndex] || segments[0];
+  const currentUser = apiService.getCurrentUser();
+  const paces = usePresenterPaces();
+  const pace = paces.get(presenterKey(activeSegment?.presenterName || (episodeId ? apiService.getEpisodes().find(episode => episode.id === episodeId)?.presenterName : undefined)));
+  const scriptWords = anchorScriptWords(activeSegment?.scriptText || activeSegment?.script);
+  const estimatedRead = scriptWords && pace && !(activeSegment as { notApproved?: boolean } | undefined)?.notApproved ? readingSeconds(scriptWords, pace.wpm) : null;
   useEffect(() => {
     if (currentSegmentIndex >= segments.length) setCurrentSegmentIndex(Math.max(0, segments.length - 1));
   }, [currentSegmentIndex, segments.length]);
@@ -255,6 +264,7 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
 
   return (
     <div ref={modalRef} role="dialog" aria-modal="true" aria-label="الملقّن" className="theme-fixed fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-amber-300" dir="rtl">
+      {currentUser.id === userId && <PresenterInstruction user={currentUser} showId={episodeId} mirror={isMirrored} />}
       <div className="h-32 shrink-0 overflow-auto px-3"><PronunciationPanel notes={matchingPronunciations(activeSegment?.scriptText || activeSegment?.script || '', apiService.getPronunciationTerms())} /></div>
       {storageFailed && <p role="status" className="px-3 text-sm text-amber-300">تعذر حفظ إعدادات القراءة على الجهاز. ستطبق في هذه النافذة.</p>}
       {/* Studio Prompter Top Bar */}
@@ -267,12 +277,14 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
             <h2 className="text-sm font-bold text-slate-100">{episodeTitle}</h2>
             <div className="text-xs text-zinc-300">
               {isBulletin ? 'القصة' : 'الفقرة'} {currentSegmentIndex + 1} من {segments.length}: {activeSegment?.title || (isBulletin ? 'قصة بلا عنوان' : 'فقرة بلا عنوان')}
+              {estimatedRead !== null && <span className="mr-2 text-amber-300">الإلقاء المقدّر {segmentClock(estimatedRead)}</span>}
             </div>
           </div>
         </div>
 
         {/* Prompter Controls */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <PresenterInstructionSound user={currentUser} />
           {/* Color theme switch */}
           <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
             <button

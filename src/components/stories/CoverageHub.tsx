@@ -1,8 +1,8 @@
-import { arabicDate } from '../../shared/dates';
+import { arabicDate, stationTimeZone } from '../../shared/dates';
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
-import React from 'react';
+import React, { useState } from 'react';
 import { ExternalLink, FileText, Film, ListVideo, Plus, ArrowLeftRight } from 'lucide-react';
-import type { NewsItem, Story, User } from '../../types';
+import type { MediaFile, NewsItem, Story, User } from '../../types';
 import { apiService } from '../../services/api';
 import { useLiveData } from '../../hooks/useLiveData';
 import { CommentThread } from '../comments/CommentThread';
@@ -10,6 +10,9 @@ import { mediaIcon } from '../media/MediaPicker';
 import { NEWS_STATUS_LABELS } from '../../shared/newsWorkflow';
 import { departmentName } from '../../shared/departments';
 import { requestStatusName, requestTypeOf, videoStatusName } from '../../shared/production';
+import { FilterTabs } from '../common/FilterTabs';
+import { CoverageWarRoom } from './CoverageWarRoom';
+import { videosOf } from '../../shared/newsVideos';
 
 interface CoverageHubProps {
   story: Story;
@@ -28,16 +31,22 @@ const STORY_STATUS_LABELS: Record<string, string> = { ACTIVE: 'نشطة', RESOLV
 
 /** Everything about one coverage in one place: stories, media, requests, episodes and discussion. */
 export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, currentUser, canCreateNews, canManage, onOpenNews, onCreateNews, onOpenEpisode, onEdit }) => {
-  useLiveData(['requests', 'media', 'episodes', 'comments']);
-  const items = newsList.filter((n) => n.storyId === story.id);
+  useLiveData(['requests', 'media', 'episodes', 'comments', 'onAir', 'settings', 'productionCards', 'bulletins', 'bulletinStories', 'guests'], 30_000);
+  const [tab, setTab] = useState<'file' | 'room'>('file');
+  const items = newsList.filter((n) => !n.deletedAt && n.storyId === story.id);
   const newsIds = new Set(items.map((n) => n.id));
   const library = apiService.getMedia();
-  const mediaIds = [...new Set(items.flatMap((n) => n.mediaIds || []))];
-  const media = mediaIds.map((id) => library.find((m) => m.id === id)).filter(Boolean) as any[];
-  const requests = apiService.getRequests().filter((r) => r.link?.newsId && newsIds.has(r.link.newsId));
+  const mediaIds = new Set(items.flatMap(n => [...(n.mediaIds || []), ...videosOf(n).map(video => video.mediaId)]));
+  const media: MediaFile[] = library.filter(file => mediaIds.has(file.id));
   const segments = apiService
     .getEpisodes()
     .flatMap((e) => (e.rundown || []).filter((s) => s.newsId && newsIds.has(s.newsId)).map((s) => ({ episode: e, segment: s })));
+  const segmentKeys = new Set(segments.map(({ episode, segment }) => `${episode.id}:${segment.id}`));
+  const episodeIds = new Set(segments.map(({ episode }) => episode.id));
+  const requests = apiService.getRequests().filter(({ link }) => link && ((link.newsId && newsIds.has(link.newsId)) || segmentKeys.has(`${link.episodeId}:${link.segmentId}`)));
+  const bulletinStories = tab === 'room' ? apiService.getBulletinStories() : [];
+  const bulletinIds = new Set(bulletinStories.flatMap(story => story.newsId && newsIds.has(story.newsId) ? [story.bulletinId] : []));
+  const cards = tab === 'room' ? apiService.getCards().filter(({ target }) => target && ({ news: newsIds, episode: episodeIds, bulletin: bulletinIds }[target.kind]).has(target.id)) : [];
 
   const Section: React.FC<{ icon: any; title: string; count: number; children: React.ReactNode; action?: React.ReactNode }> = ({ icon: Icon, title, count, children, action }) => (
     <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
@@ -68,6 +77,11 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
         </div>
       </div>
 
+      <FilterTabs<'file' | 'room'> label="عرض التغطية" active={tab} onChange={setTab} tabs={[{ id: 'file', label: 'ملف التغطية', tone: 'blue' }, { id: 'room', label: 'غرفة العمليات', tone: 'blue' }]} />
+      {tab === 'room' ? <CoverageWarRoom coverage={story} news={items} media={media} requests={requests} segments={segments} sessions={apiService.getOnAirStates()}
+        comments={apiService.getComments({ kind: 'story', id: story.id })} cards={cards} zone={stationTimeZone(apiService.getSettings().defaultTimezone)}
+        bulletins={apiService.getBulletins().filter(bulletin => bulletinIds.has(bulletin.id))} bulletinStories={bulletinStories.filter(story => bulletinIds.has(story.bulletinId))}
+        guestDirectory={apiService.getGuests()} /> :
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section
           icon={FileText}
@@ -155,7 +169,7 @@ export const CoverageHub: React.FC<CoverageHubProps> = ({ story, newsList, curre
             ))}
           </ul>
         </Section>
-      </div>
+      </div>}
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4">
         <CommentThread target={{ kind: 'story', id: story.id, title: story.title }} currentUser={currentUser} title="نقاش فريق التغطية" />

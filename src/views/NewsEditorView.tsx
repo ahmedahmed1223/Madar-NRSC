@@ -6,6 +6,10 @@ import { dataStore, QUEUED_MESSAGE } from '../services/dataStore';
 import { claimReview, passQuality, releaseReview, closeBreakingRequest } from '../services/newsReview';
 import { activeReviewClaim, canRequestBreaking, canReviewNews, claimDenial, isQualityPassed, qualityPassDenial } from '../shared/newsWorkflow';
 import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
+import { categoryTree } from '../shared/newsCategories';
+import { digitalApprovalStatus, digitalCopyOf, digitalPackageError, hasDigitalCopy } from '../shared/digitalPublishing';
+import { emptyEditorialPublishing } from '../shared/editorialStylebook';
+import { EditorialPublishingPanel } from '../components/editor/EditorialPublishingPanel';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
 import { NewsCorrectionsPanel } from '../components/editor/NewsCorrectionsPanel';
@@ -20,6 +24,7 @@ import { newsStoryDoc } from '../services/documents/builders';
 import { CommentThread } from '../components/comments/CommentThread';
 import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
+import { MessageOriginLabel } from '../components/messages/MessageOriginLabel';
 import { apiService } from '../services/api';
 import { countLabel } from '../shared/arabicPlural';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
@@ -70,6 +75,7 @@ import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGenerat
 import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
 import { wordDiff, type DiffRun } from '../shared/textDiff';
 import { plainText } from '../shared/bulletins';
+import { CoverageOverlap } from '../components/news/CoverageOverlap';
 
 const WORKFLOW_ACTION_LABELS: Record<string, string> = {
   QUALITY_PASSED: 'اجتازت التدقيق',
@@ -143,6 +149,8 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [shortTitle, setShortTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
+  const [digitalDraft, setDigitalDraft] = useState(() => digitalCopyOf(newsItem?.digitalPackage));
+  const categoryOptions = useMemo(() => categoryTree(categories), [categories]);
   const [categoryId, setCategoryId] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [priority, setPriority] = useState<NewsPriority>(apiService.getSettings().defaultNewsPriority || 'NORMAL');
@@ -272,6 +280,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     shortTitle,
     summary,
     content,
+    digitalDraft,
     categoryId,
     sourceId,
     priority,
@@ -372,7 +381,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   useEffect(() => {
     persistDraftRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, shortTitle, summary, content, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videos, keywords, isBreaking, internalNotes, storyId, mediaIds, embargoUntil, embargoNote, tagInput, draftKey, lockedByOther, hasEmergencyDraft, baseUpdatedAt]);
+  }, [title, shortTitle, summary, content, digitalDraft, categoryId, sourceId, priority, locationName, eventDate, mainImageUrl, videos, keywords, isBreaking, internalNotes, storyId, mediaIds, embargoUntil, embargoNote, tagInput, draftKey, lockedByOther, hasEmergencyDraft, baseUpdatedAt]);
 
   const handleRestoreEmergencyDraft = async () => {
     if (draftVersionChanged && !(await confirmDialog({
@@ -388,6 +397,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         if (parsed.shortTitle !== undefined) setShortTitle(parsed.shortTitle);
         if (parsed.summary !== undefined) setSummary(parsed.summary);
         if (parsed.content !== undefined) setContent(parsed.content);
+        if (parsed.digitalDraft !== undefined) setDigitalDraft(digitalCopyOf(parsed.digitalDraft));
         if (parsed.categoryId !== undefined) setCategoryId(parsed.categoryId);
         if (parsed.sourceId !== undefined) setSourceId(parsed.sourceId);
         if (parsed.priority) setPriority(parsed.priority);
@@ -439,6 +449,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       shortTitle: item.shortTitle || '',
       summary: item.summary || '',
       content: item.content || '',
+      digitalDraft: digitalCopyOf(item.digitalPackage),
       categoryId: item.categoryId || '',
       sourceId: item.sourceId || '',
       priority: item.priority || 'NORMAL',
@@ -460,6 +471,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setShortTitle(fields.shortTitle);
     setSummary(fields.summary);
     setContent(fields.content);
+    setDigitalDraft(fields.digitalDraft);
     setCategoryId(fields.categoryId);
     setSourceId(fields.sourceId);
     setPriority(fields.priority);
@@ -489,6 +501,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         shortTitle: '',
         summary: '',
         content: '',
+        digitalDraft: digitalCopyOf(),
         categoryId: categories[0]?.id || '',
         sourceId: sources[0]?.id || '',
         priority: apiService.getSettings().defaultNewsPriority || 'NORMAL' as NewsPriority,
@@ -590,6 +603,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       shortTitle: shortTitle || title,
       summary,
       content,
+      digitalPackage: hasDigitalCopy(digitalDraft) || newsItem?.digitalPackage ? digitalDraft : undefined,
       categoryId,
       categoryName: selectedCat?.nameAr || '',
       sourceId,
@@ -633,6 +647,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const savingRef = useRef(false);
   const saveContent = async (stay: boolean, extra: Partial<NewsItem> = {}, quiet = false): Promise<NewsItem | null> => {
     if (savingRef.current) return null;
+    const packageProblem = digitalPackageError(extra.digitalPackage || digitalDraft);
+    if (packageProblem) {
+      notify({ type: 'warning', title: 'راجع حزمة النشر', message: packageProblem });
+      return null;
+    }
     const badClip = videosError(videos);
     if (badClip) {
       notify({ type: 'warning', title: 'راجع مقاطع الفيديو', message: badClip });
@@ -645,7 +664,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
     setSaving(true);
     setSaveState('idle');
     try {
-      const saved = await onSave({ ...buildPayload(), ...extra }, { stay: true });
+      const payload = extra.digitalPackage?.requestApproval && newsItem
+        ? { id: newsItem.id, expectedUpdatedAt: baseUpdatedAt, digitalPackage: extra.digitalPackage }
+        : { ...buildPayload(), ...extra };
+      const saved = await onSave(payload, { stay: true });
       if (saved) {
         setSaveState('saved');
         loadedSnapshotRef.current = snapshot;
@@ -1064,6 +1086,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             <h1 className="text-base sm:text-lg font-bold text-slate-800">
               {reviewMode ? 'مراجعة الخبر' : newsItem ? (ro ? 'قراءة الخبر' : 'تحرير الخبر') : 'إنشاء خبر جديد'}
             </h1>
+            <MessageOriginLabel origin={newsItem?.messageOrigin} />
             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
               <Badge variant={newsItem?.status === 'PUBLISHED' ? 'success' : newsItem?.status === 'APPROVED' ? 'primary' : newsItem?.status === 'UNDER_REVIEW' ? 'warning' : 'default'} size="sm">
                 الحالة: {newsItem?.status ? NEWS_STATUS_LABELS[newsItem.status] : 'مسودة جديدة'}
@@ -1444,6 +1467,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                   {contentError.message}
                 </p>
               )}
+              {!ro && !newsItem && currentUser.stationId && <CoverageOverlap title={title} stationId={currentUser.stationId} />}
             </div>
 
             {/* Short Title & Ticker Simulator */}
@@ -1645,6 +1669,26 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
             />
           )}
 
+          <EditorialPublishingPanel
+            fields={[
+              { label: 'العنوان الرئيسي', text: title, change: setTitle },
+              { label: 'العنوان المختصر', text: shortTitle, change: setShortTitle },
+              { label: 'المقدمة', text: summary, change: setSummary },
+              { label: 'نص الخبر', text: content, html: true, change: setContent },
+            ]}
+            copy={digitalDraft}
+            settings={apiService.getSettings().editorialPublishing ?? emptyEditorialPublishing()}
+            readOnly={ro}
+            saving={saving}
+            approved={!!newsItem?.digitalPackage?.approval && digitalApprovalStatus(newsItem.status) && !isDirty && !newerVersionAvailable}
+            canCopy={!isUnderEmbargo(newsItem)}
+            canApprove={!!newsItem?.id && digitalApprovalStatus(newsItem.status) && can('news.approve') && !isDirty && !newerVersionAvailable && !waitingForConnection()}
+            canSave={isDirty && !newerVersionAvailable}
+            onChange={setDigitalDraft}
+            onSave={() => void saveContent(true)}
+            onApprove={() => void saveContent(true, { digitalPackage: { ...digitalDraft, requestApproval: true } })}
+          />
+
           {/* Embargo */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
             <label htmlFor="news-embargo" className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -1781,9 +1825,9 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nameAr}
+                {categoryOptions.map(({ category, path }) => (
+                  <option key={category.id} value={category.id}>
+                    {path}
                   </option>
                 ))}
               </select>
@@ -1983,6 +2027,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
                         type: 'MONTAGE',
                         title: `مونتاج: ${m.title || m.fileName}`,
                         details: `المادة الخام في المكتبة: ${m.title || m.fileName}`,
+                        sourceMediaIds: [m.id],
                         link: { kind: 'news', newsId: newsItem.id, title: newsItem.title },
                       })
                   : undefined

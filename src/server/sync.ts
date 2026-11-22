@@ -31,6 +31,8 @@ import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/product
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
 import { stampTaskWorkflow } from '../shared/taskWorkflow';
+import { captureBroadcastPlan } from './broadcastArchive';
+import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
@@ -41,15 +43,21 @@ import { commentLink, TeamComment } from '../shared/comments';
 import { approvalStepName, approvalStepsOf, canActOnStep, findShow, isApprover, nextApprovalStep, storyContentChanged, type ApprovalStep, type StoryApproval } from '../shared/bulletins';
 import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
 import { statusLabel } from '../shared/labels';
-import { localStamp, writeNotification } from './notifications';
+import { alertForNewsKeywords, localStamp, writeNotification } from './notifications';
 import type { NotificationCategory } from '../shared/notifications';
 import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
 import { mergeCardChanges, stepTypesOf } from '../shared/productionCards';
+import { publishMessageWorkAttachments, readableActionMessage } from './messageActions';
+import { messageActionOrigin } from '../shared/messageActions';
+import { recordOneTimeMediaUse } from './mediaUsage';
+import { newAutoTranscriptionJob } from './autoMediaTranscription';
 import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsOf, stationsArchiveOf, stationsOf } from '../shared/stations';
 import { applyDepartmentSettings, departmentHead } from '../shared/departments';
 import { roleAuditEntries, settingsAuditEntries, userAuditEntries, type AuditEntryDraft } from '../shared/auditTrail';
 import { cardNotices, stampCard, type CardNoticeContext } from './cards';
 import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
+import { prepareDigitalPackage } from '../shared/digitalPublishing';
+import { presenterReading } from '../shared/presenterTiming';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -134,7 +142,10 @@ function stampRequest(before: any, after: any, auth: AuthContext) {
 /** Live timings use server time so every screen counts down from the same moment. */
 function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
   const now = new Date().toISOString();
-  const title = (segmentId: string) => (episode?.rundown || []).find((s: any) => s.id === segmentId)?.title || '';
+  const startEntry = (segmentId: string) => {
+    const segment = (episode?.rundown || []).find((s: any) => s.id === segmentId);
+    return { segmentId, title: segment?.title || '', startedAt: now, reading: presenterReading(segment, episode?.presenterName) };
+  };
   const base = {
     id: after.id,
     episodeId: after.episodeId,
@@ -147,7 +158,7 @@ function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
   };
   const starting = !before || (before.status === 'ENDED' && after.status === 'LIVE');
   if (starting) {
-    return { ...base, startedAt: now, segmentStartedAt: now, log: [{ segmentId: after.currentSegmentId, title: title(after.currentSegmentId), startedAt: now }] };
+    return { ...base, startedAt: now, segmentStartedAt: now, log: [startEntry(after.currentSegmentId)] };
   }
   const log = [...(before.log || [])];
   const closeLast = () => {
@@ -156,7 +167,7 @@ function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
   let segmentStartedAt = before.segmentStartedAt;
   if (before.status === 'LIVE' && after.status === 'LIVE' && after.currentSegmentId !== before.currentSegmentId) {
     closeLast();
-    log.push({ segmentId: after.currentSegmentId, title: title(after.currentSegmentId), startedAt: now });
+    log.push(startEntry(after.currentSegmentId));
     segmentStartedAt = now;
   }
   let endedAt = before.endedAt;
@@ -219,6 +230,14 @@ function stampBulletinStory(before: any, after: any, auth: AuthContext, bulletin
     next.approvedAt = undefined;
   }
   if (status !== 'DRAFT') next.returnNote = undefined;
+  next.remoteGuest = after.remoteGuest ? {
+    guestId: after.remoteGuest.guestId,
+    confirmed: after.remoteGuest.confirmed,
+    confirmedAt: after.remoteGuest.confirmed
+      ? (before?.remoteGuest?.confirmed && before.remoteGuest.guestId === after.remoteGuest.guestId ? before.remoteGuest.confirmedAt || now : now)
+      : undefined,
+    check: after.remoteGuest.confirmed && before?.remoteGuest?.confirmed && before.remoteGuest.guestId === after.remoteGuest.guestId ? before.remoteGuest.check : undefined,
+  } : undefined;
   return next;
 }
 
@@ -290,7 +309,7 @@ const PRODUCTION_READ_BOUND = new Set<CollectionName>(['programs', 'episodes', '
 const SUPPORT_WRITES = new Set<CollectionName>(['users', 'tasks', 'productionCards', 'notifications', 'notificationPrefs', 'personalNotes', 'personalTasks', 'workspacePrefs']);
 
 export class SyncService {
-  constructor(private db: NewsroomDatabase, private dataDir: string, private newsActiveDays = 0) {}
+  constructor(private db: NewsroomDatabase, private dataDir: string, private newsActiveDays = 0, private autoMedia?: { video: boolean }) {}
 
   private bootstrapRows = { rev: -1, generation: -1, rows: new Map<CollectionName, EntityRow[]>() };
   private listData = (c: CollectionName) => this.db.listCollection(c).map((r) => r.d);
@@ -931,9 +950,22 @@ export class SyncService {
           if (!after.stationsArchive.length) delete after.stationsArchive;
         }
 
+        if (collection === 'news' || collection === 'requests' || collection === 'productionCards') {
+          if (before?.messageOrigin) after.messageOrigin = before.messageOrigin;
+          else if (after.messageOrigin) {
+            const message = readableActionMessage(this.db, auth, after.messageOrigin.messageId);
+            if (!message) throw new SyncReject('FORBIDDEN', 'مصدر الرسالة غير متاح');
+            after.messageOrigin = messageActionOrigin(message);
+          }
+        }
         const denied = POLICIES[collection]({ auth, collection, kind, before, after, list: this.listData });
         if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
 
+        if (collection === 'news' && (before?.digitalPackage !== undefined || after.digitalPackage !== undefined)) {
+          const prepared = prepareDigitalPackage(before, after, { id: auth.user.id, canApprove: auth.can('news.approve'), now: new Date().toISOString() });
+          if (prepared.error) return { ok: false, code: 'FORBIDDEN', message: prepared.error, current } as SyncOpResult;
+          after = { ...after, digitalPackage: prepared.value };
+        }
         if (collection === 'messages') after = this.stampMessage(after, auth);
         if (collection === 'conversations') {
           const now = new Date().toISOString();
@@ -950,6 +982,7 @@ export class SyncService {
           // Library items attached to a card must exist; their titles go into the trail.
           const mediaTitle = (mediaId: string) => {
             const item = this.db.getRow('media', mediaId)?.d;
+            if (item?.privateMessageMedia) return item.ownerId === auth.user.id && !item.deletedAt ? 'مرفق رسالة خاص' : undefined;
             return item && !item.deletedAt ? String(item.title || item.originalName || item.fileName || 'ملف') : undefined;
           };
           const attached = new Set(before?.mediaIds || []);
@@ -999,7 +1032,18 @@ export class SyncService {
           if ((after.assigneeIds as string[]).some((uid) => !known.has(uid))) throw new SyncReject('INVALID', 'أحد المكلفين غير موجود أو موقوف');
         }
 
+        if (collection === 'episodes' && !after.deletedAt) after = stampGuestBookingTimes(before, after, new Date().toISOString());
+        if (collection === 'onAir' && after.status === 'ENDED') {
+          after = { ...after, archivedPlan: before?.archivedPlan || captureBroadcastPlan(after.episodeId, this.listData, this.lookup) };
+        }
+        if (collection === 'media' && kind === 'create' && !after.deletedAt && this.autoMedia) {
+          const job = newAutoTranscriptionJob(after, this.autoMedia.video);
+          if (job) after.autoTranscriptionJob = job;
+        }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
+        if (collection === 'news' || collection === 'requests' || collection === 'productionCards') {
+          publishMessageWorkAttachments(this.db, collection, id, before, row.d, auth);
+        }
         if ((collection === 'tasks' || collection === 'productionCards') && (before?.reminderOptions || after.reminderOptions)) {
           updateWorkReminders(this.db, collection, id, after.deletedAt ? null : row.d);
         }
@@ -1026,13 +1070,17 @@ export class SyncService {
         if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
         this.auditLifecycle(collection, before, after, auth, ip);
         this.auditAdministration(collection, before, after, auth, ip);
-        if (collection === 'news' && !after.deletedAt) this.notifyNewsWorkflow(before, after, auth);
+        if (collection === 'news' && !after.deletedAt) {
+          this.notifyNewsWorkflow(before, after, auth);
+          alertForNewsKeywords(this.db, before, row.d);
+        }
         if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
         if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);
         if (collection === 'bulletins' && !after.deletedAt && after.editorId && after.editorId !== before?.editorId && after.editorId !== auth.user.id) {
           this.notify(after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, `/bulletins/${after.id}`, 'bulletin');
         }
         if (collection === 'onAir') {
+          if (after.status === 'LIVE') recordOneTimeMediaUse(this.db, { showId: after.episodeId, startedAt: after.startedAt, segmentId: after.currentSegmentId, recordedAt: after.segmentStartedAt }, auth.user.id);
           // The episode (or bulletin) follows the live state: on air while live, broadcast once ended.
           const ep = this.db.getRow('episodes', String(after.episodeId));
           const status = after.status === 'LIVE' ? 'ON_AIR' : 'BROADCASTED';

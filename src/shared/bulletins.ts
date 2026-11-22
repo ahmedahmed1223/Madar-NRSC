@@ -1,4 +1,5 @@
 import { arabicDate } from './dates';
+import { anchorScriptWords } from './presenterTiming';
 
 /**
  * News bulletins, modelled on how newsroom systems (Octopus, iNEWS) run a newscast:
@@ -107,6 +108,7 @@ export interface BulletinStory {
   manualSeconds?: number;
   graphics?: StoryGraphic[];
   directorNotes?: string;
+  remoteGuest?: BulletinRemoteGuest;
   newsId?: string;
   /** updatedAt of the newsroom story when its text was taken, to flag later changes. */
   newsUpdatedAt?: string;
@@ -128,6 +130,13 @@ export interface BulletinStory {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+}
+
+export interface BulletinRemoteGuest {
+  guestId: string;
+  confirmed: boolean;
+  confirmedAt?: string;
+  check?: { status: 'PASSED' | 'FAILED'; at: string; note: string };
 }
 
 /** A reusable bulletin layout, optionally on a weekly schedule. */
@@ -174,14 +183,15 @@ export function plainText(html: string): string {
 }
 
 /** Anchor read time; bracketed directions like [كاميرا 2] are not read aloud. */
-export function readSeconds(script: string): number {
-  const words = (String(script || '').replace(/\[[^\]]*\]/g, ' ').match(/\S+/g) || []).length;
-  return words ? Math.max(3, Math.ceil(words / WORDS_PER_SECOND)) : 0;
+export function readSeconds(script: string, wpm?: number): number {
+  const words = wpm ? anchorScriptWords(script) : (String(script || '').replace(/\[[^\]]*\]/g, ' ').match(/\S+/g) || []).length;
+  const wordsPerSecond = wpm ? wpm / 60 : WORDS_PER_SECOND;
+  return words ? Math.max(3, Math.ceil(words / wordsPerSecond)) : 0;
 }
 
-export function storyTiming(s: Pick<BulletinStory, 'type' | 'script' | 'clipSeconds' | 'manualSeconds'>) {
+export function storyTiming(s: Pick<BulletinStory, 'type' | 'script' | 'clipSeconds' | 'manualSeconds'>, wpm?: number) {
   const t = storyTypeOf(s.type);
-  const read = t.read ? readSeconds(s.script) : 0;
+  const read = t.read ? readSeconds(s.script, wpm) : 0;
   const clip = t.clip ? Math.round(Number(s.clipSeconds) || 0) : 0;
   const manual = t.manual ? Math.round(Number(s.manualSeconds) || 0) : 0;
   return { read, clip, manual, total: read + clip + manual };
@@ -212,11 +222,11 @@ export const mmss = (seconds: number) => {
  * Front time (when each story starts on the clock), back time (when it must start to hit
  * the hard out), and over/under for the whole bulletin.
  */
-export function bulletinTiming(bulletin: Pick<Bulletin, 'startTime' | 'plannedSeconds'>, stories: BulletinStory[]) {
+export function bulletinTiming(bulletin: Pick<Bulletin, 'startTime' | 'plannedSeconds'>, stories: BulletinStory[], paceFor?: (story: BulletinStory) => number | undefined) {
   const start = minutesOfDay(bulletin.startTime) * 60;
   const hardOut = start + (Number(bulletin.plannedSeconds) || 0);
   const list = airStories(stories);
-  const durations = list.map((s) => storyTiming(s).total);
+  const durations = list.map((s) => storyTiming(s, paceFor?.(s)).total);
   const total = durations.reduce((a, b) => a + b, 0);
   const rows = new Map<string, { front: number; back: number; duration: number }>();
   let front = start;
@@ -243,7 +253,9 @@ export function rankBetween(before?: number, after?: number): number {
 
 const CONTENT_FIELDS = ['slug', 'type', 'script', 'clipMediaId', 'clipSeconds', 'manualSeconds', 'graphics', 'anchorName'] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-export const storyContentChanged = (before: any, after: any) => CONTENT_FIELDS.some((k) => !same(before?.[k], after?.[k]));
+export const storyContentChanged = (before: any, after: any) =>
+  CONTENT_FIELDS.some((k) => !same(before?.[k], after?.[k])) ||
+  !same([before?.remoteGuest?.guestId, before?.remoteGuest?.confirmed], [after?.remoteGuest?.guestId, after?.remoteGuest?.confirmed]);
 
 export interface BulletinActor {
   id: string;
@@ -371,6 +383,8 @@ export function storyError(s: any): string | null {
   if (!STORY_STATUSES.some((t) => t.id === s.status)) return 'حالة القصة غير معروفة';
   if (typeof s.rank !== 'number' || !Number.isFinite(s.rank)) return 'ترتيب القصة غير صالح';
   if (typeof s.script !== 'string' || s.script.length > 20000) return 'نص القصة غير صالح';
+  if (s.remoteGuest && (!['LIVE', 'PHONE'].includes(s.type) || typeof s.remoteGuest.guestId !== 'string' ||
+      !/^[\w.:-]{1,128}$/.test(s.remoteGuest.guestId) || typeof s.remoteGuest.confirmed !== 'boolean')) return 'بيانات ضيف النشرة غير صالحة';
   if (s.graphics !== undefined && (!Array.isArray(s.graphics) || s.graphics.length > 20 || s.graphics.some((g: any) => !GRAPHIC_KINDS.some((k) => k.id === g?.kind) || !Array.isArray(g.lines))))
     return 'الشارات غير صالحة';
   return null;
@@ -489,7 +503,11 @@ export function bulletinAsShow(b: Bulletin, stories: BulletinStory[]) {
     durationMinutes: Math.round((b.plannedSeconds || 0) / 60),
     presenterName: b.anchors.join('، '),
     studioName: b.studioName,
-    guests: [],
+    producerId: b.editorId,
+    createdAt: b.createdAt,
+    guests: airStories(stories).flatMap(story => story.remoteGuest?.confirmed ? [{
+      guestId: story.remoteGuest.guestId, bookingStatus: 'CONFIRMED', connectionType: 'ZOOM_SKYPE', bookingChangedAt: story.remoteGuest.confirmedAt,
+    }] : []),
     questions: [],
     rundown: airStories(stories).map((s, i) => ({
       id: s.id,
@@ -505,6 +523,7 @@ export function bulletinAsShow(b: Bulletin, stories: BulletinStory[]) {
       notApproved: s.status !== 'APPROVED',
       notes: s.directorNotes || '',
       storyType: s.type,
+      guests: s.remoteGuest?.confirmed ? [{ guestId: s.remoteGuest.guestId, role: 'MAIN' }] : [],
     })),
   };
 }

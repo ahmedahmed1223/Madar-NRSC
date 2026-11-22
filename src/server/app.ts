@@ -22,6 +22,7 @@ import { canPinAnnouncement, canonicalMessageChannel } from '../shared/chat';
 import { departmentsOf } from '../shared/departments';
 import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
+import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds } from '../shared/mediaEditorial';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
 import { createAiBudget } from './aiBudget';
@@ -30,7 +31,10 @@ import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
 import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
+import { externalIntakeRouter } from './externalIntake';
 import { createResumableUploadRouter } from './resumableUploads';
+import { mediaTranscriptionRouter } from './mediaTranscription';
+import { messageActionsRouter } from './messageActions';
 import { queueCopiesForUpload, registerStorageRoutes, sendStoredFile } from './storage';
 import path from 'path';
 import fs from 'fs';
@@ -60,7 +64,7 @@ import {
 import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
 import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from './delivery';
 import { newId } from '../shared/ids';
-import { HISTORY_COLLECTIONS } from '../shared/collections';
+import { HISTORY_COLLECTIONS, SINGLETON_ID } from '../shared/collections';
 import { adminOverview } from './adminOverview';
 import { createFullBackup, lastVerifiedExternalBackup } from './backupDelivery';
 import { removeStation, StationRemovalError, stationUsage } from './stationRemoval';
@@ -76,7 +80,7 @@ import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.3.5';
+export const APP_VERSION = '4.4.0';
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
@@ -126,7 +130,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // Shared helpers (department names, station archive and groups) follow the stored settings.
   applyDepartmentSettings(db.getRow('settings', 'singleton')?.d);
   rememberStationSettings(db.getRow('settings', 'singleton')?.d);
-  const sync = new SyncService(db, config.dataDir, config.newsActiveDays);
+  const sync = new SyncService(db, config.dataDir, config.newsActiveDays,
+    config.mediaTranscriptionAuto ? { video: !!config.mediaTranscription?.ffmpeg } : undefined);
   const updates = createAppUpdates(config.updates, db);
   const broadcastActive = () => db.listCollection('onAir').some(row => ['LIVE', 'RUNNING', 'PAUSED'].includes(String(row.d?.status)));
   let draining = false;
@@ -557,6 +562,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   // --- Media uploads ---------------------------------------------------------
+  app.use('/api/v1/external-intake', externalIntakeRouter(db, config));
+
+  app.use('/api/v1/media', mediaTranscriptionRouter(db, config, () => changeBus.emit('rev', db.currentRev())));
 
   app.use('/api/v1/media/resumable', requirePermission('media.upload'),
     createResumableUploadRouter(db, config.dataDir, config.mediaMaxUploadBytes, (record, req) => queueCopiesForUpload(db, record, req)));
@@ -600,6 +608,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   }));
 
   // --- Messaging: files and older history -------------------------------------
+
+  app.use('/api/v1/chat/actions', messageActionsRouter(db, config, () => changeBus.emit('rev', db.currentRev()), HttpError));
 
   app.post(
     '/api/v1/chat/upload',
@@ -779,6 +789,16 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const episode = db.getRow('episodes', req.params.id)?.d as Episode | undefined;
     if (!episode || episode.deletedAt) throw new HttpError(404, 'الحلقة غير موجودة');
     if (!canRead(req.auth!, 'episodes', episode)) throw new HttpError(403, 'لا تملك صلاحية قراءة الحلقة');
+    const media = db.listCollection('media').map(row => row.d);
+    const requests = db.listCollection('requests').map(row => row.d);
+    const zone = db.getRow('settings', SINGLETON_ID)?.d?.defaultTimezone || config.timeZone;
+    const state = db.getRow('onAir', episode.id)?.d;
+    const session = state?.status === 'LIVE' ? { showId: episode.id, startedAt: state.startedAt } : undefined;
+    for (const segment of episode.rundown || []) {
+      const airAt = plannedMediaAirAt(episode.broadcastDate, episode.startTime, zone, segment.startTimeOffset);
+      const blocker = firstMediaRightsBlocker(segmentMediaIds(segment, episode.id, media, requests), media, new Date(), airAt, session);
+      if (blocker) throw new HttpError(409, `حقوق مواد الفقرة «${segment.title}» تمنع التصدير للبث: ${blocker}`);
+    }
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="episode_${encodeURIComponent(episode.id)}_mos.xml"`);
     res.send(generateEpisodeMosXml(episode));
@@ -790,12 +810,16 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!canRead(req.auth!, 'bulletins', bulletin)) throw new HttpError(403, 'لا تملك صلاحية قراءة النشرة');
     const stories = db.listCollection('bulletinStories').map((r) => r.d).filter((s: any) => s?.bulletinId === bulletin.id && !s.deletedAt);
     const media = db.listCollection('media').map((r) => r.d);
-    if (req.query.mode === 'air') {
-      if (!stories.some((story: BulletinStory) => !story.killed && !story.floated)) throw new HttpError(409, 'لا توجد فقرات للبث');
-      const news = db.listCollection('news').map(row => row.d);
-      const blocker = evaluateBulletinReadiness(bulletin, stories, news, media, new Date()).find(issue => issue.severity === 'blocker');
-      if (blocker) throw new HttpError(409, `النشرة غير جاهزة للتصدير للبث: ${blocker.message}`);
-    }
+    const zone = db.getRow('settings', SINGLETON_ID)?.d?.defaultTimezone || config.timeZone;
+    const now = new Date();
+    const forAir = req.query.mode === 'air';
+    if (forAir && !stories.some((story: BulletinStory) => !story.killed && !story.floated)) throw new HttpError(409, 'لا توجد فقرات للبث');
+    const news = forAir ? db.listCollection('news').map(row => row.d) : [];
+    const state = db.getRow('onAir', bulletin.id)?.d;
+    const session = state?.status === 'LIVE' ? { showId: bulletin.id, startedAt: state.startedAt } : undefined;
+    const blocker = evaluateBulletinReadiness(bulletin, stories, news, media, now, zone, session)
+      .find(issue => issue.severity === 'blocker' && (forAir || issue.code === 'MEDIA_RIGHTS'));
+    if (blocker) throw new HttpError(409, `النشرة غير جاهزة للتصدير للبث: ${blocker.message}`);
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="bulletin_${encodeURIComponent(bulletin.id)}_mos.xml"`);
     res.send(generateBulletinMosXml(bulletin, stories as BulletinStory[], media));
