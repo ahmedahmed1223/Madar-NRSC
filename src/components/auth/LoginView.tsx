@@ -6,7 +6,7 @@ import { apiFetch } from '../../services/http';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
 import React, { useEffect, useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
+import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2, ClipboardPaste } from 'lucide-react';
 import { PasswordVisibilityButton } from './PasswordFields';
 
 interface LoginViewProps {
@@ -18,6 +18,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [pasteNotice, setPasteNotice] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [needsCode, setNeedsCode] = useState(false);
@@ -182,12 +183,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 autoComplete="current-password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setPasteNotice(''); }}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="w-full text-sm pr-9 pl-12 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
                 dir="ltr"
               />
               <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute left-1 top-0" />
             </div>
+            <button type="button" onClick={async () => {
+              try {
+                if (!navigator.clipboard?.readText) throw new Error('Clipboard unavailable');
+                const text = await navigator.clipboard.readText();
+                if (!text) {
+                  setPasteNotice('الحافظة فارغة؛ انسخ كلمة المرور أولاً.');
+                  return;
+                }
+                setPassword(text);
+                setPasteNotice('تم لصق كلمة المرور.');
+              } catch {
+                setPasteNotice('المتصفح منع الوصول للحافظة. اضغط داخل الحقل ثم Ctrl+V أو ⌘+V، أو اضغط مطولاً واختر «لصق». يمكنك فتح التطبيق في تبويب مستقل إذا استمر المنع.');
+              }
+              document.getElementById('login-password')?.focus();
+            }} className="mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+              <ClipboardPaste className="size-4" aria-hidden="true" />
+              لصق كلمة المرور
+            </button>
+            {pasteNotice && <p role="status" className="mt-1 text-xs leading-relaxed text-slate-700">{pasteNotice}</p>}
           </div>
 
           {needsCode && (
