@@ -185,6 +185,100 @@ it.each(['user', 'department', 'role'])('a scoped policy editor cannot remove re
     }
   } finally { f.close(); }
 });
+it('rejects self-service changes to the legacy department field', async () => {
+  const f = await createTestServer();
+  try {
+    const person = await loginAgent(f.app, 'producer@akhbar.tv');
+    const user = f.db.listCollection('users').find(row => row.d.email === 'producer@akhbar.tv')!;
+    f.db.writeRow('users', user.id, { ...user.d, department: 'غرفة الأخبار' }, user.p, null);
+    const current = f.db.getRow('users', user.id)!;
+    const response = await person.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{
+      c: 'users', op: 'upsert', id: current.id, baseV: current.v, d: { ...current.d, department: 'الإنتاج' },
+    }] });
+    expect(response.body.results[0].ok).toBe(false);
+  } finally { f.close(); }
+});
+it('rejects moving a user out of a department scope when the actor is restricted', async () => {
+  const f = await editorFixture();
+  try {
+    const actor = f.db.getRow('users', f.actorId)!;
+    f.db.writeRow('users', actor.id, { ...actor.d, customPermissions: ['work.assigned_only'] }, actor.p, null);
+    const settings = f.db.getRow('settings', 'singleton')!;
+    f.db.writeRow('settings', 'singleton', { ...settings.d, departments: [
+      { id: 'production', name: 'الإنتاج' },
+      { id: 'scope-old', name: 'مقيّد', permissionOverrides: ['work.assigned_only'] },
+      { id: 'scope-open', name: 'مفتوح' },
+    ] }, settings.p, null);
+    const target = f.db.listCollection('users').find(row => row.d.email === 'journalist@akhbar.tv')!;
+    f.db.writeRow('users', target.id, { ...target.d, role: 'VIEWER', customRoleId: undefined, departmentId: 'scope-old', customPermissions: [] }, target.p, null);
+    const current = f.db.getRow('users', target.id)!;
+    const response = await f.editor.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{
+      c: 'users', op: 'upsert', id: current.id, baseV: current.v, d: { ...current.d, departmentId: 'scope-open' },
+    }] });
+    expect(response.body.results[0].ok).toBe(false);
+  } finally { f.close(); }
+});
+it('rejects reassigning a restricted user to an unrestricted role', async () => {
+  const f = await editorFixture();
+  try {
+    const actor = f.db.getRow('users', f.actorId)!;
+    f.db.writeRow('users', actor.id, { ...actor.d, customPermissions: ['work.assigned_only'] }, actor.p, null);
+    const restrictedRole = { ...DEFAULT_ROLE_DEFINITIONS[0], id: 'scope-restricted', roleCode: 'SCOPE_RESTRICTED', isSystemRole: false, permissions: ['news.view', 'work.assigned_only'] };
+    const openRole = { ...restrictedRole, id: 'scope-open', roleCode: 'SCOPE_OPEN', permissions: ['news.view'] };
+    f.db.writeRow('roles', restrictedRole.id, restrictedRole, 100, null);
+    f.db.writeRow('roles', openRole.id, openRole, 101, null);
+    const target = f.db.listCollection('users').find(row => row.d.email === 'journalist@akhbar.tv')!;
+    f.db.writeRow('users', target.id, { ...target.d, role: 'VIEWER', customRoleId: restrictedRole.id, departmentId: 'production', customPermissions: [] }, target.p, null);
+    const current = f.db.getRow('users', target.id)!;
+    const response = await f.editor.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{
+      c: 'users', op: 'upsert', id: current.id, baseV: current.v, d: { ...current.d, customRoleId: openRole.id },
+    }] });
+    expect(response.body.results[0].ok).toBe(false);
+  } finally { f.close(); }
+});
+it('rejects reparenting a department when it removes an inherited scope restriction', async () => {
+  const f = await editorFixture();
+  try {
+    const actor = f.db.getRow('users', f.actorId)!;
+    f.db.writeRow('users', actor.id, { ...actor.d, customPermissions: ['work.assigned_only'] }, actor.p, null);
+    const settings = f.db.getRow('settings', 'singleton')!;
+    const departments = [
+      { id: 'production', name: 'الإنتاج' },
+      { id: 'scope-old', name: 'قديم', permissionOverrides: ['work.assigned_only'] },
+      { id: 'scope-open', name: 'مفتوح' },
+      { id: 'scope-child', name: 'فرعي', parentId: 'scope-old' },
+    ];
+    f.db.writeRow('settings', 'singleton', { ...settings.d, departments }, settings.p, null);
+    const target = f.db.listCollection('users').find(row => row.d.email === 'journalist@akhbar.tv')!;
+    f.db.writeRow('users', target.id, { ...target.d, role: 'VIEWER', customRoleId: undefined, departmentId: 'scope-child', customPermissions: [] }, target.p, null);
+    const current = f.db.getRow('settings', 'singleton')!;
+    const response = await f.editor.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{
+      c: 'settings', op: 'upsert', id: current.id, baseV: current.v,
+      d: { ...current.d, departments: departments.map(d => d.id === 'scope-child' ? { ...d, parentId: 'scope-open' } : d) },
+    }] });
+    expect(response.body.results[0].ok).toBe(false);
+  } finally { f.close(); }
+});
+it('keeps news archive, reports, history and exports outside assigned-work access', async () => {
+  const f = await editorFixture();
+  try {
+    const actor = f.db.getRow('users', f.actorId)!;
+    f.db.writeRow('users', actor.id, { ...actor.d, customPermissions: ['work.assigned_only', 'news.edit_any'] }, actor.p, null);
+    const news = { id: 'scope-guard-archive', title: 'مادة اختبار نطاق الإسناد', status: 'PUBLISHED', updatedAt: '2000-01-01T00:00:00.000Z', stationId: 'main' };
+    f.db.writeRow('news', news.id, news, 1, null);
+    const episode = { id: 'scope-guard-episode', status: 'READY_FOR_BROADCAST', rundown: [], broadcastDate: '2020-01-01', startTime: '12:00' };
+    f.db.writeRow('episodes', episode.id, episode, 1, null);
+
+    const bootstrap = await f.editor.get('/api/v1/data');
+    expect(bootstrap.body.collections.news.some((row: any) => row.id === news.id)).toBe(false);
+    expect((await f.editor.get('/api/v1/archive/news?q=مادة')).status).toBe(403);
+    expect((await f.editor.get(`/api/v1/archive/news/${news.id}`)).status).toBe(403);
+    expect((await f.editor.get('/api/v1/reports/news?records=ALL')).status).toBe(403);
+    expect((await f.editor.get(`/api/v1/history/news/${news.id}`)).status).toBe(403);
+    expect((await f.editor.get(`/api/v1/episodes/${episode.id}/export/mos`)).status).toBe(403);
+    expect((await f.editor.post(`/api/v1/archive/news/${news.id}/reactivate`)).status).toBe(403);
+  } finally { f.close(); }
+});
 it('rejects forged department administrative grants', async () => {
   const snapshot = (await admin.get('/api/v1/admin/permissions')).body.data;
   const response = await admin.put('/api/v1/admin/permissions').set('X-NRCS-Client', 'web')
