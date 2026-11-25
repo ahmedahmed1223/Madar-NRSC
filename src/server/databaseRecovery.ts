@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import type { NewsroomDatabase } from './db';
 import type { BackupRehearsal } from '../shared/databaseDiagnostics';
+import { APP_VERSION } from '../shared/releaseVersion';
 
 export class DatabaseOperationBusy extends Error {}
 export class DatabaseOperationLock {
@@ -23,6 +24,7 @@ export function databaseOperationLock(db: NewsroomDatabase) {
 
 const TEMP_NAME = /^rehearsal-[a-zA-Z0-9_-]+$/;
 const REHEARSAL_EVIDENCE = 'last-backup-rehearsal.json';
+export const BACKUP_REHEARSAL_VERSION = APP_VERSION;
 
 export function readRehearsalEvidence(dataDir: string): string | null {
   try {
@@ -82,7 +84,7 @@ export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tem
       const rows = probe.prepare('SELECT collection, COUNT(*) AS count FROM entities WHERE deleted = 0 GROUP BY collection').all() as { collection: string; count: number }[];
       const counts: Record<string, number> = {};
       for (const row of rows) if (db.isKnownCollection(row.collection)) counts[row.collection] = row.count;
-      return { fileName, sha256, checkedAt: new Date().toISOString(), version: '4.5.0', compatible: true, counts,
+      return { fileName, sha256, checkedAt: new Date().toISOString(), version: BACKUP_REHEARSAL_VERSION, compatible: true, counts,
         mediaVerified: false };
     } finally { probe.close(); }
   });

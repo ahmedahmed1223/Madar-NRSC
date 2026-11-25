@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm test && npm run build",
+    "release:version": "node scripts/set-release-version.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

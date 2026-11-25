@@ -1,4 +1,6 @@
 /** Release notes shown in «ما الجديد». The first entry is the current version. */
+import { APP_VERSION } from '../shared/releaseVersion';
+
 export interface Release {
   version: string;
   date: string;
@@ -672,4 +674,4 @@ export const RELEASES: Release[] = [
   },
 ];
 
-export const CURRENT_VERSION = RELEASES[0].version;
+export const CURRENT_VERSION = APP_VERSION;

@@ -107,6 +107,25 @@ remaining work; these changes do not promise zero downtime or zero data loss.
 
 ## In-app Updates
 
+### Prepare a release
+
+`package.json` is the single source for the running server, backup rehearsal and browser version.
+Use the release command to update the package manifest, lockfile, first «ما الجديد» version and
+latest-release link in the README together:
+
+```sh
+npm run release:version -- 4.6.0
+```
+
+Replace `4.6.0` with the intended `major.minor.patch` version. Then:
+
+1. Update the date, title and change list in the first «ما الجديد» entry, and add
+   `docs/releases/<version>.md` with the release details. The command only updates its version.
+2. Run `npm run check` (TypeScript checks, all tests and the production build).
+3. Confirm the release-version test passes and the first «ما الجديد» entry describes this release.
+   It reports the file and value when package metadata or release notes do not match.
+4. Review the changes and follow the normal release and deployment process separately.
+
 Open «ما الجديد» and select «فحص الإصدارات» to compare the browser build, the server build
 and the latest stable GitHub release. Once the server is running a newer build, select
 «تحميل الواجهة الجديدة» after pending writes have synced.

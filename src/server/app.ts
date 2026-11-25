@@ -1,4 +1,5 @@
 import { sanitizeDateSettings } from '../shared/dateFormat';
+import { APP_VERSION } from '../shared/releaseVersion';
 import { correctionTarget, createNewsCorrection, NewsCorrectionError } from './newsCorrections';
 import { shiftHandoverRouter } from './shiftHandovers';
 import { permissionsWorkspaceRouter } from './permissionsWorkspace';
@@ -85,7 +86,8 @@ import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
 
-export const APP_VERSION = '4.5.0';
+export { APP_VERSION };
+
 /** Devices one person may stay signed in on; the least recently used sign-in ends beyond that. */
 export const MAX_SESSIONS_PER_USER = 10;
 /** Identifies this server process (health checks show when several run behind one address). */
