@@ -4,9 +4,13 @@ import { openNav, signIn } from './helpers';
 /** Years of work leave thousands of guests, tasks and episodes; screens draw them a page at a time. */
 test('long lists draw a page at a time and still search the whole archive', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'editor@akhbar.tv');
+  const bootstrapMetrics: { elapsedMs: number; bytes: number } = { elapsedMs: 0, bytes: 0 };
   await page.route('**/api/v1/data', async route => {
+    const started = performance.now();
     const response = await route.fetch();
     const data = await response.json();
+    bootstrapMetrics.elapsedMs = performance.now() - started;
+    bootstrapMetrics.bytes = Buffer.byteLength(JSON.stringify(data));
     const grow = (name: string, count: number, make: (sample: any, i: number) => any) => {
       const sample = data.collections[name][0];
       data.collections[name] = Array.from({ length: count }, (_, i) => ({ ...sample, id: `big-${name}-${i}`, d: { ...sample.d, id: `big-${name}-${i}`, ...make(sample.d, i) } }));
@@ -18,6 +22,8 @@ test('long lists draw a page at a time and still search the whole archive', asyn
   });
   await page.reload();
   await expect(page.locator('main')).toBeVisible();
+  expect(bootstrapMetrics.elapsedMs).toBeLessThan(5000);
+  expect(bootstrapMetrics.bytes).toBeLessThan(600_000);
 
   await openNav(page, 'الضيوف');
   await expect(page.getByRole('button', { name: /عرض المزيد/ })).toContainText('252');

@@ -147,6 +147,10 @@ export const LOG_BOOTSTRAP_LIMIT = 500;
 export const MESSAGE_BOOTSTRAP_LIMIT = 1500;
 /** How far back the server looks for them, since most rows of a busy newsroom are other people's conversations. */
 export const MESSAGE_BOOTSTRAP_SCAN = 30000;
+/** Large, user-facing work lists start small and fetch older rows as the user browses. */
+export const PAGED_BOOTSTRAP_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['episodes', 'guests', 'tasks']);
+export const PAGED_BOOTSTRAP_LIMIT = 100;
+export const COLLECTION_PAGE_LIMIT = 100;
 
 /**
  * News in these states is finished work. Once untouched for NEWS_ACTIVE_DAYS it leaves the

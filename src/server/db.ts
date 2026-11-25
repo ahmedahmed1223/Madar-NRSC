@@ -34,6 +34,11 @@ export interface DbBackupFileInfo {
   createdAt: string;
 }
 
+export interface CollectionPagePosition {
+  position: number;
+  id: string;
+}
+
 export interface CredentialRecord {
   userId: string;
   email: string;
@@ -297,9 +302,20 @@ export class NewsroomDatabase {
   }
 
   listCollection(collection: CollectionName, opts: { limit?: number } = {}): EntityRow[] {
-    const sql = `SELECT * FROM entities WHERE collection = ? AND deleted = 0 ORDER BY position ASC${opts.limit ? ' LIMIT ?' : ''}`;
+    const sql = `SELECT * FROM entities WHERE collection = ? AND deleted = 0 ORDER BY position ASC, id ASC${opts.limit ? ' LIMIT ?' : ''}`;
     const stmt = this.db.prepare(sql);
     const rows = (opts.limit ? stmt.all(collection, opts.limit) : stmt.all(collection)) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  /** A bounded keyset page that stays stable when newer rows are inserted. */
+  listCollectionPageAfter(collection: CollectionName, after: CollectionPagePosition | null, limit: number): EntityRow[] {
+    const where = after ? 'AND (position > ? OR (position = ? AND id > ?))' : '';
+    const values = after
+      ? [collection, after.position, after.position, after.id, limit]
+      : [collection, limit];
+    const rows = this.db.prepare(`SELECT * FROM entities WHERE collection = ? AND deleted = 0 ${where}
+      ORDER BY position ASC, id ASC LIMIT ?`).all(...values) as RawEntityRow[];
     return rows.map(toEntityRow);
   }
 

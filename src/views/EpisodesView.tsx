@@ -10,6 +10,7 @@ import { EpisodeDetailsFields } from '../components/episodes/EpisodeDetailsField
 import { EpisodeDetailsEditor } from '../components/episodes/EpisodeDetailsEditor';
 import { EPISODE_STATUS_INFO, episodeEndTime, episodeStatusInfo, type EpisodeDetailsValues } from '../components/episodes/episodeDetails';
 import { apiService } from '../services/api';
+import { dataStore } from '../services/dataStore';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { studioConflictsFor } from '../shared/schedule';
 import { bulletinSlotsAround } from '../components/episodes/airSlots';
@@ -205,7 +206,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
   };
 
   const [sort, toggleSort] = usePersistentSort<EpisodeSortKey>('nrcs_sort_episodes', { key: 'date', dir: 'desc' }, EPISODE_SORT_KEYS);
-  const filteredEpisodes = sortList((episodes || []).filter((ep) => {
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void dataStore.searchCollection('episodes', searchQuery, controller.signal).catch(() => undefined);
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [searchQuery]);
+  const allEpisodes = Array.from(new Map((episodes || []).map(episode => [episode.id, episode])).values());
+  const filteredEpisodes = sortList(allEpisodes.filter((ep) => {
     if (selectedProgId !== 'ALL' && ep.programId !== selectedProgId) return false;
     if (selectedStatus !== 'ALL' && ep.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
@@ -466,7 +476,18 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             </tbody>
           </table>
         </div>
-        <ShowMore remaining={episodePage.remaining} onMore={episodePage.showMore} onAll={episodePage.showAll} noun="حلقة" className="border-t border-slate-100" />
+        <ShowMore
+          remaining={episodePage.remaining + (searchQuery.trim()
+            ? Number(dataStore.collectionSearchHasMore('episodes', searchQuery))
+            : Number(dataStore.collectionHasMore('episodes')))}
+          onMore={() => {
+            episodePage.showMore();
+            if (searchQuery.trim()) void dataStore.loadMoreSearchCollection('episodes', searchQuery);
+            else void dataStore.loadMoreCollection('episodes');
+          }}
+          noun="حلقة"
+          className="border-t border-slate-100"
+        />
       </div>
 
       {/* Add Episode Modal */}

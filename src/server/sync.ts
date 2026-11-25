@@ -15,6 +15,9 @@ import {
   ENTITY_ID_PATTERN,
   EntityRow,
   LOG_BOOTSTRAP_LIMIT,
+  COLLECTION_PAGE_LIMIT,
+  PAGED_BOOTSTRAP_COLLECTIONS,
+  PAGED_BOOTSTRAP_LIMIT,
   MESSAGE_BOOTSTRAP_LIMIT,
   MESSAGE_BOOTSTRAP_SCAN,
   SINGLETON_ID,
@@ -24,7 +27,7 @@ import {
   isPrivateRecord,
 } from '../shared/collections';
 import { buildAuthContext, type AuthContext } from './auth';
-import type { NewsroomDatabase } from './db';
+import type { CollectionPagePosition, NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { removeUpload, uploadIdFromMedia } from './uploads';
 import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
@@ -60,9 +63,28 @@ import { prepareDigitalPackage } from '../shared/digitalPublishing';
 import { presenterReading } from '../shared/presenterTiming';
 import { moduleForLink, moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { moduleAvailability, moduleAllowed, moduleAllowedForUser } from './moduleAccess';
+import { matchesQuery } from '../shared/search';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
+
+function decodeCollectionCursor(cursor: string | null): CollectionPagePosition | null | undefined {
+  if (cursor === null) return null;
+  const separator = cursor.indexOf('~');
+  if (separator <= 0 || separator === cursor.length - 1) return undefined;
+  const position = Number(cursor.slice(0, separator));
+  const id = cursor.slice(separator + 1);
+  if (!Number.isFinite(position) || !ENTITY_ID_PATTERN.test(id)) return undefined;
+  return { position, id };
+}
+
+export function isValidCollectionPageCursor(cursor: string): boolean {
+  return decodeCollectionCursor(cursor) !== undefined && cursor.length <= 200;
+}
+
+function encodeCollectionCursor(position: CollectionPagePosition): string {
+  return `${position.position}~${position.id}`;
+}
 export const MAX_CHANGES_PER_POLL = 5000;
 
 /** Broadcasts the latest revision to connected browsers (SSE). */
@@ -346,6 +368,73 @@ export class SyncService {
     if (row.c !== 'guests' || row.deleted || auth.can('guests.manage')) return row;
     const { phone: _phone, email: _email, notes: _notes, ...profile } = row.d;
     return { ...row, d: profile };
+  }
+
+  private canPageCollection(auth: AuthContext, collection: CollectionName): boolean {
+    if (collection === 'guests') return auth.can('guests.view') || auth.can('guests.manage');
+    if (collection === 'tasks') return auth.can('tasks.view') || auth.can('tasks.create_assign') || !!auth.departmentTaskMembers?.();
+    if (collection === 'episodes') {
+      return moduleAllowed(auth, 'programmes') &&
+        (auth.can('rundown.view') || auth.can('rundown.edit') || auth.can('episodes.create') || auth.can('episodes.edit') || !!auth.productionAssignments?.().size);
+    }
+    return false;
+  }
+
+  private matchesCollectionSearch(auth: AuthContext, collection: CollectionName, data: any, query: string): boolean {
+    if (!query) return true;
+    if (data?.deletedAt) return false;
+    if (collection === 'guests') return matchesQuery(query, data.fullName, data.organization, data.jobTitle, data.specialty, ...(auth.can('guests.manage') ? [data.email, data.phone] : []));
+    if (collection === 'tasks') return matchesQuery(query, data.title, data.description, data.assigneeName, data.assignedToName, data.relatedEntityTitle);
+    if (collection === 'episodes') return matchesQuery(query, data.title, data.programName, data.presenterName, data.producerName, data.studioName, String(data.episodeNumber ?? ''));
+    return false;
+  }
+
+  private nextVisibleExists(auth: AuthContext, collection: CollectionName, cursor: CollectionPagePosition | null): boolean {
+    let after = cursor;
+    while (true) {
+      const rows = this.db.listCollectionPageAfter(collection, after, COLLECTION_PAGE_LIMIT);
+      if (!rows.length) return false;
+      if (rows.some(row => this.visible(auth, row))) return true;
+      const last = rows[rows.length - 1];
+      after = { position: last.p, id: last.id };
+    }
+  }
+
+  private readCollectionPage(auth: AuthContext, collection: CollectionName, cursor: string | null, limit: number, query = '') {
+    if (!this.canPageCollection(auth, collection)) {
+      return { rows: [] as EntityRow[], cursor: null, hasMore: false };
+    }
+    const after = decodeCollectionCursor(cursor);
+    if (after === undefined) return { rows: [] as EntityRow[], cursor, hasMore: false };
+    if (query) {
+      const matches = this.db.listCollection(collection)
+        .filter(row => this.visible(auth, row) &&
+          (!after || row.p > after.position || (row.p === after.position && row.id > after.id)) &&
+          this.matchesCollectionSearch(auth, collection, row.d, query));
+      const page = matches.slice(0, limit);
+      const rows = page.map(row => this.readableRow(auth, row));
+      const last = page[page.length - 1];
+      const nextCursor = last ? encodeCollectionCursor({ position: last.p, id: last.id }) : cursor;
+      return { rows, cursor: nextCursor, hasMore: matches.length > page.length };
+    }
+
+    const rows: EntityRow[] = [];
+    let scanAfter = after;
+    while (rows.length < limit) {
+      const batch = this.db.listCollectionPageAfter(collection, scanAfter, COLLECTION_PAGE_LIMIT);
+      if (!batch.length) break;
+      for (const row of batch) {
+        scanAfter = { position: row.p, id: row.id };
+        if (!this.visible(auth, row)) continue;
+        rows.push(this.readableRow(auth, row));
+        if (rows.length === limit) break;
+      }
+      if (rows.length < limit && batch.length < COLLECTION_PAGE_LIMIT) break;
+    }
+    const last = rows[rows.length - 1];
+    const nextCursor = last ? encodeCollectionCursor({ position: last.p, id: last.id }) : cursor;
+    const decodedNext = decodeCollectionCursor(nextCursor);
+    return { rows, cursor: nextCursor, hasMore: decodedNext !== undefined && this.nextVisibleExists(auth, collection, decodedNext) };
   }
 
   private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false, senderId?: string) {
@@ -678,9 +767,14 @@ export class SyncService {
       return rows;
     };
     const collections: Partial<Record<CollectionName, EntityRow[]>> = {};
+    const windows: Partial<Record<CollectionName, { cursor: string | null; hasMore: boolean }>> = {};
     for (const name of COLLECTION_NAMES) {
       let rows: EntityRow[];
-      if (name === 'messages') {
+      if (PAGED_BOOTSTRAP_COLLECTIONS.has(name)) {
+        const page = this.readCollectionPage(auth, name, null, PAGED_BOOTSTRAP_LIMIT);
+        rows = page.rows;
+        windows[name] = { cursor: page.cursor, hasMore: page.hasMore };
+      } else if (name === 'messages') {
         // The newest messages this user may read; most rows of a busy newsroom are other people's conversations.
         rows = snapshotRows(name, MESSAGE_BOOTSTRAP_SCAN).filter((r) => canRead(auth, name, r.d)).slice(0, MESSAGE_BOOTSTRAP_LIMIT);
       } else if (isPrivateRecord(name)) {
@@ -696,7 +790,15 @@ export class SyncService {
       }
       collections[name] = rows.filter((r) => this.visible(auth, r)).map((r) => this.readableRow(auth, r));
     }
-    return { rev, access: this.accessRevision(auth), modules: moduleAvailability(auth), collections };
+    return { rev, access: this.accessRevision(auth), modules: moduleAvailability(auth), collections, windows };
+  }
+
+  collectionPage(auth: AuthContext, collection: CollectionName, cursor: string | null, limit = COLLECTION_PAGE_LIMIT, query = '') {
+    this.applySettings();
+    if (!PAGED_BOOTSTRAP_COLLECTIONS.has(collection)) return null;
+    if (!this.canPageCollection(auth, collection)) return null;
+    if (cursor !== null && !isValidCollectionPageCursor(cursor)) return null;
+    return this.readCollectionPage(auth, collection, cursor, limit, query);
   }
 
   changes(auth: AuthContext, since: number, knownAccess?: string) {

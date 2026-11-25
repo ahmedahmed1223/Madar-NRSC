@@ -10,6 +10,46 @@ import { COLLECTIONS, SyncOp } from '../../src/shared/collections';
 
 const GUESTS = COLLECTIONS.guests.storageKey;
 
+it('loads paged workspace history and merges server-filtered search results', async () => {
+  const initial = { c: 'guests' as const, id: 'gst-current', v: 1, p: 0, d: { id: 'gst-current', fullName: 'ضيف حديث' } };
+  const older = { c: 'guests' as const, id: 'gst-older', v: 1, p: 1, d: { id: 'gst-older', fullName: 'ضيف أقدم' } };
+  const historicalMatch = { c: 'guests' as const, id: 'gst-search', v: 1, p: 2, d: { id: 'gst-search', fullName: 'ضيف بحث تاريخي' } };
+  const nextHistoricalMatch = { c: 'guests' as const, id: 'gst-search-next', v: 1, p: 3, d: { id: 'gst-search-next', fullName: 'ضيف بحث تاريخي آخر' } };
+  const transport = (async (url: string) => {
+    if (url === '/api/v1/data') {
+      return { rev: 1, collections: { guests: [initial] }, windows: { guests: { cursor: '1~gst-current', hasMore: true } } };
+    }
+    if (url.includes('/collections/guests') && url.includes('query=') && url.includes('cursor=')) {
+      return { rows: [nextHistoricalMatch], cursor: '3~gst-search-next', hasMore: false };
+    }
+    if (url.includes('/collections/guests') && url.includes('query=')) {
+      return { rows: [historicalMatch], cursor: '2~gst-search', hasMore: true };
+    }
+    if (url.includes('/collections/guests')) {
+      return { rows: [older], cursor: '2~gst-older', hasMore: false };
+    }
+    throw new Error(`unexpected ${url}`);
+  }) as Transport;
+  const store = new DataStore(transport, false);
+  try {
+    await store.start('editor');
+    expect(store.collectionHasMore('guests')).toBe(true);
+    await expect(store.loadMoreCollection('guests')).resolves.toBe(true);
+    expect(store.get<any[]>(GUESTS, []).map(guest => guest.id)).toContain('gst-older');
+    expect(store.collectionHasMore('guests')).toBe(false);
+
+    const matches = await store.searchCollection('guests', 'بحث تاريخي');
+    expect(matches.map(row => row.id)).toEqual(['gst-search']);
+    expect(store.collectionSearchHasMore('guests', 'بحث تاريخي')).toBe(true);
+    await expect(store.loadMoreSearchCollection('guests', 'بحث تاريخي')).resolves.toBe(true);
+    expect(store.collectionSearchHasMore('guests', 'بحث تاريخي')).toBe(false);
+    expect(store.get<any[]>(GUESTS, []).map(guest => guest.id)).toContain('gst-search');
+    expect(store.get<any[]>(GUESTS, []).map(guest => guest.id)).toContain('gst-search-next');
+  } finally {
+    store.stop();
+  }
+});
+
 class FakeConnectivity implements Connectivity {
   online = true;
   private listeners = new Set<(online: boolean) => void>();

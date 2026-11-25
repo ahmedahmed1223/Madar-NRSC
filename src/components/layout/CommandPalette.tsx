@@ -1,6 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, FileText, Tv, Video, Users, CheckSquare, X, History, FilePlus2, ArrowUpLeft, ListVideo, ClipboardList } from 'lucide-react';
 import { ApiService } from '../../services/api';
+import { dataStore } from '../../services/dataStore';
 import { NewsItem, Program, Episode, Guest, User } from '../../types';
 import { statusLabel } from '../../shared/labels';
 import { useLiveData } from '../../hooks/useLiveData';
@@ -114,6 +115,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isOpen, hasQuery, dataVersion]
   );
+
+  useEffect(() => {
+    if (!isOpen || !searchTerm.trim()) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void Promise.allSettled(
+        (['episodes', 'guests', 'tasks'] as const).map(collection =>
+          dataStore.searchCollection(collection, searchTerm, controller.signal)
+        )
+      );
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [isOpen, searchTerm]);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -18,7 +18,7 @@ import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
 import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
-import { changeBus, MAX_OPS_PER_REQUEST, SyncService } from './sync';
+import { changeBus, isValidCollectionPageCursor, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { canRead } from './policy';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { canPinAnnouncement, canonicalMessageChannel } from '../shared/chat';
@@ -70,7 +70,7 @@ import {
 import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
 import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from './delivery';
 import { newId } from '../shared/ids';
-import { HISTORY_COLLECTIONS, SINGLETON_ID } from '../shared/collections';
+import { HISTORY_COLLECTIONS, PAGED_BOOTSTRAP_COLLECTIONS, SINGLETON_ID, isCollectionName } from '../shared/collections';
 import { adminOverview } from './adminOverview';
 import { createFullBackup, lastVerifiedExternalBackup } from './backupDelivery';
 import { removeStation, StationRemovalError, stationUsage } from './stationRemoval';
@@ -714,6 +714,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.get('/api/v1/data', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
+  });
+
+  app.get('/api/v1/data/collections/:collection', requireAuth, (req, res) => {
+    const name = req.params.collection;
+    if (!isCollectionName(name) || !PAGED_BOOTSTRAP_COLLECTIONS.has(name)) throw new HttpError(404, 'المجموعة غير متاحة');
+    const rawCursor = req.query.cursor;
+    const cursor = rawCursor === undefined ? null : typeof rawCursor === 'string' ? rawCursor : '';
+    const requestedLimit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+    const limit = requestedLimit ?? 100;
+    const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+    if (cursor !== null && !isValidCollectionPageCursor(cursor)) throw new HttpError(400, 'مؤشر الصفحة غير صالح');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new HttpError(400, 'حجم الصفحة غير صالح');
+    if (query.length > 120) throw new HttpError(400, 'عبارة البحث طويلة جداً');
+    const page = sync.collectionPage(req.auth!, name, cursor, limit, query);
+    if (!page) throw new HttpError(403, 'لا تملك صلاحية قراءة هذه المجموعة');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, ...page });
   });
 
   app.get('/api/v1/saved-news-filters', requireAuth, (req, res) => {

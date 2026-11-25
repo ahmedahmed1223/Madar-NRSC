@@ -383,6 +383,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
       || (tasks || []).find(task => (task.assigneeId || task.assignedToId) === id)?.assignedToName
       || 'غير معروف',
   })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void dataStore.searchCollection('tasks', searchQuery, controller.signal).catch(() => undefined);
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [searchQuery]);
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
     if (focusedTask) return t.id === focusedTask.id;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
@@ -679,7 +687,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                 <div className="space-y-3 flex-1 overflow-y-auto">
                   {colTasks.slice(0, columnLimit(col.status)).map((t) => renderCard(t, col.status))}
-                  <ShowMore remaining={Math.max(0, colTasks.length - columnLimit(col.status))} onMore={() => setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }))} noun="مهمة" className="!py-1" />
+                  <ShowMore
+                    remaining={Math.max(0, colTasks.length - columnLimit(col.status)) + (searchQuery.trim()
+                      ? Number(dataStore.collectionSearchHasMore('tasks', searchQuery))
+                      : Number(dataStore.collectionHasMore('tasks')))}
+                    onMore={() => {
+                      setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }));
+                      if (searchQuery.trim()) void dataStore.loadMoreSearchCollection('tasks', searchQuery);
+                      else void dataStore.loadMoreCollection('tasks');
+                    }}
+                    noun="مهمة"
+                    className="!py-1"
+                  />
                 </div>
               </SortableList>
             );
@@ -713,7 +732,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 >
                   {colTasks.length === 0 && <p className="text-2xs text-slate-500 py-2">لا توجد مهام ملغاة.</p>}
                   {colTasks.slice(0, columnLimit(col.status)).map((t) => renderCard(t, col.status))}
-                  <ShowMore remaining={Math.max(0, colTasks.length - columnLimit(col.status))} onMore={() => setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }))} noun="مهمة" className="!py-1 col-span-full" />
+                  <ShowMore
+                    remaining={Math.max(0, colTasks.length - columnLimit(col.status)) + (searchQuery.trim()
+                      ? Number(dataStore.collectionSearchHasMore('tasks', searchQuery))
+                      : Number(dataStore.collectionHasMore('tasks')))}
+                    onMore={() => {
+                      setColumnLimits((c) => ({ ...c, [col.status]: columnLimit(col.status) + 30 }));
+                      if (searchQuery.trim()) void dataStore.loadMoreSearchCollection('tasks', searchQuery);
+                      else void dataStore.loadMoreCollection('tasks');
+                    }}
+                    noun="مهمة"
+                    className="!py-1 col-span-full"
+                  />
                 </SortableList>
                 </div>
               )}
@@ -806,7 +836,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
               ))}
             </tbody>
           </table>
-          <ShowMore remaining={taskListPage.remaining} onMore={taskListPage.showMore} onAll={taskListPage.showAll} noun="مهمة" className="border-t border-slate-100" />
+          <ShowMore
+            remaining={taskListPage.remaining + (searchQuery.trim()
+              ? Number(dataStore.collectionSearchHasMore('tasks', searchQuery))
+              : Number(dataStore.collectionHasMore('tasks')))}
+            onMore={() => {
+              taskListPage.showMore();
+              if (searchQuery.trim()) void dataStore.loadMoreSearchCollection('tasks', searchQuery);
+              else void dataStore.loadMoreCollection('tasks');
+            }}
+            noun="مهمة"
+            className="border-t border-slate-100"
+          />
         </div>
       )}
 

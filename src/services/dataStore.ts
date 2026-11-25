@@ -48,6 +48,21 @@ export interface WriteOutcome {
   message?: string;
 }
 
+interface CollectionWindow {
+  cursor: string | null;
+  hasMore: boolean;
+}
+
+interface CollectionPageResponse {
+  rows: EntityRow[];
+  cursor: string | null;
+  hasMore: boolean;
+}
+
+interface CollectionSearchWindow extends CollectionPageResponse {
+  query: string;
+}
+
 /** Said to the user when a write waits on this device for the connection to come back. */
 export const QUEUED_MESSAGE = 'محفوظ على جهازك — سيُرسل تلقائياً عند عودة الاتصال.';
 const QUEUED_OUTCOME: WriteOutcome = { ok: false, pending: true, queued: true, message: QUEUED_MESSAGE };
@@ -150,6 +165,9 @@ export class DataStore {
 
   private data = new Map<CollectionName, any>();
   private meta = new Map<CollectionName, Map<string, RowMeta>>();
+  private collectionWindows = new Map<CollectionName, CollectionWindow>();
+  private collectionSearchWindows = new Map<CollectionName, CollectionSearchWindow>();
+  private searchGenerations = new Map<CollectionName, number>();
   private dirty = new Map<string, { c: CollectionName; id: string; op: 'upsert' | 'delete' }>();
   private inFlight = new Set<string>();
   private listeners = new Set<Listener>();
@@ -301,6 +319,94 @@ export class DataStore {
     return this.userId === userId ? this.modules?.[module] : undefined;
   }
 
+  collectionHasMore(collection: CollectionName): boolean {
+    return this.collectionWindows.get(collection)?.hasMore ?? false;
+  }
+
+  async loadMoreCollection(collection: CollectionName): Promise<boolean> {
+    const window = this.collectionWindows.get(collection);
+    if (!window?.hasMore || window.cursor === null || !this.userId) return false;
+    const lifecycle = this.lifecycle;
+    const userId = this.userId;
+    const signal = this.lifecycleController?.signal;
+    const params = new URLSearchParams({ cursor: window.cursor, limit: '100' });
+    const result = await this.request<{ success: boolean } & CollectionPageResponse>(
+      `/api/v1/data/collections/${encodeURIComponent(collection)}?${params}`,
+      { signal }
+    );
+    if (!this.isCurrent(lifecycle, userId)) return false;
+    const touched = this.mergeCollectionRows(result.rows);
+    this.collectionWindows.set(collection, { cursor: result.cursor, hasMore: result.hasMore });
+    if (touched) this.emit({ type: 'data-changed', collections: [collection], remote: true });
+    return result.rows.length > 0;
+  }
+
+  /** Full-history search is requested only when the user searches; the server filters rows first. */
+  async searchCollection(collection: CollectionName, query: string, signal?: AbortSignal): Promise<EntityRow[]> {
+    const text = query.trim();
+    if (!text) return [];
+    const lifecycle = this.lifecycle;
+    const userId = this.userId;
+    if (!userId) return [];
+    const generation = (this.searchGenerations.get(collection) || 0) + 1;
+    this.searchGenerations.set(collection, generation);
+    this.collectionSearchWindows.set(collection, { query: text, cursor: null, hasMore: false, rows: [] });
+    const params = new URLSearchParams({ limit: '100', query: text });
+    const result = await this.request<{ success: boolean } & CollectionPageResponse>(
+      `/api/v1/data/collections/${encodeURIComponent(collection)}?${params}`,
+      { signal }
+    );
+    if (!this.isCurrent(lifecycle, userId) || this.searchGenerations.get(collection) !== generation) return [];
+    this.collectionSearchWindows.set(collection, { query: text, cursor: result.cursor, hasMore: result.hasMore, rows: result.rows });
+    this.mergeSearchRows(result.rows);
+    return result.rows;
+  }
+
+  collectionSearchHasMore(collection: CollectionName, query: string): boolean {
+    const window = this.collectionSearchWindows.get(collection);
+    return window?.query === query.trim() && window.hasMore;
+  }
+
+  async loadMoreSearchCollection(collection: CollectionName, query: string): Promise<boolean> {
+    const text = query.trim();
+    const window = this.collectionSearchWindows.get(collection);
+    if (!window?.hasMore || window.query !== text || window.cursor === null || !this.userId) return false;
+    const lifecycle = this.lifecycle;
+    const userId = this.userId;
+    const generation = this.searchGenerations.get(collection);
+    const params = new URLSearchParams({ cursor: window.cursor, limit: '100', query: text });
+    const result = await this.request<{ success: boolean } & CollectionPageResponse>(
+      `/api/v1/data/collections/${encodeURIComponent(collection)}?${params}`,
+      { signal: this.lifecycleController?.signal }
+    );
+    if (!this.isCurrent(lifecycle, userId) || this.searchGenerations.get(collection) !== generation) return false;
+    this.collectionSearchWindows.set(collection, { query: text, cursor: result.cursor, hasMore: result.hasMore, rows: result.rows });
+    this.mergeSearchRows(result.rows);
+    return result.rows.length > 0;
+  }
+
+  mergeSearchRows(rows: EntityRow[]) {
+    const touched = new Set<CollectionName>();
+    for (const row of rows) {
+      const key = keyOf(row.c, row.id);
+      if (this.dirty.has(key) || this.inFlight.has(key)) continue;
+      this.replaceLocal(row.c, row);
+      touched.add(row.c);
+    }
+    if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
+  }
+
+  private mergeCollectionRows(rows: EntityRow[]): boolean {
+    let touched = false;
+    for (const row of rows) {
+      const key = keyOf(row.c, row.id);
+      if (this.dirty.has(key) || this.inFlight.has(key)) continue;
+      this.replaceLocal(row.c, row);
+      touched = true;
+    }
+    return touched;
+  }
+
   private allowsLocalRecord(collection: CollectionName, id?: string, data?: unknown): boolean {
     if (!this.modules) return true;
     const module = moduleForRecord(collection, id, data, showId => !!showId &&
@@ -360,6 +466,9 @@ export class DataStore {
     this.pullAgain = false;
     this.data.clear();
     this.meta.clear();
+    this.collectionWindows.clear();
+    this.collectionSearchWindows.clear();
+    this.searchGenerations.clear();
     this.dirty.clear();
     this.inFlight.clear();
     this.journal.clear();
@@ -376,11 +485,12 @@ export class DataStore {
   private async bootstrap(lifecycle: number, userId: string) {
     if (!this.isCurrent(lifecycle, userId)) return;
     const signal = this.lifecycleController?.signal;
-    const res = await this.request<{ rev: number; dbId?: string; access?: string; modules?: ModuleAvailability; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data', { signal });
+    const res = await this.request<{ rev: number; dbId?: string; access?: string; modules?: ModuleAvailability; collections: Partial<Record<CollectionName, EntityRow[]>>; windows?: Partial<Record<CollectionName, CollectionWindow>> }>('/api/v1/data', { signal });
     if (!this.isCurrent(lifecycle, userId)) return;
     this.checkDb(res.dbId);
     this.accessRevision = res.access;
     this.modules = res.modules;
+    this.collectionWindows = new Map(Object.entries(res.windows || {}) as [CollectionName, CollectionWindow][]);
     // Unsent local edits survive a full reload: they are laid back over the server copy.
     const pendingKeys = [...this.dirty.keys(), ...this.inFlight];
     const pending = pendingKeys

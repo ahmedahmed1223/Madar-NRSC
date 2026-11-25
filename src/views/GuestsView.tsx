@@ -6,11 +6,12 @@ import { FormPage } from '../components/common/FormPage';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, Search, Phone, Mail, Edit2, Trash2 } from 'lucide-react';
 import { Guest, User } from '../types';
 import { Badge } from '../components/common/Badge';
 import { apiService } from '../services/api';
+import { dataStore } from '../services/dataStore';
 import { navigateTo } from '../services/uiEvents';
 import { useLiveData } from '../hooks/useLiveData';
 import { bookingStatusName, bookingStatusOf, connectionName, episodeGuestList, guestKey } from '../shared/episodePlan';
@@ -37,6 +38,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   useLiveData(['episodes', 'bulletins', 'bulletinStories', 'onAir', 'users', 'settings'], 60_000);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
+  const [searchedGuests, setSearchedGuests] = useState<Guest[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
 
@@ -57,6 +59,20 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       setNotes(value.notes); setAvatarUrl(value.avatarUrl);
     });
 
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchedGuests([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void dataStore.searchCollection('guests', searchQuery, controller.signal)
+        .then(rows => setSearchedGuests(rows.map(row => row.d as Guest)))
+        .catch(() => { if (!controller.signal.aborted) setSearchedGuests([]); });
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [searchQuery]);
+
   const SPECIALTY_PRESETS = [
     'علاقات دولية ودبلوماسية',
     'اقتصاد وأسواق مالية',
@@ -76,7 +92,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   ];
 
 
-  const specialties = Array.from(new Set(guests.map((g) => g.specialty).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ar'));
+  const allGuests = Array.from(new Map([...guests, ...searchedGuests].map(guest => [guest.id, guest])).values());
+  const specialties = Array.from(new Set(allGuests.map((g) => g.specialty).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ar'));
 
   const handleOpenAdd = () => {
     setEditingGuest(null);
@@ -124,7 +141,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
     } finally { setSaving(false); }
   };
 
-  const filteredGuests = guests.filter((g) => {
+  const filteredGuests = allGuests.filter((g) => {
     if (selectedSpecialty !== 'ALL' && g.specialty !== selectedSpecialty) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, g.fullName, g.organization, g.jobTitle, g.specialty, ...(canManage ? [g.email, g.phone] : []));
@@ -323,7 +340,17 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </div>
         )}
       </div>
-      <ShowMore remaining={guestPage.remaining} onMore={guestPage.showMore} onAll={guestPage.showAll} noun="ضيف" />
+      <ShowMore
+        remaining={guestPage.remaining + (searchQuery.trim()
+          ? Number(dataStore.collectionSearchHasMore('guests', searchQuery))
+          : Number(dataStore.collectionHasMore('guests')))}
+        onMore={() => {
+          guestPage.showMore();
+          if (searchQuery.trim()) void dataStore.loadMoreSearchCollection('guests', searchQuery);
+          else void dataStore.loadMoreCollection('guests');
+        }}
+        noun="ضيف"
+      />
 
       {/* Add/Edit Modal */}
       <FormPage
