@@ -8,6 +8,7 @@ test('guest and program counts stay complete after paging-sized bootstrap and se
   const guestId = `count-guest-${suffix}`;
   const programName = `برنامج دقة ${suffix}`;
   const guestName = `ضيف دقة ${suffix}`;
+  const createdRows: { c: string; id: string; v: number }[] = [];
 
   try {
     const initial = await (await page.request.get('/api/v1/data')).json();
@@ -81,7 +82,11 @@ test('guest and program counts stay complete after paging-sized bootstrap and se
       data: { ops },
     });
     expect(write.status()).toBe(200);
-    expect((await write.json()).results.every((result: any) => result.ok)).toBe(true);
+    const writeResult = await write.json();
+    for (const result of writeResult.results) {
+      if (result.ok && result.row) createdRows.push({ c: result.row.c, id: result.row.id, v: result.row.v });
+    }
+    expect(writeResult.results.every((result: any) => result.ok)).toBe(true);
 
     await page.reload();
     const bootstrap = await (await page.request.get('/api/v1/data')).json();
@@ -97,6 +102,24 @@ test('guest and program counts stay complete after paging-sized bootstrap and se
     await page.locator('#guests-search-input').fill(guestName);
     await expect(page.getByText('عدد مرات الظهور: 120', { exact: true })).toBeVisible();
   } finally {
-    await close();
+    try {
+      if (createdRows.length) {
+        const cleanup = await page.request.post('/api/v1/data/sync', {
+          headers: { 'X-NRCS-Client': 'web' },
+          data: {
+            ops: [...createdRows].reverse().map(row => ({
+              c: row.c,
+              op: 'delete',
+              id: row.id,
+              baseV: row.v,
+            })),
+          },
+        });
+        expect(cleanup.status()).toBe(200);
+        expect((await cleanup.json()).results.every((result: any) => result.ok)).toBe(true);
+      }
+    } finally {
+      await close();
+    }
   }
 });
