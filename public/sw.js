@@ -9,7 +9,6 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil((async () => {
   await self.clients.claim();
-  await dropOldAppCaches();
 })()));
 
 const OFFLINE_PREFIX = 'madar-offline-air-';
@@ -36,6 +35,20 @@ async function dropOldAppCaches() {
   if (!active) return;
   const names = (await caches.keys()).filter((name) => name.startsWith(APP_PREFIX) && name !== active);
   await Promise.all(names.map((name) => caches.delete(name)));
+}
+
+async function preservePreviousAppAssets(currentCache, currentCacheName) {
+  const previousNames = (await caches.keys()).filter((name) => name.startsWith(APP_PREFIX) && name !== currentCacheName);
+  for (const name of previousNames) {
+    const previousCache = await caches.open(name);
+    for (const request of await previousCache.keys()) {
+      const url = new URL(request.url);
+      if (url.origin !== self.location.origin || !APP_ASSET_RE.test(url.pathname)) continue;
+      if (await currentCache.match(url.pathname)) continue;
+      const response = await previousCache.match(request);
+      if (response) await currentCache.put(url.pathname, response);
+    }
+  }
 }
 
 let precaching = null;
@@ -69,6 +82,7 @@ function precacheApp() {
     await Promise.all([worker(), worker(), worker(), worker()]);
     const shell = await fetch(SHELL_KEY, { cache: 'no-store', credentials: 'same-origin' });
     if (shell.ok) await cache.put(SHELL_KEY, shell);
+    await preservePreviousAppAssets(cache, name);
     await cache.put('/app-complete', new Response(manifest.version));
     const control = await caches.open(APP_CONTROL);
     await control.put('/active-app', new Response(name));
