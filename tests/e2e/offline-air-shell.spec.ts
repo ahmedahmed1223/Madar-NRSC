@@ -2,10 +2,34 @@ import { expect, test } from '@playwright/test';
 import { signIn } from './helpers';
 import { createRequire } from 'module';
 import fs from 'fs';
+import path from 'path';
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 test('prepared shell opens offline and restores durable local operation after reload', async ({ browser }) => {
+  const manifestPath = path.resolve('dist/offline-air-assets.json');
+  expect(fs.existsSync(manifestPath), `Missing generated offline-air manifest: ${manifestPath}`).toBe(true);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { version: string; assets: string[] };
+  expect(manifest.version, 'Generated offline-air manifest has an invalid version').toMatch(/^[a-f0-9]{24}$/);
+  expect(manifest.assets, 'Generated offline-air manifest must include its HTML shell').toContain('/offline-air.html');
+  expect(new Set(manifest.assets).size, 'Generated offline-air manifest contains duplicate files').toBe(manifest.assets.length);
+
+  const shellPath = path.resolve('dist/offline-air.html');
+  expect(fs.existsSync(shellPath), `Missing generated offline-air shell: ${shellPath}`).toBe(true);
+  const shellHtml = fs.readFileSync(shellPath, 'utf8');
+  const htmlAssets = [...shellHtml.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
+  for (const asset of htmlAssets) {
+    expect(manifest.assets, `Generated offline-air manifest is missing shell dependency ${asset}`).toContain(asset);
+  }
+  for (const asset of manifest.assets) {
+    const builtFile = path.resolve('dist', `.${asset}`);
+    expect(fs.existsSync(builtFile), `Missing generated offline-air file ${asset} (${builtFile})`).toBe(true);
+  }
+
   const { page, close } = await signIn(browser, 'admin@akhbar.tv', { bypassCSP: true });
   try {
+    for (const asset of manifest.assets) {
+      const response = await page.request.get(asset);
+      expect(response.ok(), `Generated offline-air file cannot be opened: ${asset} (HTTP ${response.status()})`).toBe(true);
+    }
     const data = await (await page.request.get('/api/v1/data')).json();
     const id = data.collections.bulletins[0].id;
     const packet = (await (await page.request.get(`/api/v1/air-offline/packet/${id}`)).json()).packet;
@@ -18,9 +42,18 @@ test('prepared shell opens offline and restores durable local operation after re
       return shell;
     }, packet);
     expect(shell.version).toMatch(/^[a-f0-9]{24}$/);
-    await page.goto(`/offline-air.html?packet=${packet.packetId}`);
+    expect(shell.version, 'The service worker prepared a different offline-air build').toBe(manifest.version);
+    const offlineAssetFailures: string[] = [];
+    const offlineAssets = new Set(manifest.assets);
+    page.on('requestfailed', request => {
+      const url = new URL(request.url());
+      if (offlineAssets.has(url.pathname)) offlineAssetFailures.push(url.pathname);
+    });
     await page.context().setOffline(true);
-    await page.reload();
+    const offlineNavigation = await page.goto(`/offline-air.html?packet=${packet.packetId}`);
+    expect(offlineNavigation?.fromServiceWorker(), 'Offline-air shell navigation was not served by the service worker').toBe(true);
+    await expect(page.getByLabel('كلمة فتح النسخة', { exact: true })).toBeVisible();
+    expect(offlineAssetFailures, `Offline-air files failed to open: ${offlineAssetFailures.join(', ')}`).toEqual([]);
     await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
     await expect(page.getByRole('heading', { name: packet.show.title, exact: true })).toBeVisible();

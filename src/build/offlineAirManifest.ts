@@ -13,6 +13,7 @@ export function offlineAirManifest(): Plugin {
         const item = bundle[name];
         if (item?.type === 'chunk') {
           item.imports.forEach(visit);
+          item.dynamicImports.forEach(visit);
           (item as any).viteMetadata?.importedCss?.forEach(visit);
           (item as any).viteMetadata?.importedAssets?.forEach(visit);
         }
