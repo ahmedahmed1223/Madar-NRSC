@@ -90,8 +90,12 @@ export default function AppShell() {
       // unsent edits stay queued in this browser for the next sign-in
     }
     try {
-      if (!await authClient.logout()) return;
+      if (!await authClient.logout(() => dataStore.stop())) return;
     } catch {
+      const session = authClient.getSession();
+      if (session) {
+        try { await enter(session); } catch { /* the original logout error remains visible */ }
+      }
       setNotice('تعذر إكمال تسجيل الخروج؛ تحقق من الاتصال والتخزين المحلي ثم أعد المحاولة');
       return;
     }
@@ -99,7 +103,7 @@ export default function AppShell() {
     setIsChangingPassword(false);
     setNotice(null);
     setPhase('login');
-  }, []);
+  }, [enter]);
 
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
     await authClient.changePassword(currentPassword, newPassword);

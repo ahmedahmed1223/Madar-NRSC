@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { authClient } from '../../services/authClient';
+import { PasswordVisibilityButton } from './PasswordFields';
 
 interface TwoFactorModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,16 +115,19 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
               يضيف التحقق بخطوتين رمزاً متغيراً من تطبيق على هاتفك (مثل Google Authenticator أو Microsoft Authenticator) إلى كلمة المرور عند كل دخول.
               أدخل كلمة المرور الحالية للمتابعة.
             </p>
-            <input
-              type="password"
+            <div className="relative">
+              <input
+              type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} pe-12`}
               dir="ltr"
               aria-label="كلمة المرور الحالية"
             />
+              <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute end-0 top-0" />
+            </div>
             {submit('متابعة')}
           </form>
         )}
@@ -156,16 +161,19 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
         {step === 'disable' && (
           <form onSubmit={handleDisable} className="space-y-3">
             <p className="text-xs text-slate-600">التحقق بخطوتين مفعّل لحسابك. لإلغائه أدخل كلمة المرور ورمزاً حالياً من التطبيق.</p>
-            <input
-              type="password"
+            <div className="relative">
+              <input
+              type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} pe-12`}
               dir="ltr"
               aria-label="كلمة المرور الحالية"
             />
+              <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute end-0 top-0" />
+            </div>
             {codeInput}
             {submit('إلغاء التحقق بخطوتين')}
           </form>

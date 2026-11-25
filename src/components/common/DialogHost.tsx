@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, HelpCircle, Info } from 'lucide-react';
 import { DialogRequest, onDialogs, settleDialog } from '../../services/dialogs';
 import { useModalFocus } from '../../hooks/useModalFocus';
+import { copyTextToClipboard } from '../../services/clipboard';
 
 /**
  * Shows in-app confirm / alert / prompt dialogs one at a time. Focus moves into the dialog and
@@ -22,6 +23,7 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
   const prompt = req.kind === 'prompt' ? req.options : null;
   const [value, setValue] = useState(prompt?.defaultValue ?? '');
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const opts = req.options as any;
   const danger = req.kind === 'confirm' && !!opts.danger;
   const invalid = !!prompt?.required && !prompt.copyOnly && !value.trim();
@@ -114,16 +116,21 @@ const DialogView: React.FC<{ req: DialogRequest }> = ({ req }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      void navigator.clipboard?.writeText(value).then(() => setCopied(true)).catch(() => inputRef.current?.select());
+                      void copyTextToClipboard(value).then((ok) => {
+                        setCopied(ok);
+                        setCopyFailed(!ok);
+                        if (!ok) inputRef.current?.select();
+                      });
                     }}
                     className="inline-flex min-h-11 items-center gap-1 px-3 rounded-xl border border-slate-300 text-xs font-bold hover:bg-slate-50"
                   >
                     {copied ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />}
-                    {copied ? 'نُسخت' : 'نسخ'}
+                    {copied ? 'نُسخت' : copyFailed ? 'حدّد وانسخ' : 'نسخ'}
                   </button>
                 )}
               </div>
             )}
+            {copyFailed && <p role="status" className="mt-1 text-xs text-amber-800">تعذّر النسخ تلقائياً؛ حدّد النص وانسخه يدوياً.</p>}
           </div>
         )}
 

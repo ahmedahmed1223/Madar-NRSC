@@ -4,7 +4,7 @@ import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, departmentsAtStation } from '../../shared/departments';
-import { validatePasswordStrength } from '../../shared/passwords';
+import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
 import { stationGroupsOf } from '../../shared/stations';
 import { RoleDefinition } from '../../services/rbacService';
 import { evaluatePermission } from '../../shared/rbac';
@@ -13,7 +13,9 @@ import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
 import { PermissionOverridesSection } from './PermissionOverridesSection';
 import { sameOverrides } from '../../services/permissionOverrides';
-import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check, Copy, RefreshCw } from 'lucide-react';
+import { PasswordFeedback, PasswordVisibilityButton } from '../auth/PasswordFields';
+import { copyTextToClipboard } from '../../services/clipboard';
 
 interface UserFormModalProps {
   isOpen: boolean;
@@ -24,6 +26,7 @@ interface UserFormModalProps {
   roles: RoleDefinition[];
   /** Show the per-user permission exceptions (needs users.manage_roles_permissions, and not on one's own account). */
   canManageOverrides?: boolean;
+  canSetPassword?: boolean;
 }
 
 
@@ -36,6 +39,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   userToEdit,
   roles,
   canManageOverrides = false,
+  canSetPassword = false,
 }) => {
   const [fullName, setFullName] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
@@ -59,6 +63,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [initialPassword, setInitialPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [clipboardMessage, setClipboardMessage] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [customPermissions, setCustomPermissions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -99,6 +106,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     }
     setCustomPermissions(userToEdit?.customPermissions || []);
     setInitialPassword('');
+    setPasswordConfirmation('');
+    setShowPasswords(false);
+    setClipboardMessage('');
     setErrors({});
   }, [userToEdit, isOpen]);
 
@@ -125,10 +135,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
     }
     if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
-    if (!userToEdit) {
-      // The same rule the server applies, checked before the account is created (no account without a password).
+    if (!userToEdit || initialPassword) {
       const weak = validatePasswordStrength(initialPassword);
-      if (weak) newErrors.initialPassword = `كلمة المرور الأولية: ${weak}`;
+      if (weak) newErrors.initialPassword = `كلمة المرور: ${weak}`;
+      if (passwordConfirmation !== initialPassword) newErrors.passwordConfirmation = 'تأكيد كلمة المرور غير مطابق';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -162,7 +172,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       ...(canManageOverrides && (isGeneralManager || userToEdit?.managedStationIds?.length || userToEdit?.managedGroupIds?.length)
         ? { managedStationIds: isGeneralManager ? managedStationIds : [], managedGroupIds: isGeneralManager ? managedGroupIds : [] }
         : {}),
-    }, userToEdit ? undefined : initialPassword);
+    }, initialPassword || undefined);
     } catch {
       saved = false;
     } finally {
@@ -241,29 +251,61 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             {errors.email && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.email}</p>}
           </div>
 
-          {!userToEdit && (
+          {(!userToEdit || canSetPassword) && (
             <div>
               <label htmlFor="user-form-modal-field-5" className="block text-xs font-bold text-slate-700 mb-1.5">
-                كلمة المرور الأولية <span className="text-red-500">*</span>
+                {userToEdit ? 'كلمة مرور مؤقتة جديدة (اختياري)' : <>كلمة المرور الأولية <span className="text-red-500">*</span></>}
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
                 <input id="user-form-modal-field-5"
-                  type="password"
+                  type={showPasswords ? 'text' : 'password'}
                   autoComplete="new-password"
                   value={initialPassword}
                   onChange={(e) => {
                     setInitialPassword(e.target.value);
+                    setClipboardMessage('');
                     if (errors.initialPassword) setErrors((prev) => ({ ...prev, initialPassword: '' }));
                   }}
-                  className={`w-full text-xs pr-9 pl-3 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${
+                  className={`w-full text-xs pr-9 pl-12 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${
                     errors.initialPassword ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'
                   }`}
                   dir="ltr"
                 />
+                <PasswordVisibilityButton visible={showPasswords} onClick={() => setShowPasswords(value => !value)} className="absolute left-1 top-0" />
               </div>
-              <p className="text-2xs text-slate-500 mt-1">10 أحرف على الأقل بحروف وأرقام؛ يُطلب تغييرها عند أول تسجيل دخول.</p>
+              {(!userToEdit || initialPassword) && <label className="block mt-2 text-xs font-bold text-slate-700">
+                تأكيد كلمة المرور
+                <input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" value={passwordConfirmation}
+                  onChange={event => { setPasswordConfirmation(event.target.value); if (errors.passwordConfirmation) setErrors(prev => ({ ...prev, passwordConfirmation: '' })); }}
+                  className={`mt-1 w-full text-xs px-3 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${errors.passwordConfirmation ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'}`} dir="ltr" />
+              </label>}
+              {(!userToEdit || initialPassword) && <PasswordFeedback password={initialPassword} confirmation={passwordConfirmation} />}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => {
+                  try {
+                    const generated = temporaryPassword(webRandom);
+                    setInitialPassword(generated);
+                    setPasswordConfirmation(generated);
+                    setShowPasswords(true);
+                    setClipboardMessage('');
+                    setErrors(prev => ({ ...prev, initialPassword: '', passwordConfirmation: '' }));
+                  } catch {
+                    setErrors(prev => ({ ...prev, initialPassword: 'تعذر توليد كلمة مرور آمنة في هذا المتصفح.' }));
+                  }
+                }} className="min-h-10 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <RefreshCw className="size-3.5" aria-hidden="true" />توليد مؤقتة
+                </button>
+                <button type="button" disabled={!initialPassword} onClick={() => {
+                  void copyTextToClipboard(initialPassword).then(copied => setClipboardMessage(copied ? 'نُسخت كلمة المرور إلى الحافظة.' : 'تعذّر النسخ إلى الحافظة.'));
+                }} className="min-h-10 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                  <Copy className="size-3.5" aria-hidden="true" />نسخ كلمة المرور
+                </button>
+              </div>
+              {clipboardMessage && <p role="status" className="text-2xs text-slate-600">{clipboardMessage}</p>}
+              <p className="text-2xs text-slate-500 mt-1">10 أحرف على الأقل بحروف وأرقام؛ تُطلب من المستخدم عند أول دخول وتُنهى جلساته السابقة عند التغيير.</p>
               {errors.initialPassword && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
+              {errors.passwordConfirmation && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.passwordConfirmation}</p>}
             </div>
           )}
 

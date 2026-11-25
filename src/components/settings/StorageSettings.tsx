@@ -7,6 +7,8 @@ import { storageClient } from '../../services/storageClient';
 import { writeBrowserHistory } from '../../services/browserHistory';
 import { SINGLETON_ID } from '../../shared/collections';
 import { storageOf, validateStorage, type ResolvedStorageSettings, type StorageStatus } from '../../shared/storage';
+import { copyTextToClipboard } from '../../services/clipboard';
+import { PasswordVisibilityButton } from '../auth/PasswordFields';
 
 const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
 const BTN = 'min-h-11 px-4 rounded-lg text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50';
@@ -48,6 +50,8 @@ export function StorageSettings() {
   const [drive, setDrive] = useState({ clientId: '', clientSecret: '' });
   const [redirectUri, setRedirectUri] = useState('');
   const [token, setToken] = useState('');
+  const [showDropboxSecret, setShowDropboxSecret] = useState(false);
+  const [showDriveSecret, setShowDriveSecret] = useState(false);
 
   const current: ResolvedStorageSettings = { ...settings, share: { ...settings.share, localNetworks: networksText.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean) } };
   const dirty = JSON.stringify(current) !== baseline;
@@ -110,7 +114,7 @@ export function StorageSettings() {
   };
 
   const copy = (text: string) => {
-    void navigator.clipboard?.writeText(text).then(() => setMessage({ ok: true, text: 'نُسخ إلى الحافظة.' }), () => undefined);
+    void copyTextToClipboard(text).then(copied => setMessage({ ok: copied, text: copied ? 'نُسخ إلى الحافظة.' : 'تعذّر النسخ إلى الحافظة.' }));
   };
 
   const q = status?.queue;
@@ -189,7 +193,7 @@ export function StorageSettings() {
                 <span>انسخ مفتاح التطبيق وسرّه:</span>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input className={INPUT} dir="ltr" aria-label="App key" placeholder="App key" value={dbx.appKey} onChange={(e) => setDbx({ ...dbx, appKey: e.target.value.trim() })} />
-                  <input className={INPUT} dir="ltr" type="password" autoComplete="off" aria-label="App secret" placeholder="App secret" value={dbx.appSecret} onChange={(e) => setDbx({ ...dbx, appSecret: e.target.value.trim() })} />
+                  <span className="flex items-center gap-1"><input className={`${INPUT} min-w-0`} dir="ltr" type={showDropboxSecret ? 'text' : 'password'} autoComplete="off" aria-label="App secret" placeholder="App secret" value={dbx.appSecret} onChange={(e) => setDbx({ ...dbx, appSecret: e.target.value.trim() })} /><PasswordVisibilityButton visible={showDropboxSecret} onClick={() => setShowDropboxSecret(value => !value)} /></span>
                 </div>
               </li>
               <li>
@@ -257,7 +261,7 @@ export function StorageSettings() {
                 <span>انسخ معرّف العميل وسرّه، ثم اربط (ستنتقل إلى Google وتعود إلى هنا):</span>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input className={INPUT} dir="ltr" aria-label="Client ID" placeholder="Client ID" value={drive.clientId} onChange={(e) => setDrive({ ...drive, clientId: e.target.value.trim() })} />
-                  <input className={INPUT} dir="ltr" type="password" autoComplete="off" aria-label="Client secret" placeholder="Client secret" value={drive.clientSecret} onChange={(e) => setDrive({ ...drive, clientSecret: e.target.value.trim() })} />
+                  <span className="flex items-center gap-1"><input className={`${INPUT} min-w-0`} dir="ltr" type={showDriveSecret ? 'text' : 'password'} autoComplete="off" aria-label="Client secret" placeholder="Client secret" value={drive.clientSecret} onChange={(e) => setDrive({ ...drive, clientSecret: e.target.value.trim() })} /><PasswordVisibilityButton visible={showDriveSecret} onClick={() => setShowDriveSecret(value => !value)} /></span>
                 </div>
                 <button type="button" className={PRIMARY} disabled={!drive.clientId || !drive.clientSecret || !!busy || dirty} onClick={() => run('gd-connect', async () => {
                   const r = await storageClient.driveAuthorizeUrl(drive.clientId, drive.clientSecret);

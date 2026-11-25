@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyRound, AlertCircle, Loader2, LogOut } from 'lucide-react';
 import { validatePasswordStrength } from '../../shared/passwords';
+import { PasswordFeedback, PasswordVisibilityButton } from './PasswordFields';
 
 interface ChangePasswordViewProps {
   forced?: boolean;
@@ -13,6 +14,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -41,12 +43,12 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
       </label>
       <input
         id={id}
-        type="password"
+        type={showPasswords ? 'text' : 'password'}
         required
         autoComplete={autoComplete}
         value={value}
         onChange={(e) => setter(e.target.value)}
-        className="w-full text-sm px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
+        className="w-full text-sm pe-12 ps-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
         dir="ltr"
       />
     </div>
@@ -68,9 +70,11 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex justify-end"><PasswordVisibilityButton visible={showPasswords} onClick={() => setShowPasswords(value => !value)} /></div>
           {field('cp-current', 'كلمة المرور الحالية', currentPassword, setCurrentPassword, 'current-password')}
           {field('cp-new', 'كلمة المرور الجديدة', newPassword, setNewPassword, 'new-password')}
           {field('cp-confirm', 'تأكيد كلمة المرور الجديدة', confirmPassword, setConfirmPassword, 'new-password')}
+          <PasswordFeedback password={newPassword} confirmation={confirmPassword} />
 
           {error && (
             <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">

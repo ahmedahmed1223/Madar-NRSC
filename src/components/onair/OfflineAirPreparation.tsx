@@ -8,6 +8,7 @@ import type { OfflineAirPacket } from '../../shared/offlineAir';
 import { confirmDialog } from '../../services/dialogs';
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { compareOfflineAirSnapshot, fingerprintOfflineAirSnapshot } from '../../shared/offlineAirFreshness';
+import { PasswordVisibilityButton } from '../auth/PasswordFields';
 
 const freshnessText = {
   MATCHES: 'تطابق آخر بيانات متزامنة',
@@ -17,6 +18,7 @@ const freshnessText = {
 
 export function OfflineAirPreparation({ showId, userId, snapshot, dbId }: { showId: string; userId: string; snapshot?: string; dbId?: string }) {
   const [secret, setSecret] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
   const [consent, setConsent] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -92,7 +94,7 @@ export function OfflineAirPreparation({ showId, userId, snapshot, dbId }: { show
       {saved[0] ? <span className="text-xs font-semibold text-slate-700">آخر نسخة · <time dateTime={saved[0].preparedAt}>{new Date(saved[0].preparedAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}</time> · {freshnessText[freshness(saved[0])]}</span> : loaded && <span className="text-xs text-slate-600">لا توجد نسخة لهذا البث على الجهاز</span>}
     </summary>
     <form onSubmit={prepare} className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1 text-sm">كلمة فتح النسخة<input aria-label="كلمة فتح النسخة" type="password" autoComplete="new-password" minLength={8} required disabled={!!progress} value={secret} onChange={event => setSecret(event.target.value)} className="min-h-11 border border-slate-300 rounded-xl px-3 bg-white"/></label>
+       <label className="flex flex-col gap-1 text-sm">كلمة فتح النسخة<span className="flex items-center gap-1"><input aria-label="كلمة فتح النسخة" type={showSecret ? 'text' : 'password'} autoComplete="new-password" minLength={8} required disabled={!!progress} value={secret} onChange={event => setSecret(event.target.value)} className="min-h-11 min-w-0 border border-slate-300 rounded-xl px-3 bg-white"/><PasswordVisibilityButton visible={showSecret} onClick={() => setShowSecret(value => !value)} /></span></label>
       <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={consent} disabled={!!progress} onChange={event => setConsent(event.target.checked)}/>أوافق على حفظ نسخة مشفرة على هذا الجهاز</label>
       <button type="submit" disabled={!!progress || !consent || secret.length < 8} className="min-h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2"><Lock size={18} aria-hidden/>تجهيز النسخة</button>
       {progress && <button type="button" onClick={() => { generation.current++; abort.current?.abort(); setProgress(''); }} className="min-h-11 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-sm font-semibold flex items-center gap-2"><X size={18} aria-hidden/>إلغاء التجهيز</button>}

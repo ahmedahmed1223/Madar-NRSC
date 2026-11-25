@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../../services/http';
 import { MIN_PASSWORD_LENGTH, validatePasswordStrength } from '../../shared/passwords';
+import { PasswordFeedback, PasswordVisibilityButton } from './PasswordFields';
 
 const input = 'block mt-1 w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-900 focus:outline-none focus:border-blue-500';
 
@@ -10,6 +11,9 @@ export function FirstAdministratorForm({ saving, onSavingChange, onCreated }: {
   onCreated: (email: string, password: string) => void;
 }) {
   const [error, setError] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,9 +48,10 @@ export function FirstAdministratorForm({ saving, onSavingChange, onCreated }: {
       <label className="block font-semibold">اسم المسؤول<input name="fullName" required maxLength={120} autoComplete="name" className={input} /></label>
       <label className="block font-semibold">بريد المسؤول<input name="email" type="email" required maxLength={254} autoComplete="username" dir="ltr" className={input} /></label>
       <label className="block font-semibold">رمز إعداد الخادم<input name="token" type="password" required maxLength={200} autoComplete="off" dir="ltr" className={input} /></label>
-      <label className="block font-semibold">كلمة المرور<input name="password" type="password" required minLength={MIN_PASSWORD_LENGTH} maxLength={200} autoComplete="new-password" aria-describedby="first-admin-password-hint" dir="ltr" className={input} /></label>
+      <label className="block font-semibold">كلمة المرور<input name="password" type={showPasswords ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={200} autoComplete="new-password" aria-describedby="first-admin-password-hint" dir="ltr" className={input} /></label>
       <p id="first-admin-password-hint" className="text-xs text-slate-600">استخدم 10 أحرف على الأقل، على أن تتضمن حروفاً وأرقاماً.</p>
-      <label className="block font-semibold">تأكيد كلمة المرور<input name="confirmation" type="password" required maxLength={200} autoComplete="new-password" dir="ltr" className={input} /></label>
+      <label className="block font-semibold">تأكيد كلمة المرور<input name="confirmation" type={showPasswords ? 'text' : 'password'} value={confirmation} onChange={event => setConfirmation(event.target.value)} required maxLength={200} autoComplete="new-password" dir="ltr" className={input} /></label>
+      <div className="flex items-center justify-between"><PasswordFeedback password={password} confirmation={confirmation} /><PasswordVisibilityButton visible={showPasswords} onClick={() => setShowPasswords(value => !value)} /></div>
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">{error}</p>}
       <button type="submit" disabled={saving} className="w-full min-h-11 rounded-xl bg-blue-600 px-3 font-bold text-white hover:bg-blue-700 disabled:opacity-60">
         {saving ? 'جارٍ إنشاء الحساب…' : 'إنشاء الحساب والمتابعة'}

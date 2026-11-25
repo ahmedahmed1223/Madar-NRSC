@@ -157,6 +157,8 @@ export class DataStore {
   private accessRevision?: string;
   private modules?: ModuleAvailability;
   private userId: string | null = null;
+  private lifecycle = 0;
+  private lifecycleController: AbortController | null = null;
   private ready = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   /** The one scheduled retry after a failure (or the offline probe). */
@@ -314,21 +316,34 @@ export class DataStore {
   start(userId: string): Promise<void> {
     if (this.starting && this.userId === userId) return this.starting;
     if (this.userId && this.userId !== userId) this.stop();
+    const lifecycle = ++this.lifecycle;
+    this.lifecycleController?.abort();
+    this.lifecycleController = new AbortController();
     this.userId = userId;
     this.starting = (async () => {
       this.loadJournal();
       this.watchConnectivity();
-      await this.bootstrap();
+      await this.bootstrap(lifecycle, userId);
+      if (!this.isCurrent(lifecycle, userId)) return;
       this.replayPersistedPending();
       this.connectRealtime();
     })().catch((err) => {
+      if (!this.isCurrent(lifecycle, userId)) return;
       this.starting = null;
       throw err;
     });
     return this.starting;
   }
 
+  private isCurrent(lifecycle: number, userId: string | null): boolean {
+    return lifecycle === this.lifecycle && userId !== null && this.userId === userId;
+  }
+
   stop() {
+    if (this.userId) this.persistPending();
+    this.lifecycle++;
+    this.lifecycleController?.abort();
+    this.lifecycleController = null;
     this.eventSource?.close();
     this.eventSource = null;
     if (this.pollTimer) clearInterval(this.pollTimer);
@@ -340,6 +355,9 @@ export class DataStore {
     this.lastFailure = null;
     this.unsubscribeConnectivity?.();
     this.unsubscribeConnectivity = null;
+    this.syncing = null;
+    this.pulling = false;
+    this.pullAgain = false;
     this.data.clear();
     this.meta.clear();
     this.dirty.clear();
@@ -355,8 +373,11 @@ export class DataStore {
     this.modules = undefined;
   }
 
-  private async bootstrap() {
-    const res = await this.request<{ rev: number; dbId?: string; access?: string; modules?: ModuleAvailability; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data');
+  private async bootstrap(lifecycle: number, userId: string) {
+    if (!this.isCurrent(lifecycle, userId)) return;
+    const signal = this.lifecycleController?.signal;
+    const res = await this.request<{ rev: number; dbId?: string; access?: string; modules?: ModuleAvailability; collections: Partial<Record<CollectionName, EntityRow[]>> }>('/api/v1/data', { signal });
+    if (!this.isCurrent(lifecycle, userId)) return;
     this.checkDb(res.dbId);
     this.accessRevision = res.access;
     this.modules = res.modules;
@@ -438,17 +459,24 @@ export class DataStore {
   }
 
   private openStream() {
-    if (typeof EventSource !== 'undefined') {
-      this.eventSource = new EventSource('/api/v1/data/stream', { withCredentials: true });
-      this.eventSource.addEventListener('rev', (e) => {
+    if (typeof EventSource !== 'undefined' && this.userId) {
+      const lifecycle = this.lifecycle;
+      const userId = this.userId;
+      const stream = new EventSource('/api/v1/data/stream', { withCredentials: true });
+      this.eventSource = stream;
+      stream.addEventListener('rev', (e) => {
+        if (!this.isCurrent(lifecycle, userId)) return;
         const remoteRev = Number((e as MessageEvent).data);
         if (Number.isFinite(remoteRev) && remoteRev !== this.rev) void this.pull();
       });
-      this.eventSource.onopen = () => {
+      stream.onopen = () => {
+        if (!this.isCurrent(lifecycle, userId)) return;
         this.setOnline(true);
         void this.pull();
       };
-      this.eventSource.onerror = () => this.setOnline(false);
+      stream.onerror = () => {
+        if (this.isCurrent(lifecycle, userId)) this.setOnline(false);
+      };
     }
   }
 
@@ -628,16 +656,23 @@ export class DataStore {
     }
     this.clearRetry();
     let result: AttemptResult = 'idle';
-    this.syncing = this.sendBatch()
+    const lifecycle = this.lifecycle;
+    const userId = this.userId;
+    const signal = this.lifecycleController?.signal;
+    let pending: Promise<void>;
+    pending = this.sendBatch(lifecycle, userId, signal)
       .then((r) => {
         result = r;
       })
       .finally(() => {
-        this.syncing = null;
-        this.afterAttempt(result);
-        this.attemptListeners.forEach((f) => f());
+        if (this.syncing === pending) this.syncing = null;
+        if (this.isCurrent(lifecycle, userId)) {
+          this.afterAttempt(result);
+          this.attemptListeners.forEach((f) => f());
+        }
       });
-    return this.syncing;
+    this.syncing = pending;
+    return pending;
   }
 
   private afterAttempt(result: AttemptResult) {
@@ -708,7 +743,8 @@ export class DataStore {
   }
 
   /** One request with the next batch of dirty rows; never throws. */
-  private async sendBatch(): Promise<AttemptResult> {
+  private async sendBatch(lifecycle: number, userId: string | null, signal?: AbortSignal): Promise<AttemptResult> {
+    if (!this.isCurrent(lifecycle, userId)) return 'idle';
     const entries = [...this.dirty.entries()].slice(0, this.singleOps > 0 ? 1 : BATCH_SIZE);
     if (entries.length === 0) return 'idle';
 
@@ -719,7 +755,8 @@ export class DataStore {
     });
 
     try {
-      const res = await this.request<{ rev: number; dbId?: string; results: SyncOpResult[] }>('/api/v1/data/sync', { method: 'POST', json: { ops } });
+      const res = await this.request<{ rev: number; dbId?: string; results: SyncOpResult[] }>('/api/v1/data/sync', { method: 'POST', json: { ops }, signal });
+      if (!this.isCurrent(lifecycle, userId)) return 'idle';
       this.checkDb(res.dbId);
       if (this.singleOps > 0) this.singleOps--;
       this.failures = 0;
@@ -732,6 +769,7 @@ export class DataStore {
       if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
       return 'ok';
     } catch (err) {
+      if (!this.isCurrent(lifecycle, userId)) return 'idle';
       const status = err instanceof ApiError ? err.status : 0;
       // Only a malformed request is final; everything else (404 from a proxy, 5xx, network) is retried.
       const malformed = status === 400 || status === 413 || status === 422;
@@ -769,8 +807,10 @@ export class DataStore {
       }
       return network ? 'network' : 'server';
     } finally {
-      this.persistPending();
-      this.emitStatus();
+      if (this.isCurrent(lifecycle, userId)) {
+        this.persistPending();
+        this.emitStatus();
+      }
     }
   }
 
@@ -820,16 +860,22 @@ export class DataStore {
       this.pullAgain = true;
       return;
     }
+    const lifecycle = this.lifecycle;
+    const userId = this.userId;
+    const signal = this.lifecycleController?.signal;
     this.pulling = true;
     try {
       const access = this.accessRevision ? `&access=${encodeURIComponent(this.accessRevision)}` : '';
-      const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}${access}`);
+      const res = await this.request<{ rev: number; dbId?: string; reset: boolean; changes?: EntityRow[] }>(`/api/v1/data/changes?since=${this.rev}${access}`, { signal });
+      if (!this.isCurrent(lifecycle, userId)) return;
       this.checkDb(res.dbId);
       this.setOnline(true);
       if (res.reset || this.dbSwitched) {
         this.dbSwitched = false;
         await this.flush();
-        await this.bootstrap();
+        if (!this.isCurrent(lifecycle, userId)) return;
+        await this.bootstrap(lifecycle, userId!);
+        if (!this.isCurrent(lifecycle, userId)) return;
         this.emit({ type: 'data-changed', collections: [...COLLECTION_NAMES], remote: true });
         return;
       }
@@ -848,10 +894,10 @@ export class DataStore {
       this.rev = res.rev;
       if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
     } catch (err) {
-      if (!(err instanceof ApiError && err.status === 401)) this.setOnline(false);
+      if (this.isCurrent(lifecycle, userId) && !(err instanceof ApiError && err.status === 401)) this.setOnline(false);
     } finally {
-      this.pulling = false;
-      if (this.pullAgain) {
+      if (this.isCurrent(lifecycle, userId)) this.pulling = false;
+      if (this.isCurrent(lifecycle, userId) && this.pullAgain) {
         this.pullAgain = false;
         void this.pull();
       }

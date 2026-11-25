@@ -24,6 +24,7 @@ import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTab
 import { confirmSaved } from '../services/confirmSave';
 import { countLabel } from '../shared/arabicPlural';
 import { roleInUseError } from '../services/roleUsage';
+import { downloadCsv } from '../services/csvExport';
 import {
   Users as UsersIcon,
   UserCheck,
@@ -145,9 +146,14 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         try {
           await authClient.setUserPassword(saved.id, initialPassword);
         } catch (err) {
-          // No account without a password: the new record is withdrawn so the form can be sent again.
-          ApiService.deleteUser(saved.id);
-          throw err;
+          if (!userData.id) {
+            // A newly created account without credentials must not remain in the roster.
+            ApiService.deleteUser(saved.id);
+            throw err;
+          }
+          loadData();
+          notify({ type: 'warning', message: `حُفظت بيانات الحساب، لكن تعذر تغيير كلمة المرور: ${(err as Error).message || 'حاول مرة أخرى'}` });
+          return false;
         }
       }
       const ok = await confirmSaved('users', saved.id, `تم حفظ بيانات المستخدم بنجاح: ${saved.fullName}`);
@@ -290,13 +296,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // --- EXPORT ROSTER ---
   const handleExportRoster = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(users, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `newsroom_users_roster_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const rows = [
+      ['الاسم بالعربية', 'الاسم بالإنجليزية', 'البريد الإلكتروني', 'الهاتف', 'الرقم الوظيفي', 'المسمى الوظيفي', 'القسم', 'المحطة', 'الدور', 'الحالة', 'التحقق بخطوتين', 'آخر دخول'],
+      ...users.map(user => [
+        user.fullName, user.fullNameEn || '', user.email, user.phone || '', user.staffId || '', user.jobTitle || '',
+        departmentName(departmentIdOf(user)), user.stationId ? stationName(stations, user.stationId) : '',
+        findUserRole(user, roles)?.nameAr || user.role, user.isActive ? 'نشط' : 'مجمّد',
+        user.twoFactorEnabled ? 'مفعّل' : 'غير مفعّل', user.lastLogin || '',
+      ]),
+    ];
+    downloadCsv(`newsroom_users_roster_${new Date().toISOString().slice(0, 10)}.csv`, rows);
     showToast('تم تصدير سجل طاقم الأخبار بنجاح');
   };
 
@@ -807,6 +816,26 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
                                 كلمة مرور مؤقتة
                               </button>
                               )}
+                              {!isCurrent && canSuspend && canTouch(user) && (
+                                <button type="button" onClick={() => void handleRevokeSessions(user)} className={`${ICON_BTN} text-slate-600 hover:text-rose-700 hover:bg-rose-50`} title="إنهاء الجلسات على كل الأجهزة" aria-label={`إنهاء جلسات ${user.fullName}`}>
+                                  <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              )}
+                              {user.twoFactorEnabled && !isCurrent && canSuspend && canTouch(user) && (
+                                <button type="button" onClick={() => void handleResetTwoFactor(user)} className={`${ICON_BTN} text-slate-600 hover:text-blue-700 hover:bg-blue-50`} title="إلغاء التحقق بخطوتين" aria-label={`إلغاء التحقق بخطوتين لـ${user.fullName}`}>
+                                  <ShieldOff className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              )}
+                              {canSuspend && canTouch(user) && (
+                                <button type="button" onClick={() => handleToggleStatus(user.id)} disabled={isCurrent} className={`${ICON_BTN} ${user.isActive ? 'text-slate-600 hover:text-amber-800 hover:bg-amber-50' : 'text-emerald-700 hover:bg-emerald-50 border-emerald-200'} disabled:opacity-40 disabled:cursor-not-allowed`} title={user.isActive ? 'تجميد الحساب' : 'تنشيط الحساب'} aria-label={`${user.isActive ? 'تجميد حساب' : 'تنشيط حساب'} ${user.fullName}`}>
+                                  {user.isActive ? <UserX className="w-3.5 h-3.5" aria-hidden="true" /> : <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />}
+                                </button>
+                              )}
+                              {canSuspend && canTouch(user) && (
+                                <button type="button" onClick={() => void handleDeleteUser(user.id)} disabled={isCurrent} className={`${ICON_BTN} text-slate-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed`} title="حذف الحساب" aria-label={`حذف حساب ${user.fullName}`}>
+                                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              )}
                               {(canEditProfile || canManageRoles) && canTouch(user) && (
                               <button
                                 type="button"
@@ -861,6 +890,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         userToEdit={userToEdit}
         roles={isSuper ? roles : roles.filter((r) => r.roleCode !== 'SUPER_ADMIN')}
         canManageOverrides={canManageRoles && userToEdit?.id !== currentUser.id}
+        canSetPassword={canCreate}
       />
 
       <RoleEditModal

@@ -136,6 +136,44 @@ it('removes cached rows and pending edits when the server revokes a module', asy
 });
 
 describe('sync while the connection is down', () => {
+  it('aborts and ignores a late sync response after the signed-in user logs out', async () => {
+    const net = new FakeConnectivity();
+    let resolveSync: ((value: any) => void) | undefined;
+    let syncSignal: AbortSignal | undefined;
+    const transport = (async (url: string, init: any = {}) => {
+      if (url === '/api/v1/data') return {
+        rev: 1, dbId: 'db-1',
+        collections: { guests: [{ c: 'guests', id: 'gst-1', v: 1, p: 0, d: { id: 'gst-1', fullName: 'المستخدم الحالي' } }] },
+      };
+      if (url.startsWith('/api/v1/data/changes')) return { rev: 1, dbId: 'db-1', reset: false, changes: [] };
+      if (url === '/api/v1/data/sync') {
+        syncSignal = init.signal;
+        return new Promise(resolve => { resolveSync = resolve; });
+      }
+      throw new Error(`unexpected ${url}`);
+    }) as Transport;
+    const store = new DataStore(transport, false, { connectivity: net });
+    try {
+      await store.start('user-1');
+      rename(store, 'gst-1', 'تعديل من المستخدم الأول');
+      const sending = store.flush();
+      expect(syncSignal).toBeDefined();
+      store.stop();
+      expect(syncSignal?.aborted).toBe(true);
+
+      await store.start('user-2');
+      resolveSync?.({
+        rev: 2, dbId: 'db-1',
+        results: [{ ok: true, row: { c: 'guests', id: 'gst-1', v: 2, p: 0, d: { id: 'gst-1', fullName: 'رد متأخر من المستخدم الأول' } } }],
+      });
+      await sending;
+      expect(store.get<any[]>(GUESTS, [])[0].fullName).toBe('المستخدم الحالي');
+      expect(store.pendingCount()).toBe(0);
+    } finally {
+      store.stop();
+    }
+  });
+
   it('backs off exponentially when the network fails but the browser claims to be online', async () => {
     const h = harness();
     await h.store.start('u1');

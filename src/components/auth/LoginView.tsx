@@ -7,6 +7,7 @@ import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
 import React, { useEffect, useState } from 'react';
 import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
+import { PasswordVisibilityButton } from './PasswordFields';
 
 interface LoginViewProps {
   onLogin: (email: string, password: string, totp?: string) => Promise<void>;
@@ -16,6 +17,7 @@ interface LoginViewProps {
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [needsCode, setNeedsCode] = useState(false);
@@ -176,14 +178,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input
                 id="login-password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full text-sm pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
+                className="w-full text-sm pr-9 pl-12 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
                 dir="ltr"
               />
+              <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute left-1 top-0" />
             </div>
           </div>
 
@@ -206,6 +209,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 className="w-full text-lg tracking-[0.5em] text-center px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
                 dir="ltr"
               />
+              <button type="button" onClick={() => { setNeedsCode(false); setCode(''); setPassword(''); setEmail(''); setError(null); }}
+                className="mt-2 min-h-10 text-xs font-semibold text-blue-700 hover:underline">تبديل الحساب</button>
             </div>
           )}
 

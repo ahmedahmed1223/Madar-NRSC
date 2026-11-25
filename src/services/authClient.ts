@@ -60,7 +60,7 @@ export const authClient = {
     if (session?.setupReviewId === id) session = { ...session, setupReviewId: undefined };
   },
 
-  async logout(): Promise<boolean> {
+  async logout(beforeRequest?: () => void): Promise<boolean> {
     const userId = session?.user.id;
     if (userId && typeof indexedDB !== 'undefined') {
       const saved = (await listPacketMetadata()).filter(row => row.userId === userId);
@@ -71,6 +71,7 @@ export const authClient = {
         channel.postMessage({ type: 'logout', userId }); channel.close();
       }
     }
+    beforeRequest?.();
     await apiFetch('/api/v1/auth/logout', { method: 'POST' });
     session = null;
     return true;

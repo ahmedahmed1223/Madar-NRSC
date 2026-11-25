@@ -38,8 +38,8 @@ export async function apiFetch<T = any>(url: string, init: RequestInit & { json?
   if (!res.ok) {
     const confirmationFailure = confirmationErrors && ['/api/v1/db/confirm-operation', '/api/v1/db/backups/restore', '/api/v1/db/reset'].includes(url) &&
       ['CONFIRMATION_INVALID', 'CONFIRMATION_REQUIRED', 'CONFIRMATION_AUTH_FAILED'].includes(payload?.code);
-    if (res.status === 401 && onUnauthorized && !url.endsWith('/auth/login') && !confirmationFailure) onUnauthorized();
-    if (res.status === 403 && payload?.code === 'PASSWORD_CHANGE_REQUIRED' && onPasswordChangeRequired) onPasswordChangeRequired();
+    if (res.status === 401 && !requestInit.signal?.aborted && onUnauthorized && !url.endsWith('/auth/login') && !confirmationFailure) onUnauthorized();
+    if (res.status === 403 && !requestInit.signal?.aborted && payload?.code === 'PASSWORD_CHANGE_REQUIRED' && onPasswordChangeRequired) onPasswordChangeRequired();
     throw new ApiError(res.status, payload?.error || `HTTP ${res.status}`, payload?.code);
   }
   return payload as T;
