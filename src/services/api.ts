@@ -253,7 +253,24 @@ export interface GlobalSearchResult {
   cards: ProductionCard[];
 }
 
+export interface GuestEpisodeSummary {
+  totalAppearances: number;
+  lastAppearanceDate?: string;
+  appearanceHistory: NonNullable<Guest['appearanceHistory']>;
+  monthlyAppearanceCounts: Record<string, number>;
+}
+
+export interface EpisodeSummaries {
+  available: boolean;
+  programCounts: Record<string, number>;
+  guestSummaries: Record<string, GuestEpisodeSummary>;
+}
+
 export class ApiService {
+  static async getEpisodeSummaries(signal?: AbortSignal): Promise<EpisodeSummaries> {
+    return (await apiFetch<{ data: EpisodeSummaries }>('/api/v1/data/episode-summaries', { signal })).data;
+  }
+
   static async getShiftHandovers(signal?: AbortSignal): Promise<HandoverRow[]> {
     return (await handoverRequest<{ rows: HandoverRow[] }>('/api/v1/shift-handovers', {}, signal)).rows;
   }

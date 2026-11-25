@@ -14,6 +14,7 @@ import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { navigateTo } from '../services/uiEvents';
 import { useLiveData } from '../hooks/useLiveData';
+import { useEpisodeSummaries } from '../hooks/useEpisodeSummaries';
 import { bookingStatusName, bookingStatusOf, connectionName, episodeGuestList, guestKey } from '../shared/episodePlan';
 import { stationWall } from '../shared/stationTime';
 import { airedGuestAppearances, guestAppearanceHistory, type GuestAppearance } from '../shared/guestAppearances';
@@ -36,6 +37,7 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const canSeeEpisode = RbacService.canOpenScreen(currentUser, 'episode-workspace');
   const canSeeBulletins = RbacService.canOpenScreen(currentUser, 'bulletins');
   useLiveData(['episodes', 'bulletins', 'bulletinStories', 'onAir', 'users', 'settings'], 60_000);
+  const episodeSummaryState = useEpisodeSummaries();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
   const [searchedGuests, setSearchedGuests] = useState<Guest[]>([]);
@@ -233,8 +235,17 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         {guestPage.visible.map((guest) => {
           const followUp = followUps.get(guest.id);
-          const history = guestAppearanceHistory(guest, airedAppearances.get(guest.id));
-          const latest = history[0]?.date || guest.lastAppearanceDate;
+          const guestSummary = episodeSummaryState.status === 'ready' && episodeSummaryState.summaries.available
+            ? episodeSummaryState.summaries.guestSummaries[guest.id] || {
+              totalAppearances: 0,
+              appearanceHistory: [],
+              monthlyAppearanceCounts: {},
+            }
+            : undefined;
+          const history = guestSummary
+            ? guestAppearanceHistory({ ...guest, appearanceHistory: guestSummary.appearanceHistory }, airedAppearances.get(guest.id))
+            : [];
+          const latest = history[0]?.date || guestSummary?.lastAppearanceDate;
           return (
           <article
             key={guest.id}
@@ -261,7 +272,11 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
                   {latest ? `آخر ظهور: ${arabicDate(latest)}` : 'لم يُسجل ظهور'}
                 </p>
               </div>
-              <AppearanceHistory entries={history} month={today.slice(0, 7)} showPaths={showPaths} />
+              {guestSummary && <AppearanceHistory
+                entries={history}
+                monthCount={guestSummary.monthlyAppearanceCounts[today.slice(0, 7)] || 0}
+                showPaths={showPaths}
+              />}
 
               {followUp && <div className="space-y-1 pt-2 border-t border-slate-200 text-xs text-slate-700" aria-label="متابعة الظهور">
                 <p className="font-bold">{bookingStatusName(bookingStatusOf(followUp.booking))}{followUp.booking.connectionType ? ` · ${connectionName(followUp.booking.connectionType)}` : ''}</p>
@@ -294,8 +309,17 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
             </div>
 
             <div className="pt-4 border-t border-slate-100 mt-4 space-y-1.5 text-xs text-slate-500">
-              <span>عدد مرات الظهور: <strong className="text-slate-800 font-mono">{guest.totalAppearances}</strong></span>
-              {(guest.appearanceHistory || []).slice(0, 3).map((a) => (
+              <span>عدد مرات الظهور: <strong className="text-slate-800 font-mono">{guestSummary?.totalAppearances ?? '—'}</strong></span>
+              {!guestSummary && (
+                <p role="status" className="text-2xs text-slate-500">
+                  {episodeSummaryState.status === 'loading'
+                    ? 'جارٍ تحميل العدد الدقيق...'
+                    : episodeSummaryState.status === 'error'
+                      ? 'تعذر تحميل العدد الدقيق.'
+                      : 'عدد الظهور غير متاح لحسابك.'}
+                </p>
+              )}
+              {guestSummary?.appearanceHistory.slice(0, 3).map((a) => (
                 <div key={a.episodeId} className="flex items-center justify-between gap-2 text-2xs">
                   <span className="truncate text-slate-700">{a.programName} — {a.episodeTitle}</span>
                   <span className="tabular-nums shrink-0">{arabicDate(a.date)}</span>
@@ -546,16 +570,15 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   );
 };
 
-function AppearanceHistory({ entries, month, showPaths }: {
+function AppearanceHistory({ entries, monthCount, showPaths }: {
   entries: GuestAppearance[];
-  month: string;
+  monthCount: number;
   showPaths: ReadonlyMap<string, string>;
 }) {
-  const thisMonth = entries.filter(entry => entry.date.startsWith(month)).length;
   return (
     <details className="border-t border-slate-100 text-xs text-slate-700">
       <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 font-semibold">
-        <span>سجل الظهور</span><span className="text-slate-600">هذا الشهر <bdi>{thisMonth}</bdi></span>
+        <span>سجل الظهور</span><span className="text-slate-600">هذا الشهر <bdi>{monthCount}</bdi></span>
       </summary>
       {entries.length === 0 ? <p className="pb-2">لا توجد مشاركات موثقة.</p> : (
         <ul className="space-y-2 pb-2">

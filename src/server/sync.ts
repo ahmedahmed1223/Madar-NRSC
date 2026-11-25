@@ -801,6 +801,65 @@ export class SyncService {
     return this.readCollectionPage(auth, collection, cursor, limit, query);
   }
 
+  episodeSummaries(auth: AuthContext) {
+    const available = this.canPageCollection(auth, 'episodes');
+    const canSummarizePrograms = auth.can('programs.view') || auth.can('programs.manage');
+    const canSummarizeGuests = auth.can('guests.view') || auth.can('guests.manage');
+    const programCounts: Record<string, number> = {};
+    const guestSummaries: Record<string, {
+      totalAppearances: number;
+      lastAppearanceDate?: string;
+      appearanceHistory: { episodeId: string; episodeTitle: string; programName: string; date: string }[];
+      monthlyAppearanceCounts: Record<string, number>;
+    }> = {};
+    if (!available) return { available, programCounts, guestSummaries };
+
+    const deletedPrograms = new Set(this.db.listCollection('programs')
+      .filter(row => row.d?.deletedAt)
+      .map(row => row.id));
+    for (const row of this.db.listCollection('episodes')) {
+      const episode = row.d;
+      if (!this.visible(auth, row) || episode?.deletedAt || deletedPrograms.has(episode?.programId)) continue;
+
+      if (canSummarizePrograms && episode.programId) {
+        programCounts[episode.programId] = (programCounts[episode.programId] || 0) + 1;
+      }
+
+      if (!canSummarizeGuests) continue;
+      const guestIds = new Set<string>();
+      for (const booking of episode.guests || []) {
+        const id = booking?.guestId || booking?.id;
+        if (typeof id === 'string' && id) guestIds.add(id);
+      }
+      for (const id of guestIds) {
+        const summary = guestSummaries[id] || {
+          totalAppearances: 0,
+          appearanceHistory: [],
+          monthlyAppearanceCounts: {},
+        };
+        const date = typeof episode.broadcastDate === 'string' ? episode.broadcastDate : '';
+        summary.totalAppearances += 1;
+        if (date) {
+          summary.monthlyAppearanceCounts[date.slice(0, 7)] = (summary.monthlyAppearanceCounts[date.slice(0, 7)] || 0) + 1;
+          if (!summary.lastAppearanceDate || date > summary.lastAppearanceDate) summary.lastAppearanceDate = date;
+        }
+        summary.appearanceHistory.push({
+          episodeId: row.id,
+          episodeTitle: episode.title || '',
+          programName: episode.programName || '',
+          date,
+        });
+        guestSummaries[id] = summary;
+      }
+    }
+
+    for (const summary of Object.values(guestSummaries)) {
+      summary.appearanceHistory.sort((a, b) => b.date.localeCompare(a.date) || b.episodeId.localeCompare(a.episodeId));
+      summary.appearanceHistory = summary.appearanceHistory.slice(0, 5);
+    }
+    return { available, programCounts, guestSummaries };
+  }
+
   changes(auth: AuthContext, since: number, knownAccess?: string) {
     const rev = this.db.currentRev();
     if (knownAccess !== undefined && knownAccess !== this.accessRevision(auth)) return { rev, reset: true as const };

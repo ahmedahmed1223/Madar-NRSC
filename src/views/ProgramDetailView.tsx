@@ -13,6 +13,7 @@ import { Badge } from '../components/common/Badge';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
 import { apiService } from '../services/api';
+import { useEpisodeSummaries } from '../hooks/useEpisodeSummaries';
 
 interface ProgramDetailViewProps {
   program: Program;
@@ -41,6 +42,7 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'episodes' | 'template' | 'team'>('overview');
   const canManageProgram = RbacService.hasPermission(currentUser, 'programs.manage');
+  const episodeSummaryState = useEpisodeSummaries();
 
   // Filter episodes belonging to this program
   const programEpisodes = (allEpisodes || []).filter((e) => e.programId === program.id);
@@ -255,7 +257,9 @@ export const ProgramDetailView: React.FC<ProgramDetailViewProps> = ({
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
                   <span className="block text-xl font-bold text-slate-900 tabular-nums">
-                    {programEpisodes.length || program.episodesCount || 0}
+                    {episodeSummaryState.status === 'ready' && episodeSummaryState.summaries.available
+                      ? episodeSummaryState.summaries.programCounts[program.id] || 0
+                      : '—'}
                   </span>
                   <span className="text-2xs text-slate-500">حلقات مسجلة</span>
                 </div>

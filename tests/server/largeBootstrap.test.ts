@@ -70,9 +70,103 @@ it('bootstraps a bounded guest window and serves later pages and full-history se
 it('does not expose rows or pagination state for an unreadable collection', async () => {
   const server = await createTestServer();
   try {
-    const mediaUser = await loginAgent(server.app, 'media@akhbar.tv');
-    const page = await mediaUser.get('/api/v1/data/collections/guests');
+    const restrictedUser = await loginAgent(server.app, 'media@akhbar.tv');
+    const page = await restrictedUser.get('/api/v1/data/collections/guests');
     expect(page.status).toBe(403);
+    const summaries = await restrictedUser.get('/api/v1/data/episode-summaries');
+    expect(summaries.status).toBe(200);
+    expect(summaries.body.data).toEqual({ available: true, programCounts: {}, guestSummaries: {} });
+  } finally {
+    server.close();
+  }
+});
+
+it('returns complete guest and program counts without bootstrapping every episode', async () => {
+  const server = await createTestServer();
+  try {
+    server.db.writeRow('programs', 'summary-program', {
+      id: 'summary-program',
+      name: 'برنامج الملخص',
+      status: 'ACTIVE',
+    }, -10_000, null);
+    server.db.writeRow('guests', 'summary-guest', {
+      id: 'summary-guest',
+      fullName: 'ضيف الملخص',
+      organization: 'اختبار',
+      jobTitle: 'محلل',
+      specialty: 'اقتصاد',
+    }, -10_000, null);
+    const guestBounds = server.db.positionBounds('guests');
+    server.db.transaction(() => {
+      for (let index = 0; index < 140; index += 1) {
+        const id = `summary-search-guest-${String(index).padStart(3, '0')}`;
+        server.db.writeRow('guests', id, {
+          id,
+          fullName: `ضيف بحث ${index}`,
+          organization: 'اختبار',
+          jobTitle: 'محلل',
+          specialty: 'اقتصاد',
+        }, guestBounds.min - index - 1, null);
+      }
+    });
+
+    const bounds = server.db.positionBounds('episodes');
+    server.db.transaction(() => {
+      for (let index = 0; index < 140; index += 1) {
+        const id = `summary-episode-${String(index).padStart(3, '0')}`;
+        server.db.writeRow('episodes', id, {
+          id,
+          title: `حلقة بحث ملخص ${index}`,
+          programId: 'summary-program',
+          programName: 'برنامج الملخص',
+          broadcastDate: `2026-11-${String((index % 25) + 1).padStart(2, '0')}`,
+          guests: [{ guestId: 'summary-guest' }],
+        }, bounds.min - index - 1, null);
+      }
+      server.db.writeRow('episodes', 'summary-deleted-episode', {
+        id: 'summary-deleted-episode',
+        programId: 'summary-program',
+        guests: [{ guestId: 'summary-guest' }],
+        deletedAt: '2026-11-25T00:00:00.000Z',
+      }, bounds.min - 1_000, null);
+    });
+
+    const journalist = await loginAgent(server.app, 'journalist@akhbar.tv');
+    const bootstrap = await journalist.get('/api/v1/data');
+    expect(bootstrap.status).toBe(200);
+    expect(bootstrap.body.collections.episodes).toHaveLength(100);
+    expect(bootstrap.body.windows.episodes.hasMore).toBe(true);
+    expect(bootstrap.body.collections.guests).toHaveLength(100);
+    expect(bootstrap.body.windows.guests.hasMore).toBe(true);
+
+    const summaries = await journalist.get('/api/v1/data/episode-summaries');
+    expect(summaries.status).toBe(200);
+    expect(summaries.body.data.programCounts['summary-program']).toBe(140);
+    expect(summaries.body.data.guestSummaries['summary-guest']).toMatchObject({
+      totalAppearances: 140,
+      lastAppearanceDate: '2026-11-25',
+      monthlyAppearanceCounts: { '2026-11': 140 },
+      appearanceHistory: expect.any(Array),
+    });
+    expect(summaries.body.data.guestSummaries['summary-guest'].appearanceHistory).toHaveLength(5);
+
+    const page = await journalist.get(
+      `/api/v1/data/collections/episodes?cursor=${encodeURIComponent(bootstrap.body.windows.episodes.cursor)}&limit=100`,
+    );
+    expect(page.status).toBe(200);
+    const search = await journalist.get('/api/v1/data/collections/episodes?query=حلقة%20بحث%20ملخص&limit=100');
+    expect(search.status).toBe(200);
+    expect(search.body.rows).toHaveLength(100);
+    const guestPage = await journalist.get(
+      `/api/v1/data/collections/guests?cursor=${encodeURIComponent(bootstrap.body.windows.guests.cursor)}&limit=100`,
+    );
+    expect(guestPage.status).toBe(200);
+    const guestSearch = await journalist.get('/api/v1/data/collections/guests?query=ضيف%20بحث&limit=100');
+    expect(guestSearch.status).toBe(200);
+    expect(guestSearch.body.rows).toHaveLength(100);
+    const afterBrowsing = await journalist.get('/api/v1/data/episode-summaries');
+    expect(afterBrowsing.body.data.programCounts['summary-program']).toBe(140);
+    expect(afterBrowsing.body.data.guestSummaries['summary-guest'].totalAppearances).toBe(140);
   } finally {
     server.close();
   }

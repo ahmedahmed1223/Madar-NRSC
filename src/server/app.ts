@@ -716,6 +716,11 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, dbId: db.dbId, ...sync.bootstrap(req.auth!) });
   });
 
+  app.get('/api/v1/data/episode-summaries', requireAuth, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: sync.episodeSummaries(req.auth!) });
+  });
+
   app.get('/api/v1/data/collections/:collection', requireAuth, (req, res) => {
     const name = req.params.collection;
     if (!isCollectionName(name) || !PAGED_BOOTSTRAP_COLLECTIONS.has(name)) throw new HttpError(404, 'المجموعة غير متاحة');

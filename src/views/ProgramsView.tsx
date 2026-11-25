@@ -15,6 +15,7 @@ import { nextProgrammeEpisodes } from '../shared/productionPreflight';
 import { apiService } from '../services/api';
 import { navigateTo } from '../services/uiEvents';
 import { useLiveData } from '../hooks/useLiveData';
+import { useEpisodeSummaries } from '../hooks/useEpisodeSummaries';
 
 interface ProgramsViewProps {
   programs: Program[];
@@ -55,6 +56,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   useLiveData(['episodes', 'settings'], 60_000);
+  const episodeSummaryState = useEpisodeSummaries();
 
   // Form states
   const [name, setName] = useState('');
@@ -369,7 +371,9 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
                       className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
                     >
                       <Video className="w-3.5 h-3.5 text-slate-500" />
-                      <span>الحلقات ({prog.episodesCount || 0})</span>
+                      <span>الحلقات ({episodeSummaryState.status === 'ready' && episodeSummaryState.summaries.available
+                        ? episodeSummaryState.summaries.programCounts[prog.id] || 0
+                        : episodeSummaryState.status === 'loading' ? '…' : '—'})</span>
                     </button>
 
                     {canManage && (
