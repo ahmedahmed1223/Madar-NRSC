@@ -28,7 +28,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   USER_SUSPEND: 'تجميد حساب', USER_ACTIVATE: 'إعادة تنشيط حساب',
   ROLE_CHANGE: 'تغيير دور مستخدم', PERMISSION_OVERRIDE: 'استثناءات الصلاحيات',
   USER_STATION_CHANGE: 'نقل مستخدم بين المحطات', USER_DEPARTMENT_CHANGE: 'نقل مستخدم بين الأقسام', MANAGED_SCOPE_CHANGE: 'محطات المدير العام',
-  ROLE_CREATE: 'إنشاء دور', ROLE_UPDATE: 'تعديل دور', ROLE_DELETE: 'حذف دور',
+  ROLE_CREATE: 'إنشاء دور', ROLE_UPDATE: 'تعديل دور', ROLE_DELETE: 'حذف دور', PERMISSIONS_UPDATED: 'تعديل الصلاحيات',
   STATION_CHANGE: 'تعديل المحطات', STATION_REMOVE: 'حذف محطة', DEPARTMENT_CHANGE: 'تعديل الأقسام الإدارية',
   BROADCAST_LOCK: 'تفعيل قفل البث', BROADCAST_UNLOCK: 'رفع قفل البث',
   STORAGE_UPDATE: 'تعديل التخزين',

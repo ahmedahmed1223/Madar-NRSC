@@ -7,7 +7,7 @@ import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, department
 import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
 import { stationGroupsOf } from '../../shared/stations';
 import { RoleDefinition } from '../../services/rbacService';
-import { evaluatePermission } from '../../shared/rbac';
+import { evaluatePermission, resolvePermission } from '../../shared/rbac';
 import { canOpenScreen, SCREEN_GROUPS, screenLabel } from '../../shared/screens';
 import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
@@ -422,7 +422,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             <ul className="divide-y divide-slate-100 text-xs">
               {SCREEN_GROUPS.map(({ label, navs }) => {
                 const open = navs.filter((nav) => canOpenScreen(nav, selectedRole,
-                  (permission) => evaluatePermission({ role, customRoleId, isActive, customPermissions }, permission, roles), role === 'SUPER_ADMIN'));
+                  (permission) => evaluatePermission({ role, customRoleId, isActive, customPermissions, departmentId }, permission, roles, allDepartments()), role === 'SUPER_ADMIN'));
                 return open.length > 0 && <li key={label} className="py-2"><strong className="me-2">{label}</strong>{open.map(screenLabel).join('، ')}</li>;
               })}
             </ul>
@@ -539,6 +539,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             onChange={setCustomPermissions}
             rolePermissions={selectedRole?.permissions || []}
             allByRole={role === 'SUPER_ADMIN'}
+            decisionFor={code => resolvePermission({ role, customRoleId, isActive, customPermissions, departmentId }, code, roles, allDepartments())}
           />
         )}
 

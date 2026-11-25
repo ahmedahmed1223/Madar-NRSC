@@ -36,6 +36,7 @@ import { taskTransitionError } from '../shared/taskWorkflow';
 import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
 import { workReminderError, workReminderInstant } from '../shared/workReminders';
+import { permissionChangeError, permissionListError, restrictionRemovalError } from './permissionChanges';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -170,7 +171,8 @@ const WORKFLOW_FIELDS = new Set([
   'breakingRequest',
 ]);
 
-const usersPolicy: Policy = ({ auth, kind, before, after, list }) => {
+const usersPolicy: Policy = (input) => {
+  const { auth, kind, before, after, list } = input;
   const self = auth.user.id;
   const targetId = (after ?? before)?.id;
   const actorIsSuper = auth.user.role === 'SUPER_ADMIN';
@@ -190,7 +192,7 @@ const usersPolicy: Policy = ({ auth, kind, before, after, list }) => {
       ['ADMIN', 'SUPER_ADMIN'].includes(after?.role) || (after?.customPermissions?.length ?? 0) > 0 || !!after?.customRoleId ||
       (after?.managedStationIds?.length ?? 0) > 0 || (after?.managedGroupIds?.length ?? 0) > 0;
     if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو مخصص أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
-    return null;
+    return permissionChangeError(input);
   }
   const privilegedChange = PRIVILEGED_USER_FIELDS.some((f) => changed(before, after, f));
   if (privilegedChange) {
@@ -199,8 +201,8 @@ const usersPolicy: Policy = ({ auth, kind, before, after, list }) => {
     const roleFields = PRIVILEGED_USER_FIELDS.filter((f) => f !== 'isActive');
     if (roleFields.some((f) => changed(before, after, f)) && !auth.can('users.manage_roles_permissions')) return DENIED;
   }
-  if (targetId === self) return null; // own profile fields
-  return auth.can('users.edit_profile') ? null : DENIED;
+  if (targetId === self) return permissionChangeError(input); // own profile fields
+  return auth.can('users.edit_profile') ? permissionChangeError(input) : DENIED;
 };
 
 /**
@@ -209,6 +211,10 @@ const usersPolicy: Policy = ({ auth, kind, before, after, list }) => {
  */
 const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (!auth.can('users.manage_roles_permissions')) return DENIED;
+  if (kind !== 'delete') {
+    const invalid = permissionListError(after?.permissions, false, true);
+    if (invalid) return invalid;
+  }
   const actorIsSuper = auth.user.role === 'SUPER_ADMIN';
   const role = after ?? before;
   const codes = [before?.roleCode, after?.roleCode].filter(Boolean);
@@ -221,6 +227,8 @@ const rolesPolicy: Policy = ({ auth, kind, before, after, list }) => {
     if (notHeld.length) return `لا يمكنك منح صلاحيات لا تملكها: ${notHeld.join('، ')}`;
   }
   if (kind === 'delete') return before?.isSystemRole ? 'لا يمكن حذف الأدوار الأساسية للنظام' : null;
+  const relaxation = restrictionRemovalError({ auth, kind, before, after, list } as PolicyInput, before?.permissions, after?.permissions);
+  if (relaxation) return relaxation;
   const badScreens = screensError(after?.screens);
   if (badScreens) return badScreens;
   if (before && (before.isSystemRole !== after?.isSystemRole || (before.isSystemRole && before.roleCode !== after?.roleCode))) {
@@ -478,6 +486,8 @@ const settingsPolicy: Policy = (input) => {
   if (kind === 'delete') return 'لا يمكن حذف إعدادات النظام';
   const invalid = settingsError(after);
   if (invalid) return invalid;
+  const permissionsInvalid = permissionChangeError(input);
+  if (permissionsInvalid) return permissionsInvalid;
   const users = (list?.('users') || []).filter((u: any) => u && !u.deletedAt);
   const previousProgrammes = moduleRule(before?.moduleAccess, 'programmes');
   const nextProgrammes = moduleRule(after?.moduleAccess, 'programmes');

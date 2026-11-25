@@ -1,6 +1,7 @@
 import { sanitizeDateSettings } from '../shared/dateFormat';
 import { correctionTarget, createNewsCorrection, NewsCorrectionError } from './newsCorrections';
 import { shiftHandoverRouter } from './shiftHandovers';
+import { permissionsWorkspaceRouter } from './permissionsWorkspace';
 import express, { NextFunction, Request, Response } from 'express';
 import compression from 'compression';
 import crypto from 'crypto';
@@ -1328,6 +1329,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     });
     res.json({ success: true });
   });
+
+  app.use('/api/v1/admin/permissions', permissionsWorkspaceRouter(db));
 
   app.get('/api/v1/admin/demo-data', requirePermission('system.settings'), (req, res) => {
     const inventory = demoInventory(db);

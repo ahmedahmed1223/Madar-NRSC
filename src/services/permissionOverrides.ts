@@ -5,7 +5,7 @@
 export type OverrideState = 'role' | 'grant' | 'deny';
 
 export const OVERRIDE_STATE_LABELS: Record<OverrideState, string> = {
-  role: 'حسب الدور',
+  role: 'موروثة',
   grant: 'منح',
   deny: 'منع',
 };

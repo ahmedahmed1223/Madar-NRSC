@@ -61,7 +61,7 @@ export async function leaveEditors(page: Page) {
 
 /** Opens a screen from the sidebar by its label. */
 export async function openNav(page: Page, label: string) {
-  if (await page.locator('aside').getAttribute('aria-hidden') === 'true') {
+  if (await page.locator('#workspace-navigation').getAttribute('aria-hidden') === 'true') {
     await page.getByRole('button', { name: 'فتح القائمة الرئيسية', exact: true }).click();
   }
   // Sections of the rail fold; open them all when the screen is in a folded one.

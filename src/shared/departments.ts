@@ -19,6 +19,8 @@ export interface Department {
   headUserId?: string;
   /** Stations that have this department; absent or empty = every station. */
   stationIds?: string[];
+  /** Inherited grants and !code denials; archived departments keep their policy. */
+  permissionOverrides?: string[];
 }
 
 export type DepartmentId = string;

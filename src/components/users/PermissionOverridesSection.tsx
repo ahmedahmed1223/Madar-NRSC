@@ -3,6 +3,7 @@ import { ChevronDown, Search } from 'lucide-react';
 import { ALL_PERMISSIONS, PERMISSION_CATEGORIES } from '../../services/rbacService';
 import { OVERRIDE_STATE_LABELS, OverrideState, overrideStateOf, setOverride } from '../../services/permissionOverrides';
 import { matchesQuery } from '../../shared/search';
+import { isRestrictionPermission, type PermissionDecision } from '../../shared/rbac';
 
 const STATES: OverrideState[] = ['role', 'grant', 'deny'];
 
@@ -17,7 +18,8 @@ export const PermissionOverridesSection: React.FC<{
   rolePermissions: string[];
   /** The role grants everything (super admin): exceptions have no effect. */
   allByRole?: boolean;
-}> = ({ value, onChange, rolePermissions, allByRole = false }) => {
+  decisionFor?: (code: string) => PermissionDecision;
+}> = ({ value, onChange, rolePermissions, allByRole = false, decisionFor }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const uid = useId();
@@ -46,7 +48,7 @@ export const PermissionOverridesSection: React.FC<{
       {open && (
         <div id={`${uid}-panel`} className="p-3 pt-0 space-y-3">
           <p className="text-2xs text-slate-500 leading-relaxed">
-            «حسب الدور» يترك الصلاحية لما يحدده دور المستخدم. «منح» يضيفها له وحده، و«منع» يسحبها منه حتى لو كان دوره يمنحها.
+            «موروثة» تتبع الدور والأقسام. «منح» يضيف الصلاحية لهذا المستخدم لكنه لا يتجاوز منع القسم. «منع» يسحبها منه.
           </p>
           {allByRole && (
             <p className="text-2xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
@@ -81,12 +83,12 @@ export const PermissionOverridesSection: React.FC<{
                           <legend className="sr-only">{p.nameAr}</legend>
                           <div className="min-w-0 flex-1">
                             <span className="block text-xs font-semibold text-slate-800">{p.nameAr}</span>
-                            <span className="block text-2xs text-slate-500">
-                              الدور: {roleHas(p.code) ? 'يمنحها' : 'لا يمنحها'}
+                            <span className="block text-2xs text-slate-600">
+                              {decisionFor ? `${decisionFor(p.code).allowed ? 'مسموح' : 'غير مسموح'} · ${decisionFor(p.code).label}` : `الدور: ${roleHas(p.code) ? 'يمنحها' : 'لا يمنحها'}`}
                             </span>
                           </div>
                           <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                            {STATES.map((s) => (
+                            {STATES.filter((s) => !(s === 'deny' && isRestrictionPermission(p.code))).map((s) => (
                               <label
                                 key={s}
                                 className={`min-h-11 px-3 inline-flex items-center text-2xs font-semibold cursor-pointer border-s border-slate-200 first:border-s-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-blue-500 ${
@@ -104,6 +106,7 @@ export const PermissionOverridesSection: React.FC<{
                                   name={`${uid}-${p.code}`}
                                   value={s}
                                   checked={state === s}
+                                  disabled={allByRole}
                                   onChange={() => onChange(setOverride(value, p.code, s))}
                                   className="sr-only"
                                 />

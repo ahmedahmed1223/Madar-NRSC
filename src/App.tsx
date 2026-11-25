@@ -1,5 +1,6 @@
 import { appLocale, zoneOptions } from './shared/dateFormat';
 import { confirmSaved } from './services/confirmSave';
+import { confirmDialog } from './services/dialogs';
 import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
@@ -92,7 +93,36 @@ interface AppProps {
 }
 
 export default function App({ onLogout, onChangePassword }: AppProps) {
-  const [activeNav, setActiveNav] = useState('dashboard');
+  const [activeNav, setActiveNavState] = useState('dashboard');
+  const activeNavRef = useRef(activeNav);
+  activeNavRef.current = activeNav;
+  const permissionDirty = useRef(false);
+  const permissionNavigationPending = useRef(false);
+  const confirmPermissionNavigation = (navigate: () => void) => {
+    if (permissionNavigationPending.current) return;
+    permissionNavigationPending.current = true;
+    void confirmDialog({
+      title: 'تغييرات صلاحيات غير محفوظة',
+      message: 'هل تريد مغادرة الصفحة وإلغاء مسودة الصلاحيات؟',
+      confirmLabel: 'مغادرة وإلغاء المسودة',
+      cancelLabel: 'متابعة التحرير',
+      danger: true,
+    }).then(accepted => {
+      if (accepted) { permissionDirty.current = false; navigate(); }
+      else writeBrowserHistory('replace', { nrcsRoute: '/users' }, '/users');
+    }).finally(() => { permissionNavigationPending.current = false; });
+  };
+  const setActiveNav = (target: string) => {
+    if (target === activeNavRef.current || !permissionDirty.current) { setActiveNavState(target); return; }
+    confirmPermissionNavigation(() => setActiveNavState(target));
+  };
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (permissionDirty.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
   /** Item opened from a notification link (wire, diary entry, booking). */
   const [focusId, setFocusId] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<'programs' | 'episodes' | 'tasks' | 'cards' | null>(null);
@@ -400,6 +430,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const openLink = (nav: string) => {
     const route = parsePath(nav);
     const { view, id } = route;
+    // Confirm before changing selected-record context, which can remount a page.
+    if (permissionDirty.current && view !== activeNavRef.current) {
+      confirmPermissionNavigation(() => openLinkRef.current(nav));
+      return;
+    }
     setFocusId(id);
     if (view === 'requests') setRequestSegmentId(route.requestSegmentId);
     if (view === 'episodes' && !id) setFilterProgramId(route.episodeProgramId || null);
@@ -1170,7 +1205,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (
-              <UsersView currentUser={currentUser} />
+              <UsersView currentUser={currentUser} onPermissionDirtyChange={dirty => { permissionDirty.current = dirty; }} />
             )}
 
             {['settings', 'database', 'tests'].includes(activeNav) && (

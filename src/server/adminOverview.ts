@@ -4,6 +4,7 @@ import type { NewsroomDatabase } from './db';
 import { jobRuns } from './jobs';
 import { cardState, isCardLate } from '../shared/productionCards';
 import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
+import { departmentsOf } from '../shared/departments';
 import { stationsOf } from '../shared/stations';
 import type { AdminOverview } from '../shared/adminOverview';
 import { deploymentWarnings } from './deploymentChecks';
@@ -45,7 +46,7 @@ export function adminOverview(db: NewsroomDatabase, config: AppConfig, now = Dat
   const active = users.filter((u) => u.isActive !== false);
   const credentials = new Map(active.map((u) => [u.id, db.getCredentials(u.id)]));
   const privilegedWithout2fa = active
-    .filter((u) => PRIVILEGED.some((p) => evaluatePermission(u, p, roles)) && !credentials.get(u.id)?.totpEnabled)
+    .filter((u) => PRIVILEGED.some((p) => evaluatePermission(u, p, roles, departmentsOf(db.getRow('settings', 'singleton')?.d))) && !credentials.get(u.id)?.totpEnabled)
     .map((u) => ({ id: u.id, name: u.fullName }));
 
   const cards = db.listCollection('productionCards').map((r) => r.d).filter((c) => c && !c.deletedAt && c.status === 'OPEN');

@@ -1,4 +1,5 @@
 import { User, UserRole } from '../types/index';
+import { findDepartmentId, type Department } from './departments';
 
 export type PermissionCategory =
   | 'NEWS'
@@ -1071,21 +1072,72 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
  * SUPER_ADMIN bypasses everything; explicit user overrides win over the role;
  * a `!code` override is an explicit deny.
  */
-export function evaluatePermission(
-  user: Pick<User, 'role' | 'isActive' | 'customPermissions' | 'customRoleId'> | undefined | null,
-  permissionCode: string,
-  roles: RoleDefinition[]
-): boolean {
-  if (!user || !user.isActive) return false;
-  if (user.role === 'SUPER_ADMIN') return true;
+export type PermissionSubject = Pick<User, 'role' | 'isActive' | 'customPermissions' | 'customRoleId'> &
+  Partial<Pick<User, 'departmentId' | 'department'>>;
+export interface PermissionDecision {
+  allowed: boolean;
+  source: 'inactive' | 'unknown' | 'super-admin' | 'user-deny' | 'department-deny' | 'user-grant' | 'department-grant' | 'role' | 'none' | 'invalid-hierarchy';
+  label: string;
+  departmentId?: string;
+}
 
-  if (Array.isArray(user.customPermissions)) {
-    if (user.customPermissions.includes(`!${permissionCode}`)) return false;
-    if (user.customPermissions.includes(permissionCode)) return true;
+export const departmentGrantAllowed = (code: string) =>
+  !code.startsWith('users.') && !code.startsWith('system.') && code !== 'audit.view';
+
+/**
+ * Flags that restrict scope instead of granting an action. Their absence means "unrestricted",
+ * so denying one would widen access rather than remove a capability. They are therefore never
+ * treated as ordinary grants or denials, and they are not listed in the permission catalogue.
+ */
+const RESTRICTION_PERMISSIONS = new Set<string>(['work.assigned_only']);
+export const isRestrictionPermission = (code: string) => RESTRICTION_PERMISSIONS.has(code);
+
+/** Nearest department first. Deliberately includes archived departments. */
+export function permissionDepartments(user: Pick<PermissionSubject, 'departmentId' | 'department'>, departments: readonly Department[]): { chain: Department[]; valid: boolean } {
+  const chain: Department[] = [];
+  let current = departments.find(d => d.id === findDepartmentId(user, departments));
+  const seen = new Set<string>();
+  while (current) {
+    if (seen.has(current.id)) return { chain, valid: false };
+    seen.add(current.id);
+    chain.push(current);
+    if (!current.parentId) break;
+    current = departments.find(d => d.id === current!.parentId);
+    if (!current) return { chain, valid: false };
   }
+  return { chain, valid: true };
+}
 
+export function resolvePermission(user: PermissionSubject | undefined | null, permissionCode: string, roles: RoleDefinition[], departments: readonly Department[] = []): PermissionDecision {
+  if (!user?.isActive) return { allowed: false, source: 'inactive', label: 'الحساب غير نشط' };
+  if (!ALL_PERMISSIONS.some(p => p.code === permissionCode)) return { allowed: false, source: 'unknown', label: 'صلاحية غير معروفة' };
+  if (user.role === 'SUPER_ADMIN') return { allowed: true, source: 'super-admin', label: 'مدير النظام العام — محمي' };
+  const restriction = isRestrictionPermission(permissionCode);
+  // A denial of a scope restriction cannot widen scope, so it never removes a restriction an
+  // individual inherits from a department. Only grants decide whether the restriction applies.
+  if (!restriction && user.customPermissions?.includes(`!${permissionCode}`)) return { allowed: false, source: 'user-deny', label: 'منع خاص بالمستخدم' };
+  const { chain, valid } = permissionDepartments(user, departments);
+  if (!valid) return { allowed: false, source: 'invalid-hierarchy', label: 'تعذر التحقق من تسلسل الأقسام' };
+  if (restriction) {
+    const inherited = chain.find(d => d.permissionOverrides?.includes(permissionCode));
+    if (inherited) return { allowed: true, source: 'department-grant', label: `قيد نطاق موروث من قسم ${inherited.name}`, departmentId: inherited.id };
+    if (user.customPermissions?.includes(permissionCode)) return { allowed: true, source: 'user-grant', label: 'قيد نطاق خاص بالمستخدم' };
+    const role = findUserRole(user, roles);
+    const active = !!role?.permissions?.includes(permissionCode);
+    return { allowed: active, source: active ? 'role' : 'none', label: active ? `قيد نطاق من الدور: ${role!.nameAr}` : 'لا يوجد قيد نطاق' };
+  }
+  const denied = chain.find(d => d.permissionOverrides?.includes(`!${permissionCode}`));
+  if (denied) return { allowed: false, source: 'department-deny', label: `منع من قسم ${denied.name}`, departmentId: denied.id };
+  if (user.customPermissions?.includes(permissionCode)) return { allowed: true, source: 'user-grant', label: 'منح خاص بالمستخدم' };
+  const granted = departmentGrantAllowed(permissionCode) && chain.find(d => d.permissionOverrides?.includes(permissionCode));
+  if (granted) return { allowed: true, source: 'department-grant', label: `منح من قسم ${granted.name}`, departmentId: granted.id };
   const role = findUserRole(user, roles);
-  return !!role && role.permissions.includes(permissionCode);
+  const allowed = !!role?.permissions?.includes(permissionCode);
+  return { allowed, source: allowed ? 'role' : 'none', label: allowed ? `من الدور: ${role!.nameAr}` : 'غير ممنوحة في الإعداد الأساسي' };
+}
+
+export function evaluatePermission(user: PermissionSubject | undefined | null, permissionCode: string, roles: RoleDefinition[], departments: readonly Department[] = []): boolean {
+  return resolvePermission(user, permissionCode, roles, departments).allowed;
 }
 
 export function findUserRole(
@@ -1100,17 +1152,9 @@ export function findUserRole(
 }
 
 export function computeEffectivePermissions(
-  user: Pick<User, 'role' | 'isActive' | 'customPermissions' | 'customRoleId'> | undefined | null,
-  roles: RoleDefinition[]
+  user: PermissionSubject | undefined | null,
+  roles: RoleDefinition[],
+  departments: readonly Department[] = []
 ): string[] {
-  if (!user || !user.isActive) return [];
-  if (user.role === 'SUPER_ADMIN') return ALL_PERMISSIONS.map((p) => p.code);
-
-  const role = findUserRole(user, roles);
-  const perms = new Set(role ? role.permissions : []);
-  (user.customPermissions || []).forEach((cp) => {
-    if (cp.startsWith('!')) perms.delete(cp.slice(1));
-    else perms.add(cp);
-  });
-  return [...perms];
+  return ALL_PERMISSIONS.filter(p => evaluatePermission(user, p.code, roles, departments)).map(p => p.code);
 }

@@ -278,6 +278,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs = [] }) => {
             { id: 'DELETE', label: 'حذف' },
             { id: 'ROLE_CHANGE', label: 'تغيير دور' },
             { id: 'PERMISSION_OVERRIDE', label: 'استثناءات صلاحيات' },
+            { id: 'PERMISSIONS_UPDATED', label: 'تعديل الصلاحيات' },
             { id: 'USER_SUSPEND', label: 'تجميد' },
             { id: 'ROLE_UPDATE', label: 'تعديل دور' },
           ].map((tag) => (

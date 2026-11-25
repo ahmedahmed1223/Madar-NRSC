@@ -84,7 +84,11 @@ export class RbacService {
    * Handles role inheritance, custom user overrides, and Super Admin bypass.
    */
   static hasPermission(user: User | undefined | null, permissionCode: string): boolean {
-    return evaluatePermission(user, permissionCode, this.getRoleDefinitions());
+    return evaluatePermission(user, permissionCode, this.getRoleDefinitions(), this.getPermissionDepartments());
+  }
+
+  static getPermissionDepartments() {
+    return departmentsOf(dataStore.get<SystemSettings | null>(COLLECTIONS.settings.storageKey, null));
   }
 
   static canUseModule(user: User | undefined | null, id: ModuleId): boolean {
@@ -105,7 +109,7 @@ export class RbacService {
     if (!user || !this.isScreenModuleAvailable(user, nav)) return false;
     const roles = this.getRoleDefinitions();
     if ((nav === 'workload' || nav === 'tasks') && includeDepartmentWork && this.leadsDepartment(user)) return true;
-    return canOpenScreen(nav, findUserRole(user, roles), (permission) => evaluatePermission(user, permission, roles), user.role === 'SUPER_ADMIN');
+    return canOpenScreen(nav, findUserRole(user, roles), (permission) => this.hasPermission(user, permission), user.role === 'SUPER_ADMIN');
   }
 
   static leadsDepartment(user: User): boolean {
@@ -117,7 +121,7 @@ export class RbacService {
    * Retrieves full list of effective permission codes for a user
    */
   static getEffectivePermissions(user: User | undefined | null): string[] {
-    return computeEffectivePermissions(user, this.getRoleDefinitions());
+    return computeEffectivePermissions(user, this.getRoleDefinitions(), this.getPermissionDepartments());
   }
 
   static getRoleBadge(roleCode: string): { labelAr: string; color: string; badgeBg: string; badgeText: string } {

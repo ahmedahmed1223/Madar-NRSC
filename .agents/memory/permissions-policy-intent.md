@@ -16,3 +16,33 @@ always prioritizing individual grants would bypass an intentional department ban
 permissions, not as evidence that department inheritance is already implemented.
 Provide effective-source explanations and explicit save/cancel with impact
 preview; do not automatically populate policies or reset existing user choices.
+
+Scope restrictions must be distinguished from action permissions when applying
+department inheritance. A syntactic denial of a restriction must not widen a
+member's access to work outside their assigned scope.
+
+**Why:** This application represents some restrictions as positive permission
+flags; treating every flag as an ordinary action grant reverses the intended
+security effect.
+
+**How to apply:** Check the meaning of any scope-related flag before making it
+grantable or deniable in a new policy source. Preserve the independent resource
+and module checks rather than treating the effective permission list as the
+entire authorization decision.
+
+Lifting a scope restriction (removing it from a role, department policy, or a
+user's exceptions) is an administrative widening act, not a permission grant:
+it is refused through every write path — dedicated editor and legacy sync —
+unless the acting account is a SUPER_ADMIN or is not itself subject to that
+restriction. Denying a restriction is likewise refused everywhere.
+
+**Why:** A reviewer showed that an individual "deny" of the assigned-work-only
+flag cancelled an inherited restriction, because denial was applied before
+department policy; adding a denial even looked like a reduction to the impact
+preview. Removing a restriction is equally silent in a policy diff.
+
+**How to apply:** When adding a scope-like flag, decide its removal rule at the
+same time as its grant rule, and mirror anyone reviewing this area's mistake:
+the effective decision, the impact preview, and the department-source
+description must all come from the same resolver order (any ancestor denial wins
+over a nearer grant).

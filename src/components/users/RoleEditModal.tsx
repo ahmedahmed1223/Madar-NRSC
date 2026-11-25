@@ -14,7 +14,7 @@ interface RoleEditModalProps {
   isOpen: boolean;
   onClose: () => void;
   /** Returns an error message when the role was refused (the form stays open and shows it). */
-  onSave: (role: RoleDefinition) => void | string | null;
+  onSave: (role: RoleDefinition) => void | string | null | Promise<void | string | null>;
   roleToEdit?: RoleDefinition | null;
 }
 
@@ -46,6 +46,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
   const [screens, setScreens] = useState<string[] | null>(null);
   const [activeCategory, setActiveCategory] = useState<PermissionCategory | 'ALL'>('ALL');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (roleToEdit) {
@@ -82,8 +83,9 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const newErrors: Record<string, string> = {};
 
     if (!nameAr.trim()) newErrors.nameAr = 'اسم الدور بالعربية مطلوب';
@@ -95,20 +97,26 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
       return;
     }
 
-    const refused = onSave({
-      id: roleToEdit?.id || `role-${Date.now()}`,
-      roleCode: roleCode.trim().toUpperCase().replace(/\s+/g, '_'),
-      nameAr: nameAr.trim(),
-      nameEn: nameEn.trim() || nameAr.trim(),
-      description: description.trim(),
-      color: selectedColor.hex,
-      badgeBg: selectedColor.bg,
-      badgeText: nameAr.trim(),
-      isSystemRole: roleToEdit?.isSystemRole ?? false,
-      permissions: selectedPermissions,
-      // Kept in sidebar order; a role without a list opens every screen its permissions allow.
-      ...(screens ? { screens: ASSIGNABLE_SCREENS.filter((nav) => screens.includes(nav)) } : {}),
-    });
+    setSaving(true);
+    let refused: void | string | null;
+    try {
+      refused = await onSave({
+        id: roleToEdit?.id || `role-${Date.now()}`,
+        roleCode: roleCode.trim().toUpperCase().replace(/\s+/g, '_'),
+        nameAr: nameAr.trim(),
+        nameEn: nameEn.trim() || nameAr.trim(),
+        description: description.trim(),
+        color: selectedColor.hex,
+        badgeBg: selectedColor.bg,
+        badgeText: nameAr.trim(),
+        isSystemRole: roleToEdit?.isSystemRole ?? false,
+        permissions: selectedPermissions,
+        // Kept in sidebar order; a role without a list opens every screen its permissions allow.
+        ...(screens ? { screens: ASSIGNABLE_SCREENS.filter((nav) => screens.includes(nav)) } : {}),
+      });
+    } catch (error) {
+      refused = error instanceof Error ? error.message : 'تعذر حفظ الدور';
+    } finally { setSaving(false); }
     if (refused) {
       // A duplicate code belongs next to the code field; anything else above the actions.
       setErrors(/الرمز/.test(refused) ? { roleCode: refused } : { form: refused });
@@ -394,6 +402,7 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
           </button>
           <button
             type="submit"
+            disabled={saving}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />

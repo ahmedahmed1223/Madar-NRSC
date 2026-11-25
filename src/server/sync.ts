@@ -36,7 +36,7 @@ import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
-import { departmentIdOf } from '../shared/departments';
+import { departmentIdOf, departmentsOf } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
@@ -366,8 +366,8 @@ export class SyncService {
         managedGroupIds: u.managedGroupIds,
         role: u.role,
         departmentId: departmentIdOf(u),
-        canManage: evaluatePermission(u, 'cards.manage', roles),
-        canWork: evaluatePermission(u, 'cards.work', roles),
+        canManage: evaluatePermission(u, 'cards.manage', roles, departmentsOf(settings)),
+        canWork: evaluatePermission(u, 'cards.work', roles, departmentsOf(settings)),
       }));
     return { people, stations: stationsOf(settings) };
   }
@@ -446,7 +446,7 @@ export class SyncService {
     const roles = this.listData('roles') as RoleDefinition[];
     return this.listData('users')
       .filter((u: any) => u.isActive !== false && !u.deletedAt)
-      .filter((u: any) => (step.kind === 'ROLE' ? u.role === step.roleCode : evaluatePermission(u, 'bulletins.approve', roles)))
+      .filter((u: any) => (step.kind === 'ROLE' ? u.role === step.roleCode : evaluatePermission(u, 'bulletins.approve', roles, departmentsOf(this.db.getRow('settings', SINGLETON_ID)?.d))))
       .map((u: any) => u.id)
       .slice(0, 20);
   }
@@ -589,7 +589,7 @@ export class SyncService {
       const roles = auth.roles;
       for (const row of this.db.listCollection('users')) {
         const u = row.d;
-        if (!u || u.id === auth.user.id || u.isActive === false || u.deletedAt || !evaluatePermission(u, 'news.approve', roles)) continue;
+        if (!u || u.id === auth.user.id || u.isActive === false || u.deletedAt || !evaluatePermission(u, 'news.approve', roles, departmentsOf(this.db.getRow('settings', SINGLETON_ID)?.d))) continue;
         writeNotification(this.db, {
           userId: u.id,
           title: `اجتاز التدقيق وينتظر الاعتماد — ${auth.user.fullName}`,
@@ -726,7 +726,7 @@ export class SyncService {
     this.applySettings();
     const results = ops.map((op): SyncOpResult => {
       const result = this.applyOne(auth, op, ip);
-      if (result.ok && op.c === 'settings') auth = buildAuthContext(this.db, auth.user, auth.sessionId);
+      if (result.ok && ['settings', 'roles', 'users'].includes(op.c)) auth = buildAuthContext(this.db, this.db.getRow('users', auth.user.id)?.d || auth.user, auth.sessionId);
       if (result.ok === false && result.current && !this.visible(auth, result.current)) {
         return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' };
       }

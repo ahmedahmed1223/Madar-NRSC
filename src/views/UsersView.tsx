@@ -8,28 +8,26 @@ type UserSortKey = (typeof USER_SORT_KEYS)[number];
 const VIEW_KEY = 'nrcs-users-view';
 const ICON_BTN = 'min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center bg-white rounded-lg border border-slate-200 transition-colors';
 import { Avatar } from '../components/common/Avatar';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
 import { stationGroupsOf, stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
 import { dataStore } from '../services/dataStore';
-import { RbacService, RoleDefinition, ALL_PERMISSIONS, findUserRole } from '../services/rbacService';
+import { RbacService, RoleDefinition, findUserRole } from '../services/rbacService';
 import { temporaryPassword, webRandom } from '../shared/passwords';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { UserFormModal } from '../components/users/UserFormModal';
 import { RoleEditModal } from '../components/users/RoleEditModal';
-import { PermissionsMatrixTable } from '../components/users/PermissionsMatrixTable';
+import { PermissionsWorkspace } from '../components/users/PermissionsWorkspace';
 import { confirmSaved } from '../services/confirmSave';
 import { countLabel } from '../shared/arabicPlural';
-import { roleInUseError } from '../services/roleUsage';
 import { downloadCsv } from '../services/csvExport';
 import {
   Users as UsersIcon,
   UserCheck,
   UserX,
-  ShieldCheck,
   ShieldOff,
   Plus,
   Search,
@@ -48,12 +46,15 @@ import {
 interface UsersViewProps {
   currentUser: User;
   onUserSwitch?: (user: User) => void;
+  /** Synchronous signal for the app-shell navigation guard. */
+  onPermissionDirtyChange?: (dirty: boolean) => void;
 }
 
-export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch }) => {
+export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch, onPermissionDirtyChange }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
-  const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'MATRIX'>('DIRECTORY');
+  const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'WORKSPACE'>('DIRECTORY');
+  const permissionDirtyRef = useRef(false);
   const [viewMode, setViewModeState] = useState<'GRID' | 'TABLE'>(() => {
     try {
       return localStorage.getItem(VIEW_KEY) === 'TABLE' ? 'TABLE' : 'GRID';
@@ -111,6 +112,23 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
   const denyRoles = () => {
     notify({ type: 'warning', message: 'صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات' });
     return false;
+  };
+
+  const changeActiveTab = async (nextTab: 'DIRECTORY' | 'WORKSPACE') => {
+    if (nextTab === activeTab) return;
+    if (permissionDirtyRef.current) {
+      const confirmed = await confirmDialog({
+        title: 'تغييرات غير محفوظة',
+        message: 'ستغادر مساحة الصلاحيات مع وجود تعديلات غير محفوظة. هل تريد تركها؟',
+        confirmLabel: 'ترك التغييرات',
+        cancelLabel: 'البقاء هنا',
+        danger: true,
+      });
+      if (!confirmed) return;
+      permissionDirtyRef.current = false;
+      onPermissionDirtyChange?.(false);
+    }
+    setActiveTab(nextTab);
   };
 
   const showToast = (msg: string) => {
@@ -229,7 +247,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
 
   // --- ROLE & RBAC ACTIONS ---
   /** Returns the reason when the role is refused (duplicate or empty code), for the form to show. */
-  const handleSaveRole = (roleData: RoleDefinition): string | null => {
+  const handleSaveRole = async (roleData: RoleDefinition): Promise<string | null> => {
     if (!canManageRoles) {
       denyRoles();
       return 'صلاحياتك لا تسمح بإدارة الأدوار والصلاحيات';
@@ -240,7 +258,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       return e?.message || 'تعذر حفظ الدور';
     }
     loadData();
-    void confirmSaved('roles', roleData.id, `تم حفظ الدور: ${roleData.nameAr}`).then(loadData);
+    const accepted = await dataStore.awaitWrite('roles', roleData.id);
+    loadData();
+    if (!accepted.ok) return accepted.message || 'تعذر حفظ الدور على الخادم';
+    showToast(`تم حفظ الدور: ${roleData.nameAr}`);
     return null;
   };
 
@@ -256,30 +277,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       setRoles(res.roles);
       showToast('تم حذف الدور المخصص بنجاح');
     }
-  };
-
-  const handleUpdateRolePermissions = (roleId: string, permCode: string, isEnabled: boolean) => {
-    if (!canManageRoles) {
-      denyRoles();
-      return;
-    }
-    const targetRole = roles.find((r) => r.id === roleId);
-    if (!targetRole) return;
-
-    let updatedPerms = [...targetRole.permissions];
-    if (isEnabled) {
-      if (!updatedPerms.includes(permCode)) updatedPerms.push(permCode);
-    } else {
-      updatedPerms = updatedPerms.filter((p) => p !== permCode);
-    }
-
-    const updatedRole = { ...targetRole, permissions: updatedPerms };
-    try {
-      RbacService.saveRole(updatedRole);
-    } catch (e: any) {
-      notify({ type: 'warning', message: e?.message || 'تعذر حفظ الدور' });
-    }
-    loadData();
   };
 
   const handleResetDefaults = async () => {
@@ -398,7 +395,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
             key={item.label}
             type="button"
             aria-pressed={item.on}
-            onClick={() => { setActiveTab('DIRECTORY'); if (item.on) clearFilters(); else item.apply(); }}
+            onClick={() => { void changeActiveTab('DIRECTORY').then(() => { if (activeTab !== 'WORKSPACE' || !permissionDirtyRef.current) { if (item.on) clearFilters(); else item.apply(); } }); }}
             className={`min-h-11 sm:min-h-9 px-3 rounded-lg border inline-flex items-center gap-2 font-bold transition-colors ${item.on ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'}`}
           >
             <span className={`tabular-nums text-sm ${item.warn ? 'text-amber-800' : 'text-slate-900'}`}>{item.count}</span>
@@ -412,14 +409,14 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
       <div role="tablist" aria-label="المستخدمون والأدوار" className="flex items-center gap-1 border-b border-slate-200">
         {([
           { id: 'DIRECTORY', label: `الحسابات (${users.length})`, icon: UsersIcon },
-          { id: 'MATRIX', label: 'الأدوار والصلاحيات', icon: ShieldCheck },
+          { id: 'WORKSPACE', label: 'مساحة الصلاحيات', icon: KeyRound },
         ] as const).map((t) => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={activeTab === t.id}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => void changeActiveTab(t.id)}
             className={`-mb-px min-h-11 px-4 border-b-2 text-sm font-bold transition-colors flex items-center gap-2 ${
               activeTab === t.id ? 'border-blue-600 text-slate-900' : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
@@ -863,21 +860,23 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch 
         </div>
       )}
 
-      {/* TAB 2: RBAC MATRIX */}
-      {activeTab === 'MATRIX' && (
-        <PermissionsMatrixTable
-          roles={roles}
-          onUpdateRolePermissions={handleUpdateRolePermissions}
+      {activeTab === 'WORKSPACE' && (
+        <PermissionsWorkspace
+          currentUser={currentUser}
+          canManage={canManageRoles}
+          onDirtyChange={(dirty) => {
+            permissionDirtyRef.current = dirty;
+            onPermissionDirtyChange?.(dirty);
+          }}
+          onAddNewRole={() => {
+            setRoleToEdit(null);
+            setIsRoleModalOpen(true);
+          }}
           onEditRole={(role) => {
             setRoleToEdit(role);
             setIsRoleModalOpen(true);
           }}
           onDeleteRole={handleDeleteRole}
-          roleDeleteBlocker={(role) => roleInUseError(role, users)}
-          onAddNewRole={() => {
-            setRoleToEdit(null);
-            setIsRoleModalOpen(true);
-          }}
           onResetDefaults={handleResetDefaults}
         />
       )}

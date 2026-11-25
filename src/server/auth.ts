@@ -116,7 +116,7 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
   const can = (permission: string) => {
     let allowed = decisions.get(permission);
     if (allowed === undefined) {
-      allowed = evaluatePermission(user, permission, roles);
+      allowed = evaluatePermission(user, permission, roles, departmentsOf(settings));
       decisions.set(permission, allowed);
     }
     return allowed;
@@ -128,7 +128,7 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
     sessionId,
     roles,
     can,
-    permissions: computeEffectivePermissions(user, roles),
+    permissions: computeEffectivePermissions(user, roles, departmentsOf(settings)),
     moduleAllowed,
     departmentTaskMembers: () => {
       if (team !== undefined) return team;

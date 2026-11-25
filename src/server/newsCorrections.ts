@@ -45,7 +45,9 @@ export function createNewsCorrection(db: NewsroomDatabase, auth: AuthContext, in
       const user = db.getRow('users', userId)?.d;
       if (!user || user.isActive === false || user.deletedAt) return;
       const owner = buildAuthContext(db, user, '');
-      if (owner.can('news.view') && owner.can(collection === 'episodes' ? 'episodes.view' : 'bulletins.view') && canRead(owner, collection, target)) recipients.add(userId);
+      // Parent visibility already checks the real permissions and module scope.
+      // There are no episodes.view / bulletins.view permission definitions.
+      if (owner.can('news.view') && canRead(owner, collection, target)) recipients.add(userId);
     };
     for (const { d: episode } of db.listCollection('episodes')) {
       if (episode.deletedAt || !(episode.rundown || []).some((s: any) => s.newsId === row.id)) continue;
