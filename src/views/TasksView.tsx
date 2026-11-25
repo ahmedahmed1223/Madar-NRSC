@@ -394,7 +394,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if ((assignedOnly || mineOnly) && !isMyTask(t, currentUser.id)) return false;
     if (!focusedTask && !dueInPeriod(t)) return false;
-    if (priorityFilter !== 'ALL' && t.priority !== priorityFilter) return false;
+    if (priorityFilter !== 'ALL' && !(priorityFilter === 'URGENT' ? t.priority === 'URGENT' || t.priority === 'CRITICAL' : t.priority === priorityFilter)) return false;
     if (assigneeFilter !== 'ALL' && (t.assigneeId || t.assignedToId) !== assigneeFilter) return false;
     if (overdueOnly && !overdueDays(t, now)) return false;
     return !searchQuery.trim() || matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
@@ -408,7 +408,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     urgent: filteredTasks.filter(task => task.priority === 'URGENT' || task.priority === 'CRITICAL').length,
   };
   const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
-  const selectedDeadline = dueDate ? Date.parse(dueDate) : NaN;
+  const selectedDeadline = dueDate ? Date.parse(fromLocalInputValue(dueDate)) : NaN;
   const pastDueOpenTask = Number.isFinite(selectedDeadline) && selectedDeadline < now
     && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(status));
 

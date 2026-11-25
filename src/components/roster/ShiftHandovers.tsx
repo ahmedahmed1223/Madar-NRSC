@@ -14,6 +14,7 @@ import { handoverDraftError, personalHandoverReceiptState, type HandoverDraftInp
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { Modal } from '../common/Modal';
+import { copyTextToClipboard } from '../../services/clipboard';
 
 const control = 'min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
 const button = 'min-h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50';
@@ -48,6 +49,7 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
   const [rows, setRows] = useState<HandoverRow[]>([]);
   const [listReady, setListReady] = useState(false);
   const [awaitingMe, setAwaitingMe] = useState(false);
+  const [departmentFilter, setDepartmentFilter] = useState('ALL');
   const [opening, setOpening] = useState(false);
   const [selected, setSelected] = useState<HandoverRow | null>(null);
   const [draft, setDraft] = useState<HandoverDraftInput | null>(null);
@@ -209,7 +211,12 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
   };
   const choices = referenceChoices(currentUser);
   const pendingReceiptRows = rows.filter(row => personalHandoverReceiptState(row, currentUser.id) === 'pending');
-  const visibleRows = awaitingMe ? pendingReceiptRows : rows;
+  const visibleRows = (awaitingMe ? pendingReceiptRows : rows).filter(row => departmentFilter === 'ALL' || row.d.departmentId === departmentFilter);
+  const copySummary = async (sources: HandoverRow[]) => {
+    const text = sources.map(row => [row.d.title, departmentName(row.d.departmentId), `${row.d.recipientDate} · ${shiftName(row.d.recipientShift)}`, row.d.note,
+      ...row.d.references.flatMap(ref => ref.available ? [ref.title + (ref.note ? ` — ${ref.note}` : '')] : ['مرجع غير متاح'])].filter(Boolean).join('\n')).join('\n\n');
+    setMessage(await copyTextToClipboard(text || 'لا توجد تسليمات معروضة.') ? 'نُسخ ملخص التسليم.' : 'تعذّر نسخ ملخص التسليم.');
+  };
   const receiptState = selected ? personalHandoverReceiptState(selected, currentUser.id) : null;
   const update = (value: Partial<HandoverDraftInput>) => setDraft(previous => previous ? { ...previous, ...value } : previous);
   const status = <>{message && <p ref={messageRef} role="status" className="text-sm text-slate-700 break-words border-s-2 border-amber-500 ps-3 py-2">{message}</p>}{!isOnline && <p role="status" className="text-sm text-amber-800">غير متصل؛ الحفظ والنشر والاستلام تحتاج تأكيد الخادم.</p>}</>;
@@ -217,6 +224,13 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
   return <section className="space-y-3 min-w-0" aria-label="تسليم الوردية">
     <div className="flex flex-wrap justify-between gap-2"><h2 className="text-base font-bold text-slate-900">تسليم الوردية</h2><div className="flex gap-2"><button className={button} title="تحديث التسليمات" aria-label="تحديث التسليمات" disabled={pending || !isOnline} onClick={reload}><RefreshCw size={18} /></button><button className={button} disabled={!canPublish || pending || !isOnline} title={!canPublish ? 'تحتاج صلاحية النشر والقراءة' : undefined} onClick={create}><Plus size={18} />إنشاء تسليم</button></div></div>
     {!selected && !draft && status}
+    <div className="flex flex-wrap gap-2">
+      <select aria-label="تصفية تسليم الوردية بالقسم" value={departmentFilter} onChange={event => setDepartmentFilter(event.target.value)} className={`${control} sm:w-auto`}>
+        <option value="ALL">كل الأقسام</option>
+        {DEPARTMENTS.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}
+      </select>
+      <button type="button" className={button} onClick={() => void copySummary(visibleRows)}>نسخ الملخص</button>
+    </div>
     {opening && <p role="status" className="text-sm text-slate-600">جارٍ تحميل تسليم الوردية…</p>}
     {focusId && !opening && !dialogOpen && <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={!isOnline} onClick={() => open(focusId)}>إعادة فتح التسليم المحدد</button><button type="button" className={button} onClick={() => onNavigate('/roster/handover')}>عرض قائمة التسليمات</button></div>}
     {listReady && <label className="min-h-11 inline-flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={awaitingMe} onChange={event => setAwaitingMe(event.target.checked)} />بانتظار استلامي ({pendingReceiptRows.length})</label>}
@@ -253,7 +267,8 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
           {pending ? <button className={button} onClick={() => abortRef.current?.abort()}><Square size={16} />إيقاف الانتظار</button> : <>
             {draft && <button className={button} disabled={!isOnline || !canPublish || !!handoverDraftError(draft) || conflict} onClick={() => run('save')}><Save size={18} />حفظ المسودة</button>}
             {selected?.d.state === 'DRAFT' && <><button className={button} disabled={!isOnline || !selected.canPublish || session.dirty || conflict} title={session.dirty ? 'احفظ التعديلات أولاً' : !selected.canPublish ? 'لا تتوفر صلاحية أو عضوية الوردية الصادرة' : undefined} onClick={() => run('publish')}><Send size={18} />نشر التسليم</button><button className={button} disabled={!isOnline || conflict} onClick={() => run('delete')}><Trash2 size={18} />حذف المسودة</button></>}
-            {selected?.d.state === 'PUBLISHED' && <><button className={button} disabled={!isOnline || receiptState !== 'pending'} onClick={() => run('ack')}><Check size={18} />تأكيد الاستلام</button>{receiptState === null && <span className="text-xs text-slate-600 self-center">الاستلام متاح لأعضاء الوردية المستلمة المؤهلين.</span>}{selected.canRemind && <button className={button} disabled={!isOnline} onClick={() => run('remind')}><Bell size={18} />تذكير المستلمين</button>}{canPublish && (selected.canRemind || selected.d.authorId === currentUser.id) && <button className={button} onClick={async () => {
+            {selected && <button type="button" className={button} onClick={() => void copySummary([selected])}>نسخ ملخص التسليم</button>}
+            {selected?.d.state === 'PUBLISHED' && <><button className={receiptState === 'pending' ? 'min-h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-blue-700 bg-blue-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50' : button} disabled={!isOnline || receiptState !== 'pending'} onClick={() => run('ack')}><Check size={18} />تأكيد الاستلام</button>{receiptState === null && <span className="text-xs text-slate-600 self-center">الاستلام متاح لأعضاء الوردية المستلمة المؤهلين.</span>}{selected.canRemind && <button className={button} disabled={!isOnline} onClick={() => run('remind')}><Bell size={18} />تذكير المستلمين</button>}{canPublish && (selected.canRemind || selected.d.authorId === currentUser.id) && <button className={button} onClick={async () => {
               if (selected.d.references.some(r => !r.available) && !await confirmDialog({ title: 'مراجع غير متاحة', message: 'إنشاء التصحيح دون نقل المراجع غير المتاحة؟', confirmLabel: 'إنشاء التصحيح' })) return;
               const next = { ...editable(selected), id: newId('handover'), supersedesId: selected.id, title: `تصحيح: ${selected.d.title}`.slice(0, 120) }; setSelected(null); setBaseV(undefined); setDraft(next); setMessage('');
             }}>إنشاء تصحيح</button>}</>}

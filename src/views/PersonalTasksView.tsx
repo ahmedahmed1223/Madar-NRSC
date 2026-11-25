@@ -7,7 +7,7 @@ import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { confirmDialog } from '../services/dialogs';
 import { appLocale, basisZone, zoneOptions } from '../shared/dateFormat';
-import { fromLocalInputValue, toLocalInputValue } from '../shared/dates';
+import { fromLocalInputValue, toLocalInputValue, tomorrowMorningInput } from '../shared/dates';
 import { newId } from '../shared/ids';
 import { PERSONAL_TASK_NOTES_LIMIT, PERSONAL_TASK_TITLE_LIMIT, type PersonalTask } from '../shared/personalTasks';
 import { matchesQuery } from '../shared/search';
@@ -122,10 +122,7 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
   };
   const setDueTomorrow = () => {
     if (!draft) return;
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    setDraft({ ...draft, due: toLocalInputValue(tomorrow) });
+    setDraft({ ...draft, due: tomorrowMorningInput() });
   };
 
   const status = feedback && <p role={feedback.error ? 'alert' : 'status'} className={`rounded-lg border px-3 py-2 text-sm ${feedback.error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{feedback.text}</p>;

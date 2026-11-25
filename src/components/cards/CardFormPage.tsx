@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { FormPage } from '../common/FormPage';
 import { apiService } from '../../services/api';
 import { newId } from '../../shared/ids';
-import { fromLocalInputValue, toLocalInputValue } from '../../shared/dates';
+import { fromLocalInputValue, toLocalInputValue, tomorrowMorningInput } from '../../shared/dates';
 import { CARD_KINDS, CARD_STEP_PRESETS, COMPLEXITIES, MAX_CARD_STEPS, stepTypesOf, type CardKind, type CardLink, type CardStep, type CardTarget, type ProductionCard } from '../../shared/productionCards';
 import { stationsOf } from '../../shared/stations';
 import { assignmentScope } from '../../shared/assignmentScope';
@@ -107,10 +107,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
     setDueAt(toLocalInputValue(new Date(Date.now() + hours * 60 * 60 * 1000)));
   };
   const setTomorrowDeadline = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    setDueAt(toLocalInputValue(tomorrow));
+    setDueAt(tomorrowMorningInput());
   };
   const setStepTarget = (id: string, value: string) => {
     if (value.startsWith('u:')) patchStep(id, { assigneeId: value.slice(2), stationId: undefined });

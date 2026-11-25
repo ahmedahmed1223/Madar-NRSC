@@ -13,6 +13,7 @@ import { taskDurationLabel } from '../../shared/taskWorkflow';
 import { TASK_STATUS_OPTIONS } from '../../services/taskBoard';
 import { stationsOf, stationName } from '../../shared/stations';
 import type { WorkItem } from '../../shared/workload';
+import { matchesQuery } from '../../shared/search';
 
 const SELECT = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const STATUS_CLOSED = new Set(['DONE', 'COMPLETED', 'CLOSED', 'CANCELLED']);
@@ -32,6 +33,10 @@ export function DepartmentWorkPanel({ currentUser, onOpen }: { currentUser: User
   const [memberId, setMemberId] = useState('ALL');
   const [period, setPeriod] = useState<CardWorkPeriod>('ALL');
   const [state, setState] = useState<'OPEN' | 'CLOSED' | 'ALL'>('OPEN');
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState('ALL');
+  const [lateOnly, setLateOnly] = useState(false);
+  const [blockedOnly, setBlockedOnly] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,12 +57,17 @@ export function DepartmentWorkPanel({ currentUser, onOpen }: { currentUser: User
   const stations = stationsOf(apiService.getSettings());
   const selectedMember = members.has(memberId) ? memberId : 'ALL';
   const today = stationDay(Date.now());
+  const late = (item: DepartmentWorkItem) => !STATUS_CLOSED.has(item.status) && !!item.dueAt && Date.parse(item.dueAt) < Date.now();
   const filtered = (data?.items || [])
+    .filter(item => matchesQuery(query, item.title, item.detail, members.get(item.assigneeId)?.name))
+    .filter(item => kind === 'ALL' || item.kind === kind)
+    .filter(item => !lateOnly || late(item))
+    .filter(item => !blockedOnly || item.status === 'BLOCKED')
     .filter(item => selectedMember === 'ALL' || item.assigneeId === selectedMember)
     .filter(item => state === 'ALL' || (state === 'CLOSED') === STATUS_CLOSED.has(item.status))
     .filter(item => matchesCardWorkPeriod(period, today, item.dueAt && Number.isFinite(Date.parse(item.dueAt)) ? [stationDay(item.dueAt)] : []))
     .sort((a, b) => (a.dueAt || '9').localeCompare(b.dueAt || '9') || a.title.localeCompare(b.title, 'ar'));
-  const page = useIncremental(filtered, 40, `${selectedMember}|${period}|${state}`);
+  const page = useIncremental(filtered, 40, `${selectedMember}|${period}|${state}|${query}|${kind}|${lateOnly}|${blockedOnly}`);
 
   return (
     <section aria-labelledby="department-work-title" className="space-y-4">
@@ -71,6 +81,23 @@ export function DepartmentWorkPanel({ currentUser, onOpen }: { currentUser: User
       </div>}
       {!data && !failure && <p role="status" className="text-sm text-slate-600">جارٍ تحميل أعمال القسم…</p>}
       {data && <>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="search" aria-label="بحث في أعمال فريقي" placeholder="العنوان أو الموظف" className={`${SELECT} sm:max-w-sm`} value={query} onChange={event => setQuery(event.target.value)} />
+          <select aria-label="نوع العمل" className={`${SELECT} sm:w-auto`} value={kind} onChange={event => setKind(event.target.value)}>
+            <option value="ALL">كل الأنواع</option>
+            {Object.entries(KIND_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={lateOnly} onChange={event => setLateOnly(event.target.checked)} />المتأخرة فقط</label>
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={blockedOnly} onChange={event => setBlockedOnly(event.target.checked)} />المتعطلة فقط</label>
+        </div>
+        <dl aria-label="ملخص حالة الفريق" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ['المعروضة', filtered.length],
+            ['مفتوحة', filtered.filter(item => !STATUS_CLOSED.has(item.status)).length],
+            ['متأخرة', filtered.filter(late).length],
+            ['متعطلة', filtered.filter(item => item.status === 'BLOCKED').length],
+          ].map(([label, count]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-3"><dt className="text-xs text-slate-600">{label}</dt><dd className="text-lg font-bold">{count}</dd></div>)}
+        </dl>
         <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-3">
           <label className="space-y-1 text-xs font-semibold text-slate-700">الموظف
             <select className={SELECT} value={selectedMember} onChange={event => setMemberId(event.target.value)}>

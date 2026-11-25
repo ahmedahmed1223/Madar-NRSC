@@ -50,7 +50,8 @@ describe('two-factor login flow', () => {
 
     const wrong = await agent.post('/api/v1/auth/2fa/enable').set(H).send({ code: '000000' });
     expect(wrong.status).toBe(400);
-    const enable = await agent.post('/api/v1/auth/2fa/enable').set(H).send({ code: totp(secret) });
+    const enrollmentCode = totp(secret);
+    const enable = await agent.post('/api/v1/auth/2fa/enable').set(H).send({ code: enrollmentCode });
     expect(enable.status).toBe(200);
     expect(server.db.getRow('users', 'usr-4')!.d.twoFactorEnabled).toBe(true);
 
@@ -62,7 +63,7 @@ describe('two-factor login flow', () => {
     const replay = await request(server.app)
       .post('/api/v1/auth/login')
       .set(H)
-      .send({ email: 'producer@akhbar.tv', password: DEMO_PASSWORD, totp: totp(secret) });
+      .send({ email: 'producer@akhbar.tv', password: DEMO_PASSWORD, totp: enrollmentCode });
     expect(replay.status).toBe(401);
     expect(replay.body.code).toBe('TOTP_INVALID');
 

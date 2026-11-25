@@ -25,6 +25,11 @@ export function addDaysIso(day: string, days: number): string {
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
 }
 
+/** Tomorrow at 09:00 on the station calendar, not the device's calendar. */
+export function tomorrowMorningInput(now = new Date()): string {
+  return `${addDaysIso(localDateString(now), 1)}T09:00`;
+}
+
 /** Value for an <input type="datetime-local"> ("YYYY-MM-DDTHH:mm") in the station's or device's time. */
 export function toLocalInputValue(value: string | Date = new Date()): string {
   const d = typeof value === 'string' ? new Date(value) : value;

@@ -11,6 +11,7 @@ import { AiringOutcomes } from '../components/reports/AiringOutcomes';
 import { useLiveData } from '../hooks/useLiveData';
 import { stationDay, timeOnly, when } from '../components/cards/cardUi';
 import { formatDay } from '../shared/dateFormat';
+import { matchesQuery } from '../shared/search';
 import { buildHandover, handoverSections, handoverText } from '../shared/handover';
 import { cardKindName, stepTypesOf } from '../shared/productionCards';
 import { stationName, stationsOf } from '../shared/stations';
@@ -117,6 +118,7 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
   const [role, setRole] = useState('ALL');
   const [groupBy, setGroupBy] = useState<GroupBy>('department');
   const [show, setShow] = useState<Show>('ALL');
+  const [peopleQuery, setPeopleQuery] = useState('');
   const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
   const [drill, setDrill] = useState<{ title: string; items: WorkItem[] } | null>(null);
   const [personId, setPersonId] = useState(canView ? '' : currentUser.id);
@@ -223,7 +225,7 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
   const heavy = heavyThreshold(peopleRows);
   const shownRows = peopleRows.filter((r) => (show === 'FREE' ? r.open === 0 : show === 'ISSUES' ? r.overdue + r.blocked > 0 : true));
   const teams = groupLoad(
-    shownRows,
+    shownRows.filter(row => matchesQuery(peopleQuery, row.name, departmentName(row.departmentId))),
     (r) => String(groupBy === 'department' ? r.departmentId : groupBy === 'station' ? r.stationId || '' : r.roleName),
     (id) => (groupBy === 'department' ? departmentName(id) : groupBy === 'station' ? stationName(stations, id) : id || 'بدون دور')
   );
@@ -602,6 +604,7 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
           <section className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-bold text-slate-900">الفرق والأفراد</h2>
+              <input type="search" aria-label="بحث في الفرق والأفراد" placeholder="اسم الموظف أو القسم" value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} className={`${SELECT} no-print`} />
               <span className="flex flex-wrap items-center gap-2 no-print">
                 <label className="text-2xs text-slate-600" htmlFor="workload-group">تجميع حسب</label>
                 <select id="workload-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className={SELECT}>
@@ -635,7 +638,7 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
                   </tbody>
                 )}
                 {teams.map((team) => {
-                  const expanded = openTeams.has(team.id) || teams.length === 1;
+                  const expanded = !!peopleQuery.trim() || openTeams.has(team.id) || teams.length === 1;
                   return (
                     <tbody key={team.id || 'none'} className="border-b border-slate-200 last:border-0">
                       <tr className="bg-slate-50">

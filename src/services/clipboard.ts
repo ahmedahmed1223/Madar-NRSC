@@ -10,6 +10,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 
   if (typeof document === 'undefined' || !document.body) return false;
+  const previousFocus = document.activeElement;
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.readOnly = true;
@@ -25,6 +26,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     copied = false;
   } finally {
     textarea.remove();
+    if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true });
   }
   return copied;
 }

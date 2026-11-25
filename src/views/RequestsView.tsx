@@ -20,6 +20,8 @@ import { MediaEditRanges } from '../components/media/MediaEditorialPanel';
 import { MessageOriginLabel } from '../components/messages/MessageOriginLabel';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fromLocalInputValue } from '../shared/dates';
+import { copyTextToClipboard } from '../services/clipboard';
+import { useLiveData } from '../hooks/useLiveData';
 
 interface RequestsViewProps {
   focusId?: string | null;
@@ -57,6 +59,9 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  useLiveData(['requests'], 60_000);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DeptRequest | null>(null);
   const [doneFor, setDoneFor] = useState<DeptRequest | null>(null);
@@ -138,6 +143,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const canSeeDelivery = canManage || REQUEST_TYPES.some(type => type.departmentId === myDept && isMediaDeliveryRequest(type.id));
   const listTab = (tab === 'DELIVERY' && !canSeeDelivery) || (tab === 'ALL' && !canManage && !focusSegmentId) ? 'INBOX' : tab;
   const matchesFilters = (r: DeptRequest) => (typeFilter === 'ALL' || r.type === typeFilter)
+    && (!urgentOnly || r.priority === 'URGENT')
+    && (!overdueOnly || (!isRequestClosed(r.status) && !!r.dueAt && Date.parse(r.dueAt) < Date.now()))
     && matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []);
   const list = focusedRequest ? [focusedRequest] : listTab === 'DELIVERY' ? delivery.filter(matchesFilters) : requests
       .filter(r => !focusSegmentId || r.link?.segmentId === focusSegmentId)
@@ -225,6 +232,13 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
             </option>
           ))}
         </select>
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={urgentOnly} onChange={event => setUrgentOnly(event.target.checked)} />العاجلة فقط</label>
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} />المتأخرة فقط</label>
+        <button type="button" className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold" onClick={async () => {
+          const text = list.map(request => [request.title, requestStatusName(request.status), request.priority === 'URGENT' ? 'عاجل' : '', request.assigneeName || '', request.details || '', request.dueAt || ''].filter(Boolean).join(' · ')).join('\n');
+          const copied = await copyTextToClipboard(text || 'لا توجد طلبات تطابق التصفية.');
+          setMessage({ ok: copied, text: copied ? 'نُسخ ملخص الطلبات المعروضة.' : 'تعذّر نسخ الملخص.' });
+        }}>نسخ الملخص ({list.length})</button>
         {listTab !== 'DELIVERY' && <label className="col-span-full flex items-center gap-2 min-h-11 text-sm text-slate-700 sm:ms-auto cursor-pointer">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="w-4 h-4 accent-blue-600" />
           عرض المنجز والمغلق
