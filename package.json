@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "check": "npm run lint && npm test && npm run build",
     "release:version": "node scripts/set-release-version.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:work-controls": "playwright test --config playwright.work-controls.config.ts"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

@@ -10,6 +10,7 @@ const PORT = Number(process.env.E2E_PORT || 3990);
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
+  testIgnore: '**/work-controls.spec.ts',
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
