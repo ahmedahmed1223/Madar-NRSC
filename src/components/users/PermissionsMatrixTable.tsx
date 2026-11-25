@@ -121,8 +121,8 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
-            <thead>
-              <tr className="bg-slate-100 text-slate-700 text-2xs font-bold border-b border-slate-200">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-slate-100 text-slate-700 text-2xs font-bold border-b-2 border-slate-300">
                 <th className="p-3.5 min-w-[280px] sticky right-0 bg-slate-100 z-10">
                   الصلاحية ونطاق العملية
                 </th>
@@ -130,7 +130,11 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                 {roles.map((role) => (
                   <th key={role.id} className="p-3 text-center min-w-[130px] border-r border-slate-200">
                     <div className="flex flex-col items-center gap-1">
-                      <span className="font-bold">{role.nameAr}</span>
+                      <span className="font-bold text-slate-900">{role.nameAr}</span>
+                      <span className="text-3xs font-semibold text-slate-600 font-mono tabular-nums">
+                        {role.roleCode === 'SUPER_ADMIN' ? ALL_PERMISSIONS.length : role.permissions.length} / {ALL_PERMISSIONS.length}
+                        <span className="font-sans me-1"> · {role.isSystemRole ? 'نظامي' : 'مخصص'}</span>
+                      </span>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -167,6 +171,9 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                 </tr>
               ) : (
                 filteredPermissions.map((perm, idx) => {
+                  const showGroup = idx === 0 || filteredPermissions[idx - 1].category !== perm.category;
+                  const group = PERMISSION_CATEGORIES.find((c) => c.key === perm.category);
+                  const groupCount = filteredPermissions.filter((p) => p.category === perm.category).length;
                   const riskBadge = {
                     LOW: <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">منخفض</span>,
                     MEDIUM: <span className="text-2xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">متوسط</span>,
@@ -175,14 +182,26 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                   }[perm.riskLevel];
 
                   return (
+                    <React.Fragment key={perm.code}>
+                    {showGroup && (
+                      <tr className="bg-slate-100">
+                        <th
+                          colSpan={roles.length + 2}
+                          scope="colgroup"
+                          className="px-3.5 py-2 text-start text-2xs font-bold text-slate-800 sticky right-0"
+                        >
+                          {group?.labelAr ?? perm.category}
+                          <span className="ms-2 font-mono tabular-nums font-semibold text-slate-500">{groupCount}</span>
+                        </th>
+                      </tr>
+                    )}
                     <tr
-                      key={perm.code}
                       className={`hover:bg-blue-50/40 transition-colors ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
+                        'bg-white'
                       }`}
                     >
                       {/* Permission Title & Info */}
-                      <td className="p-3 sticky right-0 bg-white shadow-xs z-5">
+                      <td className="p-3 sticky right-0 bg-white z-10">
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">{perm.nameAr}</span>
@@ -229,6 +248,7 @@ export const PermissionsMatrixTable: React.FC<PermissionsMatrixTableProps> = ({
                         );
                       })}
                     </tr>
+                    </React.Fragment>
                   );
                 })
               )}
