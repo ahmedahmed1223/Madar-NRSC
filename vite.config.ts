@@ -8,7 +8,18 @@ import { appAssetsManifest } from './src/build/appAssetsManifest.ts';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), offlineAirManifest(), appAssetsManifest()],
+    plugins: [
+      {
+        name: 'app-version-meta',
+        transformIndexHtml(html) {
+          return html.replace('</head>', `    <meta name="application-version" content="${pkg.version}" />\n  </head>`);
+        },
+      },
+      react(),
+      tailwindcss(),
+      offlineAirManifest(),
+      appAssetsManifest(),
+    ],
     build: { rolldownOptions: { input: { app: path.resolve(import.meta.dirname, 'index.html'), offlineAir: path.resolve(import.meta.dirname, 'offline-air.html') } } },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),

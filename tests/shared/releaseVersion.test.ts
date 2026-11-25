@@ -1,7 +1,9 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { createServer as createNetServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { APP_VERSION } from '../../src/server/app';
 import { BACKUP_REHEARSAL_VERSION } from '../../src/server/databaseRecovery';
@@ -57,6 +59,107 @@ describe('release version', () => {
     expect(RELEASES[0].items.length).toBeGreaterThan(0);
     expect(new Set(RELEASES.map(release => release.version)).size).toBe(RELEASES.length);
   });
+
+  it('keeps the built browser, health endpoint, and built release notes in sync', async () => {
+    const build = spawnSync('npm', ['run', 'build'], { encoding: 'utf8', timeout: 120_000 });
+    expect(build.status, `${build.stdout}\n${build.stderr}`).toBe(0);
+
+    const dist = path.resolve('dist');
+    const html = readFileSync(path.join(dist, 'index.html'), 'utf8');
+    const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version as string;
+    const htmlVersion = /<meta name="application-version" content="([^"]+)"/.exec(html)?.[1] ?? 'missing';
+    assertVersionAt('dist/index.html application-version metadata', htmlVersion, packageVersion);
+
+    const appBundleName = readdirSync(path.join(dist, 'assets')).find(name => /^App-.+\.js$/.test(name));
+    const appBundleLocation = `dist/assets/${appBundleName ?? 'App-*.js'}`;
+    const appBundle = appBundleName
+      ? readFileSync(path.join(dist, 'assets', appBundleName), 'utf8')
+      : '';
+    const browserVersion = /الإصدار: v`,\s*`([^`]+)`/.exec(appBundle)?.[1] ?? 'missing';
+    assertVersionAt(`${appBundleLocation} sidebar version`, browserVersion, packageVersion);
+
+    const releaseTitle = RELEASES[0].title;
+    const titleIndex = appBundle.indexOf(`title:\`${releaseTitle}\``);
+    const releasePrefix = titleIndex >= 0 ? appBundle.slice(Math.max(0, titleIndex - 180), titleIndex) : '';
+    const builtNotesVersion = /version:`([^`]+)`,date:`[^`]*`,/.exec(releasePrefix)?.[1] ?? 'missing';
+
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'release-version-smoke-'));
+    const portProbe = createNetServer();
+    await new Promise<void>((resolve, reject) => {
+      portProbe.once('error', reject);
+      portProbe.listen(0, '127.0.0.1', () => resolve());
+    });
+    const address = portProbe.address();
+    if (!address || typeof address === 'string') throw new Error('Could not reserve a port for the built server');
+    const port = address.port;
+    await new Promise<void>((resolve, reject) => portProbe.close(error => error ? reject(error) : resolve()));
+
+    const builtServer = spawn(process.execPath, [path.join(dist, 'server.cjs')], {
+      env: {
+        PATH: process.env.PATH,
+        NODE_ENV: 'production',
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        DATA_DIR: dataDir,
+        DATABASE_ENGINE: 'sqlite',
+        SEED_DEMO_DATA: 'false',
+        BACKUP_INTERVAL_HOURS: '0',
+        NOTIFY_DELIVERY_SECONDS: '0',
+        STORAGE_SYNC_SECONDS: '0',
+        WIRE_POLL_MINUTES: '0',
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let startupErrors = '';
+    builtServer.stderr?.on('data', chunk => {
+      startupErrors = `${startupErrors}${String(chunk)}`.slice(-4000);
+    });
+
+    try {
+      const healthUrl = `http://127.0.0.1:${port}/api/health`;
+      let healthResponse: Response | undefined;
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if (builtServer.exitCode !== null) {
+          throw new Error(`Built server exited before /api/health responded: ${startupErrors}`);
+        }
+        try {
+          const response = await fetch(healthUrl);
+          if (response.ok) {
+            healthResponse = response;
+            break;
+          }
+        } catch {
+          // The server may still be starting; retry until the startup deadline.
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (!healthResponse) throw new Error(`Built server did not answer /api/health: ${startupErrors}`);
+      const healthPayload = await healthResponse.json() as { status?: string; version?: string };
+      expect(healthPayload.status, '/api/health returned an unexpected status payload').toBe('ok');
+      const healthVersion = healthPayload.version ?? 'missing';
+      assertVersionAt('dist/index.html application-version vs /api/health', htmlVersion, healthVersion);
+      assertVersionAt(`${appBundleLocation} sidebar version vs /api/health`, browserVersion, healthVersion);
+      assertVersionAt(`${appBundleLocation} «ما الجديد» latest release vs /api/health`, builtNotesVersion, healthVersion);
+      assertVersionAt('src/content/whatsNew.ts CURRENT_VERSION vs /api/health', CURRENT_VERSION, healthVersion);
+    } finally {
+      if (builtServer.exitCode === null && builtServer.signalCode === null) {
+        const exited = once(builtServer, 'exit');
+        builtServer.kill('SIGTERM');
+        let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+        const forced = new Promise(resolve => {
+          forceKillTimer = setTimeout(() => {
+            builtServer.kill('SIGKILL');
+            resolve(undefined);
+          }, 5_000);
+        });
+        const result = await Promise.race([exited.then(() => 'exit'), forced.then(() => 'forced')]);
+        if (forceKillTimer) clearTimeout(forceKillTimer);
+        if (result === 'forced') await exited;
+      }
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   it('reports the exact location and values when a version differs', () => {
     expect(() => assertVersionAt('package-lock.json version', '4.4.9', '4.5.0')).toThrow(
