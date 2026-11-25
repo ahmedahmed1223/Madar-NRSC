@@ -1,7 +1,7 @@
 import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import { awaitsMyReview } from '../../shared/newsWorkflow';
 import React, { useState } from 'react';
-import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, Inbox, Send, Tv, UserCheck, type LucideIcon } from 'lucide-react';
+import { ArrowUp, ArrowDown, Settings2, CalendarDays, Radio, AtSign, CheckSquare, ClipboardList, FileEdit, FileSearch, FileText, Inbox, Send, Tv, UserCheck, type LucideIcon } from 'lucide-react';
 import { useWorkSections } from '../../hooks/useWorkSections';
 import { orderWorkSections, stationWorkDay } from '../../shared/myWork';
 import { sanitizeWorkSections, type WorkSectionKey } from '../../shared/workContext';
@@ -20,6 +20,8 @@ import { addDaysIso, arabicDate } from '../../shared/dates';
 import { isStepOwnLate, isStepOpen, stepTypeName, stepTypesOf } from '../../shared/productionCards';
 import { isManagerRole, reviewableNews } from '../../shared/managerToday';
 import { stationName, stationsOf } from '../../shared/stations';
+import type { PersonalTask } from '../../shared/personalTasks';
+import type { PersonalNote } from '../../shared/personalWorkspace';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -41,6 +43,8 @@ interface Row {
   title: string;
   meta?: string;
   tone?: 'red' | 'amber' | 'slate' | 'emerald';
+  urgent?: boolean;
+  overdue?: boolean;
   onClick: () => void;
 }
 
@@ -113,7 +117,7 @@ const NothingWaiting: React.FC<{ cards: CardProps[]; after: boolean }> = ({ card
 export const MyWorkPanel: React.FC<MyWorkPanelProps> = (props) => <MyWorkPanelContent key={props.currentUser.id} {...props} />;
 
 const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList, episodes, tasks, onOpenNews, onOpenEpisode, onNavigate, onOpenBulletin, referenceTime }) => {
-  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'settings', 'productionCards', 'users'], 60_000);
+  useLiveData(['requests', 'roster', 'comments', 'media', 'bulletins', 'bulletinStories', 'diary', 'bookings', 'resources', 'settings', 'productionCards', 'users', 'personalTasks', 'personalNotes'], 60_000);
   const [preferences, savePreferences, preferenceStatus] = useWorkSections(currentUser.id);
   const [customizing, setCustomizing] = useState(false);
   const me = currentUser.id;
@@ -166,11 +170,14 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))
     .map((t) => {
       const overdue = t.dueDate && new Date(t.dueDate).getTime() < now;
+      const urgent = t.priority === 'URGENT' || t.priority === 'CRITICAL';
       return {
         id: t.id,
         title: t.title,
-        meta: t.dueDate ? (overdue ? 'متأخرة' : new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' })) : undefined,
-        tone: overdue ? ('red' as const) : ('slate' as const),
+        meta: [urgent ? 'عاجل' : '', overdue ? 'متأخرة' : t.dueDate ? new Date(t.dueDate).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : ''].filter(Boolean).join(' · ') || undefined,
+        tone: overdue || urgent ? ('red' as const) : ('slate' as const),
+        urgent,
+        overdue: !!overdue,
           onClick: () => {
             if (canOpen('bulletins') && t.relatedEntityType === 'BULLETIN' && t.relatedEntityId) openBulletin(t.relatedEntityId);
             else if (canOpen('bulletins') && t.relatedEntityType === 'BULLETIN_STORY') {
@@ -180,6 +187,27 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
           },
       };
     });
+  const personalTasks = apiService.getPersonalTasks().filter((task: PersonalTask) => task.ownerId === me && !task.completed)
+    .sort((a, b) => (a.dueAt || '9999').localeCompare(b.dueAt || '9999'));
+  const personalTaskRows: Row[] = personalTasks.map(task => {
+    const overdue = !!task.dueAt && Date.parse(task.dueAt) < now;
+    return {
+      id: task.id,
+      title: task.title,
+      meta: overdue ? 'متأخرة' : task.dueAt ? new Date(task.dueAt).toLocaleDateString(appLocale(), { ...zoneOptions(), day: 'numeric', month: 'short' }) : undefined,
+      tone: overdue ? 'red' : 'slate',
+      overdue,
+      onClick: () => onNavigate(`/personal-tasks/${encodeURIComponent(task.id)}`),
+    };
+  });
+  const personalNoteRows: Row[] = apiService.getPersonalNotes().filter((note: PersonalNote) => note.ownerId === me)
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt))
+    .map(note => ({
+      id: note.id,
+      title: note.title,
+      meta: note.pinned ? 'مثبتة' : undefined,
+      onClick: () => onNavigate('personal-notes'),
+    }));
 
   const ctx = { requests, media: apiService.getMedia() };
   // Today and the next two days, plus anything on air right now.
@@ -274,8 +302,15 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       title: `${stepTypeName(stepTypes, step.type)}: ${card.title}`,
       meta: step.status === 'BLOCKED' ? 'متعطلة' : step.returnedReason ? 'معادة للتعديل' : isStepOwnLate(card, step, now) ? 'متأخرة' : card.priority === 'URGENT' ? 'عاجل' : step.dueAt ? new Date(step.dueAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' }) : undefined,
       tone: (step.status === 'BLOCKED' || !!step.returnedReason || isStepOwnLate(card, step, now) || card.priority === 'URGENT' ? 'red' : 'slate') as Row['tone'],
+      urgent: card.priority === 'URGENT',
+      overdue: isStepOwnLate(card, step, now),
       onClick: () => onNavigate(`cards/${card.id}`),
     }));
+  const urgentWorkCount = (canOpen('tasks') ? myTasks.filter(row => row.urgent).length : 0)
+    + (canOpen('cards') ? cardRows.filter(row => row.urgent).length : 0);
+  const overdueWorkCount = (canOpen('tasks') ? myTasks.filter(row => row.overdue).length : 0)
+    + (canOpen('cards') ? cardRows.filter(row => row.overdue).length : 0)
+    + (canOpen('personal-tasks') ? personalTaskRows.filter(row => row.overdue).length : 0);
 
   const myDuty = onDutyAt(apiService.getRoster().filter((e) => e.userId === me), now)[0];
 
@@ -283,6 +318,8 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     { key: 'my-news', title: 'أخباري قيد العمل', icon: FileEdit, rows: myNews, empty: 'لا توجد مسودات أو أخبار معادة إليك', more: () => onNavigate('news'), enabled: canOpen('news') && RbacService.hasPermission(currentUser, 'news.create') },
     { key: 'my-review', title: 'بانتظار مراجعتي', icon: FileSearch, rows: toReview, empty: 'لا أخبار تنتظر المراجعة', more: () => onNavigate('news'), enabled: canOpen('news') && canReview },
     { key: 'my-tasks', title: 'مهامي', icon: CheckSquare, rows: myTasks, empty: 'لا مهام مفتوحة مسندة إليك', more: () => onNavigate('tasks'), enabled: canOpen('tasks') },
+    { key: 'my-personal-tasks', title: 'مهامي الشخصية', icon: CheckSquare, rows: personalTaskRows, empty: 'لا توجد مهام شخصية مفتوحة', more: () => onNavigate('personal-tasks'), enabled: canOpen('personal-tasks') },
+    { key: 'my-personal-notes', title: 'ملاحظاتي', icon: FileText, rows: personalNoteRows, empty: 'لا توجد ملاحظات محفوظة', more: () => onNavigate('personal-notes'), enabled: canOpen('personal-notes') },
     { key: 'my-dept-requests', title: `طلبات واردة لقسم ${departmentName(myDept)}`, icon: Inbox, rows: deptInbox, empty: 'لا طلبات مفتوحة لقسمك', more: () => onNavigate('requests'), enabled: canOpen('requests') && (!isManager || deptInbox.length > 0), mandatory: deptInbox.some(r => r.tone === 'red') },
     { key: 'my-episodes', title: 'الحلقات القادمة وجاهزيتها', icon: Tv, rows: todayEpisodes, empty: 'لا حلقات خلال اليومين القادمين', more: () => onNavigate('episodes'), enabled: canOpen('episodes'), mandatory: todayEpisodes.some(r => r.tone === 'red' || r.tone === 'amber') },
     { key: 'my-bulletins', title: 'قصص النشرات', icon: Radio, rows: bulletinRows, empty: 'لا قصص نشرات تنتظرك', more: () => onNavigate('bulletins'), enabled: canOpen('bulletins') && (bulletinActor.canEdit || bulletinActor.canApprove || bulletinRows.length > 0) },
@@ -316,6 +353,10 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
           <p className="text-xs text-slate-600">
             {[currentUser.stationId ? `محطة ${stationName(stations, currentUser.stationId)}` : undefined, isManager ? 'الإدارة' : `قسم ${departmentName(myDept)}`].filter(Boolean).join(' · ')}
           </p>
+          {(urgentWorkCount > 0 || overdueWorkCount > 0) && <div className="mt-1 flex flex-wrap gap-2" aria-label="مؤشرات المهام العاجلة والمتأخرة">
+            {urgentWorkCount > 0 && <span className="rounded-md bg-red-50 px-2 py-1 text-2xs font-bold text-red-800">عاجلة {urgentWorkCount}</span>}
+            {overdueWorkCount > 0 && <span className="rounded-md bg-amber-50 px-2 py-1 text-2xs font-bold text-amber-900">متأخرة {overdueWorkCount}</span>}
+          </div>}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {canOpen('roster') && (
@@ -348,7 +389,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
       </div>}
       {busy.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] gap-x-4 gap-y-3">
-          {busy.map(card => <Card key={card.key} {...card} />)}
+          {busy.map(({ key, ...card }) => <Card key={key} {...card} />)}
         </div>
       )}
       {idle.length > 0 && <NothingWaiting cards={idle} after={busy.length > 0} />}

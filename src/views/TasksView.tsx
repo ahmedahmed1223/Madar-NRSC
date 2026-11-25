@@ -26,9 +26,9 @@ import { dataStore } from '../services/dataStore';
 import { useLiveData } from '../hooks/useLiveData';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
-function overdueDays(t: EditorialTask): number {
+function overdueDays(t: EditorialTask, now = Date.now()): number {
   if (!t.dueDate || ['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(t.status))) return 0;
-  const late = Date.now() - new Date(t.dueDate).getTime();
+  const late = now - new Date(t.dueDate).getTime();
   return late > 0 ? Math.max(1, Math.floor(late / 86_400_000)) : 0;
 }
 
@@ -95,8 +95,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
   openNewRequest,
   onOpenNewHandled,
 }) => {
-  useLiveData(['settings', 'tasks'], 30_000);
-  const now = Date.now();
+  useLiveData(['settings', 'tasks'], 60_000);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const settings = apiService.getSettings();
   const workflow = settings.taskWorkflow;
   const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
@@ -119,6 +123,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
     taskStatusChoices(t.status, workflow, canManage(t), includeCurrent);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | NewsPriority>('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [period, setPeriod] = useState<TaskPeriod>(() => {
     if (!assignedOnly || focusId) return 'ALL';
     const dueToday = taskPeriodMatcher('TODAY', now, settings.defaultTimezone);
@@ -355,6 +362,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setActiveTabState('LIST');
     setSearchQuery('');
     setSelectedStatus('ALL');
+    setPriorityFilter('ALL');
+    setAssigneeFilter('ALL');
+    setOverdueOnly(false);
     setPeriod('ALL');
     setMineOnly(false);
     const timer = window.setTimeout(() => {
@@ -371,18 +381,36 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const assigneeOf = (t: EditorialTask) =>
     t.assigneeName || t.assignedToName || apiService.getUsers().find((u) => u.id === (t.assigneeId || t.assignedToId))?.fullName || 'غير مسندة';
   const dueInPeriod = taskPeriodMatcher(period, now, settings.defaultTimezone);
+  const assigneeIds = [...new Set((tasks || []).map(task => task.assigneeId || task.assignedToId).filter((id): id is string => !!id))];
+  const assigneeOptions = assigneeIds.map(id => ({
+    id,
+    name: allUsers.find(user => user.id === id)?.fullName
+      || (tasks || []).find(task => (task.assigneeId || task.assignedToId) === id)?.assigneeName
+      || (tasks || []).find(task => (task.assigneeId || task.assignedToId) === id)?.assignedToName
+      || 'غير معروف',
+  })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
     if (focusedTask && t.id !== focusedTask.id) return false;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if ((assignedOnly || mineOnly) && !isMyTask(t, currentUser.id)) return false;
     if (!focusedTask && !dueInPeriod(t)) return false;
-    if (searchQuery.trim()) {
-      return matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
-    }
-    return true;
+    if (priorityFilter !== 'ALL' && t.priority !== priorityFilter) return false;
+    if (assigneeFilter !== 'ALL' && (t.assigneeId || t.assignedToId) !== assigneeFilter) return false;
+    if (overdueOnly && !overdueDays(t, now)) return false;
+    return !searchQuery.trim() || matchesQuery(searchQuery, t.title, t.description, assigneeOf(t), t.relatedEntityTitle);
   });
 
-  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${period}|${mineOnly}|${assignedOnly}`);
+  const taskCounts = {
+    visible: filteredTasks.length,
+    open: filteredTasks.filter(task => !['COMPLETED', 'CANCELLED'].includes(task.status)).length,
+    overdue: filteredTasks.filter(task => overdueDays(task, now) > 0).length,
+    blocked: filteredTasks.filter(task => task.status === 'BLOCKED').length,
+    urgent: filteredTasks.filter(task => task.priority === 'URGENT' || task.priority === 'CRITICAL').length,
+  };
+  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
+  const selectedDeadline = dueDate ? Date.parse(dueDate) : NaN;
+  const pastDueOpenTask = Number.isFinite(selectedDeadline) && selectedDeadline < now
+    && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(status));
 
   const columns = TASK_BOARD_COLUMNS;
   const isFinished = (s: TaskStatus) => s === 'COMPLETED' || s === 'CANCELLED';
@@ -548,6 +576,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <input
             id="tasks-search-input"
             type="search"
+            aria-label="بحث في المهام"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="بحث بالاسم أو الشخص المسؤول..."
@@ -566,6 +595,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <option value="ALL">جميع الحالات</option>
             {TASK_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          <label htmlFor="tasks-priority-filter" className="sr-only">الأولوية</label>
+          <select id="tasks-priority-filter" aria-label="الأولوية" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as 'ALL' | NewsPriority)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800">
+            <option value="ALL">كل الأولويات</option>
+            <option value="URGENT">عاجل</option>
+            <option value="HIGH">عالية</option>
+            <option value="NORMAL">عادية</option>
+            <option value="LOW">منخفضة</option>
+          </select>
+          <label htmlFor="tasks-assignee-filter" className="sr-only">المسؤول</label>
+          <select id="tasks-assignee-filter" aria-label="المسؤول" value={assigneeFilter} onChange={event => setAssigneeFilter(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800">
+            <option value="ALL">كل المسؤولين</option>
+            {assigneeOptions.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+          </select>
+          <label htmlFor="tasks-overdue-only" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">
+            <input id="tasks-overdue-only" type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} className="size-4 accent-amber-600" />
+            متأخرة فقط
+          </label>
           <div className="inline-flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
             <label htmlFor="tasks-period">موعد التسليم</label>
             <select id="tasks-period" value={period} onChange={(event) => setPeriod(event.target.value as TaskPeriod)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800">
@@ -582,8 +628,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
             />
             مهامي فقط
           </label>}
+          <button type="button" onClick={() => { setSearchQuery(''); setSelectedStatus('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setOverdueOnly(false); setPeriod('ALL'); setMineOnly(false); }} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            إعادة ضبط الفلاتر
+          </button>
         </div>
       </div>
+      <dl aria-label="مؤشرات المهام" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {[
+          { label: 'الظاهرة', value: taskCounts.visible },
+          { label: 'مفتوحة', value: taskCounts.open },
+          { label: 'متأخرة', value: taskCounts.overdue },
+          { label: 'متعطلة', value: taskCounts.blocked },
+          { label: 'عاجلة', value: taskCounts.urgent },
+        ].map(item => <div key={item.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <dt className="text-xs text-slate-600">{item.label}</dt>
+          <dd className="font-mono text-xl font-bold tabular-nums text-slate-900">{item.value}</dd>
+        </div>)}
+      </dl>
 
       {/* KANBAN VIEW */}
       {activeTab === 'KANBAN' ? (
@@ -909,6 +970,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
               dir="ltr"
             />
+            {pastDueOpenTask && <p role="status" className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">موعد التسليم الذي اخترته مضى، والمهمة ما زالت مفتوحة.</p>}
           </div>
 
           <WorkReminderFields value={reminderOptions} onChange={setReminderOptions} />

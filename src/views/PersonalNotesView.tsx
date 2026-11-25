@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FileText, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
+import { Copy, FileText, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import { FormPage } from '../components/common/FormPage';
 import { useLiveData } from '../hooks/useLiveData';
 import { apiService } from '../services/api';
@@ -10,6 +10,7 @@ import { newId } from '../shared/ids';
 import { PERSONAL_NOTE_BODY_LIMIT, PERSONAL_NOTE_TITLE_LIMIT, type PersonalNote } from '../shared/personalWorkspace';
 import { matchesQuery } from '../shared/search';
 import type { User } from '../types';
+import { copyTextToClipboard } from '../services/clipboard';
 
 const action = 'inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-bold';
 const secondary = `${action} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50`;
@@ -27,13 +28,14 @@ export function PersonalNotesView({ currentUser }: { currentUser: User }) {
 function AccountNotes({ userId }: { userId: string }) {
   useLiveData(['personalNotes']);
   const [query, setQuery] = useState('');
+  const [pinnedOnly, setPinnedOnly] = useState(false);
   const [draft, setDraft] = useState<NoteDraft | null>(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const running = useRef(false);
   const records = apiService.getPersonalNotes().filter(note => note.ownerId === userId).sort(order);
-  const notes = records.filter(note => matchesQuery(query, note.title, note.body));
+  const notes = records.filter(note => (!pinnedOnly || note.pinned) && matchesQuery(query, note.title, note.body));
   const pending = (id: string) => dataStore.hasPendingWrite('personalNotes', id);
   const currentAccount = () => apiService.getCurrentUser().id === userId;
 
@@ -78,6 +80,10 @@ function AccountNotes({ userId }: { userId: string }) {
     const confirmed = await confirmDialog({ title: 'حذف الملاحظة', message: `حذف «${note.title}»؟`, confirmLabel: 'حذف', danger: true });
     if (confirmed) void run(note.id, () => apiService.deletePersonalNote(note.id), 'حُذفت الملاحظة.');
   };
+  const copyNote = async (note: PersonalNote) => {
+    const copied = await copyTextToClipboard([note.title, note.body].filter(Boolean).join('\n\n'));
+    setFeedback({ kind: copied ? 'success' : 'error', text: copied ? 'نُسخ محتوى الملاحظة.' : 'تعذّر النسخ إلى الحافظة.' });
+  };
 
   const status = feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-3 py-2 text-sm ${feedback.kind === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{feedback.text}</p>;
 
@@ -90,9 +96,15 @@ function AccountNotes({ userId }: { userId: string }) {
         </div>
         <button type="button" onClick={() => begin()} className={`${action} bg-blue-600 text-white hover:bg-blue-700`}><Plus className="size-4" aria-hidden="true" /> ملاحظة جديدة</button>
       </header>
-      {records.length > 0 && <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute start-3 top-3.5 size-4 text-slate-600" aria-hidden="true" />
-        <input type="search" aria-label="بحث في ملاحظاتي" value={query} onChange={event => setQuery(event.target.value)} className={`${input} min-h-11 ps-9`} placeholder="ابحث بالعنوان أو النص" />
+      {records.length > 0 && <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-md">
+          <Search className="pointer-events-none absolute start-3 top-3.5 size-4 text-slate-600" aria-hidden="true" />
+          <input type="search" aria-label="بحث في ملاحظاتي" value={query} onChange={event => setQuery(event.target.value)} className={`${input} min-h-11 ps-9`} placeholder="ابحث بالعنوان أو النص" />
+        </div>
+        <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">
+          <input type="checkbox" checked={pinnedOnly} onChange={event => setPinnedOnly(event.target.checked)} className="size-4 accent-blue-600" />
+          المثبتة فقط
+        </label>
       </div>}
       {!draft && status}
       {notes.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{records.length ? 'لا توجد ملاحظات مطابقة.' : 'لا توجد ملاحظات محفوظة.'}</p> : (
@@ -114,6 +126,9 @@ function AccountNotes({ userId }: { userId: string }) {
                 <button type="button" disabled={busy || pending(note.id)} onClick={() => void run(note.id, () => apiService.savePersonalNote({ ...note, pinned: !note.pinned }), note.pinned ? 'أُلغي تثبيت الملاحظة.' : 'ثُبّتت الملاحظة.')} className={secondary}>
                   {note.pinned ? <PinOff className="size-4" aria-hidden="true" /> : <Pin className="size-4" aria-hidden="true" />}
                   {note.pinned ? 'إلغاء التثبيت' : 'تثبيت'}
+                </button>
+                <button type="button" disabled={busy || pending(note.id)} onClick={() => void copyNote(note)} aria-label={`نسخ ${note.title}`} className={`${secondary} min-w-11 justify-center`}>
+                  <Copy className="size-4" aria-hidden="true" />
                 </button>
                 <button type="button" disabled={busy || pending(note.id)} onClick={() => void remove(note)} aria-label={`حذف ${note.title}`} className={`${secondary} min-w-11 justify-center`}>
                   <Trash2 className="size-4" aria-hidden="true" />

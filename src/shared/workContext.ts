@@ -9,7 +9,7 @@ export interface WorkContext {
   anchorOffset?: number;
 }
 
-export const WORK_SECTION_KEYS = ['my-news', 'my-review', 'my-tasks', 'my-dept-requests', 'my-episodes', 'my-bulletins', 'my-sent-requests', 'my-plan', 'my-mentions', 'my-card-steps'] as const;
+export const WORK_SECTION_KEYS = ['my-news', 'my-review', 'my-tasks', 'my-personal-tasks', 'my-personal-notes', 'my-dept-requests', 'my-episodes', 'my-bulletins', 'my-sent-requests', 'my-plan', 'my-mentions', 'my-card-steps'] as const;
 export type WorkSectionKey = typeof WORK_SECTION_KEYS[number];
 export interface WorkSectionPreferences { order: WorkSectionKey[]; hidden: WorkSectionKey[] }
 

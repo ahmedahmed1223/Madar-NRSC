@@ -81,6 +81,8 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [tab, setTab] = useState<Tab>(assignedOnly ? 'ALL' : canManage ? 'TODAY' : 'MINE');
   const [period, setPeriod] = useState<CardWorkPeriod>(assignedOnly ? 'TODAY' : 'ALL');
   const [query, setQuery] = useState('');
+  const [mineQuery, setMineQuery] = useState('');
+  const [mineUrgentOnly, setMineUrgentOnly] = useState(false);
   const [station, setStation] = useState('ALL');
   const stationGroups = useMemo(() => stationGroupsOf(settings), [settings]);
   const inStation = useMemo(() => stationFilterMatcher(station, stationGroups), [station, stationGroups]);
@@ -138,6 +140,28 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
     // actor is rebuilt on every render from the same user and permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCards, currentUser.id, currentUser.stationId, now, period, today, assignedOnly]);
+  const mineFilteredSteps = useMemo(() => mySteps.filter(({ card, step }) =>
+    (!mineUrgentOnly || card.priority === 'URGENT')
+      && matchesQuery(mineQuery, card.title, card.brief, card.target?.title, step.title, step.assigneeName, stepTypeName(stepTypes, step.type))
+  ), [mySteps, mineUrgentOnly, mineQuery, stepTypes]);
+  const myStepCounts = {
+    open: mySteps.length,
+    late: mySteps.filter(({ card, step }) => isStepOwnLate(card, step, now)).length,
+    blocked: mySteps.filter(({ step }) => step.status === 'BLOCKED').length,
+    urgent: mySteps.filter(({ card }) => card.priority === 'URGENT').length,
+  };
+  const colleagueOpenLoads = useMemo(() => {
+    const loads = new Map<string, number>();
+    for (const card of openCards) {
+      for (const step of card.steps) {
+        if (isStepOpen(step) && step.assigneeId) loads.set(step.assigneeId, (loads.get(step.assigneeId) || 0) + 1);
+      }
+    }
+    return users
+      .filter(user => user.isActive !== false && !user.deletedAt)
+      .map(user => ({ id: user.id, name: user.fullName, count: loads.get(user.id) || 0 }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ar'));
+  }, [openCards, users]);
 
   const board = useMemo(() => {
     const airing = openCards.filter((c) => c.airAt && stationDay(c.airAt) === today).sort((a, b) => a.airAt!.localeCompare(b.airAt!));
@@ -341,9 +365,35 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
 
       {tab === 'MINE' && (
         <section className="space-y-2" aria-label="مهامي">
-          {mySteps.length === 0 && empty(period === 'ALL' ? 'لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي تكليف يظهر هنا.' : 'لا مهام مفتوحة تطابق هذه الفترة.')}
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="grid gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto_auto] sm:items-center">
+              <input type="search" aria-label="بحث في مهامي بالتكليفات" value={mineQuery} onChange={event => setMineQuery(event.target.value)} placeholder="بحث في مهامي…" className={`${SELECT} w-full`} />
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={mineUrgentOnly} onChange={event => setMineUrgentOnly(event.target.checked)} className="size-4 accent-red-600" />
+                عاجل فقط
+              </label>
+              <button type="button" onClick={() => { setMineQuery(''); setMineUrgentOnly(false); setPeriod('ALL'); }} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                إعادة ضبط الفلاتر
+              </button>
+            </div>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {[
+                { label: 'المعروضة', value: mineFilteredSteps.length },
+                { label: 'المفتوحة', value: myStepCounts.open },
+                { label: 'متأخرة', value: myStepCounts.late },
+                { label: 'متعطلة', value: myStepCounts.blocked },
+                { label: 'عاجلة', value: myStepCounts.urgent },
+              ].map(item => <div key={item.label} className="rounded-lg bg-slate-50 px-3 py-2">
+                <dt className="text-xs text-slate-600">{item.label}</dt>
+                <dd className="font-mono text-lg font-bold tabular-nums text-slate-900">{item.value}</dd>
+              </div>)}
+            </dl>
+          </div>
+          {mineFilteredSteps.length === 0 && empty(mySteps.length === 0
+            ? period === 'ALL' ? 'لا مهام مفتوحة باسمك الآن. ما يُسند إليك في أي تكليف يظهر هنا.' : 'لا مهام مفتوحة تطابق هذه الفترة.'
+            : 'لا مهام تطابق البحث أو الفلاتر الحالية.')}
           <ul className="space-y-2">
-            {mySteps.map(({ card, step, claimable }) => (
+            {mineFilteredSteps.map(({ card, step, claimable }) => (
               <li key={`${card.id}:${step.id}`}>
                 <button type="button" onClick={() => onFocus(card.id)} className={`w-full text-right bg-white border rounded-2xl p-3 sm:p-4 space-y-1.5 hover:border-blue-300 ${step.returnedReason && !claimable ? 'border-violet-300' : step.status === 'BLOCKED' ? 'border-rose-300' : card.priority === 'URGENT' ? 'border-red-300' : 'border-slate-200'}`}>
                   <span className="flex flex-wrap items-center gap-2 text-2xs">
@@ -367,6 +417,16 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
               </li>
             ))}
           </ul>
+          {canManage && <details className="rounded-xl border border-slate-200 bg-white px-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-bold text-slate-800">حمل الخطوات المفتوحة لكل زميل ({colleagueOpenLoads.length})</summary>
+            <ul className="divide-y divide-slate-100">
+              {colleagueOpenLoads.map(user => <li key={user.id} className="flex min-h-10 items-center justify-between gap-3 py-2 text-sm">
+                <span>{user.name}</span>
+                <strong className="font-mono tabular-nums text-slate-900">{user.count}</strong>
+              </li>)}
+              {!colleagueOpenLoads.length && <li className="py-3 text-sm text-slate-500">لا يوجد زملاء نشطون لعرض حملهم.</li>}
+            </ul>
+          </details>}
         </section>
       )}
 

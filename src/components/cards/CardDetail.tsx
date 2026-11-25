@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, FileText, Gavel, LayoutTemplate, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, ExternalLink, FileText, Gavel, LayoutTemplate, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { CardBriefReview } from './CardBriefReview';
 import { CardTimingValues } from './CardTimingValues';
@@ -9,6 +9,7 @@ import { confirmDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import { notify } from '../../services/notify';
 import { navigateTo } from '../../services/uiEvents';
+import { copyTextToClipboard } from '../../services/clipboard';
 import {
   CARD_STATE_NAMES,
   REVIEW_STEP_TYPES,
@@ -184,8 +185,29 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
       const go = await confirmDialog({ title: 'الخطوة السابقة لم تكتمل', message: `${names} لم تكتمل بعد. يُسجَّل إنجازك، ولا يصل التسليم إلى الخطوة التالية حتى تكتمل.`, confirmLabel: 'تسجيل الإنجاز', cancelLabel: 'تراجع' });
       if (!go) return;
     }
-    const minutes = doneMinutes === '' ? undefined : Math.max(0, Math.round(Number(doneMinutes)));
+    const parsedMinutes = doneMinutes.trim() === '' ? undefined : Number(doneMinutes);
+    if (parsedMinutes !== undefined && !Number.isFinite(parsedMinutes)) {
+      setMessage({ ok: false, text: 'أدخل عدداً صحيحاً من دقائق العمل.' });
+      return;
+    }
+    const minutes = parsedMinutes === undefined ? undefined : Math.max(0, Math.round(parsedMinutes));
     if (act(() => apiService.finishCardStep(card.id, step.id, doneNote, minutes), handoffText(step))) setPanel(null);
+  };
+
+  const copy = async (text: string, success: string) => {
+    const copied = await copyTextToClipboard(text);
+    notify({ type: copied ? 'success' : 'error', message: copied ? success : 'تعذّر النسخ إلى الحافظة.' });
+  };
+  const copyAssignmentText = () => {
+    const text = [
+      card.title,
+      card.brief,
+      `الحالة: ${CARD_STATE_NAMES[state]}`,
+      `الأولوية: ${card.priority === 'URGENT' ? 'عاجل' : 'عادي'}`,
+      card.dueAt ? `موعد التسليم: ${when(card.dueAt)}` : '',
+      ...card.steps.map((step, index) => `${index + 1}. ${stepTypeName(stepTypes, step.type)} — ${stepAssigneeLabel(step, stations)} — ${stepStatusName(step.status)}${step.dueAt ? ` — ${when(step.dueAt)}` : ''}`),
+    ].filter(Boolean).join('\n');
+    void copy(text, 'نُسخ نص التكليف.');
   };
 
   const block = (step: CardStep) => {
@@ -265,15 +287,23 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
           setBriefReviewOpen(false);
           setMessage({ ok: true, text: 'أُدرج المقترح في مسودة النص. احفظه بعد المراجعة. الاعتماد يبقى للمحرر المسؤول.' });
         }} />}
-      <header className="flex items-start gap-3">
+      <header className="flex flex-wrap items-start gap-3">
         <button type="button" onClick={onClose} className="shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50">
           <ArrowRight className="w-4 h-4" />
           التكليفات
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold text-slate-900 leading-8">{card.title}</h1>
           <MessageOriginLabel origin={card.messageOrigin} />
           <p className="text-xs text-slate-500">تكليف — {cardKindName(card.kind)}{card.ownerStationId ? ` — محطة ${stationName(stations, card.ownerStationId)}` : ''}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void copy(new URL(`/cards/${encodeURIComponent(card.id)}`, window.location.origin).toString(), 'نُسخ رابط التكليف.')} className={`${BTN} border border-slate-200 text-slate-700`}>
+            <Link2 className="w-3.5 h-3.5" />نسخ الرابط
+          </button>
+          <button type="button" onClick={copyAssignmentText} className={`${BTN} border border-slate-200 text-slate-700`}>
+            <Copy className="w-3.5 h-3.5" />نسخ النص
+          </button>
         </div>
       </header>
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-5 text-xs">

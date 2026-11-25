@@ -103,6 +103,15 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
       next.splice(index + by, 0, step);
       return next;
     });
+  const setDeadlineInHours = (hours: number) => {
+    setDueAt(toLocalInputValue(new Date(Date.now() + hours * 60 * 60 * 1000)));
+  };
+  const setTomorrowDeadline = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    setDueAt(toLocalInputValue(tomorrow));
+  };
   const setStepTarget = (id: string, value: string) => {
     if (value.startsWith('u:')) patchStep(id, { assigneeId: value.slice(2), stationId: undefined });
     else if (value.startsWith('s:')) patchStep(id, { assigneeId: undefined, assigneeName: undefined, stationId: value.slice(2) });
@@ -184,6 +193,11 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
           <div>
             <label htmlFor="card-due" className={LABEL}>موعد التسليم</label>
             <input id="card-due" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className={INPUT} />
+            <div className="mt-1 flex flex-wrap gap-1" aria-label="اختصارات موعد التسليم">
+              <button type="button" onClick={() => setDeadlineInHours(2)} className="min-h-9 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">+2س</button>
+              <button type="button" onClick={() => setDeadlineInHours(6)} className="min-h-9 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">+6س</button>
+              <button type="button" onClick={setTomorrowDeadline} className="min-h-9 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">غداً 9:00</button>
+            </div>
           </div>
           <div>
             <label htmlFor="card-air" className={LABEL}>موعد البث</label>
@@ -272,7 +286,11 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
                   </div>
                   <div>
                     <label htmlFor={`step-est-${step.id}`} className={LABEL}>الوقت المقدر (دقيقة)</label>
-                    <input id={`step-est-${step.id}`} type="number" min={0} max={100000} inputMode="numeric" value={step.estimateMinutes ?? ''} onChange={(e) => patchStep(step.id, { estimateMinutes: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })} className={INPUT} />
+                    <input id={`step-est-${step.id}`} type="number" min={0} max={100000} inputMode="numeric" value={step.estimateMinutes ?? ''} onChange={(e) => {
+                      const raw = e.target.value;
+                      const minutes = raw === '' ? undefined : Number(raw);
+                      patchStep(step.id, { estimateMinutes: minutes === undefined ? undefined : Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : undefined });
+                    }} className={INPUT} />
                   </div>
                 </div>
                 <div>

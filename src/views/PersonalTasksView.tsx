@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Bell, CheckCircle2, Circle, Plus, Trash2 } from 'lucide-react';
+import { Bell, CheckCircle2, Circle, Copy, Plus, Search, Trash2 } from 'lucide-react';
 import { FormPage } from '../components/common/FormPage';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { useLiveData } from '../hooks/useLiveData';
@@ -10,6 +10,8 @@ import { appLocale, basisZone, zoneOptions } from '../shared/dateFormat';
 import { fromLocalInputValue, toLocalInputValue } from '../shared/dates';
 import { newId } from '../shared/ids';
 import { PERSONAL_TASK_NOTES_LIMIT, PERSONAL_TASK_TITLE_LIMIT, type PersonalTask } from '../shared/personalTasks';
+import { matchesQuery } from '../shared/search';
+import { copyTextToClipboard } from '../services/clipboard';
 
 const button = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold disabled:opacity-50';
 const secondary = `${button} border border-slate-300 bg-white text-slate-800 hover:bg-slate-50`;
@@ -45,12 +47,17 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
 }) {
   useLiveData(['personalTasks'], 30_000);
   const [filter, setFilter] = useState<Filter>('OPEN');
+  const [query, setQuery] = useState('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const writing = useRef(false);
   const tasks = apiService.getPersonalTasks().filter(task => task.ownerId === userId);
+  const now = Date.now();
   const visible = tasks.filter(task => focusId ? task.id === focusId : filter === 'ALL' || task.completed === (filter === 'DONE'))
+    .filter(task => !focusId && query ? matchesQuery(query, task.title, task.notes) : true)
+    .filter(task => !focusId && overdueOnly ? !task.completed && !!task.dueAt && Date.parse(task.dueAt) < now : true)
     .sort((a, b) => (a.dueAt || '\uffff').localeCompare(b.dueAt || '\uffff') || b.updatedAt.localeCompare(a.updatedAt));
   const editing = !!draft && tasks.some(task => task.id === draft.id);
   const pending = (id: string) => dataStore.hasPendingWrite('personalTasks', id);
@@ -106,9 +113,28 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
       void write(task.id, () => apiService.deletePersonalTask(task.id), 'حُذفت المهمة الشخصية.', () => { if (focusId) onClearFocus(); });
     }
   };
+  const copyTask = async (task: PersonalTask) => {
+    const copied = await copyTextToClipboard([task.title, task.notes, task.dueAt ? `الموعد: ${new Date(task.dueAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}` : ''].filter(Boolean).join('\n'));
+    setFeedback({ error: !copied, text: copied ? 'نُسخت المهمة إلى الحافظة.' : 'تعذّر النسخ إلى الحافظة.' });
+  };
+  const setDueInHours = (hours: number) => {
+    if (draft) setDraft({ ...draft, due: toLocalInputValue(new Date(Date.now() + hours * 60 * 60 * 1000)) });
+  };
+  const setDueTomorrow = () => {
+    if (!draft) return;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    setDraft({ ...draft, due: toLocalInputValue(tomorrow) });
+  };
 
   const status = feedback && <p role={feedback.error ? 'alert' : 'status'} className={`rounded-lg border px-3 py-2 text-sm ${feedback.error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{feedback.text}</p>;
   const zone = basisZone();
+  const tabCounts: Record<Filter, number> = {
+    OPEN: tasks.filter(task => !task.completed).length,
+    DONE: tasks.filter(task => task.completed).length,
+    ALL: tasks.length,
+  };
 
   return (
     <div className="space-y-4">
@@ -122,11 +148,23 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
 
       {focusId
         ? <button type="button" className={secondary} onClick={onClearFocus}>عرض كل مهامي</button>
-        : <FilterTabs<Filter> label="تصفية المهام الشخصية" tabs={filters} active={filter} onChange={setFilter} />}
+        : <>
+          <FilterTabs<Filter> label="تصفية المهام الشخصية" tabs={filters.map(item => ({ ...item, count: tabCounts[item.id] }))} active={filter} onChange={setFilter} />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:max-w-md">
+              <Search className="pointer-events-none absolute start-3 top-3.5 size-4 text-slate-500" aria-hidden="true" />
+              <input type="search" aria-label="بحث في المهام الشخصية" value={query} onChange={event => setQuery(event.target.value)} className={`${field} ps-9`} placeholder="ابحث بالعنوان أو الملاحظات" />
+            </div>
+            <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">
+              <input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} className="size-4 accent-amber-600" />
+              متأخرة فقط
+            </label>
+          </div>
+        </>}
       {!draft && status}
       {visible.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          {focusId ? 'هذه المهمة غير متاحة في حسابك.' : filter === 'DONE' ? 'لا توجد مهام شخصية مكتملة.' : 'لا توجد مهام شخصية في هذه القائمة.'}
+          {focusId ? 'هذه المهمة غير متاحة في حسابك.' : overdueOnly ? 'لا توجد مهام شخصية متأخرة تطابق البحث.' : filter === 'DONE' ? 'لا توجد مهام شخصية مكتملة.' : query ? 'لا توجد مهام شخصية تطابق البحث.' : 'لا توجد مهام شخصية في هذه القائمة.'}
         </p>
       ) : (
         <ul aria-label="قائمة المهام الشخصية" className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
@@ -147,6 +185,9 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
                   {task.completed ? <Circle className="size-4" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
                   {task.completed ? 'إعادة فتح' : 'إكمال'}
                 </button>
+                <button type="button" disabled={busy || pending(task.id)} className={`${secondary} min-w-11 justify-center`} aria-label={`نسخ ${task.title}`} onClick={() => void copyTask(task)}>
+                  <Copy className="size-4" aria-hidden="true" />
+                </button>
                 <button type="button" disabled={busy || pending(task.id)} className={`${secondary} min-w-11 text-rose-700`} aria-label={`حذف ${task.title}`} onClick={() => void remove(task)}><Trash2 className="size-4" aria-hidden="true" /></button>
               </div>
             </li>
@@ -160,13 +201,19 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
           <fieldset disabled={busy} className="min-w-0 space-y-4">
             <label className="block text-sm font-semibold">عنوان المهمة
               <input className={field} value={draft.title} maxLength={PERSONAL_TASK_TITLE_LIMIT} required onChange={event => setDraft({ ...draft, title: event.target.value })} />
+              <span className="mt-1 block text-end text-xs font-normal text-slate-500">{draft.title.length}/{PERSONAL_TASK_TITLE_LIMIT}</span>
             </label>
             <label className="block text-sm font-semibold">ملاحظات
               <textarea className={field} rows={3} value={draft.notes} maxLength={PERSONAL_TASK_NOTES_LIMIT} onChange={event => setDraft({ ...draft, notes: event.target.value })} />
+              <span className="mt-1 block text-end text-xs font-normal text-slate-500">{draft.notes.length}/{PERSONAL_TASK_NOTES_LIMIT}</span>
             </label>
             <p className="text-xs text-slate-600">{zone ? <>التوقيت المعتمد للمواعيد <bdi>{zone}</bdi></> : 'تُعرض المواعيد بتوقيت جهازك.'}</p>
             <label className="block min-w-0 text-sm font-semibold">موعد المهمة
               <input className={field} type="datetime-local" dir="ltr" value={draft.due} required={draft.mode === 'due'} onChange={event => setDraft({ ...draft, due: event.target.value })} />
+              <span className="mt-1 flex flex-wrap gap-1">
+                <button type="button" onClick={() => setDueInHours(1)} className="min-h-9 rounded-lg border border-slate-300 px-2 text-xs text-blue-700">+1 ساعة</button>
+                <button type="button" onClick={setDueTomorrow} className="min-h-9 rounded-lg border border-slate-300 px-2 text-xs text-blue-700">غداً 9:00</button>
+              </span>
             </label>
             <label className="block text-sm font-semibold">التذكير
               <select className={field} value={draft.mode} onChange={event => setDraft({ ...draft, mode: event.target.value as ReminderMode })}>
