@@ -1,3 +1,5 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 test('replaces a saved app release with the complete current build', async ({ page }) => {
@@ -121,4 +123,101 @@ test('replaces a saved app release with the complete current build', async ({ pa
   );
   expect(result.oldFilesStillCached, `Previous release files remain cached: ${result.oldFilesStillCached.join(', ')}`).toEqual([]);
   expect(result.oldReleaseCaches, `Previous release caches were not removed: ${result.oldReleaseCaches.join(', ')}`).toEqual([]);
+});
+
+test('refreshes the release when an open app visits another page after a build changes', async ({ page }) => {
+  const manifestPath = path.resolve('dist/app-assets.json');
+  const builtManifest = await readFile(manifestPath, 'utf8');
+  const newManifest = JSON.parse(builtManifest) as { version: string; assets: string[] };
+  const oldManifest = {
+    version: '0'.repeat(24),
+    assets: ['/assets/previous-release.js', '/assets/previous-release.css'],
+  };
+  expect(newManifest.version).not.toBe(oldManifest.version);
+
+  await writeFile(manifestPath, JSON.stringify(oldManifest));
+  try {
+    await page.goto('/icon.svg');
+
+    const oldRelease = await page.evaluate(async () => {
+      const manifestResponse = await fetch('/app-assets.json', { cache: 'no-store' });
+      if (!manifestResponse.ok) throw new Error(`Could not load the old app manifest: ${manifestResponse.status}`);
+      const manifest = await manifestResponse.json();
+      const oldCacheName = `madar-app-${manifest.version}`;
+      const oldCache = await caches.open(oldCacheName);
+      for (const path of manifest.assets) {
+        await oldCache.put(path, new Response(`old release: ${path}`));
+      }
+      await oldCache.put('/app-complete', new Response(manifest.version));
+
+      const control = await caches.open('madar-control-app');
+      await control.put('/active-app', new Response(oldCacheName));
+      return { version: manifest.version, oldCacheName };
+    });
+    expect(oldRelease.version).toBe(oldManifest.version);
+
+    // The app opens with its saved old release while the old manifest is still served.
+    await page.goto('/');
+    const openedApp = await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.active) throw new Error('The service worker did not activate');
+      const response = await fetch('/app-assets.json', { cache: 'no-store' });
+      const manifest = await response.json();
+      return {
+        manifestVersion: manifest.version,
+        hasController: !!navigator.serviceWorker.controller,
+        activeCacheName: await (await caches.open('madar-control-app')).match('/active-app').then(hit => hit?.text()),
+      };
+    });
+
+    expect(openedApp.manifestVersion).toBe(oldManifest.version);
+    expect(openedApp.hasController, 'The open app must be controlled before the build changes').toBe(true);
+    expect(openedApp.activeCacheName).toBe(oldRelease.oldCacheName);
+
+    // Simulate the next build becoming available without closing the running app.
+    await writeFile(manifestPath, builtManifest);
+    await page.goto('/login');
+
+    const result = await page.evaluate(async ({ expectedVersion, expectedAssets, oldCacheName }) => {
+      const expectedCacheName = `madar-app-${expectedVersion}`;
+      const deadline = performance.now() + 25_000;
+      let activeCacheName = '';
+      let completionMarker = '';
+      while (performance.now() < deadline) {
+        const control = await caches.open('madar-control-app');
+        const activeResponse = await control.match('/active-app');
+        activeCacheName = activeResponse ? await activeResponse.text() : '';
+        const currentCache = await caches.open(expectedCacheName);
+        const marker = await currentCache.match('/app-complete');
+        completionMarker = marker ? await marker.text() : '';
+        if (activeCacheName === expectedCacheName && completionMarker === expectedVersion) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const currentCache = await caches.open(expectedCacheName);
+      const missingFiles: string[] = [];
+      for (const asset of expectedAssets) {
+        if (!await currentCache.match(asset)) missingFiles.push(asset);
+      }
+
+      return {
+        expectedCacheName,
+        activeCacheName,
+        completionMarker,
+        missingFiles,
+        oldCacheStillExists: (await caches.keys()).includes(oldCacheName),
+      };
+    }, {
+      expectedVersion: newManifest.version,
+      expectedAssets: newManifest.assets,
+      oldCacheName: oldRelease.oldCacheName,
+    });
+
+    expect(result.activeCacheName, 'The open app did not activate the new release after navigation').toBe(result.expectedCacheName);
+    expect(result.completionMarker).toBe(newManifest.version);
+    expect(result.missingFiles, `New release files missing: ${result.missingFiles.join(', ')}`).toEqual([]);
+    expect(result.oldCacheStillExists, 'The previous release cache should be removed after activation').toBe(false);
+  } finally {
+    await writeFile(manifestPath, builtManifest);
+  }
 });
