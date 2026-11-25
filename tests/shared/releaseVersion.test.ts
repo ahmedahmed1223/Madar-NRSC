@@ -13,6 +13,32 @@ function assertVersionAt(location: string, actual: string, expected: string) {
   }
 }
 
+function createReleaseFixture(root: string, readme: string) {
+  const script = path.resolve('scripts/set-release-version.mjs');
+  const scriptsDirectory = path.join(root, 'scripts');
+  mkdirSync(scriptsDirectory);
+  copyFileSync(script, path.join(scriptsDirectory, 'set-release-version.mjs'));
+
+  writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    name: 'fixture',
+    version: '4.5.0',
+    scripts: { 'release:version': 'node scripts/set-release-version.mjs' },
+  }));
+  writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({
+    name: 'fixture',
+    version: '4.5.0',
+    packages: { '': { name: 'fixture', version: '4.5.0' } },
+  }));
+
+  const notesPath = path.join(root, 'src/content/whatsNew.ts');
+  mkdirSync(path.dirname(notesPath), { recursive: true });
+  writeFileSync(notesPath, "export const RELEASES = [{ version: '4.5.0' }, { version: '4.4.0' }];\n");
+  writeFileSync(path.join(root, 'README.md'), readme);
+
+  return ['package.json', 'package-lock.json', 'src/content/whatsNew.ts', 'README.md']
+    .map(file => [file, readFileSync(path.join(root, file), 'utf8')] as const);
+}
+
 describe('release version', () => {
   it('keeps package, lockfile, server and release notes in sync', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -74,6 +100,51 @@ describe('release version', () => {
       expect(readFileSync(notesPath, 'utf8')).toContain("version: '4.4.0'");
       expect(readFileSync(path.join(root, 'README.md'), 'utf8')).toContain('[ملاحظات الإصدار 4.6.0](docs/releases/4.6.0.md)');
       expect(readFileSync(path.join(root, 'README.md'), 'utf8')).toContain('[4.4.1](docs/releases/4.4.1.md)');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an invalid version without changing release files', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'release-version-invalid-'));
+    try {
+      const originalFiles = createReleaseFixture(
+        root,
+        '[ملاحظات الإصدار 4.5.0](docs/releases/4.5.0.md)\n',
+      );
+
+      const result = spawnSync('npm', ['run', 'release:version', '--', 'not-a-version'], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Usage: npm run release:version -- <major.minor.patch>');
+      expect(
+        originalFiles.map(([file]) => [file, readFileSync(path.join(root, file), 'utf8')]),
+      ).toEqual(originalFiles);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a missing README release link without changing release files', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'release-version-missing-link-'));
+    try {
+      const originalFiles = createReleaseFixture(root, 'No release notes link yet.\n');
+
+      const result = spawnSync('npm', ['run', 'release:version', '--', '4.6.0'], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        '[release version] README.md is missing the latest release notes link',
+      );
+      expect(
+        originalFiles.map(([file]) => [file, readFileSync(path.join(root, file), 'utf8')]),
+      ).toEqual(originalFiles);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
