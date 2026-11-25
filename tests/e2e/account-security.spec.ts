@@ -16,7 +16,7 @@ test('login password visibility switches without submitting credentials', async 
   await expect(password).toHaveAttribute('type', 'password');
 });
 
-test('login accepts keyboard paste and the explicit paste button while remaining masked', async ({ page, context, baseURL }) => {
+test('login accepts keyboard paste while remaining masked without a paste button', async ({ page, context, baseURL }) => {
   const origin = new URL(baseURL!).origin;
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
   await page.goto('/');
@@ -27,25 +27,8 @@ test('login accepts keyboard paste and the explicit paste button while remaining
   await page.keyboard.press('Control+V');
   await expect(password).toHaveValue(sample);
   await expect(password).toHaveAttribute('type', 'password');
-  await password.fill('');
-  await page.getByRole('button', { name: 'لصق كلمة المرور', exact: true }).click();
-  await expect(password).toHaveValue(sample);
-  await expect(password).toHaveAttribute('type', 'password');
-  await expect(page.getByRole('status')).toContainText('تم لصق كلمة المرور.');
+  await expect(page.getByRole('button', { name: 'لصق كلمة المرور', exact: true })).toHaveCount(0);
   await page.evaluate(() => navigator.clipboard.writeText(''));
-});
-
-test('login explains how to paste when clipboard permission is denied', async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator.clipboard, 'readText', {
-      configurable: true,
-      value: () => Promise.reject(new DOMException('Denied', 'NotAllowedError')),
-    });
-  });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'لصق كلمة المرور', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('المتصفح منع الوصول للحافظة');
-  await expect(page.getByLabel('كلمة المرور', { exact: true })).toHaveAttribute('type', 'password');
 });
 
 test('the login two-factor challenge can return to account selection', async ({ browser }) => {
