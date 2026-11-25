@@ -21,7 +21,7 @@ import { createFullBackup } from './src/server/backupDelivery';
 import { deploymentWarnings, scanDemoPasswords } from './src/server/deploymentChecks';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
-import { backupStatus } from './src/server/databaseDiagnostics';
+import { backupStatus, nextBackupDelayMs } from './src/server/databaseDiagnostics';
 import { changeBus } from './src/server/sync';
 import { recordJob, registerJob, trackJob } from './src/server/jobs';
 import { runStorageSync } from './src/server/storage';
@@ -76,6 +76,7 @@ async function main() {
 
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
+  const backupSchedule = { stopped: false };
   registerJob(JOBS.publish, 0.5);
   registerJob(JOBS.bulletins, 10);
   registerJob(JOBS.housekeeping, 60);
@@ -228,12 +229,17 @@ async function main() {
         logger.error('complete backup failed', { error: String(err) });
       } finally { backingUp = false; await checkBackupIncidents(); }
     };
-    timers.push(
-      setInterval(backup, config.backupIntervalHours * 60 * 60 * 1000)
-    );
-    // A server restarted more often than the interval would otherwise never back up: catch up shortly after start.
-    const status = backupStatus(db, config.backupIntervalHours);
-    if (!status.count || status.overdue) setTimeout(() => void backup(), 60_000).unref();
+    const scheduleNextBackup = () => {
+      if (backupSchedule.stopped) return;
+      const status = backupStatus(db, config.backupIntervalHours, config);
+      const delay = nextBackupDelayMs(config.backupIntervalHours, status.lastDelivery, status.lastAttempt);
+      if (delay === null) return;
+      timers.push(setTimeout(() => {
+        void backup().finally(scheduleNextBackup);
+      }, delay));
+    };
+    // Schedule against the last complete delivery, so frequent restarts cannot keep resetting the interval.
+    scheduleNextBackup();
   }
 
   // Deployment settings that put production at risk: loud in the log, and listed in «مراقبة النظام».
@@ -252,6 +258,8 @@ async function main() {
     shuttingDown = true;
     app.locals.beginShutdown();
     logger.info('shutting down', { signal });
+    // The backup timer is recursive; prevent an in-flight backup from scheduling another run.
+    backupSchedule.stopped = true;
     timers.forEach(clearInterval);
     stopMediaTranscription();
     const force = setTimeout(() => {

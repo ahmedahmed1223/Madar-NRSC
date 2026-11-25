@@ -39,13 +39,24 @@ Missing files fail the backup instead of producing a success message.
 - Local complete bundles follow `BACKUP_RETENTION`. External retention must be configured separately,
   preferably with provider lifecycle/versioning. Remote destinations are never deleted by the application.
 - Failed `.pending` bundles are not complete backups. Investigate the error before manually removing them.
-- When no backup exists or the last one is overdue, a backup runs one minute after start-up (so a server
-  restarted more often than the interval still backs up); otherwise the next one follows the interval.
+- When no complete bundle has been delivered, the last delivery is overdue, or the process restarts close
+  to the next due time, the scheduler runs within one minute of the due time. It anchors the next run to
+  the last complete delivery rather than resetting the clock at every server restart. After a failed
+  snapshot or delivery it retries hourly (or sooner for intervals under an hour).
 - Downloading a backup file or the database (`/api/v1/db/backups/download`, `/api/v1/db/export`) needs a
   one-time token from `/api/v1/db/confirm-operation` (password, plus the authenticator code when enabled)
   and is written to the audit log (`DB_BACKUP_DOWNLOAD`, `DB_EXPORT`). These files hold every password hash.
 - «تصدير بيانات العمل الحالية (JSON)» in the settings is not a backup: it holds only what the browser
   downloaded (no accounts, no uploads, no archived news older than `NEWS_ACTIVE_DAYS`).
+
+### Replit workflow
+
+The `Start application` workflow enables scheduled full backups every 24 hours. Setting
+`BACKUP_INTERVAL_HOURS=0` disables them. This workspace currently has no `BACKUP_DIRECTORY` or
+`BACKUP_REMOTE` configured, and rclone is not installed, so successful bundles are local to
+`DATA_DIR/backups`; this does not protect against loss of the workspace's data volume. For an
+independent copy, configure a mounted directory outside `DATA_DIR` or an rclone remote before relying
+on these backups for production recovery.
 
 ## Recovery Drill
 

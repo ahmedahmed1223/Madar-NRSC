@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { createApp } from '../../src/server/app';
@@ -17,6 +18,9 @@ beforeEach(async () => {
 afterEach(async () => { server.close(); await fs.rm(destination, { recursive: true, force: true }); });
 
 it('restores a verified complete bundle and serves an episode, its assignment and uploaded file', async () => {
+  const sqlite = (server.db as any).db;
+  sqlite.pragma('wal_checkpoint(TRUNCATE)');
+  sqlite.pragma('wal_autocheckpoint = 0');
   await fs.mkdir(path.join(server.dir, 'uploads'));
   await fs.writeFile(path.join(server.dir, 'uploads', 'test.txt'), 'media');
   server.db.insertUpload({ id: 'backup-upload', storedName: 'test.txt', originalName: 'test.txt',
@@ -26,7 +30,21 @@ it('restores a verified complete bundle and serves an episode, its assignment an
     id: 'tsk-recovery-probe', title: 'مراجعة مادة الحلقة', relatedEntityType: 'EPISODE',
     relatedEntityId: episode.id, assigneeId: 'usr-3', status: 'TODO',
   }, 0, null);
+  const walPath = `${server.db.filePath}-wal`;
+  expect((await fs.stat(walPath)).size).toBeGreaterThan(32);
+  const mainOnlyPath = path.join(destination, 'main-only.sqlite');
+  await fs.copyFile(server.db.filePath, mainOnlyPath);
+  const mainOnly = new Database(mainOnlyPath, { readonly: true, fileMustExist: true });
+  try {
+    expect(mainOnly.prepare("SELECT 1 FROM entities WHERE collection = 'tasks' AND id = 'tsk-recovery-probe'").get()).toBeUndefined();
+  } finally { mainOnly.close(); }
+  const expectedCounts = {
+    episodes: server.db.countCollection('episodes'),
+    tasks: server.db.countCollection('tasks'),
+    users: server.db.countCollection('users'),
+  };
   const backup = await server.db.createBackup('auto');
+  expect((await server.db.verifyBackup(backup.fileName)).valid).toBe(true);
   await deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 });
   const bundle = path.join(destination, `${backup.fileName}.bundle`);
   expect(await fs.readFile(path.join(bundle, 'uploads', 'test.txt'), 'utf8')).toBe('media');
@@ -42,6 +60,10 @@ it('restores a verified complete bundle and serves an episode, its assignment an
   }
   const restored = new NewsroomDatabase(restoredPath);
   try {
+    expect(restored.countCollection('episodes')).toBe(expectedCounts.episodes);
+    expect(restored.countCollection('tasks')).toBe(expectedCounts.tasks);
+    expect(restored.countCollection('users')).toBe(expectedCounts.users);
+    expect(restored.getRow('tasks', 'tsk-recovery-probe')?.d.relatedEntityId).toBe(episode.id);
     const { app } = createApp(restored, { ...server.config, dataDir: restoredPath });
     const admin = await loginAgent(app, 'admin@akhbar.tv');
     const data = await admin.get('/api/v1/data');

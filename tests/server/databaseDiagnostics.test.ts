@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { logger } from '../../src/server/logger';
+import { nextBackupDelayMs } from '../../src/server/databaseDiagnostics';
 let server: Awaited<ReturnType<typeof createTestServer>>;
 beforeEach(async () => { server = await createTestServer(); });
 afterEach(() => server.close());
@@ -78,6 +79,28 @@ it('reports missing or overdue backups and a failed delivery independently', asy
   const snapshot = await server.db.createBackup();
   fs.utimesSync(path.join(server.db.backupsDir, snapshot.fileName), new Date(0), new Date(0));
   expect((await admin.get('/api/v1/db/backup-status')).body.data.overdue).toBe(true);
+});
+
+it('does not treat a standalone SQLite snapshot as a completed full backup', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  server.config.backupIntervalHours = 24;
+  await server.db.createBackup();
+  const status = await admin.get('/api/v1/db/backup-status');
+  expect(status.body.data.count).toBe(1);
+  expect(status.body.data.lastDelivery).toBeNull();
+  expect(status.body.data.overdue).toBe(true);
+});
+
+it('schedules from the last complete delivery instead of resetting the interval on restart', () => {
+  const now = Date.now();
+  const ago = (hours: number) => new Date(now - hours * 60 * 60 * 1000).toISOString();
+  const success = { at: ago(23), status: 'ok' as const };
+  expect(nextBackupDelayMs(24, success, success, now)).toBe(60 * 60 * 1000);
+  expect(nextBackupDelayMs(24, { at: ago(25), status: 'ok' }, success, now)).toBe(60 * 1000);
+  expect(nextBackupDelayMs(24, { at: ago(0), status: 'failed' }, success, now)).toBe(60 * 60 * 1000);
+  expect(nextBackupDelayMs(24, success, { at: ago(0), status: 'failed' }, now)).toBe(60 * 60 * 1000);
+  expect(nextBackupDelayMs(24, null, null, now)).toBe(60 * 1000);
+  expect(nextBackupDelayMs(0, null, null, now)).toBeNull();
 });
 
 it('records a real snapshot write failure without exposing its raw error', async () => {
