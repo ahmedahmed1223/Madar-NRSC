@@ -37,6 +37,34 @@ export function sanitizeWorkSections(value: unknown): WorkSectionPreferences {
 }
 
 type ContextStorage = Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'setItem'>>;
+export type QueueFilterValue = string | boolean;
+export type QueueFilterScope = 'cards' | 'tasks' | 'department-work' | 'requests';
+export const queueFilterKey = (userId: string, scope: QueueFilterScope, field: string) =>
+  `nrcs_queue_filters:v1:${encodeURIComponent(userId)}:${scope}:${encodeURIComponent(field)}`;
+
+export function sanitizeQueueFilter<T extends QueueFilterValue>(value: unknown, fallback: T, options?: readonly string[]): T {
+  if (typeof value !== typeof fallback) return fallback;
+  if (typeof value === 'string' && (value.length > 1000 || (options && value !== fallback && !options.includes(value)))) return fallback;
+  return value as T;
+}
+
+export function readQueueFilter<T extends QueueFilterValue>(storage: ContextStorage, userId: string, scope: QueueFilterScope, field: string, fallback: T): T {
+  if (!userId) return fallback;
+  try {
+    const raw = JSON.parse(storage.getItem(queueFilterKey(userId, scope, field)) || 'null');
+    return isFilterObject(raw) && raw.schemaVersion === 1 ? sanitizeQueueFilter(raw.value, fallback) : fallback;
+  } catch { return fallback; }
+}
+
+export function writeQueueFilter(storage: ContextStorage, userId: string, scope: QueueFilterScope, field: string, value: QueueFilterValue): boolean {
+  if (!userId) return false;
+  try {
+    if (!storage.setItem) return false;
+    storage.setItem(queueFilterKey(userId, scope, field), JSON.stringify({ schemaVersion: 1, value }));
+    return true;
+  } catch { return false; }
+}
+
 export const workContextKey = (userId: string, scope: string) => `nrcs_news_context:${userId}:${scope}`;
 
 export function readWorkContext(storage: ContextStorage, userId: string, scope: string): WorkContext {

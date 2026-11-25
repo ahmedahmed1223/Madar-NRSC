@@ -14,6 +14,7 @@ import { TASK_STATUS_OPTIONS } from '../../services/taskBoard';
 import { stationsOf, stationName } from '../../shared/stations';
 import type { WorkItem } from '../../shared/workload';
 import { matchesQuery } from '../../shared/search';
+import { useQueueFilter } from '../../hooks/useQueueFilter';
 
 const SELECT = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const STATUS_CLOSED = new Set(['DONE', 'COMPLETED', 'CLOSED', 'CANCELLED']);
@@ -27,22 +28,25 @@ function stateName(item: DepartmentWorkItem): string {
 
 export function DepartmentWorkPanel({ currentUser, onOpen }: { currentUser: User; onOpen: (ref: WorkItem['ref']) => void }) {
   const rev = useLiveData(['settings', 'users', 'tasks', 'productionCards'], 20_000);
-  const [data, setData] = useState<DepartmentWork | null>(null);
+  const [loadedData, setData] = useState<DepartmentWork | null>(null);
   const [failure, setFailure] = useState('');
   const [retry, setRetry] = useState(0);
-  const [memberId, setMemberId] = useState('ALL');
-  const [period, setPeriod] = useState<CardWorkPeriod>('ALL');
-  const [state, setState] = useState<'OPEN' | 'CLOSED' | 'ALL'>('OPEN');
-  const [query, setQuery] = useState('');
-  const [kind, setKind] = useState('ALL');
-  const [lateOnly, setLateOnly] = useState(false);
-  const [blockedOnly, setBlockedOnly] = useState(false);
+  const [dataUserId, setDataUserId] = useState(currentUser.id);
+  const data = dataUserId === currentUser.id ? loadedData : null;
+  const [memberId, setMemberId] = useQueueFilter(currentUser.id, 'department-work', 'member', 'ALL', data?.members.map(member => member.id));
+  const [period, setPeriod] = useQueueFilter<CardWorkPeriod>(currentUser.id, 'department-work', 'period', 'ALL', CARD_WORK_PERIODS.map(option => option.id));
+  const [state, setState] = useQueueFilter<'OPEN' | 'CLOSED' | 'ALL'>(currentUser.id, 'department-work', 'state', 'OPEN', ['OPEN', 'CLOSED', 'ALL']);
+  const [query, setQuery] = useQueueFilter(currentUser.id, 'department-work', 'query', '');
+  const [kind, setKind] = useQueueFilter(currentUser.id, 'department-work', 'kind', 'ALL', Object.keys(KIND_LABELS));
+  const [lateOnly, setLateOnly] = useQueueFilter(currentUser.id, 'department-work', 'lateOnly', false);
+  const [blockedOnly, setBlockedOnly] = useQueueFilter(currentUser.id, 'department-work', 'blockedOnly', false);
 
   useEffect(() => {
     const controller = new AbortController();
     void apiFetch<{ data: DepartmentWork }>('/api/v1/work/department', { signal: controller.signal })
       .then(result => {
         if (controller.signal.aborted) return;
+        setDataUserId(currentUser.id);
         setData(result.data);
         setFailure('');
       }).catch(error => {

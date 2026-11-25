@@ -7,6 +7,7 @@ import { matchesQuery } from '../shared/search';
 import { REQUEST_TYPES } from '../shared/production';
 import { isMediaDeliveryRequest, mediaDeliveryQueue } from '../shared/productionWorkQueues';
 import React, { useEffect, useRef, useState } from 'react';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 import { ArrowLeftRight, CheckCircle2, Edit2, Link2, Plus, Trash2, X } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
@@ -54,13 +55,15 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const { isOnline } = useOnlineStatus();
   const myDept = departmentIdOf(currentUser);
   const [requests, setRequests] = useState<DeptRequest[]>(() => apiService.getRequests());
-  const [tab, setTab] = useState<RequestTab>(focusSegmentId || focusId ? 'ALL' : 'INBOX');
-  const [dept, setDept] = useState<string>(myDept);
-  const [showClosed, setShowClosed] = useState(false);
-  const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('ALL');
-  const [urgentOnly, setUrgentOnly] = useState(false);
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const canSeeDelivery = canManage || REQUEST_TYPES.some(type => type.departmentId === myDept && isMediaDeliveryRequest(type.id));
+  const [tab, setTab] = useQueueFilter<RequestTab>(currentUser.id, 'requests', 'tab', 'INBOX', ['INBOX', ...(canCreate ? ['SENT'] : []), ...(canManage ? ['ALL'] : []), ...(canSeeDelivery ? ['DELIVERY'] : [])]);
+  const defaultDept = canManage && !DEPARTMENTS.some(dept => dept.id === myDept) ? DEPARTMENTS[0]?.id || '' : myDept;
+  const [dept, setDept] = useQueueFilter<string>(currentUser.id, 'requests', 'department', defaultDept, canManage ? DEPARTMENTS.map(dept => dept.id) : [myDept]);
+  const [showClosed, setShowClosed] = useQueueFilter(currentUser.id, 'requests', 'showClosed', false);
+  const [query, setQuery] = useQueueFilter(currentUser.id, 'requests', 'query', '');
+  const [typeFilter, setTypeFilter] = useQueueFilter(currentUser.id, 'requests', 'type', 'ALL', REQUEST_TYPES.filter(type => tab !== 'DELIVERY' || (isMediaDeliveryRequest(type.id) && (canManage || type.departmentId === myDept))).map(type => type.id));
+  const [urgentOnly, setUrgentOnly] = useQueueFilter(currentUser.id, 'requests', 'urgentOnly', false);
+  const [overdueOnly, setOverdueOnly] = useQueueFilter(currentUser.id, 'requests', 'overdueOnly', false);
   useLiveData(['requests'], 60_000);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DeptRequest | null>(null);
@@ -71,9 +74,6 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const running = useRef(new Set<string>());
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const focusedRequest = focusId && ENTITY_ID_PATTERN.test(focusId) ? requests.find(request => request.id === focusId && !request.deletedAt) : undefined;
-  useEffect(() => {
-    if (focusId || focusSegmentId) { setTab('ALL'); setQuery(''); setTypeFilter('ALL'); setShowClosed(true); }
-  }, [focusId, focusSegmentId]);
 
   useEffect(
     () =>
@@ -140,8 +140,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
 
   const pendingIds = new Set(requests.filter(request => dataStore.hasPendingWrite('requests', request.id)).map(request => request.id));
   const delivery = mediaDeliveryQueue(requests, myDept, canManage, pendingIds);
-  const canSeeDelivery = canManage || REQUEST_TYPES.some(type => type.departmentId === myDept && isMediaDeliveryRequest(type.id));
-  const listTab = (tab === 'DELIVERY' && !canSeeDelivery) || (tab === 'ALL' && !canManage && !focusSegmentId) ? 'INBOX' : tab;
+  const listTab = focusSegmentId ? 'ALL' : (tab === 'DELIVERY' && !canSeeDelivery) || (tab === 'ALL' && !canManage) ? 'INBOX' : tab;
   const matchesFilters = (r: DeptRequest) => (typeFilter === 'ALL' || r.type === typeFilter)
     && (!urgentOnly || r.priority === 'URGENT')
     && (!overdueOnly || (!isRequestClosed(r.status) && !!r.dueAt && Date.parse(r.dueAt) < Date.now()))
@@ -149,8 +148,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const list = focusedRequest ? [focusedRequest] : listTab === 'DELIVERY' ? delivery.filter(matchesFilters) : requests
       .filter(r => !focusSegmentId || r.link?.segmentId === focusSegmentId)
       .filter(r => listTab === 'ALL' || (listTab === 'INBOX' ? r.departmentId === (canManage ? dept : myDept) : r.requesterId === currentUser.id))
-      .filter((r) => showClosed || pendingIds.has(r.id) || !isRequestClosed(r.status))
-      .filter(matchesFilters)
+      .filter((r) => !!focusSegmentId || showClosed || pendingIds.has(r.id) || !isRequestClosed(r.status))
+      .filter(r => !!focusSegmentId || matchesFilters(r))
       .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
 
   const newsById = new Map(canSeeNews && list.some(request => request.link?.kind === 'news') ? apiService.getNews().map(item => [item.id, item] as const) : []);

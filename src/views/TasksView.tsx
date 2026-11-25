@@ -14,7 +14,7 @@ import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown, CheckSquare, X } from 'lucide-react';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { takeMessageTask, type MessageTaskOrigin } from '../services/messageWorkspace';
-import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, savedTaskView, saveTaskView, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
+import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
@@ -24,6 +24,7 @@ import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import { normalizeTaskStatus, taskDurationLabel, taskTiming } from '../shared/taskWorkflow';
 import { dataStore } from '../services/dataStore';
 import { useLiveData } from '../hooks/useLiveData';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
 function overdueDays(t: EditorialTask, now = Date.now()): number {
@@ -95,7 +96,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   openNewRequest,
   onOpenNewHandled,
 }) => {
-  useLiveData(['settings', 'tasks'], 60_000);
+  useLiveData(['settings', 'tasks', 'users'], 60_000);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -112,28 +113,29 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const assignableUsers = allUsers.filter(user => (!teamIds || teamIds.has(user.id)) && !eligibility.errorFor(user));
   const canAssign = scopedManager || RbacService.hasPermission(currentUser, 'tasks.create_assign');
   const canManage = (task: EditorialTask) => teamIds ? teamIds.has(task.assigneeId || task.assignedToId || '') : canAssign;
-  const [activeTab, setActiveTabState] = useState<TaskView>(() => focusId ? 'LIST' : savedTaskView());
+  const [savedTab, setActiveTabState] = useQueueFilter<TaskView>(currentUser.id, 'tasks', 'view', 'LIST', ['KANBAN', 'LIST']);
+  const activeTab = focusId ? 'LIST' : savedTab;
   const setActiveTab = (view: TaskView) => {
+    if (focusId) onClearFocus?.();
     setActiveTabState(view);
-    saveTaskView(view);
   };
   /** Status buttons and dragging only on tasks this colleague may move (the server refuses the rest). */
   const canMove = (t: EditorialTask) => canChangeTaskStatus(t, currentUser.id, canManage(t));
   const optionsFor = (t: EditorialTask, includeCurrent = false) =>
     taskStatusChoices(t.status, workflow, canManage(t), includeCurrent);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [priorityFilter, setPriorityFilter] = useState<'ALL' | NewsPriority>('ALL');
-  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [period, setPeriod] = useState<TaskPeriod>(() => {
-    if (!assignedOnly || focusId) return 'ALL';
+  const [searchQuery, setSearchQuery] = useQueueFilter(currentUser.id, 'tasks', 'query', '');
+  const [selectedStatus, setSelectedStatus] = useQueueFilter(currentUser.id, 'tasks', 'status', 'ALL', TASK_STATUS_OPTIONS.map(option => option.value));
+  const [priorityFilter, setPriorityFilter] = useQueueFilter<'ALL' | NewsPriority>(currentUser.id, 'tasks', 'priority', 'ALL', ['URGENT', 'HIGH', 'NORMAL', 'LOW']);
+  const [assigneeFilter, setAssigneeFilter] = useQueueFilter(currentUser.id, 'tasks', 'assignee', 'ALL', [...new Set(tasks.map(task => task.assigneeId || task.assignedToId).filter((id): id is string => !!id))]);
+  const [overdueOnly, setOverdueOnly] = useQueueFilter(currentUser.id, 'tasks', 'overdueOnly', false);
+  const [period, setPeriod] = useQueueFilter<TaskPeriod>(currentUser.id, 'tasks', 'period', () => {
+    if (!assignedOnly) return 'ALL';
     const dueToday = taskPeriodMatcher('TODAY', now, settings.defaultTimezone);
     return tasks.some(task => isMyTask(task, currentUser.id) && dueToday(task)) ? 'TODAY' : 'ALL';
-  });
+  }, TASK_PERIOD_OPTIONS.map(option => option.value));
   // Colleagues who only carry out tasks start on their own; task managers see the whole team.
-  const [mineOnly, setMineOnly] = useState(!canAssign);
-  const [showCancelled, setShowCancelled] = useState(false);
+  const [mineOnly, setMineOnly] = useQueueFilter(currentUser.id, 'tasks', 'mineOnly', !canAssign);
+  const [showCancelled, setShowCancelled] = useQueueFilter(currentUser.id, 'tasks', 'showCancelled', false);
   // Each kanban column draws a page at a time: years of finished tasks would otherwise fill the board.
   const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
   const columnLimit = (status: string) => columnLimits[status] ?? 30;
@@ -356,17 +358,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
     );
   };
 
-  // A notification link (/tasks/<id>) brings that task into view: clear the filters that might hide it, then scroll to it.
+  // A focused record bypasses queue filters without overwriting the saved queue.
   useEffect(() => {
     if (!focusId || !focusedTask) return;
-    setActiveTabState('LIST');
-    setSearchQuery('');
-    setSelectedStatus('ALL');
-    setPriorityFilter('ALL');
-    setAssigneeFilter('ALL');
-    setOverdueOnly(false);
-    setPeriod('ALL');
-    setMineOnly(false);
     const timer = window.setTimeout(() => {
       const el = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusId)}"]`);
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -390,7 +384,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       || 'غير معروف',
   })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
   const filteredTasks = (tasks || []).map((t) => ({ ...t, status: normalizeTaskStatus(t.status) as TaskStatus })).filter((t) => {
-    if (focusedTask && t.id !== focusedTask.id) return false;
+    if (focusedTask) return t.id === focusedTask.id;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
     if ((assignedOnly || mineOnly) && !isMyTask(t, currentUser.id)) return false;
     if (!focusedTask && !dueInPeriod(t)) return false;
