@@ -1,1 +1,2 @@
 - [Production data choice](production-data-choice.md) — Use Replit PostgreSQL and preserve existing newsroom data and user accounts.
+- [Department permission intent](permissions-policy-intent.md) — Inherit department policies; department denial blocks individual grants, with explicit saving and impact preview.
