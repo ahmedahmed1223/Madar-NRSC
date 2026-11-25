@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { DEFAULT_ROLE_DEFINITIONS } from '../../src/shared/rbac';
 import { buildAuthContext } from '../../src/server/auth';
-import { canRead } from '../../src/server/policy';
+import { canRead, POLICIES } from '../../src/server/policy';
 let server: Awaited<ReturnType<typeof createTestServer>>;
 let admin: Awaited<ReturnType<typeof loginAgent>>;
 beforeAll(async () => {
@@ -243,7 +243,7 @@ it('rejects reparenting a department when it removes an inherited scope restrict
     f.db.writeRow('users', actor.id, { ...actor.d, customPermissions: ['work.assigned_only'] }, actor.p, null);
     const settings = f.db.getRow('settings', 'singleton')!;
     const departments = [
-      { id: 'production', name: 'الإنتاج' },
+      ...(settings.d.departments || []),
       { id: 'scope-old', name: 'قديم', permissionOverrides: ['work.assigned_only'] },
       { id: 'scope-open', name: 'مفتوح' },
       { id: 'scope-child', name: 'فرعي', parentId: 'scope-old' },
@@ -252,11 +252,31 @@ it('rejects reparenting a department when it removes an inherited scope restrict
     const target = f.db.listCollection('users').find(row => row.d.email === 'journalist@akhbar.tv')!;
     f.db.writeRow('users', target.id, { ...target.d, role: 'VIEWER', customRoleId: undefined, departmentId: 'scope-child', customPermissions: [] }, target.p, null);
     const current = f.db.getRow('settings', 'singleton')!;
+    const after = { ...current.d, departments: departments.map(d => d.id === 'scope-child' ? { ...d, parentId: 'scope-open' } : d) };
+    const auth = buildAuthContext(f.db, f.db.getRow('users', actor.id)!.d, '');
+    const denial = POLICIES.settings({
+      auth, collection: 'settings', kind: 'update', before: current.d, after,
+      list: collection => f.db.listCollection(collection).map(row => row.d),
+    });
+    expect(denial).toContain('لا يمكنك إلغاء قيد النطاق');
+  } finally { f.close(); }
+});
+it('allows an unrestricted permission editor to remove a user scope restriction', async () => {
+  const f = await editorFixture();
+  try {
+    const settings = f.db.getRow('settings', 'singleton')!;
+    f.db.writeRow('settings', 'singleton', { ...settings.d, departments: [
+      ...(settings.d.departments || []),
+      { id: 'scope-old', name: 'مقيّد', permissionOverrides: ['work.assigned_only'] },
+      { id: 'scope-open', name: 'مفتوح' },
+    ] }, settings.p, null);
+    const target = f.db.listCollection('users').find(row => row.d.email === 'journalist@akhbar.tv')!;
+    f.db.writeRow('users', target.id, { ...target.d, role: 'VIEWER', customRoleId: undefined, departmentId: 'scope-old', customPermissions: [] }, target.p, null);
+    const current = f.db.getRow('users', target.id)!;
     const response = await f.editor.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [{
-      c: 'settings', op: 'upsert', id: current.id, baseV: current.v,
-      d: { ...current.d, departments: departments.map(d => d.id === 'scope-child' ? { ...d, parentId: 'scope-open' } : d) },
+      c: 'users', op: 'upsert', id: current.id, baseV: current.v, d: { ...current.d, departmentId: 'scope-open' },
     }] });
-    expect(response.body.results[0].ok).toBe(false);
+    expect(response.body.results[0].ok).toBe(true);
   } finally { f.close(); }
 });
 it('keeps news archive, reports, history and exports outside assigned-work access', async () => {

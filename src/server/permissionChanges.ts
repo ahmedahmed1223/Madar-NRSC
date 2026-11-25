@@ -1,4 +1,5 @@
 import { ALL_PERMISSIONS, DEFAULT_ROLE_DEFINITIONS, departmentGrantAllowed, evaluatePermission, findUserRole, isRestrictionPermission, permissionDepartments, type PermissionSubject, type RoleDefinition } from '../shared/rbac';
+import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentsOf, type Department } from '../shared/departments';
 import type { PolicyInput } from './policy';
 import type { User } from '../types';
@@ -41,9 +42,31 @@ export function restrictionRemovalError(input: PolicyInput, before: readonly str
   const actor = list?.('users')?.find(u => u.id === auth.user?.id) as PermissionSubject | undefined;
   const departments = departmentsOf(list?.('settings')?.[0]);
   const roles = (list?.('roles')?.length ? list('roles') : DEFAULT_ROLE_DEFINITIONS) as RoleDefinition[];
-  const subject = actor ? { ...actor, isActive: actor.isActive !== false } : undefined;
-  if (subject && removed.some(code => evaluatePermission(subject, code, roles, departments))) return 'لا يمكنك إلغاء قيد النطاق وأنت خاضع له؛ يقتصر إلغاؤه على مدير النظام العام أو حساب غير مقيّد';
+  const subject = actor ? { ...actor, isActive: true } : undefined;
+  if (!subject || removed.some(code => isRestrictionPermission(code) &&
+    assignedWorkOnly(permission => evaluatePermission(subject, permission, roles, departments)))) {
+    return 'لا يمكنك إلغاء قيد النطاق وأنت خاضع له؛ يقتصر إلغاؤه على مدير النظام العام أو حساب غير مقيّد';
+  }
   return null;
+}
+
+function isAssignedWorkRestricted(subject: PermissionSubject | null | undefined, roles: RoleDefinition[], departments: readonly Department[]): boolean {
+  if (!subject) return false;
+  const activeSubject = { ...subject, isActive: true };
+  return assignedWorkOnly(permission => evaluatePermission(activeSubject, permission, roles, departments));
+}
+
+function scopeRestrictionChangeError(
+  input: PolicyInput,
+  before: PermissionSubject | null | undefined,
+  after: PermissionSubject | null | undefined,
+  beforeDepartments: readonly Department[],
+  afterDepartments: readonly Department[],
+  roles: RoleDefinition[],
+): string | null {
+  if (!isAssignedWorkRestricted(before, roles, beforeDepartments) ||
+      isAssignedWorkRestricted(after, roles, afterDepartments)) return null;
+  return restrictionRemovalError(input, ['work.assigned_only'], []);
 }
 
 export function permissionChangeError(input: PolicyInput): string | null {
@@ -63,6 +86,10 @@ export function permissionChangeError(input: PolicyInput): string | null {
     if (!auth.can('users.manage_roles_permissions')) return 'تعديل صلاحيات الأقسام أو تسلسلها يتطلب إدارة الأدوار والصلاحيات';
     for (const d of beforeDepartments) {
       const relaxation = restrictionRemovalError(input, d.permissionOverrides, afterDepartments.find(n => n.id === d.id)?.permissionOverrides);
+      if (relaxation) return relaxation;
+    }
+    for (const user of users) {
+      const relaxation = scopeRestrictionChangeError(input, user, user, beforeDepartments, afterDepartments, roles);
       if (relaxation) return relaxation;
     }
     if (auth.user?.role === 'SUPER_ADMIN') return null;
@@ -103,6 +130,8 @@ export function permissionChangeError(input: PolicyInput): string | null {
     if (direct.some(p => p.startsWith('!') && isRestrictionPermission(p.slice(1)) && !old.includes(p))) return 'لا يمكن منع قيد النطاق؛ فهو يضيّق نطاق العمل ولا يُلغى باستثناء فردي';
     const relaxation = restrictionRemovalError(input, old, direct);
     if (relaxation) return relaxation;
+    const scopeRelaxation = scopeRestrictionChangeError(input, before, after, beforeDepartments, afterDepartments, roles);
+    if (scopeRelaxation) return scopeRelaxation;
     for (const p of ALL_PERMISSIONS) {
       if ((!old.includes(p.code) && direct.includes(p.code) || old.includes(`!${p.code}`) && !direct.includes(`!${p.code}`)) && !auth.can(p.code)) return 'لا يمكنك منح صلاحية لا تملكها أو إزالة منعها';
       if (evaluatePermission(after, p.code, roles, afterDepartments) &&

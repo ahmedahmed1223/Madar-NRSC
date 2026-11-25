@@ -65,7 +65,7 @@ const require =
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
 
-const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'stationId', 'managedStationIds', 'managedGroupIds'] as const;
+const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'department', 'stationId', 'managedStationIds', 'managedGroupIds'] as const;
 
 /** Codes of the built-in roles: a user's `role` is always one of them; custom roles go through `customRoleId`. */
 const systemRoleCodes = (roles: any[]) => new Set<string>([...DEFAULT_ROLE_DEFINITIONS.map((r) => r.roleCode), ...roles.filter((r) => r?.isSystemRole).map((r) => r.roleCode)]);

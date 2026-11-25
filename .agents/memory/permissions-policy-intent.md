@@ -46,3 +46,16 @@ same time as its grant rule, and mirror anyone reviewing this area's mistake:
 the effective decision, the impact preview, and the department-source
 description must all come from the same resolver order (any ancestor denial wins
 over a nearer grant).
+
+Custom API routes that read records outside the regular sync/bootstrap filter
+must enforce assigned-work scope explicitly before returning data or performing
+related actions. This includes archive search/details, reports, history, and
+exports that otherwise check only an action permission.
+
+**Why:** The regular row filter hid non-assigned records, but direct archive and
+report endpoints used permission checks alone, so a restricted account holding
+`news.view` could still read those records.
+
+**How to apply:** When adding custom search, aggregate, history, archive, or
+export endpoints, verify they use the shared row visibility check or explicitly
+reject accounts limited to assigned work; cover the direct route in an API test.

@@ -102,6 +102,10 @@ export class HttpError extends Error {
   }
 }
 
+function denyAssignedOnlyScope(auth: { can: (permission: string) => boolean }) {
+  if (assignedWorkOnly(auth.can)) throw new HttpError(403, 'هذا المسار غير متاح للحسابات المقيّدة بالعمل المسند');
+}
+
 /** Security headers; the CSP forbids inline scripts, which neutralises stored-XSS payloads. */
 function securityHeaders(config: AppConfig) {
   const csp = [
@@ -806,6 +810,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- Revision history -----------------------------------------------------
 
   app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), (req: ApiRequest, res) => {
+    denyAssignedOnlyScope(req.auth!);
     const collection = req.params.collection as CollectionName;
     if (!HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
     res.setHeader('Cache-Control', 'no-store');
@@ -858,6 +863,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.get('/api/v1/reports/news', requirePermission('news.view'), (req, res) => {
     const auth = req.auth!;
+    denyAssignedOnlyScope(auth);
     if (!canOpenScreen('reports', findUserRole(auth.user, auth.roles), auth.can, auth.user.role === 'SUPER_ADMIN')) {
       throw new HttpError(403, 'لا تملك صلاحية عرض التقارير');
     }
@@ -881,6 +887,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     new Date(Date.now() - (config.newsActiveDays > 0 ? config.newsActiveDays : 36500) * 24 * 60 * 60 * 1000).toISOString();
 
   app.get('/api/v1/archive/news', requirePermission('news.view'), (req, res) => {
+    denyAssignedOnlyScope(req.auth!);
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
     const page = Math.max(1, Math.min(1000, Math.trunc(Number(req.query.page) || 1)));
     const pageSize = 25;
@@ -901,6 +908,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   app.get('/api/v1/archive/news/:id', requirePermission('news.view'), (req, res) => {
+    denyAssignedOnlyScope(req.auth!);
     const row = db.getRow('news', String(req.params.id));
     if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
     res.json({ success: true, data: row.d });
@@ -908,6 +916,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   /** Brings an archived story back into the synced newsroom (e.g. to update or republish it). */
   app.post('/api/v1/archive/news/:id/reactivate', requirePermission('news.edit_any'), (req, res) => {
+    denyAssignedOnlyScope(req.auth!);
     const id = String(req.params.id);
     const row = db.getRow('news', id);
     if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
