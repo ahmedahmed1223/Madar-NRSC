@@ -9,7 +9,7 @@ const PORT = Number(process.env.E2E_PORT || 3990);
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  testMatch: '**/*.spec.ts',
+  testMatch: process.env.E2E_SPEC_FILE ? `**/${process.env.E2E_SPEC_FILE}` : '**/*.spec.ts',
   testIgnore: '**/work-controls.spec.ts',
   timeout: 60_000,
   expect: { timeout: 10_000 },
@@ -17,6 +17,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
+  outputDir: process.env.E2E_OUTPUT_DIR || 'test-results',
   use: {
     baseURL: `http://localhost:${PORT}`,
     locale: 'ar',

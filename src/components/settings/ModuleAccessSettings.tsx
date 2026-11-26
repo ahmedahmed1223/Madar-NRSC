@@ -27,6 +27,17 @@ const modes: { value: ModuleMode; label: string }[] = [
   { value: 'disabled', label: 'معطّلة للجميع' },
 ];
 
+function moduleRuleKey(rule: ModuleRule) {
+  const ids = (values?: string[]) => [...(values ?? [])].sort();
+  const audiences = (values?: ModuleRule['audiences']) => (values ?? []).map(audience =>
+    JSON.stringify([ids(audience.roleIds), ids(audience.userIds), ids(audience.stationIds), ids(audience.departmentIds)])
+  ).sort();
+  const scopes = (rule.scopes ?? []).map(scope => JSON.stringify([
+    scope.stationId, scope.departmentId, scope.mode, scope.descendants ?? false, audiences(scope.audiences),
+  ])).sort();
+  return JSON.stringify([rule.mode, ids(rule.roleIds), ids(rule.userIds), audiences(rule.audiences), scopes]);
+}
+
 function AudienceOptions({ label, options, selected, onChange }: {
   label: string;
   options: { id: string; name: string; description?: string }[];
@@ -66,6 +77,7 @@ export function ModuleAccessSettings() {
   const [departmentId, setDepartmentId] = useState('');
   const [preset, setPreset] = useState('');
   const [search, setSearch] = useState('');
+  const [modifiedOnly, setModifiedOnly] = useState(false);
   const [history, setHistory] = useState<ModuleRevision[]>([]);
   const [baseline, setBaseline] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -100,6 +112,9 @@ export function ModuleAccessSettings() {
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
   const userOptions = users.map(user => ({ id: user.id, name: user.fullName, description: user.email }));
   const dirty = Object.keys(draft).length > 0;
+  const original: ModulePolicy | undefined = baseline ? JSON.parse(baseline) : current;
+  const modifiedIds = MODULE_IDS.filter(id => draft[id] && moduleRuleKey(draft[id]) !== moduleRuleKey(moduleRule(original, id)));
+  const visibleModules = (modifiedOnly ? modifiedIds : MODULE_IDS).filter(id => matchesQuery(search, MODULE_LABELS[id]));
   const affected = users.filter(user => {
     const subject = moduleSubject(user, findUserRole(user, roleDefinitions)?.id, departments);
     return MODULE_IDS.some(id => allowsModule(current, id, subject) !== allowsModule(policy, id, subject)) ||
@@ -139,6 +154,7 @@ export function ModuleAccessSettings() {
       if (result.ok) {
         setDraft({});
         setBaseline(undefined);
+        setModifiedOnly(false);
         setNotice('حُفظت إتاحة الوحدات');
       } else if (result.pending) {
         setNotice(result.message || 'بانتظار تأكيد الخادم');
@@ -184,10 +200,17 @@ export function ModuleAccessSettings() {
           <label className="grid gap-1 text-sm">البحث في الوحدات
             <input type="search" value={search} onChange={event => setSearch(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 px-3" />
           </label>
+          <label className="inline-flex min-h-11 items-center gap-2 text-sm has-disabled:opacity-50">
+            <input type="checkbox" checked={modifiedOnly} disabled={!dirty || saving} onChange={event => setModifiedOnly(event.target.checked)} />
+            عرض الوحدات المعدلة فقط
+          </label>
         </div>
         <fieldset disabled={saving} className="grid items-start gap-3 xl:grid-cols-2">
           <legend className="sr-only">إتاحة الوحدات والميزات</legend>
-          {MODULE_IDS.filter(id => matchesQuery(search, MODULE_LABELS[id])).map(id => {
+          {!visibleModules.length && <p className="text-sm text-slate-600">
+            {search.trim() ? 'لا توجد وحدات تطابق البحث.' : 'لا توجد وحدات معدلة في المسودة.'}
+          </p>}
+          {visibleModules.map(id => {
             const root = moduleRule(policy, id);
             const local = asScope(root);
             const rule = scoped ? local ?? { mode: 'everyone' as const } : root;
@@ -225,7 +248,7 @@ export function ModuleAccessSettings() {
         {dirty && <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           <p>تتغير إتاحة وحدة واحدة على الأقل لـ {affected.length} حساب بناءً على ضبط المسودة.</p>
           {checkCards && <p>يوجد {openCards.length} تكليف مفتوح ظاهر لحسابك. راجع الإسناد أو اختر إنهاء القائم قبل إغلاق الوصول.</p>}
-          <p>{Object.keys(draft).map(id => MODULE_LABELS[id as ModuleId]).join('، ')}</p>
+          {!!modifiedIds.length && <p>{modifiedIds.map(id => MODULE_LABELS[id]).join('، ')}</p>}
         </div>}
         <ModuleAccessPreview policy={policy} users={users} roles={roleDefinitions} departments={departments} />
         {!!history.length && <details className="rounded-lg border border-slate-200 px-3">
@@ -240,18 +263,20 @@ export function ModuleAccessSettings() {
             </li>)}
           </ul>
         </details>}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${dirty || notice ? 'max-sm:sticky max-sm:bottom-0 max-sm:z-20 max-sm:-mx-5 max-sm:border-t max-sm:border-slate-200 max-sm:bg-white max-sm:px-4 max-sm:pt-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]' : ''}`}>
           <button type="submit" disabled={saving || !dirty} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-bold text-white disabled:opacity-50">
             <Save aria-hidden="true" className="size-4" /> حفظ إتاحة الوحدات
           </button>
           {dirty && <button type="button" disabled={saving} className="min-h-11 px-3 text-sm font-bold" onClick={() => {
             setDraft({});
             setBaseline(undefined);
+            setModifiedOnly(false);
+            setNotice('');
             setError('');
           }}>إلغاء المسودة</button>}
-          <p role="status" className="text-sm text-slate-700">{saving ? 'بانتظار تأكيد الخادم' : notice}</p>
+          <p role="status" className={saving || notice ? 'basis-full text-sm text-slate-700 sm:basis-auto' : 'sr-only'}>{saving ? 'بانتظار تأكيد الخادم' : notice}</p>
+          {error && <p role="alert" className="basis-full text-sm font-bold text-rose-800">{error}</p>}
         </div>
-        {error && <p role="alert" className="text-sm font-bold text-rose-800">{error}</p>}
       </form>
     </section>
   );

@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { openNav, signIn } from './helpers';
+import { openNav, openSettingsSection, signIn } from './helpers';
 
 test('RSS settings preserve the URL after rejected save and retry with server confirmation', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 390, height: 844 } });
   await openNav(page, 'الإعدادات');
-  await page.getByRole('navigation', { name: 'أقسام الإعدادات' }).getByRole('button', { name: /الوكالات والمصادر/ }).click();
+  await openSettingsSection(page, 'الوكالات والمصادر');
   await page.getByRole('button', { name: /RSS/ }).first().click();
   const field = page.getByLabel('رابط خلاصة RSS / Atom');
   await field.fill('https://example.org/news.xml');

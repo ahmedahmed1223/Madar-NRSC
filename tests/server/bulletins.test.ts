@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type request from 'supertest';
 import { createTestServer, loginAgent } from '../helpers';
 import { createScheduledBulletins } from '../../src/server/scheduler';
-import { localDateString } from '../../src/shared/dates';
+import { addDaysIso, fromLocalInputValue } from '../../src/shared/dates';
 import { scheduledBulletinId } from '../../src/shared/bulletins';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
@@ -136,18 +136,17 @@ describe('bulletins', () => {
     expect((await move(first.id)).body.results[0].ok).toBe(true);
   });
 
-  it('creates scheduled bulletins once, only for formats set to auto-create', async () => {
+  it('creates scheduled bulletins once, only for formats set to auto-create', () => {
     const f = server.db.getRow('bulletinFormats', 'fmt-main')!;
-    expect(createScheduledBulletins(server.db)).toEqual([]); // autoCreate is off
+    // Pin the scheduler to the date that already has the seeded bulletin.
+    const today = row('bulletins', 'bul-demo-main').d.date;
+    const schedulerTime = new Date(fromLocalInputValue(`${today}T12:00`));
+    const tomorrowId = scheduledBulletinId(f.id, addDaysIso(today, 1));
+    expect(createScheduledBulletins(server.db, schedulerTime)).toEqual([]); // autoCreate is off
     server.db.writeRow('bulletinFormats', f.id, { ...f.d, autoCreate: true }, f.p, null);
-    const created = createScheduledBulletins(server.db);
-    const today = localDateString();
-    const tomorrow = localDateString(new Date(Date.now() + 86400_000));
-    // Today already has this format's bulletin (the seeded bul-demo-main), so no second one is made.
-    expect(created).not.toContain(scheduledBulletinId('fmt-main', today));
-    expect(created).toContain(scheduledBulletinId('fmt-main', tomorrow));
-    expect(server.db.listCollection('bulletinStories').filter((r) => r.d.bulletinId === scheduledBulletinId('fmt-main', tomorrow)).length).toBe(8);
-    expect(createScheduledBulletins(server.db)).toEqual([]);
+    expect(createScheduledBulletins(server.db, schedulerTime)).toEqual([tomorrowId]);
+    expect(server.db.listCollection('bulletinStories').filter((r) => r.d.bulletinId === tomorrowId)).toHaveLength(8);
+    expect(createScheduledBulletins(server.db, schedulerTime)).toEqual([]);
   });
 });
 

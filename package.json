@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "check": "npm run lint && npm test && npm run build",
     "release:version": "node scripts/set-release-version.mjs",
-    "test:e2e": "npm run build && playwright test",
+    "test:e2e": "npm run build && node tests/e2e/run-isolated.mjs",
     "test:e2e:offline-air": "npm run build && playwright test tests/e2e/offline-air-shell.spec.ts",
     "test:e2e:work-controls": "playwright test --config playwright.work-controls.config.ts"
   },

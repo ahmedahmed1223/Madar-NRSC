@@ -359,9 +359,9 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
             {initialTab === 'BREAKING' ? 'العاجل' : 'الأخبار'}
@@ -722,10 +722,10 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           </section>
         ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
+          <table className="w-full table-fixed text-right text-xs sm:table-auto">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
-                <th className="py-3.5 px-3 w-10 text-center">
+                <th className="w-13 px-1 text-center sm:w-10 sm:px-3 sm:py-3.5">
                   <button
                     type="button"
                     onClick={handleSelectAll}
@@ -741,13 +741,13 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                     )}
                   </button>
                 </th>
-                <SortTh className="py-3.5 px-3 sm:px-4 min-w-[10rem] sm:min-w-[14rem] xl:min-w-[16rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
+                <SortTh className="px-2 sm:min-w-[14rem] sm:px-4 sm:py-3.5 xl:min-w-[16rem]" label="عنوان الخبر والموضوع" sortKey="title" sort={sort} onSort={toggleSort} />
                 {showColumn('category') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="القسم" sortKey="category" sort={sort} onSort={toggleSort} />}
                 {showColumn('priority') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="الأولوية" sortKey="priority" sort={sort} onSort={toggleSort} defaultDir="desc" />}
                 {showColumn('author') && <SortTh className="py-3.5 px-3 whitespace-nowrap hidden xl:table-cell" label="المصدر / المحرر" sortKey="author" sort={sort} onSort={toggleSort} />}
                 <SortTh className="py-3.5 px-3 whitespace-nowrap hidden sm:table-cell" label="الحالة" sortKey="status" sort={sort} onSort={toggleSort} />
                 {showColumn('updatedAt') && <SortTh className="py-3.5 px-3 whitespace-nowrap text-center hidden md:table-cell" label="آخر تحديث" sortKey="updatedAt" sort={sort} onSort={toggleSort} defaultDir="desc" />}
-                <th className="py-3.5 px-2 sm:px-3 text-center w-24 xl:w-auto sticky left-0 z-[1] bg-slate-50 xl:static xl:bg-transparent">إجراءات</th>
+                <th className="sticky left-0 z-[1] w-13 bg-slate-50 px-1 text-center sm:w-24 sm:px-3 sm:py-3.5 xl:static xl:w-auto xl:bg-transparent">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -780,7 +780,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       }`}
                     >
                       {/* Select */}
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="px-1 text-center sm:px-3 sm:py-3.5">
                         <button
                           type="button"
                           onClick={() => toggleSelectOne(item.id)}
@@ -798,35 +798,31 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       </td>
 
                       {/* Title */}
-                      <td className="py-3.5 px-3 sm:px-4">
-                        <div className="flex items-start gap-2">
-                          {isUnderEmbargo(item) && (
-                            <span className="inline-flex items-center gap-1 text-2xs font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
-                              محظور حتى {embargoLabel(item.embargoUntil)}
-                            </span>
+                      <td className="px-2 py-2.5 sm:px-4 sm:py-3.5">
+                        <div className="flex flex-col items-start gap-1 sm:flex-row sm:gap-2">
+                          {(isUnderEmbargo(item) || item.isBreaking) && (
+                            <div className="order-last flex flex-wrap items-start gap-1 sm:order-none sm:flex-nowrap sm:gap-2">
+                              {isUnderEmbargo(item) && (
+                                <span className="inline-flex items-center gap-1 text-2xs font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={item.embargoNote || ''}>
+                                  محظور حتى {embargoLabel(item.embargoUntil)}
+                                </span>
+                              )}
+                              {item.isBreaking && <Badge variant="danger" size="sm" dot className="shrink-0 mt-0.5">عاجل</Badge>}
+                            </div>
                           )}
-                          {item.isBreaking && (
-                            <Badge variant="danger" size="sm" dot className="shrink-0 mt-0.5">
-                              عاجل
-                            </Badge>
-                          )}
-                          <div>
+                          <div className="min-w-0 max-w-full">
                             <button type="button"
                               onClick={() => setPreviewNews(item)}
-                              className="font-bold text-slate-800 hover:text-blue-600 block leading-snug text-right break-words"
+                              className="block min-h-11 text-right text-base leading-snug font-bold wrap-anywhere text-slate-800 hover:text-blue-600 sm:min-h-0 sm:text-xs"
                             >
                               <Highlight text={item.title} query={searchQuery} />
                             </button>
-                            <span className="text-2xs text-slate-500 line-clamp-1 mt-0.5">
+                            <span className={`mt-0.5 text-2xs text-slate-500 ${searchQuery.trim() ? 'line-clamp-1' : 'hidden sm:line-clamp-1'}`}>
                               <Highlight text={item.summary} query={searchQuery} />
                             </span>
                             {/* Below 1280px (tablets, laptops with the sidebar) the category, priority, author and time columns fold in here. */}
-                            <span className="xl:hidden flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-2xs text-slate-500">
-                              <span className="sm:hidden">
-                                <Badge variant={sInfo.variant} size="sm">
-                                  {sInfo.label}
-                                </Badge>
-                              </span>
+                            <Badge variant={sInfo.variant} size="sm" className="mt-1 sm:hidden">{sInfo.label}</Badge>
+                            <span className="mt-1 hidden flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-slate-500 sm:flex xl:hidden">
                               {showColumn('category') && <span className="font-semibold text-slate-600">{item.categoryName}</span>}
                               {showColumn('priority') && <Badge variant={pInfo.variant} size="sm">
                                 {pInfo.label}
@@ -908,8 +904,8 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                       </td>}
 
                       {/* Actions stay in view (sticky) while a narrow table scrolls. */}
-                      <td className="py-3.5 px-2 sm:px-3 text-center sticky left-0 z-[1] bg-white xl:static xl:bg-transparent">
-                        <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-0.5 min-w-[4.75rem] xl:min-w-0">
+                      <td className="sticky left-0 z-[1] bg-white px-1 text-center sm:px-3 sm:py-3.5 xl:static xl:bg-transparent">
+                        <div className="flex flex-wrap items-center justify-center gap-0.5 sm:min-w-[4.75rem] xl:min-w-0 xl:flex-nowrap">
                           {/* Quick Preview (on phones the title itself opens it) */}
                           <button
                             type="button"

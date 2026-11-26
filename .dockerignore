@@ -9,3 +9,7 @@ coverage
 !.env.example
 *.log
 tests
+test-results
+playwright-report
+screenshots
+.npm-cache

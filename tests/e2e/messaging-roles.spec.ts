@@ -159,10 +159,11 @@ test('a role opens only the screens of its job', async ({ browser }) => {
   expect(res.results[0].ok).toBe(true);
 
   try {
-    // The administrator narrows the role further in the role editor.
+    // The administrator can find the montage role in the permissions workspace.
     await admin.page.goto('/users');
-    await admin.page.getByRole('tab', { name: /الأدوار/ }).or(admin.page.getByRole('button', { name: /الأدوار والصلاحيات|الأدوار/ })).first().click();
-    await admin.page.getByText('موظف مونتاج').first().scrollIntoViewIfNeeded();
+    await admin.page.getByRole('tab', { name: 'مساحة الصلاحيات', exact: true }).click();
+    await admin.page.getByRole('combobox', { name: 'اختر دور', exact: true }).selectOption({ label: 'موظف مونتاج' });
+    await expect(admin.page.getByRole('button', { name: 'تعديل بيانات الدور', exact: true })).toBeVisible();
     const roles = (await (await admin.page.request.get('/api/v1/data')).json()).collections.roles;
     const montage = roles.find((r: any) => r.d.roleCode === 'MONTAGE');
     expect(montage.d.screens).toContain('media');

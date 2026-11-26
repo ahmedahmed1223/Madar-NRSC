@@ -100,8 +100,23 @@ jobs:
           test "$code" = "200"
       - name: Offline air and prompter workflows
         run: npx playwright test tests/e2e/offline-air-preparation.spec.ts tests/e2e/offline-air-shell.spec.ts tests/e2e/offline-air-store.spec.ts tests/e2e/offline-air-drafts.spec.ts tests/e2e/prompter-controls.spec.ts tests/e2e/production-lists-settings.spec.ts tests/e2e/production-name-fields.spec.ts tests/e2e/air-text-display.spec.ts
+      - name: Recover an in-flight editor lock after navigation
+        run: node tests/e2e/run-isolated.mjs lock-unload lock-reload-leave
       - name: Database administration workflows
         env:
           POSTGRES_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
           DATABASE_ENGINE: sqlite
         run: npx playwright test tests/e2e/database-operations.spec.ts tests/e2e/database-engine.spec.ts tests/e2e/module-access.spec.ts
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Build the production container and test its persistent volume
+        run: |
+          export RELEASE_VERSION="$(node -p 'require("./package.json").version')"
+          bash scripts/smoke-release-container.sh

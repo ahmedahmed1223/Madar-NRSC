@@ -140,20 +140,20 @@ export function SavedNewsFilters({ userId, definition, onApply }: Props) {
   const sorted = [...rows].sort((a, b) => Number(b.d.pinned) - Number(a.d.pinned) || a.d.name.localeCompare(b.d.name, 'ar'));
   const offlineReason = !isOnline ? 'اتصل بالخادم لحفظ الفلاتر أو حذفها' : '';
   return <section aria-label="فلاتر الأخبار الشخصية" className="space-y-2">
-    <div className="grid grid-cols-2 gap-2 items-center sm:flex sm:flex-wrap">
-      <div className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-        <label htmlFor="saved-news-filter" className="text-xs text-slate-700">الفلاتر المحفوظة</label>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 sm:flex sm:flex-wrap">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <label htmlFor="saved-news-filter" className="text-xs text-slate-700 max-sm:sr-only">الفلاتر المحفوظة</label>
         <select id="saved-news-filter" value={selected} disabled={loading && !rows.length} className={`${control} min-w-0 w-full sm:w-auto sm:max-w-52`} onChange={e => {
           setSelected(e.target.value);
           const row = rows.find(item => item.id === e.target.value);
           if (row) onApply({ ...row.d.definition });
         }}>
-          <option value="">{loading ? 'جارٍ التحميل…' : 'اختر فلترًا'}</option>
+          <option value="">{loading ? 'جارٍ التحميل…' : 'اختر فلترًا محفوظًا'}</option>
           {sorted.map(row => <option key={row.id} value={row.id}>{row.d.name}</option>)}
         </select>
       </div>
-      <button type="button" className={control} disabled={!isOnline || pending || loading || rows.length >= 30} title={offlineReason || (rows.length >= 30 ? 'الحد الأقصى 30 فلترًا' : 'حفظ الفلتر الحالي')} onClick={() => openDraft()}><Save size={16} />حفظ الفلتر الحالي</button>
-      <button type="button" className={control} onClick={() => { opener.current = document.activeElement as HTMLElement; setError(''); setManage(true); }}><Settings2 size={16} />إدارة الفلاتر</button>
+      <button type="button" className={`${control} min-w-11`} aria-label="حفظ الفلتر الحالي" disabled={!isOnline || pending || loading || rows.length >= 30} title={offlineReason || (rows.length >= 30 ? 'الحد الأقصى 30 فلترًا' : 'حفظ الفلتر الحالي')} onClick={() => openDraft()}><Save size={16} aria-hidden="true" /><span className="hidden sm:inline">حفظ الفلتر الحالي</span></button>
+      <button type="button" className={`${control} min-w-11`} aria-label="إدارة الفلاتر" title="إدارة الفلاتر" onClick={() => { opener.current = document.activeElement as HTMLElement; setError(''); setManage(true); }}><Settings2 size={16} aria-hidden="true" /><span className="hidden sm:inline">إدارة الفلاتر</span></button>
     </div>
     {offlineReason && <p role="status" className="text-xs text-amber-700">{offlineReason}؛ يمكنك تطبيق الفلاتر المحمّلة على البيانات المتاحة.</p>}
     {rows.length >= 30 && <p className="text-xs text-slate-600">وصلت إلى الحد الأقصى: 30 فلترًا. احذف فلترًا لإضافة آخر.</p>}

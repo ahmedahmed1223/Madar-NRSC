@@ -1,3 +1,4 @@
+import { browserBuildDir } from './buildDir';
 import { expect, test } from '@playwright/test';
 import express from 'express';
 import path from 'node:path';
@@ -33,8 +34,8 @@ test('login accepts keyboard paste while remaining masked without a paste button
 
 test('the login two-factor challenge can return to account selection', async ({ browser }) => {
   const instance = await createTestServer();
-  instance.app.use(express.static(path.resolve('dist')));
-  instance.app.get('/{*path}', (_req, res) => res.sendFile(path.resolve('dist/index.html')));
+  instance.app.use(express.static(browserBuildDir));
+  instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(browserBuildDir, 'index.html')));
   const http = await listen(instance.app);
   const context = await browser.newContext({ baseURL: http.baseUrl });
   try {

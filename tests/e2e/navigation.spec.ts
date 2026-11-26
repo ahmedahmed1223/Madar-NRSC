@@ -20,11 +20,12 @@ test('the address follows the screen: Back/Forward, reload and deep links', asyn
   await expect(page).toHaveURL(/\/news$/);
   await page.locator('button[title="تحرير الخبر"]').first().click();
   await expect(page).toHaveURL(/\/news\/[^/]+$/);
-  const title = await page.locator('input').first().inputValue();
+  const headline = page.locator('#news-headline-input');
+  const title = await headline.inputValue();
   await expect(page).toHaveTitle(new RegExp(`محرر الخبر · مدار`));
   const storyUrl = page.url();
   await page.reload();
-  await expect(page.locator('input').first()).toHaveValue(title);
+  await expect(headline).toHaveValue(title);
   await expect(page).toHaveURL(storyUrl);
   await page.goBack();
   await expect(page).toHaveURL(/\/news$/);
@@ -103,18 +104,21 @@ test('confirmations are in-app dialogs: Esc cancels, the button confirms, focus 
 
   await page.getByRole('button', { name: 'إلغاء الحجز' }).click();
   const dialog = page.getByRole('alertdialog');
+  const cancel = dialog.getByRole('button', { name: 'إلغاء', exact: true });
+  const confirm = dialog.getByRole('button', { name: 'تأكيد', exact: true });
   await expect(dialog).toContainText('إلغاء هذا الحجز؟');
-  await expect(dialog.getByRole('button', { name: 'تأكيد' })).toBeFocused();
+  await expect(cancel).toBeFocused();
   // Tab cycles within the dialog.
   await page.keyboard.press('Tab');
+  await expect(confirm).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(dialog.getByRole('button', { name: 'تأكيد' })).toBeFocused();
+  await expect(cancel).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'إلغاء الحجز' })).toBeVisible();
 
   await page.getByRole('button', { name: 'إلغاء الحجز' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'تأكيد' }).click();
+  await confirm.click();
   await expect(page.getByText('أُلغي الحجز').first()).toBeVisible();
   expect(errors).toEqual([]);
   await close();

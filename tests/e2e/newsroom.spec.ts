@@ -9,11 +9,11 @@ test('an embargoed story shows its embargo everywhere and cannot go out early', 
     const d = new Date(Date.now() + 24 * 3600_000);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T09:00`;
   });
-  const title = await page.locator('input').first().inputValue();
+  const title = await page.locator('#news-headline-input').inputValue();
   await page.fill('#news-embargo', tomorrow);
   await page.getByRole('button', { name: 'حفظ وإغلاق', exact: true }).click();
   // Back on the list, the story carries its embargo.
-  const row = page.locator('tr', { hasText: title.slice(0, 20) });
+  const row = page.getByRole('row').filter({ has: page.getByText(title, { exact: true }) });
   await expect(row.getByText(/محظور حتى/)).toBeVisible();
   // Reopening it shows the embargo banner.
   await row.locator('button[title="تحرير الخبر"]').click();
