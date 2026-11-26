@@ -13,9 +13,9 @@ test('a private mobile task syncs and its reminder opens the task from a new ses
   const form = page.getByRole('region', { name: 'مهمة شخصية جديدة' });
   await form.getByLabel('عنوان المهمة').fill(title);
   await form.getByLabel('ملاحظات').fill(notes);
-  await form.getByRole('textbox', { name: 'موعد المهمة', exact: true }).fill('2030-06-12T10:00');
+  await form.getByLabel(/^موعد المهمة/).fill('2030-06-12T10:00');
   await form.getByRole('combobox', { name: 'التذكير', exact: true }).selectOption('custom');
-  await form.getByRole('textbox', { name: 'موعد التذكير', exact: true }).fill('2020-06-12T09:00');
+  await form.getByLabel('موعد التذكير', { exact: true }).fill('2020-06-12T09:00');
   await form.getByRole('button', { name: 'حفظ المهمة' }).click();
   await expect(page.getByText('حُفظت المهمة الشخصية.')).toBeVisible();
   await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible();

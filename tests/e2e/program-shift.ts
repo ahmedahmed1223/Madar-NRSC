@@ -44,6 +44,7 @@ export async function prepareProgram(browser: Browser) {
     await reporter.page.getByLabel('ما سبب التعطل وما المطلوب لحله؟').fill(blocker);
     await reporter.page.getByRole('button', { name: 'تسجيل التعطل' }).click();
     await page.goto('/cards');
+    await page.getByRole('tab', { name: /متابعة اليوم/ }).click();
     await expect(page.getByText(new RegExp(blocker)).first()).toBeVisible();
     await page.getByRole('button', { name: new RegExp(assignment) }).first().click();
     await expect(page).toHaveURL(new RegExp(`/cards/${cardId}$`));

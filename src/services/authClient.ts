@@ -72,7 +72,7 @@ export const authClient = {
       }
     }
     beforeRequest?.();
-    await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+    await apiFetch('/api/v1/auth/logout', { method: 'POST', signal: AbortSignal.timeout(15_000) });
     session = null;
     return true;
   },

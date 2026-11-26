@@ -3,6 +3,48 @@ import { createTestServer, loginAgent } from '../helpers';
 
 const headers = { 'X-NRCS-Client': 'web' };
 
+it('summarizes rundown guests once per episode, including legacy single-guest segments', async () => {
+  const server = await createTestServer();
+  try {
+    server.db.writeRow('episodes', 'rundown-summary', {
+      id: 'rundown-summary', title: 'حلقة الضيوف', broadcastDate: '2026-11-26',
+      guests: [{ guestId: 'booked-summary' }],
+      rundown: [
+        { id: 'first', guests: [{ guestId: 'booked-summary' }, { guestId: 'segment-summary' }] },
+        { id: 'second', guestId: 'segment-summary' },
+        { id: 'legacy', guestId: 'legacy-summary' },
+      ],
+    }, -1000, null);
+    const agent = await loginAgent(server.app, 'admin@akhbar.tv');
+    const response = await agent.get('/api/v1/data/episode-summaries');
+    expect(response.status).toBe(200);
+    for (const id of ['booked-summary', 'segment-summary', 'legacy-summary']) {
+      expect(response.body.data.guestSummaries[id]).toMatchObject({
+        totalAppearances: 1, monthlyAppearanceCounts: { '2026-11': 1 },
+      });
+    }
+  } finally { server.close(); }
+});
+
+it('supports valid IDs that match Object prototype names in episode summaries', async () => {
+  const server = await createTestServer();
+  try {
+    for (const id of ['__proto__', 'constructor', 'toString']) {
+      server.db.writeRow('episodes', `prototype-${id}`, {
+        id: `prototype-${id}`, programId: id, broadcastDate: '2026-11-26',
+        guests: [{ guestId: id }],
+      }, -1000, null);
+    }
+    const agent = await loginAgent(server.app, 'admin@akhbar.tv');
+    const response = await agent.get('/api/v1/data/episode-summaries');
+    expect(response.status).toBe(200);
+    for (const id of ['__proto__', 'constructor', 'toString']) {
+      expect(response.body.data.programCounts[id]).toBe(1);
+      expect(response.body.data.guestSummaries[id].totalAppearances).toBe(1);
+    }
+  } finally { server.close(); }
+});
+
 it('bootstraps a bounded guest window and serves later pages and full-history search', async () => {
   const server = await createTestServer();
   try {

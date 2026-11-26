@@ -9,12 +9,13 @@ test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
   pageErrors.set(page, errors);
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/');
+  // Authenticate before mounting the app so WebKit does not cancel the
+  // sign-in discovery requests during an immediate document reload.
   const login = await page.request.post('/api/v1/auth/login', {
     headers, data: { email: 'admin@akhbar.tv', password: DEMO_PASSWORD },
   });
   expect(login.ok()).toBe(true);
-  await page.reload();
+  await page.goto('/');
   await enterWorkspace(page);
 });
 
