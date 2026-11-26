@@ -51,7 +51,7 @@ export interface DocContext {
   mediaName?: (id: string) => string | undefined;
 }
 
-const stamp = (ctx: DocContext) => {
+export const stamp = (ctx: DocContext) => {
   const when = (ctx.now || new Date()).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'medium', timeStyle: 'short' });
   return ctx.user ? `طُبع بواسطة ${ctx.user.fullName} — ${when}` : when;
 };
@@ -413,7 +413,8 @@ export function presenterSheetDoc(e: Episode, ctx: DocContext): DocSpec {
       const qs = segmentQuestions(e, s);
       blocks.push({ t: 'heading', text: `${s.startTimeOffset || ''} — ${s.title} (${mmssOf(s.durationSeconds)})` });
       if (guests.length) blocks.push({ t: 'paragraph', text: `الضيوف: ${guests.map((g) => `${g.guestName} (${guestRoleName(g.role)})`).join('، ')}`, bold: true });
-      if ((s.scriptText || '').trim()) blocks.push({ t: 'script', text: plainText(s.scriptText) });
+      const script = plainText(s.scriptText || s.script || '');
+      if (script) blocks.push({ t: 'script', text: script });
       if (qs.length) blocks.push({ t: 'list', ordered: true, items: qs.map((q: any) => `${q.parentId ? '↳ ' : ''}[${questionKindName(q.kind)}] ${q.questionText}${q.notes ? `\n    معلومة: ${q.notes}` : ''}`) });
     });
   return {

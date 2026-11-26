@@ -6,6 +6,7 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { alertDialog, confirmDialog } from '../services/dialogs';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodeFileDoc, episodeRundownDoc, guestSheetDoc, presenterSheetDoc } from '../services/documents/builders';
+import { autocueDoc, episodePreparationDoc, episodeIntroDoc } from '../services/documents/productionScripts';
 import { CommentThread } from '../components/comments/CommentThread';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -321,6 +322,8 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
             <ExportMenu
               items={[
                 { id: 'file', label: 'ملف الحلقة الكامل', hint: 'الملخص والرانداون حسب المحاور والضيوف والأسئلة', build: () => episodeFileDoc(episode, allGuests, docContext()) },
+                { id: 'preparation', label: 'نص إعداد الحلقة', hint: 'المحاور ونصوص الفقرات والأسئلة وملاحظات الفريق', build: () => episodePreparationDoc(episode, docContext()) },
+                { id: 'autocue', label: 'نص الأوتوكيو', hint: 'نصوص الفقرات بترتيب الرانداون', build: () => autocueDoc(episode.title, episode.rundown || episode.rundownSegments || [], docContext()) },
                 { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episode, docContext()) },
                 { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episode, docContext()) },
                 { id: 'guests', label: 'ورقة الضيوف والشارات', hint: 'الحجز والهواتف ونصوص الشارات', build: () => guestSheetDoc(episode, allGuests, docContext()) },
@@ -629,7 +632,11 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
                 النص الكامل لقراءة المذيع في افتتاحية الحلقة على شاشة الأوتوكيو
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {introScript.trim() && <ExportMenu label="طباعة المقدمة" items={[{
+                id: 'intro', label: 'مقدمة الحلقة',
+                build: () => episodeIntroDoc(episode.title, introScript, introScript !== loadedScriptRef.current, docContext()),
+              }]} />}
               {introScript && (
                 <button
                   type="button"

@@ -106,6 +106,16 @@ describe('workflow templates', () => {
     expect(open.steps[0].assigneeId).toBeUndefined();
   });
 
+  it('keeps an explicitly unassigned step empty and applies defaults only to untouched steps', () => {
+    const card = cardFromTemplate(template, { title: 'تكليف', stationId: 'gaza', picks: { a: '', c: '' } }, people);
+    for (const index of [0, 2]) {
+      expect(card.steps[index].assigneeId).toBeUndefined();
+      expect(card.steps[index].departmentId).toBeUndefined();
+      expect(card.steps[index].stationId).toBeUndefined();
+    }
+    expect(card.steps[1].assigneeId).toBe('samer');
+  });
+
   it('saves an assignment as a template and copies templates', () => {
     const card: ProductionCard = {
       id: 'c1', title: 'موجز', kind: 'BRIEF', priority: 'URGENT', status: 'OPEN', dueAt: '2026-11-19T12:00:00Z',

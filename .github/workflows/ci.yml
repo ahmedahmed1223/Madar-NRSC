@@ -63,6 +63,10 @@ jobs:
         run: npx playwright test daily-work daily-role saved-news-filters shift-handovers shift-handover-resilience production-work-queues field-media-upload editorial-ai app-updates personal-tasks work-reminders
       - name: Multi-station production and CSV exports
         run: npx playwright test production-cards
+      - name: Department hierarchy, assignment routing and print previews
+        run: >-
+          npx playwright test tests/e2e/department-chart.spec.ts tests/e2e/assignment-routing.spec.ts
+          tests/e2e/production-print.spec.ts tests/e2e/workspace-polish.spec.ts
       - name: Bulletin assembly and programme templates
         run: npx playwright test bulletin-copy program-preparation
       - name: Desktop and mobile planning and production layouts

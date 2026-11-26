@@ -123,6 +123,11 @@
 }
 
 @media (width < 40rem) {
+  /* Keep editing legible at the user's text scale and avoid focus zoom on mobile Safari. */
+  :where(.form-page, [role='dialog'], #app-main) :is(input:not([type]), input[type='text'], input[type='search'], input[type='email'], input[type='tel'], input[type='url'], input[type='password'], textarea, select) {
+    font-size: max(16px, 1rem);
+  }
+
   .workspace-theme > .theme-options {
     inset-inline: 0.5rem;
     inline-size: auto;

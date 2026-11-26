@@ -6,6 +6,7 @@ import { matchesQuery } from '../shared/search';
 import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { episodesScheduleDoc } from '../services/documents/builders';
 import { FormPage } from '../components/common/FormPage';
+import { ListEmptyState } from '../components/common/ListEmptyState';
 import { EpisodeDetailsFields } from '../components/episodes/EpisodeDetailsFields';
 import { EpisodeDetailsEditor } from '../components/episodes/EpisodeDetailsEditor';
 import { EPISODE_STATUS_INFO, episodeEndTime, episodeStatusInfo, type EpisodeDetailsValues } from '../components/episodes/episodeDetails';
@@ -345,8 +346,16 @@ export const EpisodesView: React.FC<EpisodesViewProps> = ({
             <tbody role="rowgroup" className="max-sm:block divide-y divide-slate-200 text-slate-800">
               {filteredEpisodes.length === 0 ? (
                 <tr role="row" className="max-sm:block">
-                  <td role="cell" colSpan={8} className="max-sm:block p-6 sm:py-12 text-center text-slate-500">
-                    لا توجد حلقات مطابقة لمعايير البحث. انقر على "إعداد حلقة جديدة" لبدء العمل.
+                  <td role="cell" colSpan={8} className="max-sm:block p-2">
+                    <ListEmptyState
+                      message={allEpisodes.length ? 'لا توجد حلقات مطابقة لمعايير البحث.' : 'لا توجد حلقات معروضة بعد.'}
+                      action={searchQuery || selectedStatus !== 'ALL' || selectedProgId !== 'ALL' ? { label: 'مسح الفلاتر', run: () => {
+                        setSearchQuery('');
+                        setSelectedStatus('ALL');
+                        if (selectedProgId !== 'ALL') onFilterProgramChange(null);
+                        document.getElementById('episodes-search-input')?.focus();
+                      } } : undefined}
+                    />
                   </td>
                 </tr>
               ) : (

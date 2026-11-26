@@ -49,6 +49,7 @@ import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { DropEvent, SortableItem, SortableList, SortableScope } from '../components/dnd/Sortable';
 import { notify } from '../services/notify';
 import { anchorScriptsDoc, bulletinGraphicsDoc, bulletinRundownDoc } from '../services/documents/builders';
+import { autocueDoc, bulletinPreparationDoc } from '../services/documents/productionScripts';
 import { canControlOnAir } from '../shared/onair';
 import {
   Bulletin,
@@ -444,6 +445,8 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
               items={[
                 { id: 'rundown', label: 'رانداون النشرة', hint: 'البداية وBack والمدد والشارات — للمخرج والكنترول', build: () => bulletinRundownDoc(bulletin, all, docContext()) },
                 { id: 'scripts', label: 'نصوص المذيع', hint: 'قصة في كل صفحة بخط كبير', build: () => anchorScriptsDoc(bulletin, all, docContext()) },
+                { id: 'preparation', label: 'نص إعداد النشرة', hint: 'القصص وحالة اعتمادها وملاحظات الإخراج والاحتياط', build: () => bulletinPreparationDoc(bulletin, all, docContext()) },
+                { id: 'autocue', label: 'نص الأوتوكيو', hint: 'نسخة القراءة بترتيب البث', build: () => autocueDoc(bulletin.title, show.rundown, docContext()) },
                 { id: 'cg', label: 'قائمة الشارات', hint: 'لقسم الجرافيك بترتيب البث', build: () => bulletinGraphicsDoc(bulletin, all, docContext()) },
               ]}
             />

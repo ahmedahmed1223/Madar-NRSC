@@ -1,6 +1,7 @@
 import { countLabel } from '../shared/labels';
 import { AR, countLabel as countOf } from '../shared/arabicPlural';
 import { downloadCsv } from '../services/csvExport';
+import { previewWorkspacePage } from '../services/documents/printPreview';
 import { apiService } from '../services/api';
 import { RbacService } from '../services/rbacService';
 import { stationName, stationsOf } from '../shared/stations';
@@ -179,7 +180,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const preparedAt = currentReport?.updatedAt ? when(currentReport.updatedAt) : '—';
 
   const handlePrint = () => {
-    if (report) window.print();
+    if (report) previewWorkspacePage('التقارير');
   };
 
   const handleExportCsv = () => {

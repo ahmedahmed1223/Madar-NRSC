@@ -24,7 +24,8 @@ export function NewsTemplatesSettings() {
       setError('تغيرت القوالب لدى زميل آخر. أعد فتح الإعدادات وراجع النسخة الحالية قبل الحفظ؛ مسودتك محفوظة على هذا الجهاز.');
       return;
     }
-    const problem = settingsError({ ...apiService.getSettings(), newsTemplates: templates });
+    const current = apiService.getSettings();
+    const problem = settingsError({ ...current, newsTemplates: templates }, current);
     if (problem) { setError(problem); return; }
     if (baseline.some(item => !templates.some(next => next.id === item.id)) && !await confirmDialog({ title: 'حذف قوالب أخبار', message: 'سيختفي القالب من الخيارات لدى الزملاء، دون تغيير الأخبار المكتوبة سابقاً. اعتماد الحذف؟', confirmLabel: 'اعتماد الحذف', danger: true })) return;
     setSaving(true); setError('');

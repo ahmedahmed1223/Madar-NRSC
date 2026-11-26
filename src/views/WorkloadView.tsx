@@ -5,6 +5,7 @@ import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { downloadCsv } from '../services/csvExport';
+import { previewWorkspacePage } from '../services/documents/printPreview';
 import { FilterTabs } from '../components/common/FilterTabs';
 import { DepartmentWorkPanel } from '../components/workload/DepartmentWorkPanel';
 import { AiringOutcomes } from '../components/reports/AiringOutcomes';
@@ -385,7 +386,7 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
   );
 
   const printButton = (
-    <button type="button" onClick={() => window.print()} className={TOOL}>
+    <button type="button" onClick={() => previewWorkspacePage('متابعة الفرق والتكاليف')} className={TOOL}>
       <Printer className="w-4 h-4" />
       طباعة / حفظ PDF
     </button>

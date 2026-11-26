@@ -5,7 +5,7 @@ import { downloadCsv } from '../../services/csvExport';
 import { assignmentReport, assignmentTotals, REPORT_DIMENSIONS, reportCsvRows, waitingByStepType, type ReportDimension, type ReportRow } from '../../shared/assignmentReports';
 import { stepTypesOf, type ProductionCard } from '../../shared/productionCards';
 import { stationsOf } from '../../shared/stations';
-import { departmentIdOf } from '../../shared/departments';
+import { findDepartmentId } from '../../shared/departments';
 import { minutesLabel } from '../../shared/workload';
 
 interface AssignmentReportsProps {
@@ -35,7 +35,7 @@ export const AssignmentReports: React.FC<AssignmentReportsProps> = ({ cards, now
       cards,
       stepTypes: stepTypesOf(settings),
       stations: stationsOf(settings),
-      people: apiService.getUsers().map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, departmentId: departmentIdOf(u) })),
+      people: apiService.getUsers().map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, departmentId: findDepartmentId(u) })),
       period: { from: now - hours * 3600_000, to: now },
       now,
     };

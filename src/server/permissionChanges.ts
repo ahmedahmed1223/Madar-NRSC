@@ -1,6 +1,6 @@
 import { ALL_PERMISSIONS, DEFAULT_ROLE_DEFINITIONS, departmentGrantAllowed, evaluatePermission, findUserRole, isRestrictionPermission, permissionDepartments, type PermissionSubject, type RoleDefinition } from '../shared/rbac';
 import { assignedWorkOnly } from '../shared/assignedWork';
-import { departmentsOf, type Department } from '../shared/departments';
+import { departmentsOf, findDepartmentId, type Department } from '../shared/departments';
 import type { PolicyInput } from './policy';
 import type { User } from '../types';
 
@@ -80,9 +80,11 @@ export function permissionChangeError(input: PolicyInput): string | null {
     const invalid = departmentPoliciesError(afterDepartments);
     if (invalid) return invalid;
     const policyShape = (ds: Department[]) => ds.map(d => ({ id: d.id, parentId: d.parentId, permissions: [...(d.permissionOverrides || [])].sort() }));
-    const changed = JSON.stringify(policyShape(beforeDepartments)) !== JSON.stringify(policyShape(afterDepartments));
     const hasPolicy = [...beforeDepartments, ...afterDepartments].some(d => d.permissionOverrides?.length);
-    if (!changed || !hasPolicy) return null;
+    if (!hasPolicy) return null;
+    const changed = JSON.stringify(policyShape(beforeDepartments)) !== JSON.stringify(policyShape(afterDepartments)) ||
+      users.some(user => !user.departmentId && findDepartmentId(user, beforeDepartments) !== findDepartmentId(user, afterDepartments));
+    if (!changed) return null;
     if (!auth.can('users.manage_roles_permissions')) return 'تعديل صلاحيات الأقسام أو تسلسلها يتطلب إدارة الأدوار والصلاحيات';
     for (const d of beforeDepartments) {
       const relaxation = restrictionRemovalError(input, d.permissionOverrides, afterDepartments.find(n => n.id === d.id)?.permissionOverrides);

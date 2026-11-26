@@ -107,7 +107,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   };
 
   return (
-    <div className="relative min-h-dvh bg-slate-950 flex items-center justify-center px-4 py-16 sm:py-12 font-sans" dir="rtl">
+    <div className="relative isolate min-h-dvh flex items-center justify-center px-4 py-16 sm:py-12 font-sans" dir="rtl">
+      <div aria-hidden className="theme-fixed absolute inset-0 -z-10 bg-slate-950" />
       {/* Appearance before sign-in, in the top corner (the end side), clear of the card. */}
       <div className="absolute top-3 left-3">
         <ThemeToggle />

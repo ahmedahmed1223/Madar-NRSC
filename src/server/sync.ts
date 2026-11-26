@@ -39,7 +39,7 @@ import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
-import { departmentIdOf, departmentsOf } from '../shared/departments';
+import { departmentIdOf, departmentsOf, findDepartmentId } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
 import { newId } from '../shared/ids';
 import { commentLink, TeamComment } from '../shared/comments';
@@ -447,6 +447,7 @@ export class SyncService {
   /** Colleagues as card notices need them: station, role, department and what they may do on cards. */
   private cardPeople(settings: any): CardNoticeContext {
     const roles = this.listData('roles') as RoleDefinition[];
+    const departments = departmentsOf(settings);
     const people = this.listData('users')
       .filter((u: any) => u && u.isActive !== false && !u.deletedAt)
       .map((u: any) => ({
@@ -455,9 +456,9 @@ export class SyncService {
         managedStationIds: u.managedStationIds,
         managedGroupIds: u.managedGroupIds,
         role: u.role,
-        departmentId: departmentIdOf(u),
-        canManage: evaluatePermission(u, 'cards.manage', roles, departmentsOf(settings)),
-        canWork: evaluatePermission(u, 'cards.work', roles, departmentsOf(settings)),
+        departmentId: findDepartmentId(u, departments),
+        canManage: evaluatePermission(u, 'cards.manage', roles, departments),
+        canWork: evaluatePermission(u, 'cards.work', roles, departments),
       }));
     return { people, stations: stationsOf(settings) };
   }

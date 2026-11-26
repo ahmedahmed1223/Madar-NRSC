@@ -51,25 +51,25 @@ export function FilterTabs<K extends string>({
   className?: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const focusTab = (i: number) => {
-    const t = tabs[(i + tabs.length) % tabs.length];
-    onChange(t.id);
-    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-tab="${t.id}"]`)?.focus());
-  };
-  const onKeyDown = (e: React.KeyboardEvent, i: number) => {
-    // Right-to-left: the left arrow moves forward.
-    if (e.key === 'ArrowLeft') focusTab(i + 1);
-    else if (e.key === 'ArrowRight') focusTab(i - 1);
-    else if (e.key === 'Home') focusTab(0);
-    else if (e.key === 'End') focusTab(tabs.length - 1);
+  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    const buttons = Array.from(listRef.current!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const i = buttons.indexOf(e.currentTarget);
+    let next: number;
+    if (e.key === 'ArrowLeft') next = (i + 1) % buttons.length;
+    else if (e.key === 'ArrowRight') next = (i - 1 + buttons.length) % buttons.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = buttons.length - 1;
     else return;
     e.preventDefault();
+    buttons[next].focus();
+    onChange(buttons[next].dataset.tab as K);
   };
 
   return (
     <div className={className}>
-      <div className="sm:hidden">
-        <select aria-label={label} value={active} onChange={(e) => onChange(e.target.value as K)} className="block w-full min-h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+      <label className="grid min-w-0 gap-1 sm:hidden">
+        <span className="text-xs font-semibold text-slate-600">{label}</span>
+        <select aria-label={label} value={active} onChange={(e) => onChange(e.target.value as K)} className="block w-full min-w-0 min-h-11 px-3 rounded-lg border border-slate-300 bg-white text-base font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
           {tabs.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}
@@ -77,7 +77,7 @@ export function FilterTabs<K extends string>({
             </option>
           ))}
         </select>
-      </div>
+      </label>
 
       <div
         ref={listRef}
@@ -87,7 +87,6 @@ export function FilterTabs<K extends string>({
       >
         {(() => {
           const renderTab = (t: FilterTab<K>) => {
-            const i = tabs.indexOf(t);
             const on = t.id === active;
             const tone = t.tone || 'slate';
             const empty = t.count === 0;
@@ -100,13 +99,13 @@ export function FilterTabs<K extends string>({
                 aria-selected={on}
                 tabIndex={on ? 0 : -1}
                 onClick={() => onChange(t.id)}
-                onKeyDown={(e) => onKeyDown(e, i)}
-                className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-colors ${
+                onKeyDown={onKeyDown}
+                className={`min-h-9 max-w-full inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-start transition-colors ${
                   on ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 }`}
               >
                 {t.tone && <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${DOT[tone]}`} />}
-                <span>{t.label}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{t.label}</span>
                 {t.count !== undefined && (
                   <span
                     className={`min-w-5 px-1.5 py-px rounded-full text-2xs font-bold text-center tabular-nums ${

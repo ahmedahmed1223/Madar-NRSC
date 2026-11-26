@@ -4,6 +4,7 @@ import { stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
 import { AlertTriangle, ClipboardList, LayoutTemplate, Plus, Radio } from 'lucide-react';
 import type { User } from '../types';
 import { apiService } from '../services/api';
+import { createDepartmentLabeler } from '../services/departmentLabels';
 import { dataStore } from '../services/dataStore';
 import { RbacService } from '../services/rbacService';
 import { FilterTabs } from '../components/common/FilterTabs';
@@ -77,6 +78,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const [templateForm, setTemplateForm] = useState<{ open: boolean; template: WorkflowTemplate | null }>({ open: false, template: null });
   const [assignForm, setAssignForm] = useState<{ open: boolean; templateId: string | null }>({ open: false, templateId: null });
   const [settings, setSettings] = useState(() => apiService.getSettings());
+  const labelDepartment = useMemo(createDepartmentLabeler, [settings, users]);
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
   const stationGroups = useMemo(() => stationGroupsOf(settings), [settings]);
@@ -89,6 +91,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
   const inStation = useMemo(() => stationFilterMatcher(station, stationGroups), [station, stationGroups]);
   const [stateFilter, setStateFilter] = useQueueFilter<'OPEN' | CardState>(currentUser.id, 'cards', 'state', 'OPEN', Object.keys(CARD_STATE_NAMES));
   const [kind, setKind] = useQueueFilter(currentUser.id, 'cards', 'kind', 'ALL', CARD_KINDS.map(item => item.id));
+  const [unassignedOnly, setUnassignedOnly] = useQueueFilter(currentUser.id, 'cards', 'unassignedOnly', false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductionCard | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -178,13 +181,14 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       cards
         .filter((c) => (stateFilter === 'OPEN' ? c.status === 'OPEN' : cardStates(c, now).includes(stateFilter)))
         .filter((c) => kind === 'ALL' || c.kind === kind)
+        .filter((c) => !canManage || !unassignedOnly || (c.status === 'OPEN' && c.steps.some(s => isStepOpen(s) && !s.assigneeId && !s.stationId && !s.departmentId)))
         .filter((c) => isWithinPeriod(period, today, [c.dueAt, c.airAt, ...c.steps.filter(step => step.status !== 'SKIPPED' && (!assignedOnly || step.assigneeId === currentUser.id)).map(step => step.dueAt)]))
         .filter((c) => station === 'ALL' || inStation(c.ownerStationId) || c.steps.some((s) => inStation(s.stationId)))
         .filter((c) => matchesQuery(query, c.title, c.brief, c.ownerName, c.target?.title, c.templateName, c.steps.map((s) => s.assigneeName || '')))
         .sort((a, b) => OPEN_STATES.indexOf(cardState(a, now)) - OPEN_STATES.indexOf(cardState(b, now)) || (b.updatedAt || '').localeCompare(a.updatedAt || '')),
-    [cards, stateFilter, kind, station, query, now, inStation, period, today, assignedOnly, currentUser.id]
+    [cards, stateFilter, kind, station, query, now, inStation, period, today, assignedOnly, currentUser.id, canManage, unassignedOnly]
   );
-  const page = useIncremental(filtered, 40, `${stateFilter}|${kind}|${station}|${period}|${query}`);
+  const page = useIncremental(filtered, 40, `${stateFilter}|${kind}|${station}|${period}|${query}|${unassignedOnly}`);
 
   const openTarget = (card: ProductionCard) => {
     if (card.target?.kind === 'news') onOpenNews(card.target.id);
@@ -212,10 +216,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
           <span className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
             {waiting && card.status === 'OPEN' && (
               <span>
-                 الخطوة التالية: {stepTypeName(stepTypes, waiting.type)} · {stepAssigneeLabel(waiting, stations)}
+                 الخطوة التالية: {stepTypeName(stepTypes, waiting.type)} · {stepAssigneeLabel(waiting, stations, labelDepartment)}
               </span>
             )}
-             {card.status === 'OPEN' && (waiting?.dueAt || card.dueAt) && <span>موعد الخطوة: {when(waiting?.dueAt || card.dueAt)}</span>}
+             {card.status === 'OPEN' && (waiting?.dueAt || card.dueAt) && <span>{waiting?.dueAt ? 'تسليم الخطوة' : 'تسليم التكليف'} · {when(waiting?.dueAt || card.dueAt)}</span>}
              {card.target?.title && <span className="break-words">مادة البث: {card.target.title}</span>}
             <span>القرار: {card.ownerName || '—'}</span>
             {card.templateName && <span>القالب: {card.templateName}</span>}
@@ -234,10 +238,9 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       card={editing}
       users={users}
       currentUser={currentUser}
-      onSaved={(_card, text) => {
+      onSaved={(saved, text) => {
         refresh();
-        notify({ type: 'success', message: text });
-        // A new assignment appears at the top of «كل التكليفات».
+        notify({ type: 'success', message: text, action: editing ? undefined : { label: 'فتح التكليف', run: () => onFocus(saved.id) } });
         if (!editing) setTab('ALL');
       }}
     />
@@ -502,7 +505,7 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                           </td>
                           <td role="cell" className="max-sm:col-span-full sm:p-3 text-slate-700 [overflow-wrap:anywhere]">
                             <span className="sm:hidden font-semibold" aria-hidden="true">بانتظار </span>
-                            {waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${stepAssigneeLabel(waiting, stations)}` : '—'}
+                            {waiting ? `${stepTypeName(stepTypes, waiting.type)} — ${stepAssigneeLabel(waiting, stations, labelDepartment)}` : '—'}
                           </td>
                         </tr>
                       );
@@ -542,6 +545,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
                 <option key={k.id} value={k.id}>{k.name}</option>
               ))}
             </select>
+            {canManage && <label className="col-span-full flex min-h-11 items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={unassignedOnly} onChange={e => setUnassignedOnly(e.target.checked)} />
+              فيها مهام بلا إسناد
+            </label>}
           </div>
           {filtered.length === 0 && empty(cards.length === 0 ? 'لا تكليفات بعد. يبدأ التكليف من «تكليف من قالب» ويرافق المادة حتى البث.' : 'لا تكليفات تطابق التصفية.')}
           <ul className="space-y-2">{page.visible.map((card) => cardRow(card))}</ul>

@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../services/departmentLabels';
 import { confirmDialog } from '../services/dialogs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, ChevronLeft, ChevronRight, Copy, Crown, Plus, UserCheck, X } from 'lucide-react';
@@ -50,6 +51,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
     onNavigate(next === 'handover' ? '/roster/handover' : '/roster');
   };
   const canManage = RbacService.hasPermission(currentUser, 'roster.manage');
+  const labelDepartment = createDepartmentLabeler();
   const [entries, setEntries] = useState<RosterEntry[]>(() => apiService.getRoster());
   const [weekStart, setWeekStart] = useState(() => weekStartOf(localDateString()));
   const [dayIndex, setDayIndex] = useState<number | null>(null);
@@ -250,7 +252,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
         label="الأقسام"
         active={departmentId}
         onChange={setDepartmentId}
-        tabs={DEPARTMENTS.map((d) => ({ id: d.id, label: d.name, tone: 'blue' as const }))}
+        tabs={DEPARTMENTS.map((d) => ({ id: d.id, label: labelDepartment(d), tone: 'blue' as const }))}
       />
 
       <section aria-label="مناوبات اليوم المختار" className="lg:hidden space-y-3">
@@ -296,13 +298,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                 key={d.id}
                 type="button"
                 aria-pressed={chosen}
-                title={`عرض مناوبات ${d.name}`}
+                title={`عرض مناوبات ${labelDepartment(d)}`}
                 onClick={() => setDepartmentId(d.id)}
                 className={`text-right p-2.5 rounded-xl border text-xs transition-colors ${
                   chosen ? 'border-blue-500 ring-1 ring-blue-500' : people.length ? 'border-emerald-200' : 'border-slate-200'
                 } ${people.length ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'bg-white hover:bg-slate-50'}`}
               >
-                <span className="font-bold text-slate-800 block">{d.name}</span>
+                <span className="font-bold text-slate-800 block">{labelDepartment(d)}</span>
                 <span className={`block mt-0.5 truncate ${people.length ? 'text-emerald-800' : 'text-amber-800'}`}>
                   {people.length ? people.map((p) => p.userName).join('، ') : 'لا يوجد مناوب'}
                 </span>

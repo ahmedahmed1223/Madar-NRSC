@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Plus, ShieldCheck } from 'lucide-react';
 import type { User, UserRole } from '../../types';
@@ -154,6 +155,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
   const roles = RbacService.getRoleDefinitions().filter((r) => r.roleCode !== 'SUPER_ADMIN' || currentUser.role === 'SUPER_ADMIN');
   const stations = stationsOf(settings);
   const blankMember = () => ({ fullName: '', email: '', roleId: roles.find((r) => r.roleCode === 'JOURNALIST')?.id || roles[0]?.id || '', stationId: '', departmentId: 'newsroom', jobTitle: '', password: suggestPassword() });
+  const labelDepartment = createDepartmentLabeler();
   const [member, setMember] = useState(blankMember);
   const [added, setAdded] = useState<{ name: string; email: string; password: string }[]>([]);
   const addMember = () =>
@@ -412,7 +414,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                   <label htmlFor="setup-member-dept" className={LABEL}>القسم</label>
                   <select id="setup-member-dept" value={member.departmentId} onChange={(e) => setMember({ ...member, departmentId: e.target.value })} className={INPUT}>
                     {DEPARTMENTS.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
+                      <option key={d.id} value={d.id}>{labelDepartment(d)}</option>
                     ))}
                   </select>
                 </div>

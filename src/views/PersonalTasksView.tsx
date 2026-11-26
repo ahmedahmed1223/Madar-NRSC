@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Bell, CheckCircle2, Circle, Copy, Plus, Search, Trash2 } from 'lucide-react';
 import { FormPage } from '../components/common/FormPage';
 import { FilterTabs } from '../components/common/FilterTabs';
+import { ListEmptyState } from '../components/common/ListEmptyState';
 import { useLiveData } from '../hooks/useLiveData';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -53,6 +54,7 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const writing = useRef(false);
+  const search = useRef<HTMLInputElement>(null);
   const tasks = apiService.getPersonalTasks().filter(task => task.ownerId === userId);
   const now = Date.now();
   const visible = tasks.filter(task => focusId ? task.id === focusId : filter === 'ALL' || task.completed === (filter === 'DONE'))
@@ -150,7 +152,7 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 flex-1 sm:max-w-md">
               <Search className="pointer-events-none absolute start-3 top-3.5 size-4 text-slate-500" aria-hidden="true" />
-              <input type="search" aria-label="بحث في المهام الشخصية" value={query} onChange={event => setQuery(event.target.value)} className={`${field} ps-9`} placeholder="ابحث بالعنوان أو الملاحظات" />
+              <input ref={search} type="search" aria-label="بحث في المهام الشخصية" value={query} onChange={event => setQuery(event.target.value)} className={`${field} ps-9`} placeholder="ابحث بالعنوان أو الملاحظات" />
             </div>
             <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">
               <input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} className="size-4 accent-amber-600" />
@@ -160,9 +162,15 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
         </>}
       {!draft && status}
       {visible.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          {focusId ? 'هذه المهمة غير متاحة في حسابك.' : overdueOnly ? 'لا توجد مهام شخصية متأخرة تطابق البحث.' : filter === 'DONE' ? 'لا توجد مهام شخصية مكتملة.' : query ? 'لا توجد مهام شخصية تطابق البحث.' : 'لا توجد مهام شخصية في هذه القائمة.'}
-        </p>
+        <ListEmptyState
+          message={focusId ? 'هذه المهمة غير متاحة في حسابك.' : overdueOnly ? 'لا توجد مهام شخصية متأخرة تطابق البحث.' : query ? 'لا توجد مهام شخصية تطابق البحث.' : filter === 'DONE' ? 'لا توجد مهام شخصية مكتملة.' : 'لا توجد مهام شخصية في هذه القائمة.'}
+          action={!focusId && (query || overdueOnly || (tasks.length > 0 && filter !== 'ALL')) ? { label: 'مسح الفلاتر', run: () => {
+            setQuery('');
+            setOverdueOnly(false);
+            setFilter('ALL');
+            search.current?.focus();
+          } } : undefined}
+        />
       ) : (
         <ul aria-label="قائمة المهام الشخصية" className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {visible.map(task => (

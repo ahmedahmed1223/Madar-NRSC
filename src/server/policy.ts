@@ -12,7 +12,7 @@ import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
-import { departmentIdOf, departmentsError, departmentsOf, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
+import { departmentIdOf, departmentsAtStation, departmentsError, departmentsOf, departmentStationIds, findDepartmentId, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
 import { DEFAULT_ROLE_DEFINITIONS, findUserRole } from '../shared/rbac';
 import { canControlOnAir, isCueForUser, isPresenterAccount, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
 import { bulletinError, findShow, formatError, isApprover, nextApprovalStep, canActOnStep, approvalStepName, plainText, storyError, storyStatusError } from '../shared/bulletins';
@@ -186,6 +186,12 @@ const usersPolicy: Policy = (input) => {
   }
   const roleError = userRoleError(kind === 'create' ? null : before, after, list);
   if (roleError) return roleError;
+  if (after?.departmentId && (before?.departmentId !== after.departmentId || before?.stationId !== after.stationId)) {
+    const departments = departmentsOf(list?.('settings')?.[0]);
+    if (!departmentsAtStation(after.stationId, departments).some(department => department.id === after.departmentId)) {
+      return 'القسم المختار غير متاح في محطة الموظف';
+    }
+  }
   if (kind === 'create') {
     if (!auth.can('users.create')) return DENIED;
     const privileged =
@@ -484,7 +490,7 @@ const settingsPolicy: Policy = (input) => {
   if (base) return base;
   const { kind, before, after, list } = input;
   if (kind === 'delete') return 'لا يمكن حذف إعدادات النظام';
-  const invalid = settingsError(after);
+  const invalid = settingsError(after, before);
   if (invalid) return invalid;
   const permissionsInvalid = permissionChangeError(input);
   if (permissionsInvalid) return permissionsInvalid;
@@ -509,12 +515,13 @@ const settingsPolicy: Policy = (input) => {
     if (members || openSteps) return `في محطة «${station.name}» ${members} من الزملاء و${openSteps} مهمة مفتوحة؛ احذفها من الإعدادات مع اختيار محطة بديلة تنتقل إليها`;
   }
   const userIds = users.map((u: any) => u.id);
-  const departmentsInvalid = after?.departments !== undefined ? departmentsError(after.departments, { stationIds: stationsOf(after).map((s) => s.id), userIds }) : null;
+  const departmentsInvalid = after?.departments !== undefined ? departmentsError(after.departments, { stationIds: stationsOf(after).map((s) => s.id), userIds, previous: before?.departments }) : null;
   if (departmentsInvalid) return departmentsInvalid;
   const usage = (id: string) =>
     users.filter((u: any) => departmentIdOf(u) === id).length +
     (list?.('roster') || []).filter((r: any) => r && !r.deletedAt && r.departmentId === id).length +
-    (list?.('requests') || []).filter((r: any) => r && !r.deletedAt && r.departmentId === id && !['DONE', 'REJECTED', 'CANCELLED'].includes(r.status)).length;
+    (list?.('requests') || []).filter((r: any) => r && !r.deletedAt && r.departmentId === id).length +
+    (list?.('productionCards') || []).filter((card: any) => !card.deletedAt && card.steps?.some((step: any) => step.departmentId === id)).length;
   const inUse = removedDepartmentsInUse(departmentsOf(before), departmentsOf(after), usage)[0];
   if (inUse) return `القسم «${inUse.name}» مستخدم (${inUse.uses})؛ أرشفه بدلاً من حذفه`;
   return null;
@@ -785,8 +792,9 @@ export const POLICIES: Record<CollectionName, Policy> = {
         return 'لا يمكنك تغيير خطوة مسندة إلى زميل آخر';
       }
     }
-    const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: departmentIdOf(auth.user), canManage, canWork: auth.can('cards.work') };
     const settings = list?.('settings')[0];
+    const departments = departmentsOf(settings);
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: findDepartmentId(auth.user, departments), canManage, canWork: auth.can('cards.work') };
     const users = list?.('users') || [];
     const ctx = cardContextOf(settings, users);
     if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
@@ -800,12 +808,21 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const scope = assignmentScope(auth.user, settings);
     const recipients = new Set<string>();
     if (after.ownerId && after.ownerId !== before?.ownerId) recipients.add(after.ownerId);
-    const previous = new Map<string, { assigneeId?: string; stationId?: string }>((before?.steps || []).map(step => [step.id, step]));
+    const previous = new Map<string, { assigneeId?: string; stationId?: string; departmentId?: string }>((before?.steps || []).map(step => [step.id, step]));
     for (const step of after.steps) {
       const prior = previous.get(step.id);
       if (step.assigneeId && step.assigneeId !== prior?.assigneeId) recipients.add(step.assigneeId);
-      if (!step.assigneeId && step.stationId && step.stationId !== prior?.stationId && !scope.stations.has(step.stationId)) {
+      const poolChanged = !step.assigneeId && (prior?.assigneeId || step.stationId !== prior?.stationId || step.departmentId !== prior?.departmentId);
+      if (poolChanged && step.stationId && !scope.stations.has(step.stationId)) {
         return 'محطة التكليف خارج نطاق المحطات التي تديرها أو ترتبط بها';
+      }
+      if (poolChanged && step.departmentId) {
+        const department = departments.find(item => !item.archived && item.id === step.departmentId);
+        if (!department) return 'قسم التكليف غير موجود أو مؤرشف';
+        const poolStations = departmentStationIds(department, departments) ?? ctx.stations.map(station => station.id);
+        if (step.stationId ? !poolStations.includes(step.stationId) : !poolStations.length || poolStations.some(id => !scope.stations.has(id))) {
+          return 'اختر محطة ضمن نطاق القسم والتكليف';
+        }
       }
     }
     for (const id of recipients) {

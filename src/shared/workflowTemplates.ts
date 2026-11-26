@@ -185,7 +185,7 @@ export interface AssignmentInput {
   /** The station producing the assignment: role and department rules look there first. */
   stationId?: string;
   priority?: 'NORMAL' | 'URGENT';
-  /** Per template step: a colleague's id, `s:<station>` or `d:<department>` to leave it open, or '' for the default. */
+  /** A colleague, station or department pool, or '' to leave unassigned. Omitted steps use the rule's default. */
   picks?: Record<string, string>;
 }
 
@@ -209,7 +209,7 @@ export function cardFromTemplate(template: WorkflowTemplate, input: AssignmentIn
   const deadline = input.dueAt || input.airAt;
   const base = deadline ? new Date(deadline).getTime() : NaN;
   const steps: CardStep[] = template.steps.map((t) => {
-    const pick = input.picks?.[t.id] || defaultPick(t, people, input.stationId);
+    const pick = input.picks?.[t.id] ?? defaultPick(t, people, input.stationId);
     const step: CardStep = {
       id: stepId(),
       type: t.type,

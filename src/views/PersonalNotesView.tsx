@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Copy, FileText, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import { FormPage } from '../components/common/FormPage';
+import { ListEmptyState } from '../components/common/ListEmptyState';
 import { useLiveData } from '../hooks/useLiveData';
 import { apiService } from '../services/api';
 import { dataStore } from '../services/dataStore';
@@ -34,6 +35,7 @@ function AccountNotes({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const running = useRef(false);
+  const search = useRef<HTMLInputElement>(null);
   const records = apiService.getPersonalNotes().filter(note => note.ownerId === userId).sort(order);
   const notes = records.filter(note => (!pinnedOnly || note.pinned) && matchesQuery(query, note.title, note.body));
   const pending = (id: string) => dataStore.hasPendingWrite('personalNotes', id);
@@ -99,7 +101,7 @@ function AccountNotes({ userId }: { userId: string }) {
       {records.length > 0 && <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1 sm:max-w-md">
           <Search className="pointer-events-none absolute start-3 top-3.5 size-4 text-slate-600" aria-hidden="true" />
-          <input type="search" aria-label="بحث في ملاحظاتي" value={query} onChange={event => setQuery(event.target.value)} className={`${input} min-h-11 ps-9`} placeholder="ابحث بالعنوان أو النص" />
+          <input ref={search} type="search" aria-label="بحث في ملاحظاتي" value={query} onChange={event => setQuery(event.target.value)} className={`${input} min-h-11 ps-9`} placeholder="ابحث بالعنوان أو النص" />
         </div>
         <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">
           <input type="checkbox" checked={pinnedOnly} onChange={event => setPinnedOnly(event.target.checked)} className="size-4 accent-blue-600" />
@@ -107,7 +109,14 @@ function AccountNotes({ userId }: { userId: string }) {
         </label>
       </div>}
       {!draft && status}
-      {notes.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{records.length ? 'لا توجد ملاحظات مطابقة.' : 'لا توجد ملاحظات محفوظة.'}</p> : (
+      {notes.length === 0 ? <ListEmptyState
+        message={records.length ? 'لا توجد ملاحظات مطابقة.' : 'لا توجد ملاحظات محفوظة.'}
+        action={records.length ? { label: 'مسح الفلاتر', run: () => {
+          setQuery('');
+          setPinnedOnly(false);
+          search.current?.focus();
+        } } : undefined}
+      /> : (
         <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {notes.map(note => (
             <li key={note.id} className="flex flex-col gap-1 p-3 sm:flex-row sm:items-start sm:gap-3">

@@ -88,7 +88,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
 
   const confirmRemoval = async () => {
     if (!removal?.usage) return;
-    const needsReplacement = removal.usage.members.length > 0 || removal.usage.openSteps.length > 0 || removal.usage.openCardsOwned > 0;
+    const needsReplacement = removal.usage.members.length > 0 || removal.usage.openSteps.length > 0 || removal.usage.openCardsOwned > 0 || !!removal.usage.localDepartments?.length;
     if (needsReplacement && !removal.replacementId) {
       setRemoval({ ...removal, error: 'اختر المحطة التي ينتقل إليها الزملاء والمهام المفتوحة.' });
       return;
@@ -143,7 +143,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
     }
   };
 
-  const usageCount = removal?.usage ? removal.usage.members.length + removal.usage.openSteps.length + removal.usage.openCardsOwned : 0;
+  const usageCount = removal?.usage ? removal.usage.members.length + removal.usage.openSteps.length + removal.usage.openCardsOwned + (removal.usage.localDepartments?.length || 0) : 0;
   const typeUses = stepTypeUsage();
 
   return (
@@ -243,6 +243,7 @@ export function StationsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                   </div>
                 </div>
               )}
+              {!!removal.usage.localDepartments?.length && <p className="text-sm text-slate-700">تنتقل الأقسام المحلية إلى المحطة البديلة ({removal.usage.localDepartments.map(d => d.name).join('، ')}).</p>}
               {removal.usage.managers.length > 0 && <p className="text-xs text-slate-600">يتابعها {removal.usage.managers.map((m) => m.fullName).join('، ')}؛ تُزال من قائمتهم.</p>}
               {usageCount > 0 && (
                 <div className="max-w-sm">

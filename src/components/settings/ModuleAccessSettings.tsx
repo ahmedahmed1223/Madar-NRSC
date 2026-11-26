@@ -5,6 +5,9 @@ import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { RbacService } from '../../services/rbacService';
 import { SINGLETON_ID } from '../../shared/collections';
+import { departmentsOf } from '../../shared/departments';
+import { matchesQuery } from '../../shared/search';
+import { ModuleAccessPreview } from './ModuleAccessPreview';
 import { MODULE_IDS, MODULE_LABELS, moduleAccessError, moduleRule, type ModuleAccessSettings as ModulePolicy, type ModuleMode, type ModuleRule } from '../../shared/moduleAccess';
 
 const modes: { value: ModuleMode; label: string }[] = [
@@ -15,15 +18,20 @@ const modes: { value: ModuleMode; label: string }[] = [
 
 function AudienceOptions({ label, options, selected, onChange }: {
   label: string;
-  options: { id: string; name: string }[];
+  options: { id: string; name: string; description?: string }[];
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const searchLabel = label === 'الأدوار' ? 'البحث عن دور' : 'البحث عن مستخدم';
+  const visible = options.filter(option => matchesQuery(query, option.name, option.description));
   return (
     <fieldset className="min-w-0">
       <legend className="mb-1 text-xs font-semibold text-slate-700">{label}</legend>
+      <input type="search" value={query} onChange={event => setQuery(event.target.value)} aria-label={searchLabel}
+        placeholder={searchLabel} className="mb-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200">
-        {options.map(option => (
+        {visible.map(option => (
           <label key={option.id} className="flex min-h-11 cursor-pointer items-center gap-2 border-b border-slate-100 px-3 text-sm last:border-b-0">
             <input
               type="checkbox"
@@ -31,10 +39,10 @@ function AudienceOptions({ label, options, selected, onChange }: {
               onChange={event => onChange(event.target.checked ? [...selected, option.id] : selected.filter(id => id !== option.id))}
               className="size-4 shrink-0 accent-blue-700"
             />
-            <span className="break-words">{option.name}</span>
+            <span className="min-w-0 break-words">{option.name}{option.description && <bdi className="block break-all text-xs text-slate-600">{option.description}</bdi>}</span>
           </label>
         ))}
-        {!options.length && <p className="px-3 py-2 text-xs text-slate-600">لا توجد خيارات متاحة</p>}
+        {!visible.length && <p className="px-3 py-2 text-xs text-slate-600">{query ? 'لا توجد نتائج لهذا البحث' : 'لا توجد خيارات متاحة'}</p>}
       </div>
     </fieldset>
   );
@@ -46,10 +54,13 @@ export function ModuleAccessSettings() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const current = apiService.getSettings().moduleAccess;
-  const roles = RbacService.getRoleDefinitions().map(role => ({ id: role.id, name: role.nameAr }));
+  const settings = apiService.getSettings();
+  const current = settings.moduleAccess;
+  const roleDefinitions = RbacService.getRoleDefinitions();
+  const roles = roleDefinitions.map(role => ({ id: role.id, name: role.nameAr }));
   const users = apiService.getUsers().filter(user => user.isActive && !user.deletedAt)
-    .map(user => ({ id: user.id, name: user.fullName })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
+  const userOptions = users.map(user => ({ id: user.id, name: user.fullName, description: user.email }));
   const dirty = Object.keys(draft).length > 0;
 
   function change(id: keyof ModulePolicy, rule: ModuleRule) {
@@ -112,13 +123,14 @@ export function ModuleAccessSettings() {
                 {rule.mode === 'selected' && (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <AudienceOptions label="الأدوار" options={roles} selected={rule.roleIds ?? []} onChange={roleIds => change(id, { ...rule, roleIds })} />
-                    <AudienceOptions label="المستخدمون" options={users} selected={rule.userIds ?? []} onChange={userIds => change(id, { ...rule, userIds })} />
+                    <AudienceOptions label="المستخدمون" options={userOptions} selected={rule.userIds ?? []} onChange={userIds => change(id, { ...rule, userIds })} />
                   </div>
                 )}
               </div>
             );
           })}
         </fieldset>
+        <ModuleAccessPreview policy={{ ...current, ...draft }} users={users} roles={roleDefinitions} departments={departmentsOf(settings)} />
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving || !dirty} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-bold text-white disabled:opacity-50">
             <Save aria-hidden="true" className="size-4" /> حفظ إتاحة الوحدات

@@ -20,6 +20,7 @@ const WORKSPACES: ReadonlyArray<readonly [path: string, heading: string | RegExp
   ['/guests', 'الضيوف'],
   ['/on-air', 'وضع الهواء'],
   ['/studio-screen', 'بانتظار بدء البث'],
+  ['/wallboard', 'شاشة غرفة الأخبار'],
   ['/media', 'مكتبة الوسائط'],
   ['/cards', 'التكليفات'],
   ['/requests', 'طلبات الأقسام'],
@@ -33,6 +34,8 @@ const WORKSPACES: ReadonlyArray<readonly [path: string, heading: string | RegExp
   ['/users', 'المستخدمون والصلاحيات'],
   ['/settings', 'الإعدادات'],
   ['/settings/monitor', 'الإعدادات'],
+  ['/database', 'النسخ الاحتياطي وقاعدة البيانات'],
+  ['/tests', 'حالة النظام'],
   ['/help', 'المساعدة'],
   ['/guide', 'دليل الاستخدام'],
   ['/whats-new', 'ما الجديد'],
@@ -47,12 +50,21 @@ test('workspace and detail routes render in RTL at eight widths without clipping
   const { page, close, errors } = await signIn(browser, 'admin@akhbar.tv');
   const failures = new Set<string>();
   const origin = new URL(page.url()).origin;
+  let securityCheckObserved = false;
   page.on('response', response => {
     const url = new URL(response.url());
+    // The system-health screen verifies that its empty sync request without the CSRF header is rejected.
+    const request = response.request();
+    if (new URL(page.url()).pathname === '/tests' && url.href === origin + '/api/v1/data/sync' &&
+        request.method() === 'POST' && request.postData() === '{"ops":[]}' && !request.headers()['x-nrcs-client'] && response.status() === 403) {
+      securityCheckObserved = true;
+      return;
+    }
     if (url.origin === origin && response.status() >= 400) failures.add(`${response.status()} ${url.pathname}`);
   });
   page.on('console', message => {
     const source = message.location().url;
+    if (new URL(page.url()).pathname === '/tests' && source === origin + '/api/v1/data/sync' && message.text().includes('403 (Forbidden)')) return;
     if (message.type() === 'error' && (!source || source.startsWith(origin))) failures.add(message.text());
   });
 
@@ -60,7 +72,7 @@ test('workspace and detail routes render in RTL at eight widths without clipping
     for (const [route, heading] of WORKSPACES) {
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(route, { waitUntil: 'domcontentloaded' });
-      const main = page.locator('#app-main');
+      const main = page.getByRole('main');
       await expect(main.getByRole('heading', { name: heading, exact: typeof heading === 'string' }).first()).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
       await page.evaluate(() => document.fonts.ready);
@@ -73,13 +85,14 @@ test('workspace and detail routes render in RTL at eight widths without clipping
           return [
             document.documentElement,
             document.querySelector('.app-scroll'),
-            document.querySelector('#app-main'),
+            document.querySelector('main'),
           ].map(el => el ? el.scrollWidth - el.clientWidth : 0);
         });
         expect.soft(Math.max(...overflow), `${route} at ${width}px, document/scroll area/main ${overflow.join('/')}`).toBeLessThanOrEqual(1);
       }
     }
     expect(errors).toEqual([]);
+    expect(securityCheckObserved).toBe(true);
     expect([...failures]).toEqual([]);
   } finally {
     await close();

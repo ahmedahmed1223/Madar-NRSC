@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsError, stationName, stationScope, type Station } from '../../src/shared/stations';
-import { applyDepartments, DEFAULT_DEPARTMENTS, DEPARTMENTS, departmentHead, departmentName, departmentsAtStation, departmentsError, isDepartmentId, removedDepartmentsInUse } from '../../src/shared/departments';
+import { applyDepartments, DEFAULT_DEPARTMENTS, DEPARTMENTS, departmentHead, departmentIdOf, departmentName, departmentOptionLabel, departmentsAtStation, departmentsError, findDepartmentId, isDepartmentId, removedDepartmentsInUse } from '../../src/shared/departments';
 import { temporaryPassword, validatePasswordStrength, webRandom } from '../../src/shared/passwords';
 import { auditActionName, overridesDiff, readableAuditDetails, roleAuditEntries, settingsAuditEntries, userAuditEntries } from '../../src/shared/auditTrail';
 import { settingsError } from '../../src/shared/settings';
@@ -79,6 +79,39 @@ describe('administrative departments', () => {
     expect(departmentHead('montage', list)).toBe('u1');
     expect(departmentHead('gfx', list)).toBe('u2');
     expect(departmentHead('none', list)).toBeUndefined();
+  });
+
+  it('distinguishes repeated names by effective station or head, including inherited scope', () => {
+    const list = [
+      { id: 'north', name: 'الشمال', stationIds: ['a'], headUserId: 'lead' },
+      { id: 'news-a', name: 'التحرير', parentId: 'north' },
+      { id: 'news-b', name: 'التحرير', stationIds: ['b'], headUserId: 'lead' },
+    ];
+    expect(departmentsError(list)).toBeNull();
+    expect(departmentsAtStation('b', list).map(d => d.id)).toEqual(['news-b']);
+    expect(departmentsError([...list, { id: 'other', name: ' التحرير ', stationIds: ['a'], headUserId: 'lead' }])).toContain('مكرر');
+    expect(departmentsError([...list, { id: 'other', name: 'التحرير', stationIds: ['a'], headUserId: 'second' }])).toBeNull();
+    const people = [{ id: 'lead', fullName: 'ريم' }];
+    expect(departmentOptionLabel(list[1], list, stations, people)).toBe('التحرير — أ — ريم');
+    expect(departmentOptionLabel(list[2], list, stations, people)).toBe('التحرير — ب — ريم');
+    expect(departmentOptionLabel(list[0], list, stations, people)).toBe('الشمال');
+    const outside = [{ ...list[0] }, { ...list[1], stationIds: ['b'] }];
+    expect(departmentsError(outside)).toContain('محطات');
+    expect(departmentsError(outside, { previous: outside })).toBeNull();
+  });
+
+  it('resolves legacy membership by station and never routes an ambiguous name to an arbitrary team', () => {
+    const list = [
+      ...DEFAULT_DEPARTMENTS,
+      { id: 'local-a', name: 'التحقيق', stationIds: ['a'] },
+      { id: 'local-b', name: 'التحقيق', stationIds: ['b'] },
+    ];
+    applyDepartments(list);
+    expect(findDepartmentId({ department: 'التحقيق', stationId: 'b' }, list)).toBe('local-b');
+    expect(findDepartmentId({ department: 'التحقيق' }, list)).toBeUndefined();
+    expect(departmentIdOf({ department: 'التحقيق' })).toBe('');
+    expect(departmentIdOf({ departmentId: 'local-a', department: 'التحقيق' })).toBe('local-a');
+    expect(departmentIdOf({ department: 'التحقيق', stationId: 'b' })).toBe('local-b');
   });
 
   it('rejects malformed lists, unknown parents, cycles, unknown stations and heads', () => {

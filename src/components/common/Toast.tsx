@@ -69,11 +69,11 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
       role={toast.type === 'error' ? 'alert' : 'status'}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className={`pointer-events-none relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3.5 shadow-2xl ${styles.bg}`}
+      className={`theme-fixed pointer-events-none relative overflow-hidden bg-slate-900 text-slate-100 border rounded-xl p-3 shadow-xl ${styles.bg}`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2">
         {styles.icon}
-        <div className="flex-1 text-xs">
+        <div className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
           {toast.title && <div className="font-bold mb-0.5">{toast.title}</div>}
           <div className="leading-relaxed text-slate-200">{toast.message}</div>
         </div>
@@ -84,7 +84,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
               toast.action!.run();
               onDismiss(toast.id);
             }}
-            className="pointer-events-auto shrink-0 min-h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+            className="pointer-events-auto max-w-[40%] min-h-11 px-2 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-bold [overflow-wrap:anywhere]"
           >
             {toast.action.label}
           </button>
@@ -92,7 +92,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
         <button
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className="pointer-events-auto shrink-0 min-w-8 min-h-8 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white rounded-md transition-colors"
+          className="pointer-events-auto shrink-0 min-w-11 min-h-11 inline-flex items-center justify-center -m-1 text-slate-300 hover:text-white hover:bg-white/15 rounded-md transition-colors"
           aria-label="إغلاق"
         >
           <X className="w-3.5 h-3.5" />

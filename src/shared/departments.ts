@@ -80,9 +80,27 @@ export const departmentName = (id?: string | null) => {
   return d ? (d.archived ? `${d.name} (مؤرشف)` : d.name) : 'غير محدد';
 };
 
-/** Active departments a colleague of `stationId` can belong to (a department limited to other stations is left out). */
-export function departmentsAtStation(stationId: string | null | undefined, list: readonly Department[] = DEPARTMENTS): Department[] {
-  return list.filter((d) => !d.archived && (!d.stationIds?.length || !stationId || d.stationIds.includes(stationId)));
+/** Inherited station scope. Undefined covers every station; an empty intersection covers none. */
+export function departmentStationIds(department: Department, list: readonly Department[]): string[] | undefined {
+  let scope: string[] | undefined;
+  const seen = new Set<string>();
+  let node: Department | undefined = department;
+  while (node) {
+    if (seen.has(node.id)) return [];
+    seen.add(node.id);
+    const local = node.stationIds;
+    if (local?.length) scope = scope ? scope.filter(id => local.includes(id)) : [...local];
+    if (!node.parentId) break;
+    const parentId: string = node.parentId;
+    node = list.find(item => item.id === parentId);
+    if (!node) return [];
+  }
+  return scope;
+}
+
+/** Active departments a colleague of `stationId` can belong to. */
+export function departmentsAtStation(stationId: string | null | undefined, list: readonly Department[] = known): Department[] {
+  return list.filter(d => !d.archived && (!stationId || departmentStationIds(d, list)?.includes(stationId) !== false));
 }
 
 /** The department's own head, else the nearest head up its parents. */
@@ -107,18 +125,15 @@ export function departmentsLedBy(userId: string, list: readonly Department[]): D
 export function departmentWorkScope(headId: string, departments: readonly Department[]) {
   const led = departmentsLedBy(headId, departments);
   const ledById = new Map(led.map(department => [department.id, department]));
-  const active = new Map(departments.filter(department => !department.archived).map(department => [department.id, department]));
   return {
     led,
     departmentFor(user: { departmentId?: string; department?: string; stationId?: string | null; isActive?: boolean; deletedAt?: string | null }) {
       if (user.isActive === false || user.deletedAt) return undefined;
       const id = findDepartmentId(user, departments);
       const department = id ? ledById.get(id) : undefined;
-      const visited = new Set<string>();
-      for (let current = department; current; current = current.parentId ? active.get(current.parentId) : undefined) {
-        if (visited.has(current.id) || (current.stationIds?.length && (!user.stationId || !current.stationIds.includes(user.stationId)))) return undefined;
-        visited.add(current.id);
-      }
+      if (!department) return undefined;
+      const scope = departmentStationIds(department, departments);
+      if (scope && (!user.stationId || !scope.includes(user.stationId))) return undefined;
       return department;
     },
   };
@@ -127,21 +142,30 @@ export function departmentWorkScope(headId: string, departments: readonly Depart
 /** Sub-units directly under `id` (top-level departments for no id). */
 export const departmentChildren = (id: string | undefined, list: readonly Department[] = known) => list.filter((d) => (d.parentId || undefined) === id);
 
+const normalizedName = (name: string) => name.trim().normalize('NFC').toLocaleLowerCase();
+
+/** Qualify only repeated names, so a station's desk can be selected without guessing. */
+export function departmentOptionLabel(d: Department, list: readonly Department[], stations: readonly { id: string; name: string }[], users: readonly { id: string; fullName: string }[]): string {
+  const name = normalizedName(d.name);
+  if (!list.some(other => other.id !== d.id && normalizedName(other.name) === name)) return d.name;
+  const scope = departmentStationIds(d, list);
+  const locations = scope ? scope.map(id => stations.find(s => s.id === id)?.name || id).join('، ') || 'خارج نطاق المحطات' : 'كل المحطات';
+  const head = departmentHead(d.id, list);
+  return [d.name, locations, head ? users.find(u => u.id === head)?.fullName || head : 'بلا رئيس محدد'].join(' — ');
+}
+
 /** Validation of the departments list in the settings. */
-export function departmentsError(value: unknown, ctx: { stationIds?: string[]; userIds?: string[] } = {}): string | null {
+export function departmentsError(value: unknown, ctx: { stationIds?: string[]; userIds?: string[]; previous?: readonly Department[] } = {}): string | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_DEPARTMENTS) return `الأقسام الإدارية: من قسم واحد إلى ${MAX_DEPARTMENTS} قسماً`;
   const ids = new Set<string>();
-  const names = new Set<string>();
   for (const d of value) {
     if (!d || typeof d.id !== 'string' || !DEPARTMENT_ID.test(d.id)) return 'معرّف القسم غير صالح';
     if (typeof d.name !== 'string' || !d.name.trim() || d.name.length > 60) return 'اسم القسم مطلوب وبحد أقصى 60 حرفاً';
-    const name = d.name.trim().toLocaleLowerCase();
-    if (ids.has(d.id) || names.has(name)) return `اسم القسم أو معرّفه مكرر: «${d.name.trim()}»`;
+    if (ids.has(d.id)) return `معرّف القسم مكرر: «${d.name.trim()}»`;
     if (d.archived !== undefined && typeof d.archived !== 'boolean') return 'حالة أرشفة القسم غير صالحة';
     if (d.headUserId !== undefined && d.headUserId !== null && (typeof d.headUserId !== 'string' || (ctx.userIds && !ctx.userIds.includes(d.headUserId)))) return `رئيس قسم «${d.name}» غير موجود`;
     if (d.stationIds !== undefined && (!Array.isArray(d.stationIds) || d.stationIds.some((s: unknown) => typeof s !== 'string' || (ctx.stationIds && !ctx.stationIds.includes(s))))) return `محطات قسم «${d.name}» غير موجودة`;
     ids.add(d.id);
-    names.add(name);
   }
   if (!value.some((d) => !d.archived)) return 'يجب أن يبقى قسم نشط واحد على الأقل';
   for (const d of value) {
@@ -155,6 +179,29 @@ export function departmentsError(value: unknown, ctx: { stationIds?: string[]; u
       seen.add(parent.id);
       parent = parent.parentId ? value.find((x) => x.id === parent.parentId) : undefined;
     }
+  }
+  const identities = new Map<string, { head?: string; scope?: string[] }[]>();
+  for (const d of value as Department[]) {
+    if (d.archived) continue;
+    const scope = departmentStationIds(d, value);
+    const outside = d.stationIds?.filter(id => !scope?.includes(id));
+    if (outside?.length) {
+      // Older releases allowed broader declarations. Their effective scope stays restricted
+      // while an administrator edits unrelated settings or removes the obsolete declarations.
+      const old = ctx.previous?.find(item => item.id === d.id);
+      const oldScope = old && departmentStationIds(old, ctx.previous!);
+      if (!old || outside.some(id => !old.stationIds?.includes(id) || oldScope?.includes(id) !== false)) {
+        return `محطات قسم «${d.name}» يجب أن تقع ضمن محطات القسم الأعلى`;
+      }
+    }
+    const head = departmentHead(d.id, value);
+    const name = normalizedName(d.name);
+    const others = identities.get(name) || [];
+    if (others.some(other => other.head === head && (!other.scope || !scope || scope.some(id => other.scope!.includes(id))))) {
+      return `اسم القسم «${d.name.trim()}» مكرر في نطاق المحطة مع رئيس القسم نفسه`;
+    }
+    others.push({ head, scope });
+    identities.set(name, others);
   }
   return null;
 }
@@ -179,19 +226,28 @@ const LEGACY: Record<string, string> = {
   'إدارة البث والعمليات': 'control',
 };
 
-function legacyDepartmentId(department: string | undefined, list: readonly Department[]): DepartmentId | undefined {
-  const name = department?.trim();
-  return name ? LEGACY[name] || list.find(item => item.name === name)?.id : undefined;
+type DepartmentMember = { departmentId?: string; department?: string; stationId?: string | null };
+
+/** Empty string means a known name has no unique matching desk; it must not route to the default. */
+function legacyDepartmentId(user: DepartmentMember | null | undefined, list: readonly Department[]): DepartmentId | undefined {
+  const name = user?.department?.trim();
+  if (!name) return undefined;
+  if (LEGACY[name] && list.some(d => d.id === LEGACY[name])) return LEGACY[name];
+  const matches = list.filter(d => normalizedName(d.name) === normalizedName(name));
+  if (!matches.length) return undefined;
+  const stationId = user?.stationId;
+  const candidates = matches.filter(d => !stationId || departmentStationIds(d, list)?.includes(stationId) !== false);
+  return candidates.length === 1 ? candidates[0].id : '';
 }
 
 /** Resolve explicit or recognized legacy membership, without a default department. */
-export function findDepartmentId(user: { departmentId?: string; department?: string } | null | undefined, list: readonly Department[] = known): DepartmentId | undefined {
-  const id = user?.departmentId || legacyDepartmentId(user?.department, list);
+export function findDepartmentId(user: DepartmentMember | null | undefined, list: readonly Department[] = known): DepartmentId | undefined {
+  const id = user?.departmentId || legacyDepartmentId(user, list);
   return list.some(department => department.id === id) ? id : undefined;
 }
 
 /** Department of a user record, with the original newsroom fallback for display and routing. */
-export function departmentIdOf(user: { departmentId?: string; department?: string } | null | undefined): DepartmentId {
+export function departmentIdOf(user: DepartmentMember | null | undefined): DepartmentId {
   if (user?.departmentId && isDepartmentId(user.departmentId)) return user.departmentId;
-  return legacyDepartmentId(user?.department, known) || 'newsroom';
+  return legacyDepartmentId(user, known) ?? 'newsroom';
 }

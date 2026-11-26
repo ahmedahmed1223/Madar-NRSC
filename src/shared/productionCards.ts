@@ -8,7 +8,7 @@
  * (which enforces them), so both always agree.
  */
 import { stationName, stationScope, stationsOf, type Station } from './stations';
-import { departmentName } from './departments';
+import { allDepartments, departmentName, type Department } from './departments';
 import { workReminderError, workReminderInstant, type WorkReminderOptions } from './workReminders';
 
 export const CARD_KINDS = [
@@ -256,9 +256,10 @@ export const openStepsBefore = (card: ProductionCard, stepId: string): CardStep[
 };
 
 /** Who holds the step, in words: the person, «متاحة لمحطة X» for a station-wide step, or «غير مسندة». */
-export function stepAssigneeLabel(step: CardStep, stations?: Station[]): string {
+export function stepAssigneeLabel(step: CardStep, stations?: Station[], labelDepartment?: (department: Department) => string): string {
   if (step.assigneeName) return step.assigneeName;
-  const department = step.departmentId ? `قسم ${departmentName(step.departmentId)}` : '';
+  const entry = labelDepartment && step.departmentId ? allDepartments().find(d => d.id === step.departmentId) : undefined;
+  const department = step.departmentId ? `قسم ${entry && !entry.archived && labelDepartment ? labelDepartment(entry) : departmentName(step.departmentId)}` : '';
   if (step.stationId) return `متاحة ل${department ? `${department} في ` : ''}${stations ? `محطة ${stationName(stations, step.stationId)}` : 'المحطة'}`;
   if (department) return `متاحة ل${department}`;
   return 'غير مسندة';
@@ -550,7 +551,7 @@ export const canClaimStep = (step: CardStep, actor: CardActor) =>
   !step.assigneeId &&
   actor.canWork &&
   (!step.stationId || step.stationId === actor.stationId) &&
-  (!step.departmentId || actor.canManage || !actor.departmentId || step.departmentId === actor.departmentId) &&
+  (!step.departmentId || (actor.canManage && !!step.stationId) || step.departmentId === actor.departmentId) &&
   stepFitsActor(step.type, actor);
 
 /** Fields a reviewer or the owner changes on someone else's done step when sending it back. */

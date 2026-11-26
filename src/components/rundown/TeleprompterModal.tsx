@@ -1,5 +1,8 @@
 import { useLiveData } from '../../hooks/useLiveData';
 import { useAirConnection } from '../../hooks/useAirConnection';
+import { autocueDoc } from '../../services/documents/productionScripts';
+import { docContext } from '../../services/documents/context';
+import { exportDocument } from '../../services/documents/exportDoc';
 import { AirSourceStatus } from '../onair/AirSourceStatus';
 import { apiService } from '../../services/api';
 import { PresenterInstruction, PresenterInstructionSound } from '../onair/PresenterInstruction';
@@ -20,6 +23,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Clock,
+  Printer,
   FlipHorizontal,
 } from 'lucide-react';
 import { RundownSegment } from '../../types';
@@ -285,6 +289,18 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
         {/* Prompter Controls */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <PresenterInstructionSound user={currentUser} />
+          <button type="button" disabled={!segments.length} onClick={async () => {
+            setIsPlaying(false);
+            try {
+              if (document.fullscreenElement === modalRef.current) await document.exitFullscreen();
+              setDisplayError('');
+              await exportDocument(autocueDoc(episodeTitle, segments, docContext()), 'print');
+            } catch {
+              setDisplayError('تعذّر فتح معاينة الطباعة. أعد المحاولة.');
+            }
+          }} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-600 px-2 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-50">
+            <Printer className="size-4" aria-hidden /> طباعة نص الأوتوكيو
+          </button>
           {/* Color theme switch */}
           <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
             <button

@@ -1,23 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Plus, Save, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { GitBranch, List, Plus, Save } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { SINGLETON_ID } from '../../shared/collections';
 import { newId } from '../../shared/ids';
-import { departmentIdOf, departmentsError, departmentsOf, MAX_DEPARTMENTS, type Department } from '../../shared/departments';
+import { departmentOptionLabel, departmentIdOf, departmentStationIds, departmentsError, departmentsOf, MAX_DEPARTMENTS, type Department } from '../../shared/departments';
 import { stationsOf } from '../../shared/stations';
-import { countLabel } from '../../shared/arabicPlural';
+import { DepartmentChart } from './DepartmentChart';
+import { DepartmentFields } from './DepartmentFields';
 
-const INPUT = 'w-full min-h-11 px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
-const USES = { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' };
-
-/** How many colleagues, duty shifts and open requests point at each department. */
+/** Count each linked assignment once even if several steps go to the same desk. */
 function departmentUsage(): Map<string, number> {
   const counts = new Map<string, number>();
   const add = (id: string) => counts.set(id, (counts.get(id) || 0) + 1);
   apiService.getUsers().filter((u) => !u.deletedAt).forEach((u) => add(departmentIdOf(u)));
-  apiService.getRoster().forEach((r: any) => !r.deletedAt && r.departmentId && add(r.departmentId));
-  apiService.getRequests().forEach((r: any) => !r.deletedAt && !['DONE', 'REJECTED', 'CANCELLED'].includes(r.status) && add(r.departmentId));
+  apiService.getRoster().forEach(r => add(r.departmentId));
+  apiService.getRequests().forEach(r => !r.deletedAt && r.departmentId && add(r.departmentId));
+  for (const card of apiService.getCards()) {
+    if (!card.deletedAt) {
+      for (const id of new Set(card.steps.map(step => step.departmentId))) if (id) add(id);
+    }
+  }
   return counts;
 }
 
@@ -28,28 +31,46 @@ function departmentUsage(): Map<string, number> {
  * archived rather than deleted, and ids never change, so history keeps its names.
  */
 export function DepartmentsSettings() {
+  const [chart, setChart] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>();
   const [list, setList] = useState<Department[]>(() => departmentsOf(apiService.getSettings()));
   const [baseline, setBaseline] = useState(() => JSON.stringify(list));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const selected = list.find(d => d.id === selectedId) ?? list[0];
+  const visible = chart ? (selected ? [selected] : []) : list;
+  const savedIds = useMemo(() => new Set((JSON.parse(baseline) as Department[]).map(d => d.id)), [baseline]);
+  const focusName = (id: string) => requestAnimationFrame(() => document.getElementById('dept-name-' + id)?.focus());
+  const select = (id: string) => { setSelectedId(id); focusName(id); };
+  const editList = (update: (previous: Department[]) => Department[]) => {
+    setError('');
+    setSaved(false);
+    setList(update);
+  };
+  const add = (parent?: Department) => {
+    const id = newId('dep');
+    editList(all => [...all, { id, name: '', parentId: parent?.id }]);
+    select(id);
+  };
   const dirty = JSON.stringify(list) !== baseline;
   const stations = stationsOf(apiService.getSettings());
   const people = apiService.getUsers().filter((u) => !u.deletedAt && u.isActive !== false).sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
   const usage = useMemo(departmentUsage, []);
 
-  useEffect(() => {
-    setError('');
-    setSaved(false);
-  }, [list]);
-
-  const patch = (id: string, changes: Partial<Department>) => setList((all) => all.map((d) => (d.id === id ? { ...d, ...changes } : d)));
-  /** No list means every station (present and future); ticking them all goes back to that. A department keeps at least one station. */
+  const patch = (id: string, changes: Partial<Department>) => editList((all) => all.map((d) => (d.id === id ? { ...d, ...changes } : d)));
+  const availableStations = (d: Department) => {
+    const parent = list.find(other => other.id === d.parentId);
+    const allowed = parent && departmentStationIds(parent, list);
+    return allowed ? stations.filter(station => allowed.includes(station.id)) : stations;
+  };
   const toggleStation = (d: Department, stationId: string) => {
-    const current = d.stationIds?.length ? d.stationIds : stations.map((s) => s.id);
+    const available = availableStations(d);
+    const current = d.stationIds?.length ? d.stationIds.filter(id => available.some(s => s.id === id)) : available.map(s => s.id);
     const next = current.includes(stationId) ? current.filter((x) => x !== stationId) : [...current, stationId];
     if (!next.length) return;
-    patch(d.id, { stationIds: stations.every((s) => next.includes(s.id)) ? undefined : next });
+    patch(d.id, { stationIds: available.every((s) => next.includes(s.id)) ? undefined : next });
   };
   /** Parents a department may take: any other department that is not below it (no loops). */
   const parentOptions = (d: Department) => {
@@ -59,15 +80,23 @@ export function DepartmentsSettings() {
       grew = false;
       for (const x of list) if (x.parentId && below.has(x.parentId) && !below.has(x.id)) { below.add(x.id); grew = true; }
     }
-    return list.filter((x) => !below.has(x.id));
+    return list.filter((x) => !below.has(x.id) && (!x.archived || d.parentId === x.id));
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
+    if (JSON.stringify(departmentsOf(apiService.getSettings())) !== baseline) {
+      setConflict(true);
+      setSaved(false);
+      setError('تغيّر الهيكل أو صلاحيات أحد الأقسام منذ فتح الصفحة. حمّل النسخة الحالية لمراجعتها قبل المتابعة.');
+      return;
+    }
     const clean = list.map((d) => ({ ...d, name: d.name.trim() }));
-    const invalid = departmentsError(clean, { stationIds: stations.map((s) => s.id) });
+    const invalid = departmentsError(clean, { stationIds: stations.map((s) => s.id), previous: JSON.parse(baseline) });
     if (invalid) {
+      const unnamed = clean.find(department => !department.name);
+      if (unnamed) select(unnamed.id);
       setError(invalid);
       return;
     }
@@ -78,7 +107,8 @@ export function DepartmentsSettings() {
       if (!result.ok) throw new Error(result.message || 'لم يؤكد الخادم الحفظ');
       setList(clean);
       setBaseline(JSON.stringify(clean));
-      setTimeout(() => setSaved(true));
+      setError('');
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر حفظ الأقسام');
     } finally {
@@ -91,75 +121,40 @@ export function DepartmentsSettings() {
       <div className="space-y-1">
         <h2 className="text-lg font-bold text-slate-900">الأقسام الإدارية</h2>
         <p className="text-sm text-slate-600 max-w-3xl">
-          أقسام المؤسسة التي ينتمي إليها الزملاء وتُوجَّه إليها الطلبات والمناوبات والتكليفات (غرفة التحرير، الإنتاج، المونتاج…). تختلف عن «تصنيفات الأخبار» التي تصنّف المواد.
-          القسم المستخدم يُؤرشف ولا يُحذف، فيبقى اسمه في السجلات.
+          اختر قسماً من المخطط لتعديل رئيسه ومحطاته أو إضافة قسم تابع. يُستخدم هذا الهيكل في توجيه التكليفات والطلبات والمناوبات.
         </p>
       </div>
       <fieldset disabled={saving} className="space-y-3">
-        <ul className="space-y-3">
-          {list.map((d) => {
+        <div role="group" aria-label="طريقة عرض الأقسام" className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+          {[{ value: true, icon: GitBranch, title: 'مخطط الهيكل' }, { value: false, icon: List, title: 'قائمة الأقسام' }].map(({ value, icon: Icon, title }) =>
+            <button key={title} type="button" aria-pressed={chart === value} onClick={() => setChart(value)}
+              className={`min-h-11 inline-flex items-center gap-2 rounded-md px-3 text-sm font-bold ${chart === value ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}><Icon size={16} />{title}</button>)}
+        </div>
+        <div className={chart ? 'grid min-w-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)] items-start' : ''}>
+        {chart && <DepartmentChart departments={list} stations={stations} users={people} selectedId={selected?.id}
+          parents={selected ? parentOptions(selected) : []} onSelect={select} onAdd={add} onMove={(id, parentId) => patch(id, { parentId })} />}
+        <ul className="min-w-0 space-y-3">
+          {visible.map((d) => {
             const uses = usage.get(d.id) || 0;
-            const isNew = !(JSON.parse(baseline) as Department[]).some((x) => x.id === d.id);
+            const isNew = !savedIds.has(d.id);
             return (
               <li key={d.id} className={`border rounded-xl p-4 space-y-2 ${d.archived ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_9.5rem] items-end">
-                  <div>
-                    <label htmlFor={`dept-name-${d.id}`} className="block text-xs font-bold text-slate-700 mb-1">
-                      اسم القسم {d.archived && <span className="text-amber-800">(مؤرشف)</span>}
-                    </label>
-                    <input id={`dept-name-${d.id}`} value={d.name} maxLength={60} required onChange={(e) => patch(d.id, { name: e.target.value })} className={INPUT} />
-                  </div>
-                  <div>
-                    <label htmlFor={`dept-parent-${d.id}`} className="block text-xs font-bold text-slate-700 mb-1">تابع لقسم</label>
-                    <select id={`dept-parent-${d.id}`} value={d.parentId || ''} onChange={(e) => patch(d.id, { parentId: e.target.value || undefined })} className={INPUT}>
-                      <option value="">قسم رئيسي</option>
-                      {parentOptions(d).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor={`dept-head-${d.id}`} className="block text-xs font-bold text-slate-700 mb-1">رئيس القسم</label>
-                    <select id={`dept-head-${d.id}`} value={d.headUserId || ''} onChange={(e) => patch(d.id, { headUserId: e.target.value || undefined })} className={INPUT}>
-                      <option value="">بلا رئيس محدد</option>
-                      {people.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex gap-2 sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => patch(d.id, { archived: d.archived ? undefined : true })}
-                      aria-label={d.archived ? `إعادة تفعيل قسم ${d.name}` : `أرشفة قسم ${d.name}`}
-                      title={d.archived ? 'إعادة تفعيل' : 'أرشفة'}
-                      className="min-h-11 px-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50"
-                    >
-                      {d.archived ? <ArchiveRestore className="w-4 h-4" aria-hidden="true" /> : <Archive className="w-4 h-4" aria-hidden="true" />}
-                      <span>{d.archived ? 'إعادة' : 'أرشفة'}</span>
-                    </button>
-                    {(isNew || uses === 0) && (
-                      <button type="button" onClick={() => setList((all) => all.filter((x) => x.id !== d.id).map((x) => (x.parentId === d.id ? { ...x, parentId: undefined } : x)))} aria-label={`حذف قسم ${d.name}`} title="حذف (غير مستخدم)" className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-                  <div role="group" aria-label={`محطات قسم ${d.name}`} className="flex flex-wrap items-center gap-x-5 gap-y-1">
-                    <span className="text-xs font-bold text-slate-600" aria-hidden="true">المحطات:</span>
-                    {stations.map((s) => (
-                      <label key={s.id} className="flex items-center gap-2 min-h-11 sm:min-h-9">
-                        <input type="checkbox" checked={!d.stationIds?.length || d.stationIds.includes(s.id)} onChange={() => toggleStation(d, s.id)} />
-                        {s.name}
-                      </label>
-                    ))}
-                    {!d.stationIds?.length && <span className="text-xs text-slate-500">(كل المحطات، والجديدة منها)</span>}
-                  </div>
-                  <span className="ms-auto text-xs text-slate-500">{uses ? `يتبعه ${countLabel(uses, USES)}: زملاء ومناوبات وطلبات مفتوحة` : 'غير مستخدم بعد'}</span>
-                </div>
+                {chart && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                  <h3 className="text-sm font-bold">تفاصيل القسم</h3>
+                  <button type="button" disabled={list.length >= MAX_DEPARTMENTS || d.archived} onClick={() => add(d)}
+                    className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"><Plus size={16} />إضافة قسم تابع</button>
+                </div>}
+                <DepartmentFields department={d} parents={parentOptions(d)} stations={availableStations(d)} people={people} compact={chart}
+                  removable={isNew || uses === 0} uses={uses} patch={patch} toggleStation={toggleStation}
+                  label={(option) => departmentOptionLabel(option, list, stations, people)}
+                  onRemove={() => editList((all) => all.filter((x) => x.id !== d.id).map((x) => x.parentId === d.id ? { ...x, parentId: undefined } : x))} />
               </li>
             );
           })}
         </ul>
-        {list.length < MAX_DEPARTMENTS && (
-          <button type="button" onClick={() => setList((all) => [...all, { id: newId('dep'), name: '' }])} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
+        </div>
+        {!chart && list.length < MAX_DEPARTMENTS && (
+          <button type="button" onClick={() => add()} className="min-h-11 inline-flex items-center gap-2 px-4 rounded-lg border border-dashed border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <Plus className="w-4 h-4" />
             إضافة قسم
           </button>
@@ -171,6 +166,13 @@ export function DepartmentsSettings() {
           {saving ? 'جارٍ الحفظ…' : 'حفظ الأقسام'}
         </button>
         {error && <p role="alert" className="text-sm font-bold text-rose-700">{error}</p>}
+        {conflict && <button type="button" className="min-h-11 px-3 rounded-lg border border-slate-300 text-sm font-bold" onClick={() => {
+          const latest = departmentsOf(apiService.getSettings());
+          setList(latest);
+          setBaseline(JSON.stringify(latest));
+          setConflict(false);
+          setError('');
+        }}>تجاهل مسودتي وتحميل النسخة الحالية</button>}
         {saved && <p role="status" className="text-sm font-bold text-emerald-700">حُفظت الأقسام الإدارية</p>}
         {dirty && !saving && !error && <p className="text-sm text-amber-800">لديك تعديلات غير محفوظة.</p>}
       </div>

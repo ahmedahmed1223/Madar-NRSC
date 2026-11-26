@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../services/departmentLabels';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { confirmDialog, promptDialog } from '../services/dialogs';
@@ -54,6 +55,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const canSeeEpisodes = RbacService.canOpenScreen(currentUser, 'episode-workspace') && (RbacService.hasPermission(currentUser, 'programs.view') || RbacService.hasPermission(currentUser, 'rundown.view'));
   const { isOnline } = useOnlineStatus();
   const myDept = departmentIdOf(currentUser);
+  const labelDepartment = createDepartmentLabeler();
   const [requests, setRequests] = useState<DeptRequest[]>(() => apiService.getRequests());
   const canSeeDelivery = canManage || REQUEST_TYPES.some(type => type.departmentId === myDept && isMediaDeliveryRequest(type.id));
   const [tab, setTab] = useQueueFilter<RequestTab>(currentUser.id, 'requests', 'tab', 'INBOX', ['INBOX', ...(canCreate ? ['SENT'] : []), ...(canManage ? ['ALL'] : []), ...(canSeeDelivery ? ['DELIVERY'] : [])]);
@@ -218,7 +220,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
           <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="القسم" className="min-h-11 min-w-0 px-3 border border-slate-300 rounded-lg text-sm bg-white">
             {DEPARTMENTS.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.name}
+                {labelDepartment(d)}
               </option>
             ))}
           </select>

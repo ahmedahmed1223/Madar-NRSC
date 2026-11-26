@@ -1,6 +1,7 @@
 import type { NewsroomDatabase } from './db';
 import { MERGE_COLLECTIONS, MERGE_HISTORY_KEEP, SINGLETON_ID } from '../shared/collections';
 import { isStepOpen } from '../shared/productionCards';
+import { departmentsError, departmentsOf, departmentStationIds, type Department } from '../shared/departments';
 import { archiveRemovedStations, stationGroupsOf, stationsArchiveOf, stationsOf, type Station } from '../shared/stations';
 
 /** Who and what still belongs to a station: what removing it would leave behind. */
@@ -9,10 +10,16 @@ export function stationUsage(db: NewsroomDatabase, stationId: string) {
   const managers = db.listCollection('users').map((r) => r.d).filter((u) => u && !u.deletedAt && (u.managedStationIds || []).includes(stationId));
   const cards = db.listCollection('productionCards').map((r) => r.d).filter((c) => c && !c.deletedAt && c.status === 'OPEN');
   const openSteps = cards.flatMap((c) => (c.steps || []).filter((s: any) => s.stationId === stationId && isStepOpen(s)).map((s: any) => ({ cardId: c.id, cardTitle: c.title, stepId: s.id, assigneeName: s.assigneeName })));
+  const departments = departmentsOf(db.getRow('settings', SINGLETON_ID)?.d);
+  const localDepartments = departments.filter(d => {
+    const scope = departmentStationIds(d, departments);
+    return scope?.length === 1 && scope[0] === stationId;
+  }).map(({ id, name }) => ({ id, name }));
   return {
     members: members.map((u) => ({ id: u.id, fullName: u.fullName })),
     managers: managers.map((u) => ({ id: u.id, fullName: u.fullName })),
     openSteps,
+    localDepartments,
     openCardsOwned: cards.filter((c) => c.ownerStationId === stationId).length,
   };
 }
@@ -78,7 +85,17 @@ export function removeStation(db: NewsroomDatabase, stationId: string, replaceme
     const groups = stationGroupsOf(settings).map((g) => ({ ...g, stationIds: g.stationIds.filter((id) => id !== stationId) }));
     const next: any = { ...settings, stations: remaining, stationsArchive: archiveRemovedStations(stations, remaining, stationsArchiveOf(settings)) };
     if (Array.isArray(settings.stationGroups)) next.stationGroups = groups;
-    if (Array.isArray(settings.departments)) next.departments = settings.departments.map((d: any) => (d.stationIds ? { ...d, stationIds: d.stationIds.filter((id: string) => id !== stationId) } : d));
+    if (Array.isArray(settings.departments)) {
+      next.departments = settings.departments.map((d: Department) => {
+        if (!d.stationIds?.includes(stationId)) return d;
+        const stationIds = d.stationIds.filter(id => id !== stationId);
+        if (replacement && !stationIds.includes(replacement.id)) stationIds.push(replacement.id);
+        if (!stationIds.length) throw new StationRemovalError(409, `قسم «${d.name}» محصور في هذه المحطة؛ اختر محطة بديلة أو عدّل نطاق القسم أولاً`);
+        return { ...d, stationIds };
+      });
+      const invalid = departmentsError(next.departments, { stationIds: remaining.map(s => s.id), previous: settings.departments });
+      if (invalid) throw new StationRemovalError(409, invalid);
+    }
     db.writeRow('settings', SINGLETON_ID, next, row?.p ?? 0, actor.id);
     return { station, replacement, movedUsers, movedSteps };
   });

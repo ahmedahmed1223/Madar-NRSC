@@ -312,6 +312,8 @@ describe('trial fixes: rework, blockers, claiming, time and station scope', () =
     // A step left to a department is for that department.
     expect(canClaimStep(step('d', 'edit', { stationId: 'gaza', departmentId: 'reports' }), reports)).toBe(true);
     expect(canClaimStep(step('d', 'montage', { stationId: 'gaza', departmentId: 'graphics' }), montage)).toBe(false);
+    expect(canClaimStep(step('d', 'edit', { departmentId: 'reports' }), { ...reports, departmentId: undefined })).toBe(false);
+    expect(canClaimStep(step('d', 'edit', { departmentId: 'reports' }), manager)).toBe(false);
     // Enforced on writes too.
     const before = card({ steps: [step('x', 'translate', { stationId: 'gaza' })] });
     const claimed = withStep(before, 'x', { assigneeId: 'm1', status: 'IN_PROGRESS' });

@@ -2,7 +2,7 @@ import { appLocale, zoneOptions } from '../../shared/dateFormat';
 import type { CardState, StepStatus } from '../../shared/productionCards';
 import { openStepLoad, type Candidate } from '../../shared/workflowTemplates';
 import { stationName, type Station } from '../../shared/stations';
-import { departmentIdOf } from '../../shared/departments';
+import { findDepartmentId } from '../../shared/departments';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { apiService } from '../../services/api';
 import { RbacService } from '../../services/rbacService';
@@ -43,7 +43,7 @@ export function cardCandidates(allowed: (user: User) => boolean = () => true): C
   return apiService
     .getUsers()
     .filter((u) => u.isActive !== false && !u.deletedAt && RbacService.hasPermission(u, 'cards.work') && allowed(u))
-    .map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, role: u.role, departmentId: departmentIdOf(u), canManage: RbacService.hasPermission(u, 'cards.manage'), load: load.get(u.id) || 0 }))
+    .map((u) => ({ id: u.id, name: u.fullName, stationId: u.stationId, role: u.role, departmentId: findDepartmentId(u), canManage: RbacService.hasPermission(u, 'cards.manage'), load: load.get(u.id) || 0 }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
 

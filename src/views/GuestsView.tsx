@@ -3,6 +3,7 @@ import { arabicDate, stationTimeZone } from '../shared/dates';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { ListEmptyState } from '../components/common/ListEmptyState';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { Avatar } from '../components/common/Avatar';
 import { RbacService } from '../services/rbacService';
@@ -41,6 +42,8 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('ALL');
   const [searchedGuests, setSearchedGuests] = useState<Guest[]>([]);
+  const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
 
@@ -64,16 +67,22 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchedGuests([]);
+      setSearchState('idle');
       return;
     }
     const controller = new AbortController();
+    setSearchState('loading');
     const timer = window.setTimeout(() => {
       void dataStore.searchCollection('guests', searchQuery, controller.signal)
-        .then(rows => setSearchedGuests(rows.map(row => row.d as Guest)))
-        .catch(() => { if (!controller.signal.aborted) setSearchedGuests([]); });
+        .then(rows => {
+          if (controller.signal.aborted) return;
+          setSearchedGuests(rows.map(row => row.d as Guest));
+          setSearchState('ready');
+        })
+        .catch(() => { if (!controller.signal.aborted) setSearchState('error'); });
     }, 180);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [searchQuery]);
+  }, [searchQuery, searchAttempt]);
 
   const SPECIALTY_PRESETS = [
     'علاقات دولية ودبلوماسية',
@@ -232,6 +241,10 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
       </div>
 
       {/* Guests Grid */}
+      {searchState === 'error' && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+        <p role="alert" className="text-sm text-amber-800">تعذّر البحث في الدليل الكامل. يقتصر البحث الآن على الضيوف المحمّلين.</p>
+        <button type="button" onClick={() => { document.getElementById('guests-search-input')?.focus(); setSearchAttempt(value => value + 1); }} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-amber-900 underline">إعادة المحاولة</button>
+      </div>}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         {guestPage.visible.map((guest) => {
           const followUp = followUps.get(guest.id);
@@ -358,10 +371,14 @@ export const GuestsView: React.FC<GuestsViewProps> = ({
           </article>
         ); })}
         {filteredGuests.length === 0 && (
-          <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
-            <p role="status" className="text-sm text-slate-700">{guests.length ? 'لا ضيوف يطابقون البحث أو التخصص.' : 'لا ضيوف في الدليل بعد.'}</p>
-            {guests.length > 0 && <button type="button" onClick={() => { setSearchQuery(''); setSelectedSpecialty('ALL'); }} className="min-h-11 px-3 text-sm font-semibold text-blue-700 hover:underline">مسح الفلاتر</button>}
-          </div>
+          <ListEmptyState
+            message={searchState === 'loading' ? 'جارٍ البحث في دليل الضيوف…' : searchState === 'error' ? 'لا نتائج ضمن الضيوف المحمّلين.' : searchQuery.trim() || selectedSpecialty !== 'ALL' ? 'لا ضيوف يطابقون البحث أو التخصص.' : 'لا ضيوف في الدليل بعد.'}
+            action={searchQuery || selectedSpecialty !== 'ALL' ? { label: 'مسح الفلاتر', run: () => {
+              setSearchQuery('');
+              setSelectedSpecialty('ALL');
+              document.getElementById('guests-search-input')?.focus();
+            } } : undefined}
+          />
         )}
       </div>
       <ShowMore

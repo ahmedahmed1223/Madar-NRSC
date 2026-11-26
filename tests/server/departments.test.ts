@@ -3,6 +3,7 @@ import type request from 'supertest';
 import { createTestServer, loginAgent } from '../helpers';
 import { seedDatabase } from '../../src/server/seed';
 import { rosterEntryId } from '../../src/shared/roster';
+import { departmentsOf, type Department } from '../../src/shared/departments';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
 const H = { 'X-NRCS-Client': 'web' };
@@ -64,4 +65,44 @@ describe('departments migration', () => {
     expect(editorRole.permissions).not.toContain('episodes.evaluate');
     expect(editorRole.permissions).toContain('roster.manage');
   });
+});
+
+it('persists parallel desks and routes a new card only to the selected station and department id', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const row = () => server.db.getRow('settings', 'singleton')!;
+  const write = async (departments: Department[]) => {
+    const current = row();
+    return (await sync(admin, [{ c: 'settings', id: 'singleton', op: 'upsert', baseV: current.v, d: { ...current.d, departments } }])).body.results[0];
+  };
+  const departments = [
+    ...departmentsOf(row().d),
+    { id: 'desk-hq', name: 'التنسيق', stationIds: ['gaza'], headUserId: 'usr-2' },
+    { id: 'desk-branch', name: 'التنسيق', stationIds: ['beirut'], headUserId: 'usr-3' },
+  ];
+  expect(await write(departments)).toMatchObject({ ok: true });
+  const card = async (id: string, stationId: string) => (await sync(admin, [{
+    c: 'productionCards', id, op: 'upsert', d: { id, title: 'مهمة التنسيق', kind: 'REPORT', log: [], status: 'OPEN', priority: 'NORMAL',
+      steps: [{ id: 'step', type: 'edit', status: 'TODO', complexity: 1, departmentId: 'desk-branch', stationId }] },
+  }])).body.results[0];
+  expect(await card('wrong-station', 'gaza')).toMatchObject({ ok: false });
+  expect(await card('branch-card', 'beirut')).toMatchObject({ ok: true });
+  expect(server.db.getRow('productionCards', 'branch-card')!.d.steps[0].departmentId).toBe('desk-branch');
+  expect(await write(departments.filter(d => d.id !== 'desk-branch'))).toMatchObject({ ok: false });
+  expect(await write(departments.map(d => d.id === 'desk-branch' ? { ...d, archived: true } : d))).toMatchObject({ ok: true });
+});
+
+it('reassigns a removed station without turning its local department into a global department', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const row = server.db.getRow('settings', 'singleton')!;
+  const desks = [
+    { id: 'east', stationIds: ['beirut'], name: 'المكتب المحلي' },
+    { id: 'west', stationIds: ['gaza'], name: 'المكتب المحلي' },
+  ];
+  const current = { ...row.d, departments: [...departmentsOf(row.d), ...desks] };
+  server.db.writeRow('settings', row.id, current, row.p, null);
+  const remove = (replacementId: string) => admin.post('/api/v1/admin/stations/beirut/remove').set(H).send({ replacementId });
+  await remove('gaza').expect(409);
+  expect(server.db.getRow('settings', row.id)!.d.departments).toEqual(current.departments);
+  await remove('istanbul').expect(200);
+  expect(server.db.getRow('settings', row.id)!.d.departments.find((d: Department) => d.id === 'east').stationIds).toEqual(['istanbul']);
 });

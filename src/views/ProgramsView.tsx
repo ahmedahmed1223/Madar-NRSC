@@ -2,6 +2,7 @@ import { minutesLabel } from '../shared/durations';
 import { confirmDialog } from '../services/dialogs';
 import { matchesQuery } from '../shared/search';
 import { FormPage } from '../components/common/FormPage';
+import { ListEmptyState } from '../components/common/ListEmptyState';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { RbacService } from '../services/rbacService';
 import React, { useState , useEffect} from 'react';
@@ -262,7 +263,15 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
         </div>
       </div>
 
-      {layout === 'list' && <ul aria-label="قائمة البرامج" className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3">
+      {!filteredPrograms.length && <ListEmptyState
+        message={programs.length ? 'لا توجد برامج مطابقة للبحث.' : 'لا توجد برامج في الدليل بعد.'}
+        action={searchQuery || selectedType !== 'ALL' ? { label: 'مسح الفلاتر', run: () => {
+          setSearchQuery('');
+          setSelectedType('ALL');
+          document.getElementById('programs-search-input')?.focus();
+        } } : undefined}
+      />}
+      {layout === 'list' && filteredPrograms.length > 0 && <ul aria-label="قائمة البرامج" className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3">
         {filteredPrograms.map(program => {
           const episode = upcoming.get(program.id);
           return <li key={program.id} className="grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -287,10 +296,9 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             </div>
           </li>;
         })}
-        {!filteredPrograms.length && <li className="py-5 text-sm text-slate-700">لا توجد برامج مطابقة للبحث.</li>}
       </ul>}
 
-      {layout === 'cards' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {layout === 'cards' && filteredPrograms.length > 0 && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPrograms.map((prog) => {
           return (
             <div
@@ -299,13 +307,13 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
             >
               {/* Cover image & badges */}
               <div className="theme-fixed relative h-44 overflow-hidden bg-slate-900">
-                <img
+                {prog.coverImageUrl && <img
                   src={prog.coverImageUrl}
                   alt=""
                   loading="lazy"
                   decoding="async"
                   className="w-full h-full object-cover"
-                />
+                />}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
                 <div className="absolute top-3 right-3 flex items-center gap-2">
                   <Badge variant="primary" size="sm">

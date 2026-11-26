@@ -49,7 +49,7 @@ export function permissionsWorkspaceRouter(db: NewsroomDatabase) {
         if (kind === 'department') {
           if (!current.departments.some(d => d.id === id)) fail(404, 'القسم غير موجود');
           after.departments = current.departments.map(d => d.id === id ? { ...d, permissionOverrides: permissions } : d);
-          const invalidDepartments = departmentsError(after.departments);
+          const invalidDepartments = departmentsError(after.departments, { previous: current.departments });
           if (invalidDepartments) fail(400, invalidDepartments);
         } else if (kind === 'role') after.permissions = permissions;
         else after.customPermissions = permissions;

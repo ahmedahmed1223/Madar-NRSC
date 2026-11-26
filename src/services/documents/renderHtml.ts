@@ -6,7 +6,7 @@ const esc = (v: unknown) =>
 
 const multiline = (s: string) => esc(s).replace(/\n/g, '<br/>');
 
-const cssString = (s: string) => `"${String(s).replace(/["\\]/g, ' ')}"`;
+const cssString = (s: string) => `"${s.replace(/["\\<>\r\n\f]/g, c => `\\${c.charCodeAt(0).toString(16)} `)}"`;
 
 function block(b: DocBlock): string {
   switch (b.t) {
@@ -46,8 +46,8 @@ function block(b: DocBlock): string {
   }
 }
 
-/** A4 print document with running header, page numbers and a screen toolbar. */
-export function renderHtml(doc: DocSpec, opts: { autoPrint?: boolean; pdfHint?: boolean } = {}): string {
+/** The same A4 document is displayed in the preview and printed by the browser. */
+export function renderHtml(doc: DocSpec): string {
   const landscape = doc.orientation === 'landscape';
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(doc.fileName)}</title>
 <style>
@@ -59,11 +59,8 @@ export function renderHtml(doc: DocSpec, opts: { autoPrint?: boolean; pdfHint?: 
   }
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', Tahoma, 'Noto Sans Arabic', Arial, sans-serif; color: #0f172a; font-size: 11pt; margin: 0; line-height: 1.6; background: #e2e8f0; }
-  .sheet { background: #fff; max-width: ${landscape ? '297mm' : '210mm'}; margin: 16px auto; padding: 14mm 12mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
-  .toolbar { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 10px; background: #0f172a; color: #fff; font-size: 13px; }
-  .toolbar button { font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 8px; border: 0; cursor: pointer; }
-  .toolbar .primary { background: #2563eb; color: #fff; } .toolbar .ghost { background: #334155; color: #fff; }
-  .toolbar span { color: #cbd5e1; font-size: 12px; }
+  .sheet { background: #fff; margin: 0 auto; padding: 18mm 12mm 16mm; min-height: ${landscape ? '210mm' : '297mm'}; }
+  @media screen { .pb { border-top: 1px dashed #94a3b8; margin: 12mm 0; } }
   h1 { font-size: 18pt; margin: 0 0 2px; } .sub { color: #475569; font-size: 10pt; margin-bottom: 10px; }
   h2 { font-size: 13pt; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #0f172a; break-after: avoid; }
   p { margin: 4px 0; } .b { font-weight: 700; } .muted { color: #64748b; }
@@ -79,18 +76,12 @@ export function renderHtml(doc: DocSpec, opts: { autoPrint?: boolean; pdfHint?: 
   .cue { font-size: 12pt; color: #1d4ed8; font-weight: 700; }
   .pb { break-after: page; height: 0; }
   ul, ol { margin: 4px 0; padding-right: 22px; }
-  @media print { body { background: #fff; } .toolbar { display: none; } .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; } }
+  @media print { body { background: #fff; } .sheet { margin: 0; padding: 0; min-height: 0; } }
 </style></head><body>
-<div class="toolbar">
-  <button class="primary" onclick="window.print()">${opts.pdfHint ? 'حفظ PDF' : 'طباعة'}</button>
-  <button class="ghost" onclick="window.close()">إغلاق</button>
-  ${opts.pdfHint ? '<span>في نافذة الطباعة اختر الوجهة «حفظ بتنسيق PDF» (Save as PDF)</span>' : ''}
-</div>
 <div class="sheet">
 <h1>${esc(doc.title)}</h1>
 ${doc.subtitle ? `<div class="sub">${esc(doc.subtitle)}</div>` : ''}
 ${doc.blocks.map(block).join('\n')}
 </div>
-${opts.autoPrint ? '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},250)})</script>' : ''}
 </body></html>`;
 }

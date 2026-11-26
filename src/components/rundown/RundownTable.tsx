@@ -1,4 +1,5 @@
 import { newId } from '../../shared/ids';
+import { previewWorkspacePage } from '../../services/documents/printPreview';
 import { matchesQuery } from '../../shared/search';
 import React, { useEffect, useState } from 'react';
 import {
@@ -14,6 +15,7 @@ import { DropEvent, SortableItem, SortableList, SortableScope } from '../dnd/Sor
 import { notify } from '../../services/notify';
 import { ExportMenu, docContext } from '../common/ExportMenu';
 import { episodeRundownDoc, presenterSheetDoc } from '../../services/documents/builders';
+import { autocueDoc, episodePreparationDoc } from '../../services/documents/productionScripts';
 import { insertIntoTopic, EpisodeTopic, segmentGuests } from '../../shared/episodePlan';
 import { RequestFormPage, RequestDraft } from '../requests/RequestFormPage';
 import { RbacService } from '../../services/rbacService';
@@ -196,13 +198,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
     OUTRO: { label: 'تتر النهاية', variant: 'purple' },
   };
 
-  const handlePrint = () => {
-    try {
-      window.print();
-    } catch (e) {
-      console.warn('Printing is not supported or was blocked:', e);
-    }
-  };
+  const handlePrint = () => previewWorkspacePage('رانداون الحلقة');
 
   return (
     <div className="space-y-4">
@@ -299,6 +295,8 @@ export const RundownTable: React.FC<RundownTableProps> = ({
               items={[
                 { id: 'rundown', label: 'رانداون الحلقة', hint: 'للمخرج والكنترول', build: () => episodeRundownDoc(episodeRecord, docContext()) },
                 { id: 'presenter', label: 'ورقة المذيع', hint: 'المقدمة ونصوص الفقرات والأسئلة', build: () => presenterSheetDoc(episodeRecord, docContext()) },
+                { id: 'preparation', label: 'نص إعداد الحلقة', build: () => episodePreparationDoc(episodeRecord, docContext()) },
+                { id: 'autocue', label: 'نص الأوتوكيو', build: () => autocueDoc(episodeRecord.title, segments, docContext()) },
               ]}
             />
           ) : (
@@ -671,7 +669,7 @@ export const RundownTable: React.FC<RundownTableProps> = ({
         isOpen={isPrompterOpen}
         onClose={() => setIsPrompterOpen(false)}
         segments={segments}
-        episodeTitle="شاشة الملقن للفقرات"
+        episodeTitle={episodeRecord?.title || 'شاشة الملقن للفقرات'}
         episodeId={episodeId}
       />
 

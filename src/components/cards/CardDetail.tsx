@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Copy, ExternalLink, FileText, Gavel, LayoutTemplate, Link2, Paperclip, Pencil, Play, Send, Sparkles, Undo2, UserPlus, Users, X } from 'lucide-react';
 import { apiService } from '../../services/api';
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { CardBriefReview } from './CardBriefReview';
 import { CardTimingValues } from './CardTimingValues';
 import { MessageOriginLabel } from '../messages/MessageOriginLabel';
@@ -60,6 +61,7 @@ type Panel = { stepId: string; kind: 'done' | 'block' | 'back' | 'reassign' } | 
 /** One production card: its steps and handoffs, the script, the material and the documented trail. */
 export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget, onSaveAsTemplate, now = Date.now() }) => {
   const settings = apiService.getSettings();
+  const labelDepartment = useMemo(createDepartmentLabeler, [settings]);
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
   const actor = apiService.cardActor();
@@ -181,7 +183,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const finish = async (step: CardStep) => {
     const pending = openStepsBefore(card, step.id);
     if (pending.length) {
-      const names = pending.map((s) => `«${stepTypeName(stepTypes, s.type)}» (${stepAssigneeLabel(s, stations)})`).join('، ');
+      const names = pending.map((s) => `«${stepTypeName(stepTypes, s.type)}» (${stepAssigneeLabel(s, stations, labelDepartment)})`).join('، ');
       const go = await confirmDialog({ title: 'الخطوة السابقة لم تكتمل', message: `${names} لم تكتمل بعد. يُسجَّل إنجازك، ولا يصل التسليم إلى الخطوة التالية حتى تكتمل.`, confirmLabel: 'تسجيل الإنجاز', cancelLabel: 'تراجع' });
       if (!go) return;
     }
@@ -205,7 +207,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
       `الحالة: ${CARD_STATE_NAMES[state]}`,
       `الأولوية: ${card.priority === 'URGENT' ? 'عاجل' : 'عادي'}`,
       card.dueAt ? `موعد التسليم: ${when(card.dueAt)}` : '',
-      ...card.steps.map((step, index) => `${index + 1}. ${stepTypeName(stepTypes, step.type)} — ${stepAssigneeLabel(step, stations)} — ${stepStatusName(step.status)}${step.dueAt ? ` — ${when(step.dueAt)}` : ''}`),
+      ...card.steps.map((step, index) => `${index + 1}. ${stepTypeName(stepTypes, step.type)} — ${stepAssigneeLabel(step, stations, labelDepartment)} — ${stepStatusName(step.status)}${step.dueAt ? ` — ${when(step.dueAt)}` : ''}`),
     ].filter(Boolean).join('\n');
     void copy(text, 'نُسخ نص التكليف.');
   };
@@ -220,7 +222,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const sendBack = (step: CardStep) => {
     const target = card.steps.find((s) => s.id === backTo);
     if (!target || !reason.trim()) return;
-    const ok = `أُعيدت «${stepTypeName(stepTypes, target.type)}» ووصل السبب إلى ${stepAssigneeLabel(target, stations)}`;
+    const ok = `أُعيدت «${stepTypeName(stepTypes, target.type)}» ووصل السبب إلى ${stepAssigneeLabel(target, stations, labelDepartment)}`;
     if (act(() => apiService.sendBackCardStep(card.id, target.id, reason, step.id), ok)) setPanel(null);
   };
 
@@ -229,11 +231,18 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     let changes: Partial<CardStep>;
     let ok: string;
     if (reassignTo.startsWith('s:')) {
-      changes = { assigneeId: undefined, assigneeName: undefined, stationId: reassignTo.slice(2) };
+      changes = { assigneeId: undefined, assigneeName: undefined, departmentId: undefined, stationId: reassignTo.slice(2) };
       ok = `صارت «${stepTypeName(stepTypes, step.type)}» متاحة لمحطة ${stationName(stations, reassignTo.slice(2))}`;
     } else {
       // The server takes the station from the new assignee.
-      changes = { assigneeId: reassignTo, assigneeName: undefined, status: step.status === 'BLOCKED' ? 'IN_PROGRESS' : step.status, blockedReason: undefined, waitingOnId: undefined };
+      changes = {
+        assigneeId: reassignTo,
+        assigneeName: undefined,
+        ...(actor.canManage ? { departmentId: undefined, stationId: undefined } : {}),
+        status: step.status === 'BLOCKED' ? 'IN_PROGRESS' : step.status,
+        blockedReason: undefined,
+        waitingOnId: undefined,
+      };
       ok = `أُسندت «${stepTypeName(stepTypes, step.type)}» إلى ${people.find((p) => p.id === reassignTo)?.name || 'الزميل'}${step.assigneeName ? ` ووصل التنبيه إلى ${step.assigneeName}` : ''}`;
     }
     if (setStep(step, changes, ok)) setPanel(null);
@@ -392,7 +401,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                   </div>
                   {step.title && <p className="text-slate-700">{step.title}</p>}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
-                    <span>المكلف: {stepAssigneeLabel(step, stations)}</span>
+                    <span>المكلف: {stepAssigneeLabel(step, stations, labelDepartment)}</span>
                     {step.assigneeId && step.stationId && <span>المحطة: {stationName(stations, step.stationId)}</span>}
                     {step.dueAt && <span>التسليم: {when(step.dueAt)}</span>}
                     <span>التعقيد: {complexityName(step.complexity)}</span>
@@ -489,7 +498,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                         <label htmlFor={`back-to-${step.id}`} className={LABEL}>إلى أي خطوة؟</label>
                         <select id={`back-to-${step.id}`} value={backTo} onChange={(e) => setBackTo(e.target.value)} className={INPUT}>
                           {backTargets.map((s) => (
-                            <option key={s.id} value={s.id}>{stepTypeName(stepTypes, s.type)} — {stepAssigneeLabel(s, stations)}</option>
+                            <option key={s.id} value={s.id}>{stepTypeName(stepTypes, s.type)} — {stepAssigneeLabel(s, stations, labelDepartment)}</option>
                           ))}
                         </select>
                       </div>

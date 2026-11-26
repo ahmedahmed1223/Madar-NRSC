@@ -5,7 +5,8 @@ import { notify } from '../../services/notify';
 import { fromLocalInputValue } from '../../shared/dates';
 import { cardKindName, stepAssigneeLabel, stepTypeName, stepTypesOf, type ProductionCard } from '../../shared/productionCards';
 import { cardFromTemplate, defaultPick, ruleCandidates, RULE_KINDS, type WorkflowTemplate } from '../../shared/workflowTemplates';
-import { departmentName } from '../../shared/departments';
+import { departmentStationIds, departmentsAtStation, departmentsOf } from '../../shared/departments';
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { stationName, stationsOf } from '../../shared/stations';
 import { assignmentScope } from '../../shared/assignmentScope';
 import type { WorkReminderOptions } from '../../shared/workReminders';
@@ -29,6 +30,8 @@ const fromInput = (value: string) => (value ? fromLocalInputValue(value) : undef
 export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ isOpen, onClose, templateId, currentUser, onCreated }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
+  const departments = departmentsOf(settings);
+  const labelDepartment = useMemo(createDepartmentLabeler, [isOpen, settings]);
   const stepTypes = stepTypesOf(settings);
   const templates = useMemo(() => (isOpen ? apiService.getWorkflowTemplates().filter((t) => !t.archived) : []), [isOpen]);
   const eligibility = useMemo(() => assignmentScope(currentUser, settings), [currentUser, settings]);
@@ -44,14 +47,30 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
   const [ownerId, setOwnerId] = useState('');
   const [stationId, setStationId] = useState('');
   const [urgent, setUrgent] = useState(false);
-  const [picks, setPicks] = useState<Record<string, string>>({});
+  const [manualPicks, setManualPicks] = useState<Record<string, string>>({});
   const { save, saving, error, reset, pending } = useConfirmedCardSave();
   const template: WorkflowTemplate | undefined = templates.find((t) => t.id === chosen);
+  const selectTemplate = (id: string) => {
+    setChosen(id);
+    setUrgent(templates.find(t => t.id === id)?.priority === 'URGENT');
+    setManualPicks({});
+  };
+  const availableDepartments = departmentsAtStation(stationId, departments).filter(d => {
+    if (stationId) return scope.has(stationId);
+    const pool = departmentStationIds(d, departments) ?? stations.map(s => s.id);
+    return pool.length > 0 && pool.every(id => scope.has(id));
+  });
+  const picks = Object.fromEntries((template?.steps || []).map(step => {
+    const pick = manualPicks[step.id] ?? defaultPick(step, people, stationId || undefined);
+    if (pick.startsWith('d:') && !availableDepartments.some(d => d.id === pick.slice(2))) return [step.id, ''];
+    if (pick.startsWith('s:') && !scope.has(pick.slice(2))) return [step.id, ''];
+    return [step.id, pick];
+  }));
 
   useEffect(() => {
     if (!isOpen) return;
     const first = templateId && templates.some((t) => t.id === templateId) ? templateId : templates[0]?.id || '';
-    setChosen(first);
+    selectTemplate(first);
     setTitle('');
     setBrief('');
     setDueAt('');
@@ -62,13 +81,6 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, templateId]);
-  // A new template (or station) brings its own defaults.
-  useEffect(() => {
-    if (!template) return;
-    setUrgent(template.priority === 'URGENT');
-    setPicks(Object.fromEntries(template.steps.map((s) => [s.id, defaultPick(s, people, stationId || undefined)])));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chosen, stationId]);
 
   const input = { title: title || template?.name || '', brief, dueAt: fromInput(dueAt), airAt: fromInput(airAt), ownerId: ownerId || undefined, stationId: stationId || undefined, priority: urgent ? ('URGENT' as const) : ('NORMAL' as const), picks };
   let previewSeq = 0;
@@ -103,7 +115,7 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="asg-template" className={LABEL}>القالب</label>
-              <select id="asg-template" value={chosen} onChange={(e) => setChosen(e.target.value)} className={INPUT}>
+              <select id="asg-template" value={chosen} onChange={(e) => selectTemplate(e.target.value)} className={INPUT}>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>{t.name} — {cardKindName(t.kind)}</option>
                 ))}
@@ -162,6 +174,8 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
                   const candidates = ruleCandidates(step, people, stationId || undefined);
                   const others = people.filter((p) => !candidates.some((c) => c.id === p.id));
                   const resolved = preview?.steps[index];
+                  const departmentId = step.rule.kind === 'DEPARTMENT' ? step.rule.departmentId : undefined;
+                  const department = departments.find(d => d.id === departmentId);
                   return (
                     <li key={step.id} className="border border-slate-200 rounded-2xl bg-white p-3 grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-2 items-start">
                       <div>
@@ -169,13 +183,13 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
                         {step.title && <p className="text-slate-600">{step.title}</p>}
                         <p className="text-2xs text-slate-500">
                           {RULE_KINDS.find((r) => r.id === step.rule.kind)?.name}
-                          {step.rule.kind === 'DEPARTMENT' ? `: ${departmentName(step.rule.departmentId)}` : step.rule.kind === 'STATION' ? `: ${stationName(stations, step.rule.stationId)}` : ''}
+                          {department ? ` · ${labelDepartment(department)}` : step.rule.kind === 'STATION' ? ` · ${stationName(stations, step.rule.stationId)}` : ''}
                           {resolved?.dueAt ? ` — التسليم ${when(resolved.dueAt)}` : ''}
                         </p>
                       </div>
                       <div>
                         <label htmlFor={`asg-pick-${step.id}`} className="sr-only">منفّذ {stepTypeName(stepTypes, step.type)}</label>
-                        <select id={`asg-pick-${step.id}`} value={picks[step.id] ?? ''} onChange={(e) => setPicks((p) => ({ ...p, [step.id]: e.target.value }))} className={INPUT}>
+                        <select id={`asg-pick-${step.id}`} value={picks[step.id] ?? ''} onChange={(e) => setManualPicks((p) => ({ ...p, [step.id]: e.target.value }))} className={INPUT}>
                           <option value="">لم تُسند بعد</option>
                           {candidates.length > 0 && (
                             <optgroup label="المطابقون للقاعدة">
@@ -185,7 +199,7 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
                             </optgroup>
                           )}
                           <optgroup label="اتركها مفتوحة">
-                            {step.rule.kind === 'DEPARTMENT' && <option value={`d:${step.rule.departmentId}`}>متاحة لقسم {departmentName(step.rule.departmentId)}</option>}
+                            {department && availableDepartments.includes(department) && <option value={`d:${department.id}`}>متاحة لقسم {labelDepartment(department)}</option>}
                             {stations.filter((s) => scope.has(s.id)).map((s) => (
                               <option key={s.id} value={`s:${s.id}`}>متاحة لمحطة {s.name}</option>
                             ))}
@@ -212,7 +226,7 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
               <ol className="list-decimal pr-5 space-y-0.5 text-slate-700">
                 {named(preview).steps.map((s) => (
                   <li key={s.id}>
-                    {stepTypeName(stepTypes, s.type)} — {stepAssigneeLabel(s, stations)}
+                    {stepTypeName(stepTypes, s.type)} — {stepAssigneeLabel(s, stations, labelDepartment)}
                     {s.dueAt ? ` — ${when(s.dueAt)}` : ''}
                   </li>
                 ))}

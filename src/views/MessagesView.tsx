@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../services/departmentLabels';
 import React, { useEffect, useMemo, useState } from 'react';
 import { saveMessageDraft, selectPublicMessageChannel, useMessageWorkspace } from '../services/messageWorkspace';
 import { canonicalMessageChannel, splitMessageFocus } from '../shared/chat';
@@ -80,6 +81,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
 
   const myDept = departmentIdOf(currentUser);
   const threads = useMemo(() => {
+    const labelDepartment = createDepartmentLabeler();
     const dms = new Map<string, Thread>();
     const addDm = (id: string) => {
       const other = userById.get(id);
@@ -105,7 +107,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ currentUser, users, 
     ];
     const others: Thread[] = [
       ...stations.filter((s) => s.id !== currentUser.stationId).map((s) => channelThread(stationChannel(s.id), `محطة ${s.name}`, 'قناة محطة')),
-      ...DEPARTMENTS.filter((d) => d.id !== myDept).map((d) => channelThread(d.id, d.name, 'قناة قسم')),
+      ...DEPARTMENTS.filter((d) => d.id !== myDept).map((d) => channelThread(d.id, labelDepartment(d), 'قناة قسم')),
     ];
     return { priv, mine, others };
   }, [conversations, lastByChannel, draftChannels, userById, stations, currentUser.stationId, myDept, me, channel]);

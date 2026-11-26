@@ -9,7 +9,7 @@ import { taskWorkflowError } from './taskWorkflow';
 import { editorialPublishingError } from './editorialStylebook';
 import { moduleAccessError } from './moduleAccess';
 
-export function settingsError(settings: Partial<SystemSettings>): string | null {
+export function settingsError(settings: Partial<SystemSettings>, previous?: Partial<SystemSettings>): string | null {
   const modulesError = moduleAccessError(settings.moduleAccess);
   if (modulesError) return modulesError;
   const editorialError = editorialPublishingError(settings.editorialPublishing);
@@ -44,7 +44,7 @@ export function settingsError(settings: Partial<SystemSettings>): string | null 
     if (error) return error;
   }
   if (settings.departments !== undefined) {
-    const error = departmentsError(settings.departments, { stationIds: stationsOf(settings).map((s) => s.id) });
+    const error = departmentsError(settings.departments, { stationIds: stationsOf(settings).map((s) => s.id), previous: previous?.departments });
     if (error) return error;
   }
   if (settings.cardStepTypes !== undefined) {

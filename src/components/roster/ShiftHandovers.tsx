@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Plus, Save, Send, Check, RefreshCw, Bell, ExternalLink, Trash2, Square } from 'lucide-react';
 import type { User } from '../../types';
@@ -46,6 +47,7 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
   const { isOnline } = useOnlineStatus();
   const canView = RbacService.hasPermission(currentUser, 'handover.view');
   const canPublish = canView && RbacService.hasPermission(currentUser, 'handover.publish');
+  const labelDepartment = createDepartmentLabeler();
   const [rows, setRows] = useState<HandoverRow[]>([]);
   const [listReady, setListReady] = useState(false);
   const [awaitingMe, setAwaitingMe] = useState(false);
@@ -227,7 +229,7 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
     <div className="flex flex-wrap gap-2">
       <select aria-label="تصفية تسليم الوردية بالقسم" value={departmentFilter} onChange={event => setDepartmentFilter(event.target.value)} className={`${control} sm:w-auto`}>
         <option value="ALL">كل الأقسام</option>
-        {DEPARTMENTS.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}
+        {DEPARTMENTS.map(department => <option key={department.id} value={department.id}>{labelDepartment(department)}</option>)}
       </select>
       <button type="button" className={button} onClick={() => void copySummary(visibleRows)}>نسخ الملخص</button>
     </div>
@@ -246,7 +248,7 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
         {session.error && draft && <p role="status" className="text-sm text-red-700">تعذر حفظ نسخة الاستعادة على الجهاز؛ أبقِ النافذة مفتوحة حتى تأكيد الحفظ.</p>}
         {draft ? <fieldset disabled={pending} className="space-y-3 min-w-0">
           <label className="block text-sm font-semibold">عنوان التسليم<input ref={titleRef} className={control} maxLength={120} value={draft.title} onChange={e => update({ title: e.target.value })} /></label>
-          <label className="block text-sm font-semibold">القسم<select aria-label="القسم" className={control} value={draft.departmentId} onChange={e => update({ departmentId: e.target.value as any })}>{DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+          <label className="block text-sm font-semibold">القسم<select aria-label="القسم" className={control} value={draft.departmentId} onChange={e => update({ departmentId: e.target.value as any })}>{DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{labelDepartment(d)}</option>)}</select></label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block text-sm font-semibold">تاريخ الوردية الصادرة<input className={control} type="date" value={draft.sourceDate} onChange={e => update({ sourceDate: e.target.value })} /></label>
             <label className="block text-sm font-semibold">الوردية الصادرة<select className={control} value={draft.sourceShift} onChange={e => update({ sourceShift: e.target.value as any })}>{SHIFTS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>

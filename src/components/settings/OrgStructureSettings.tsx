@@ -58,7 +58,7 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={LINK} onClick={() => onOpenSection('stations')}><Network className="w-3.5 h-3.5" aria-hidden="true" />تعديل المحطات والمجموعات</button>
-          <button type="button" className={LINK} onClick={() => onOpenSection('departments')}><Building2 className="w-3.5 h-3.5" aria-hidden="true" />تعديل الأقسام الإدارية</button>
+          <button type="button" className={LINK} onClick={() => onOpenSection('departments')}><Building2 className="w-3.5 h-3.5" aria-hidden="true" />تحرير مخطط الأقسام</button>
           <button type="button" className={LINK} onClick={() => navigateTo.emit('/users')}><Users className="w-3.5 h-3.5" aria-hidden="true" />المستخدمون والصلاحيات</button>
         </div>
       </div>

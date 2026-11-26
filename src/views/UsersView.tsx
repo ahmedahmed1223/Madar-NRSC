@@ -10,7 +10,7 @@ const ICON_BTN = 'min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-cent
 import { Avatar } from '../components/common/Avatar';
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departments';
+import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, departmentOptionLabel } from '../shared/departments';
 import { stationGroupsOf, stationName, stationsOf } from '../shared/stations';
 import { ApiService } from '../services/api';
 import { authClient } from '../services/authClient';
@@ -488,7 +488,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch,
                 <option value="ALL">كل الأقسام</option>
                 {DEPARTMENTS.map((dept) => (
                   <option key={dept.id} value={dept.id}>
-                    {dept.name}
+                    {departmentOptionLabel(dept, allDepartments(), stations, users)}
                   </option>
                 ))}
               </select>
@@ -890,6 +890,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch,
         roles={isSuper ? roles : roles.filter((r) => r.roleCode !== 'SUPER_ADMIN')}
         canManageOverrides={canManageRoles && userToEdit?.id !== currentUser.id}
         canSetPassword={canCreate}
+        canReadModulePolicy={can('system.settings')}
       />
 
       <RoleEditModal

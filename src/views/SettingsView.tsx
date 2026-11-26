@@ -442,7 +442,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         breakingDurationHours: breakingHours,
         dateTime: { ...sanitizeDateSettings(apiService.getSettings().dateTime), timeBasis: useStationTime ? 'station' as const : 'device' as const },
       };
-      const error = settingsError({ ...apiService.getSettings(), ...patch });
+      const current = apiService.getSettings();
+      const error = settingsError({ ...current, ...patch }, current);
       if (error) { setGeneralError(error); return; }
       if (timezone !== baseline.defaultTimezone || useStationTime !== baseline.timeBasis) {
         if (!await confirmDialog({ title: 'تغيير توقيت المحطة', message: 'يتغير عرض وإدخال الأوقات لجميع الزملاء، ولا تتغير المواعيد المحفوظة. اعتماد التغيير؟', confirmLabel: 'اعتماد التوقيت' })) return;

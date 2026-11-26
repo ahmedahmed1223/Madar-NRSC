@@ -3,7 +3,9 @@ import { countLabel } from '../../shared/arabicPlural';
 import { Avatar } from '../common/Avatar';
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
-import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, departmentsAtStation } from '../../shared/departments';
+import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, departmentOptionLabel, departmentsAtStation, departmentsLedBy } from '../../shared/departments';
+import { assignedWorkOnly } from '../../shared/assignedWork';
+import { allowsModule, moduleForScreen } from '../../shared/moduleAccess';
 import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
 import { stationGroupsOf } from '../../shared/stations';
 import { RoleDefinition } from '../../services/rbacService';
@@ -27,6 +29,7 @@ interface UserFormModalProps {
   /** Show the per-user permission exceptions (needs users.manage_roles_permissions, and not on one's own account). */
   canManageOverrides?: boolean;
   canSetPassword?: boolean;
+  canReadModulePolicy?: boolean;
 }
 
 
@@ -40,6 +43,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   roles,
   canManageOverrides = false,
   canSetPassword = false,
+  canReadModulePolicy = false,
 }) => {
   const [fullName, setFullName] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
@@ -52,6 +56,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [jobTitle, setJobTitle] = useState('');
   const [departmentId, setDepartmentId] = useState<string>('newsroom');
   const [stationId, setStationId] = useState('');
+  const staff = apiService.getUsers();
   const stations = stationsOf(apiService.getSettings());
   const stationGroups = stationGroupsOf(apiService.getSettings());
   /** The role a record holds: its custom role, else its system role (also a legacy custom code written into `role`). */
@@ -96,7 +101,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setManagedStationIds([]);
       setManagedGroupIds([]);
       setJobTitle('');
-      setDepartmentId('newsroom');
+      setDepartmentId(DEPARTMENTS.find(department => department.id === 'newsroom')?.id || DEPARTMENTS[0]?.id || '');
       setStationId('');
       setStaffId('');
       setBio('');
@@ -117,10 +122,24 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const customRoleId = selectedRole && !selectedRole.isSystemRole ? selectedRole.id : undefined;
   const isGeneralManager = selectedRole?.roleCode === 'GENERAL_MANAGER';
   /** Departments open at the chosen station (an archived department the colleague is still in stays listed). */
-  const departmentOptions = [
-    ...departmentsAtStation(stationId || undefined, DEPARTMENTS),
-    ...allDepartments().filter((d) => d.id === departmentId && (d.archived || !departmentsAtStation(stationId || undefined, DEPARTMENTS).some((x) => x.id === d.id))),
-  ];
+  const availableDepartments = departmentsAtStation(stationId);
+  const originalDepartment = userToEdit && (userToEdit.stationId || '') === stationId
+    ? allDepartments().find(d => d.id === departmentIdOf(userToEdit)) : undefined;
+  const departmentOptions = originalDepartment && !availableDepartments.some(d => d.id === originalDepartment.id)
+    ? [...availableDepartments, originalDepartment] : availableDepartments;
+
+  function changeStation(nextStation: string) {
+    setStationId(nextStation);
+    if (!departmentsAtStation(nextStation).some(d => d.id === departmentId)) setDepartmentId('');
+  }
+  const previewPermission = (code: string) => evaluatePermission({ role, customRoleId, isActive, customPermissions, departmentId }, code, roles, allDepartments());
+  const leadsTeam = userToEdit && departmentsLedBy(userToEdit.id, allDepartments()).length > 0 && !assignedWorkOnly(previewPermission);
+  const modulePolicy = apiService.getSettings().moduleAccess;
+  function previewScreen(nav: string) {
+    const module = moduleForScreen(nav);
+    if (module && canReadModulePolicy && !allowsModule(modulePolicy, module, userToEdit?.id || '', selectedRole?.id)) return false;
+    return !!leadsTeam && (nav === 'tasks' || nav === 'workload') || canOpenScreen(nav, selectedRole, previewPermission, role === 'SUPER_ADMIN');
+  }
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,6 +154,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
     }
     if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
+    if (!departmentOptions.some(d => d.id === departmentId)) newErrors.departmentId = 'اختر قسماً متاحاً في المحطة المحددة';
     if (!userToEdit || initialPassword) {
       const weak = validatePasswordStrength(initialPassword);
       if (weak) newErrors.initialPassword = `كلمة المرور: ${weak}`;
@@ -380,15 +400,19 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <select id="user-form-modal-field-9"
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
+                aria-invalid={!!errors.departmentId && !departmentId}
+                aria-describedby={errors.departmentId && !departmentId ? 'user-department-error' : undefined}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
               >
+                <option value="">اختر القسم</option>
                 {departmentOptions.map((dept) => (
                   <option key={dept.id} value={dept.id}>
-                    {departmentName(dept.id)}
+                    {departmentOptionLabel(dept, allDepartments(), stations, staff)}{dept.archived ? ' (مؤرشف)' : ''}
                   </option>
                 ))}
               </select>
             </div>
+            {errors.departmentId && !departmentId && <p id="user-department-error" className="mt-1 text-xs text-red-700">{errors.departmentId}</p>}
           </div>
 
           <div>
@@ -399,7 +423,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <MapPin className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-station"
                 value={stationId}
-                onChange={(e) => setStationId(e.target.value)}
+                onChange={(e) => changeStation(e.target.value)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
               >
                 <option value="">بدون محطة (إدارة مركزية)</option>
@@ -418,11 +442,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         {selectedRole && <details className="rounded-xl border border-slate-200 p-3">
           <summary className="min-h-9 cursor-pointer py-1 text-sm font-bold text-slate-900">معاينة مساحة العمل لهذا الحساب</summary>
           {!isActive ? <p className="text-sm text-slate-600">الحساب موقوف.</p> : <>
-            <p className="mb-2 text-xs text-slate-600">{selectedRole.nameAr} · {stations.find((station) => station.id === stationId)?.name || 'بلا محطة معيّنة'}. تشمل المعاينة صلاحيات الدور والاستثناءات المدخلة.</p>
+            <p className="mb-2 text-xs text-slate-600">{selectedRole.nameAr} · {stations.find((station) => station.id === stationId)?.name || 'بلا محطة معيّنة'}. {canReadModulePolicy ? 'تشمل المعاينة إتاحة الوحدات وصلاحيات الدور والقسم والاستثناءات المدخلة.' : 'تعرض المعاينة صلاحيات الدور والقسم والاستثناءات المدخلة. قد تقيّد إعدادات الوحدات بعض الصفحات.'}</p>
             <ul className="divide-y divide-slate-100 text-xs">
               {SCREEN_GROUPS.map(({ label, navs }) => {
-                const open = navs.filter((nav) => canOpenScreen(nav, selectedRole,
-                  (permission) => evaluatePermission({ role, customRoleId, isActive, customPermissions, departmentId }, permission, roles, allDepartments()), role === 'SUPER_ADMIN'));
+                const open = navs.filter(previewScreen);
                 return open.length > 0 && <li key={label} className="py-2"><strong className="me-2">{label}</strong>{open.map(screenLabel).join('، ')}</li>;
               })}
             </ul>

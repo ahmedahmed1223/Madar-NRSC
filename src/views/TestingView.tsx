@@ -46,7 +46,7 @@ const CHECKS: LiveCheck[] = [
   },
   {
     id: 'ready',
-    name: 'جاهزية قاعدة بيانات SQLite',
+    name: 'جاهزية قاعدة البيانات',
     category: 'البنية التحتية',
     run: async () => {
       const res = await apiFetch<{ database: boolean }>('/api/ready');
@@ -199,7 +199,7 @@ export const TestingView: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-60"
         >
           {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          <span>إعادة تشغيل الفحوصات</span>
+          <span>{isRunning ? 'جارٍ فحص النظام…' : 'إعادة تشغيل الفحوصات'}</span>
         </button>
       </div>
 

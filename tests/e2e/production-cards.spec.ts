@@ -221,6 +221,10 @@ test('the editor follows the day, the workload, an employee record and the hando
 
     await page.goto('/workload');
     const stationsTable = page.getByRole('region', { name: /جدول مقارنة المحطات/ }).getByRole('table');
+    // A colleague heading a department starts in their team's queue, even with reporting access.
+    const reportsScope = page.getByRole('button', { name: 'الأعباء والأداء', exact: true });
+    await expect(stationsTable.or(reportsScope).first()).toBeVisible();
+    if (await reportsScope.isVisible()) await reportsScope.click();
     await expect(stationsTable.getByRole('rowheader', { name: 'غزة' })).toBeVisible();
     await expect(stationsTable.getByRole('rowheader', { name: 'عمّان' })).toBeVisible();
     expect(await violations(page)).toEqual([]);

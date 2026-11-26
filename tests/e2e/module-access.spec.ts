@@ -15,8 +15,21 @@ test('administrator controls module access in settings and connected workspaces 
     const assignments = controls.getByLabel('التكليفات', { exact: true });
     const save = controls.getByRole('button', { name: 'حفظ إتاحة الوحدات' });
 
+    await controls.getByText('معاينة وصول موظف', { exact: true }).click();
+    const account = controls.getByRole('combobox', { name: 'حساب الموظف', exact: true });
+    const me = await (await producer.page.request.get('/api/v1/auth/me')).json();
+    await account.selectOption(me.user.id);
+    const programmePreview = controls.locator('dt').filter({ hasText: 'البرامج والحلقات' }).locator('..').locator('dd');
+    await expect(programmePreview).toContainText('البرامج');
+    await programmes.selectOption('selected');
+    await controls.getByRole('searchbox', { name: 'البحث عن مستخدم' }).fill('producer@akhbar.tv');
+    const selectedUser = controls.getByRole('checkbox', { name: /producer@akhbar\.tv/ });
+    await expect(programmePreview).toHaveText('محجوبة بإعداد إتاحة الوحدة');
+    await selectedUser.check();
+    await expect(programmePreview).toContainText('البرامج');
     await programmes.selectOption('disabled');
     await assignments.selectOption('disabled');
+    await expect(programmePreview).toHaveText('محجوبة بإعداد إتاحة الوحدة');
     await save.click();
     await expect(controls.getByRole('status')).toHaveText('حُفظت إتاحة الوحدات');
     await expect(denied).toBeVisible();

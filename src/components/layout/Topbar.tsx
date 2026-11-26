@@ -339,7 +339,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>}
 
         {/* Notifications Button */}
-        <div className="relative">
+        <div>
           <button
             ref={bellButton}
             type="button"

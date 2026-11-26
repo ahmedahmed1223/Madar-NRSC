@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpenText, Link2, Printer, Search, X } from 'lucide-react';
 import type { User } from '../types';
+import { previewWorkspacePage } from '../services/documents/printPreview';
 import { GUIDE_CHAPTERS, GUIDE_PARTS, GUIDE_TITLE, ROLE_FAMILIES, roleFamilyOf, type GuideChapter, type GuideEntry } from '../content/userGuide';
 import { findGuideTarget, guideSuggestion, searchGuide } from '../shared/userGuideTools';
 import { RbacService } from '../services/rbacService';
@@ -87,25 +88,15 @@ export const GuideView: React.FC<GuideViewProps> = ({ currentUser, focusId, onFo
     if (target?.entry) (el.querySelector('h3, dt') as HTMLElement | null)?.focus({ preventScroll: true });
   }, [focusId, resultsOpen, target?.entry]);
 
-  // Print once the requested pages are on screen, then return to reading.
+  // Capture the requested chapters before restoring the current reading view.
   useEffect(() => {
     if (!printing) return;
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      setPrinting(null);
-    };
-    window.addEventListener('afterprint', finish, { once: true });
     const frame = window.requestAnimationFrame(() => {
-      window.print();
-      window.setTimeout(finish, 500);
+      previewWorkspacePage(printing === 'all' ? GUIDE_TITLE : chapter.title);
+      setPrinting(null);
     });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener('afterprint', finish);
-    };
-  }, [printing]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [printing, chapter.title]);
 
   const copyLink = async (entry: GuideEntry) => {
     const url = `${window.location.origin}/guide/${encodeURIComponent(entry.id)}`;

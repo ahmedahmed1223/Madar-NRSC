@@ -44,7 +44,7 @@ export const StationClock: React.FC<{ variant?: 'hero' | 'strip'; className?: st
           {time}
         </p>
         <p className={`mt-1 text-sm font-bold ${onDark ? 'theme-fixed text-slate-300' : 'text-slate-600'}`}>{date}</p>
-        {zone && <p className="theme-fixed text-2xs text-slate-500 mt-0.5">بتوقيت المحطة ({zone})</p>}
+        {zone && <p className={`text-2xs mt-0.5 ${onDark ? 'theme-fixed text-slate-300' : 'text-slate-600'}`}>بتوقيت المحطة ({zone})</p>}
       </div>
     );
   }

@@ -4,7 +4,9 @@ import { confirmDialog } from '../../services/dialogs';
 import { dataStore } from '../../services/dataStore';
 import { apiFetch } from '../../services/http';
 import { ALL_PERMISSIONS, departmentGrantAllowed, findUserRole, isRestrictionPermission, PERMISSION_CATEGORIES, permissionDepartments, resolvePermission, type RoleDefinition } from '../../shared/rbac';
-import { departmentIdOf, departmentName } from '../../shared/departments';
+import { departmentOptionLabel, findDepartmentId } from '../../shared/departments';
+import { stationsOf } from '../../shared/stations';
+import { apiService } from '../../services/api';
 import type { PermissionTarget, PermissionWrite, PermissionsSnapshot } from '../../shared/permissionsWorkspace';
 import type { User } from '../../types';
 
@@ -179,12 +181,26 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
     }
   };
 
+  const departmentLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    if (!draft) return labels;
+    const stations = stationsOf(apiService.getSettings());
+    for (const item of draft.departments) {
+      const label = departmentOptionLabel(item, draft.departments, stations, draft.users);
+      labels.set(item.id, item.archived ? `${label} (مؤرشف)` : label);
+    }
+    return labels;
+  }, [draft]);
   const targetOptions = useMemo(() => {
     if (!draft) return [];
     if (kind === 'role') return draft.roles.map((item) => ({ id: item.id, label: item.nameAr }));
-    if (kind === 'department') return draft.departments.map((item) => ({ id: item.id, label: item.name }));
+    if (kind === 'department') return Array.from(departmentLabels, ([id, label]) => ({ id, label }));
     return draft.users.map((item) => ({ id: item.id, label: userLabel(item, draft.roles) }));
-  }, [draft, kind]);
+  }, [draft, kind, departmentLabels]);
+  const departmentLabelFor = (user: User) => {
+    const departmentId = findDepartmentId(user, draft?.departments);
+    return departmentLabels.get(departmentId || '') || 'غير محدد';
+  };
 
   useEffect(() => {
     if (targetOptions.length && !targetOptions.some((option) => option.id === targetId)) setTargetId(targetOptions[0].id);
@@ -422,7 +438,7 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
               <h4 className="text-xs font-bold text-slate-800">كل الحسابات المتأثرة ومصادر القرار قبل/بعد</h4>
               {uniqueAffectedUsers.length ? <ul className="mt-2 max-h-[40vh] divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-300 bg-white">
                 {uniqueAffectedUsers.map(({ user, changes }) => <li key={user.id} className="p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><p className="text-xs font-bold text-slate-900">{user.fullName}</p><p className="text-2xs text-slate-600">{userLabel(user, draft.roles)} · {departmentName(departmentIdOf(user))} · <bdi dir="ltr">{user.staffId || user.id}</bdi></p></div>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><p className="text-xs font-bold text-slate-900">{user.fullName}</p><p className="text-2xs text-slate-600">{userLabel(user, draft.roles)} · {departmentLabelFor(user)} · <bdi dir="ltr">{user.staffId || user.id}</bdi></p></div>
                   <ul className="mt-2 space-y-2">
                     {changes.map((change) => {
                       const permission = ALL_PERMISSIONS.find((item) => item.code === change.permission);
@@ -485,7 +501,7 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
                 {previewUsers.length ? <ul className="max-h-[40vh] divide-y divide-slate-100 overflow-y-auto">
                   {previewUsers.map(({ user, before, after }) => <li key={user.id} className="px-4 py-3">
                     <p className="break-words text-xs font-semibold text-slate-900">{user.fullName}</p>
-                    <p className="mt-0.5 break-words text-2xs text-slate-600">{userLabel(user, draft.roles)} · {departmentName(departmentIdOf(user))} · <bdi dir="ltr">{user.staffId || user.id}</bdi></p>
+                    <p className="mt-0.5 break-words text-2xs text-slate-600">{userLabel(user, draft.roles)} · {departmentLabelFor(user)} · <bdi dir="ltr">{user.staffId || user.id}</bdi></p>
                     <p className="mt-2 break-words text-2xs leading-5 text-slate-700">قبل: {before.allowed ? 'مسموح' : 'غير مسموح'} · {before.label}</p>
                     <p className="break-words text-2xs leading-5 text-slate-700">بعد: {after.allowed ? 'مسموح' : 'غير مسموح'} · {after.label}</p>
                   </li>)}

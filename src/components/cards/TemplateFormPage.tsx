@@ -8,6 +8,7 @@ import { newId } from '../../shared/ids';
 import { CARD_KINDS, COMPLEXITIES, MAX_CARD_STEPS, MAX_CHECKLIST, stepTypesOf, type CardKind } from '../../shared/productionCards';
 import { RULE_KINDS, type AssigneeRule, type TemplateStep, type WorkflowTemplate } from '../../shared/workflowTemplates';
 import { DEPARTMENTS } from '../../shared/departments';
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { stationsOf } from '../../shared/stations';
 import { INPUT, LABEL, cardCandidates } from './cardUi';
 
@@ -44,6 +45,7 @@ const makeRule = (kind: AssigneeRule['kind'], value: string): AssigneeRule => {
 export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onClose, template, onSaved }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
+  const labelDepartment = useMemo(createDepartmentLabeler, [isOpen, settings]);
   const stepTypes = stepTypesOf(settings);
   const roles = useMemo(() => RbacService.getRoleDefinitions().map((r) => ({ id: r.roleCode, name: r.nameAr })), [isOpen]);
   const people = useMemo(() => (isOpen ? cardCandidates() : []), [isOpen]);
@@ -79,7 +81,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
   const options = (kindId: AssigneeRule['kind']) => {
     if (kindId === 'PERSON') return people.map((p) => ({ id: p.id, name: p.name }));
     if (kindId === 'ROLE') return roles;
-    if (kindId === 'DEPARTMENT') return DEPARTMENTS.map((d) => ({ id: d.id as string, name: d.name as string }));
+    if (kindId === 'DEPARTMENT') return DEPARTMENTS.map(d => ({ id: d.id, name: labelDepartment(d) }));
     if (kindId === 'STATION') return stations.map((s) => ({ id: s.id, name: s.name }));
     return [];
   };

@@ -6,6 +6,8 @@ import { newId } from '../../shared/ids';
 import { fromLocalInputValue, toLocalInputValue, tomorrowMorningInput } from '../../shared/dates';
 import { CARD_KINDS, CARD_STEP_PRESETS, COMPLEXITIES, MAX_CARD_STEPS, stepTypesOf, type CardKind, type CardLink, type CardStep, type CardTarget, type ProductionCard } from '../../shared/productionCards';
 import { stationsOf } from '../../shared/stations';
+import { departmentsAtStation, departmentsOf } from '../../shared/departments';
+import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { assignmentScope } from '../../shared/assignmentScope';
 import type { WorkReminderOptions } from '../../shared/workReminders';
 import { WorkReminderFields } from '../common/WorkReminderFields';
@@ -28,13 +30,18 @@ interface CardFormPageProps {
 const localInput = (iso?: string) => (iso ? toLocalInputValue(iso) : '');
 const fromInput = (value: string) => (value ? fromLocalInputValue(value) : undefined);
 
-/** Who a step goes to: a person (`u:<id>`), a station for anyone there to pick up (`s:<id>`), or nobody yet. */
-const targetOf = (step: CardStep) => (step.assigneeId ? `u:${step.assigneeId}` : step.stationId ? `s:${step.stationId}` : '');
+const targetOf = (step: CardStep) => {
+  if (step.assigneeId) return `u:${step.assigneeId}`;
+  if (step.departmentId) return `d:${step.departmentId}:${step.stationId || ''}`;
+  return step.stationId ? `s:${step.stationId}` : '';
+};
 
 /** Creates a production card or edits its details, deadlines and steps (supervisors only). */
 export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, card, draft, users, currentUser, onSaved }) => {
   const settings = apiService.getSettings();
   const stations = stationsOf(settings);
+  const departments = departmentsOf(settings);
+  const labelDepartment = useMemo(createDepartmentLabeler, [isOpen, users]);
   const stepTypes = stepTypesOf(settings);
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState<CardKind>('NEWS');
@@ -75,10 +82,13 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   const people = useMemo(() => users.filter(u => !eligibility.errorFor(u)), [users, eligibility]);
   const groups = useMemo(
     () => [
-      ...stations.filter((s) => scope.has(s.id)).map((s) => ({ station: s, members: people.filter((u) => u.stationId === s.id) })),
-      { station: null, members: people.filter((u) => !stations.some((s) => s.id === u.stationId)) },
+      ...stations.filter((s) => scope.has(s.id)).map((s) => ({
+        station: s, members: people.filter((u) => u.stationId === s.id),
+        pools: departmentsAtStation(s.id, departments).map(d => ({ id: d.id, label: labelDepartment(d) })),
+      })),
+      { station: null, members: people.filter((u) => !stations.some((s) => s.id === u.stationId)), pools: [] },
     ],
-    [stations, scope, people]
+    [stations, scope, people, departments, labelDepartment]
   );
 
   // Newsroom records the card can produce: stories still being worked on and upcoming episodes.
@@ -110,9 +120,15 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
     setDueAt(tomorrowMorningInput());
   };
   const setStepTarget = (id: string, value: string) => {
-    if (value.startsWith('u:')) patchStep(id, { assigneeId: value.slice(2), stationId: undefined });
-    else if (value.startsWith('s:')) patchStep(id, { assigneeId: undefined, assigneeName: undefined, stationId: value.slice(2) });
-    else patchStep(id, { assigneeId: undefined, assigneeName: undefined, stationId: undefined });
+    const kind = value.slice(0, 1);
+    const targetId = value.slice(2);
+    const [department, station] = targetId.split(':');
+    patchStep(id, {
+      assigneeId: kind === 'u' ? targetId : undefined,
+      assigneeName: undefined,
+      departmentId: kind === 'd' ? department : undefined,
+      stationId: kind === 's' ? targetId : kind === 'd' ? station || undefined : undefined,
+    });
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -218,7 +234,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
         <WorkReminderFields value={reminderOptions} onChange={setReminderOptions} />
         <fieldset className="space-y-2">
           <legend className="font-bold text-slate-800 text-sm">مهام التكليف بالترتيب</legend>
-          <p className="text-2xs text-slate-500">كل مهمة تُسند لزميل بعينه، أو لمحطة ليستلمها أحد أفرادها. عند إنجاز مهمة يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>
+          <p className="text-2xs text-slate-500">اختر زميلاً أو اترك المهمة لأحد أفراد القسم أو المحطة. عند إنجازها يصل تنبيه لصاحب المهمة التالية مع ملاحظة التسليم.</p>
           {!card && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-slate-500">ابدأ من مسار جاهز:</span>
@@ -251,10 +267,16 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
                     <select id={`step-to-${step.id}`} value={targetOf(step)} onChange={(e) => setStepTarget(step.id, e.target.value)} className={INPUT}>
                       <option value="">لم تُسند بعد</option>
                       {step.assigneeId && !people.some((u) => u.id === step.assigneeId) && <option value={`u:${step.assigneeId}`}>{step.assigneeName || 'زميل'}</option>}
-                      {groups.map(({ station, members }) =>
+                      {!step.assigneeId && step.departmentId && (!step.stationId || !scope.has(step.stationId) || !departmentsAtStation(step.stationId, departments).some(d => d.id === step.departmentId)) && (
+                        <option value={targetOf(step)}>{departments.find(d => d.id === step.departmentId)?.name || 'القسم الحالي'} — {stations.find(s => s.id === step.stationId)?.name || 'كل المحطات'}</option>
+                      )}
+                      {groups.map(({ station, members, pools }) =>
                         station ? (
                           <optgroup key={station.id} label={`محطة ${station.name}`}>
                             <option value={`s:${station.id}`}>أي زميل في {station.name}</option>
+                            {pools.map(d => (
+                              <option key={`dept-${d.id}`} value={`d:${d.id}:${station.id}`}>قسم {d.label}</option>
+                            ))}
                             {members.map((u) => (
                               <option key={u.id} value={`u:${u.id}`}>{u.fullName} — {u.jobTitle}</option>
                             ))}

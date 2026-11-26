@@ -89,7 +89,7 @@ import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/produc
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
 import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
 import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
-import { applyDepartmentSettings, departmentIdOf } from '../shared/departments';
+import { applyDepartmentSettings, departmentIdOf, findDepartmentId } from '../shared/departments';
 import { rememberStationSettings } from '../shared/stations';
 import { canControlOnAir, Cue, OnAirState, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
 import {
@@ -1549,7 +1549,7 @@ export class ApiService {
   /** What the signed-in colleague may do on cards (the server applies the same rules). */
   static cardActor(): CardActor {
     const me = this.getCurrentUser();
-    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: departmentIdOf(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: findDepartmentId(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
   }
 
   /** Creates or replaces a card after checking it with the rules the server enforces. */
@@ -2155,7 +2155,7 @@ export class ApiService {
   static saveSettings(settings: Partial<SystemSettings>): SystemSettings {
     const current = this.getSettings();
     const updated = { ...current, ...settings };
-    const error = settingsError(updated);
+    const error = settingsError(updated, current);
     if (error) throw new Error(error);
     setStored(STORAGE_KEYS.SETTINGS, updated);
     // Settings are audited by the server only after an accepted write.
@@ -2538,7 +2538,7 @@ export class ApiService {
   }
 
   /** Colleagues, general managers and open card steps still belonging to a station. */
-  static async getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number }> {
+  static async getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number; localDepartments?: { id: string; name: string }[] }> {
     return (await apiFetch<{ data: any }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/usage`)).data;
   }
 

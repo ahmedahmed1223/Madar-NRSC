@@ -1,3 +1,4 @@
+import { createDepartmentLabeler } from '../services/departmentLabels';
 import { arabicDate } from '../shared/dates';
 import { airDisplayDefault, type AirDisplayMode } from '../shared/airDisplay';
 import { AirDisplayControls } from '../components/onair/AirDisplayControls';
@@ -68,6 +69,7 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
 
 const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, selectedShowId, onSelectShow }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings', 'users'], 1000);
+  const labelDepartment = createDepartmentLabeler();
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
   const canControl = canControlOnAir(currentUser, (p) => RbacService.hasPermission(currentUser, p));
@@ -443,7 +445,7 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                         onClick={() => setCueTargets((t) => (t.includes(d.id) ? t.filter((x) => x !== d.id) : [...t, d.id]))}
                         className={`min-h-11 px-2 py-1 rounded-lg text-2xs font-bold border ${cueTargets.includes(d.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
-                        {d.name}
+                        {labelDepartment(d)}
                       </button>
                     ))}
                   </div>

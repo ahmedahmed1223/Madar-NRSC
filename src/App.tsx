@@ -4,6 +4,7 @@ import { confirmDialog } from './services/dialogs';
 import { onNotify } from './services/notify';
 import { lazyWithRetry } from './services/lazyWithRetry';
 import { ViewErrorBoundary } from './components/common/ViewErrorBoundary';
+import { PrintPreviewHost } from './components/common/PrintPreview';
 import { CueAlertOverlay } from './components/common/CueAlertOverlay';
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import {
@@ -1356,6 +1357,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
+      <PrintPreviewHost />
 
 
       {/* Keyboard Shortcuts Reference Modal */}

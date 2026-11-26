@@ -1073,7 +1073,7 @@ export const DEFAULT_ROLE_DEFINITIONS: RoleDefinition[] = [
  * a `!code` override is an explicit deny.
  */
 export type PermissionSubject = Pick<User, 'role' | 'isActive' | 'customPermissions' | 'customRoleId'> &
-  Partial<Pick<User, 'departmentId' | 'department'>>;
+  Partial<Pick<User, 'departmentId' | 'department' | 'stationId'>>;
 export interface PermissionDecision {
   allowed: boolean;
   source: 'inactive' | 'unknown' | 'super-admin' | 'user-deny' | 'department-deny' | 'user-grant' | 'department-grant' | 'role' | 'none' | 'invalid-hierarchy';
@@ -1093,9 +1093,10 @@ const RESTRICTION_PERMISSIONS = new Set<string>(['work.assigned_only']);
 export const isRestrictionPermission = (code: string) => RESTRICTION_PERMISSIONS.has(code);
 
 /** Nearest department first. Deliberately includes archived departments. */
-export function permissionDepartments(user: Pick<PermissionSubject, 'departmentId' | 'department'>, departments: readonly Department[]): { chain: Department[]; valid: boolean } {
+export function permissionDepartments(user: Pick<PermissionSubject, 'departmentId' | 'department' | 'stationId'>, departments: readonly Department[]): { chain: Department[]; valid: boolean } {
   const chain: Department[] = [];
-  let current = departments.find(d => d.id === findDepartmentId(user, departments));
+  const membership = findDepartmentId(user, departments);
+  let current = departments.find(d => d.id === membership);
   const seen = new Set<string>();
   while (current) {
     if (seen.has(current.id)) return { chain, valid: false };
