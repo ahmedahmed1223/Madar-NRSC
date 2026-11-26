@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { build } from 'esbuild';
 
 const cli = createRequire(import.meta.url).resolve('@playwright/test/cli');
+const dataRoot = path.resolve('.e2e-fixtures');
 const args = process.argv.slice(2);
 const outputFlag = args.findIndex(arg => arg === '--output' || arg.startsWith('--output='));
 let outputRoot = path.resolve('test-results', 'isolated');
@@ -67,7 +68,6 @@ async function waitForServer(server, port) {
 
 async function runFile(file, index, distDir) {
   const port = await portForFile();
-  const dataRoot = path.resolve('tests/e2e/.data');
   await mkdir(dataRoot, { recursive: true });
   const dataDir = await mkdtemp(path.join(dataRoot, `${port}-`));
   const suffix = String(index + 1).padStart(3, '0') + '-' + path.basename(file, '.spec.ts');
@@ -115,7 +115,6 @@ if (args.includes('--list') || args.includes('--help')) {
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) {
       throw new Error('E2E_FILE_WORKERS must be an integer from 1 to 8.');
     }
-    const dataRoot = path.resolve('tests/e2e/.data');
     await mkdir(dataRoot, { recursive: true });
     const snapshot = await mkdtemp(path.join(dataRoot, 'build-'));
     const distDir = path.join(snapshot, 'dist');

@@ -2,7 +2,6 @@ import { browserBuildDir } from './buildDir';
 import { expect, test } from '@playwright/test';
 import express from 'express';
 import { build } from 'esbuild';
-import path from 'node:path';
 import { createTestServer, listen } from '../helpers';
 
 for (const mode of ['browser', 'sign-in'] as const) {
@@ -17,7 +16,7 @@ for (const mode of ['browser', 'sign-in'] as const) {
     });
     const dist = browserBuildDir;
     instance.app.use(express.static(dist));
-    instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    instance.app.get('/{*path}', (_req, res) => res.sendFile('index.html', { root: dist }));
     const http = await listen(instance.app);
     const context = await browser.newContext({ baseURL: http.baseUrl, viewport: { width: 390, height: 844 } });
     try {
@@ -125,7 +124,7 @@ test('first setup, institutional administrator and demo cleanup use the saved or
   const instance = await createTestServer();
   const dist = browserBuildDir;
   instance.app.use(express.static(dist));
-  instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  instance.app.get('/{*path}', (_req, res) => res.sendFile('index.html', { root: dist }));
   const http = await listen(instance.app);
   const context = await browser.newContext({ baseURL: http.baseUrl });
   try {

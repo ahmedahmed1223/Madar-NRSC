@@ -24,5 +24,6 @@ database-engine.json.*.tmp
 
 # Browser (E2E) test runs
 tests/e2e/.data/
+.e2e-fixtures/
 test-results/
 playwright-report/

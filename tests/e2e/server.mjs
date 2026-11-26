@@ -10,11 +10,11 @@ if (process.env.E2E_OFFLINE_FIXTURE_READY !== 'true') {
 
 const port = Number(process.env.E2E_PORT || 3990);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid E2E_PORT');
-const dataRoot = path.resolve('tests/e2e/.data');
+const dataRoot = path.resolve('.e2e-fixtures');
 fs.mkdirSync(dataRoot, { recursive: true });
 const requestedDir = process.env.E2E_TEST_DATA_DIR;
 const dataDir = requestedDir ? path.resolve(requestedDir) : fs.mkdtempSync(path.join(dataRoot, `${port}-`));
-if (path.dirname(dataDir) !== dataRoot) throw new Error('The browser test data directory must be inside tests/e2e/.data.');
+if (path.dirname(dataDir) !== dataRoot) throw new Error('The browser test data directory must be inside .e2e-fixtures.');
 
 const distDir = path.resolve(process.env.E2E_DIST_DIR || 'dist');
 
