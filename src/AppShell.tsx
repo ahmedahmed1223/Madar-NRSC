@@ -27,6 +27,9 @@ export default function AppShell() {
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const logoutPending = useRef(false);
 
   const enter = useCallback(async (session: SessionInfo) => {
     if (session.mustChangePassword) {
@@ -84,25 +87,34 @@ export default function AppShell() {
   };
 
   const handleLogout = useCallback(async () => {
+    if (logoutPending.current) return;
+    logoutPending.current = true;
+    setLoggingOut(true);
+    setLogoutError(null);
     try {
-      await dataStore.flush();
-    } catch {
-      // unsent edits stay queued in this browser for the next sign-in
-    }
-    try {
-      if (!await authClient.logout(() => dataStore.stop())) return;
-    } catch {
-      const session = authClient.getSession();
-      if (session) {
-        try { await enter(session); } catch { /* the original logout error remains visible */ }
+      try {
+        await dataStore.flush();
+      } catch {
+        // unsent edits stay queued in this browser for the next sign-in
       }
-      setNotice('تعذر إكمال تسجيل الخروج؛ تحقق من الاتصال والتخزين المحلي ثم أعد المحاولة');
-      return;
+      try {
+        if (!await authClient.logout(() => dataStore.stop())) return;
+      } catch {
+        const session = authClient.getSession();
+        if (session) {
+          try { await enter(session); } catch { /* the original logout error remains visible */ }
+        }
+        setLogoutError('تعذر إكمال تسجيل الخروج. تحقق من الاتصال ثم أعد المحاولة.');
+        return;
+      }
+      dataStore.stop();
+      setIsChangingPassword(false);
+      setNotice('تم تسجيل الخروج بأمان. يمكنك الدخول بحساب آخر.');
+      setPhase('login');
+    } finally {
+      logoutPending.current = false;
+      setLoggingOut(false);
     }
-    dataStore.stop();
-    setIsChangingPassword(false);
-    setNotice(null);
-    setPhase('login');
   }, [enter]);
 
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
@@ -156,6 +168,17 @@ export default function AppShell() {
 
   return (
     <>
+      {(loggingOut || logoutError) && <div
+        role={logoutError ? 'alert' : 'status'}
+        className="fixed bottom-4 inset-x-4 z-[150] mx-auto max-w-xl rounded-lg border border-slate-300 bg-white p-4 text-sm text-slate-900 shadow-lg"
+        dir="rtl"
+      >
+        {logoutError ? <div className="flex flex-wrap items-center gap-3">
+          <p className="flex-1 min-w-0">{logoutError}</p>
+          <button type="button" onClick={() => void handleLogout()} className="min-h-11 px-3 rounded-lg bg-blue-600 text-white font-semibold">إعادة المحاولة</button>
+          <button type="button" onClick={() => setLogoutError(null)} className="min-h-11 px-3 rounded-lg border border-slate-300">إغلاق</button>
+        </div> : <p className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" aria-hidden="true" /> جارٍ إكمال الحفظ وتسجيل الخروج…</p>}
+      </div>}
       <Suspense
         fallback={
           <FullScreenMessage>

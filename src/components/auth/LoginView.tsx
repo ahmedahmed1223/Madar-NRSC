@@ -5,7 +5,7 @@ import type { LoginSetupMode } from '../../shared/setup';
 import { apiFetch } from '../../services/http';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
 import { PasswordVisibilityButton } from './PasswordFields';
 
@@ -26,7 +26,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [setupOpen, setSetupOpen] = useState(false);
   const [savingAdministrator, setSavingAdministrator] = useState(false);
   const [administratorCreated, setAdministratorCreated] = useState(false);
+  const submitting = useRef(false);
+  const emailInput = useRef<HTMLInputElement>(null);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
   const creatingAdministrator = setupOpen && setupMode === 'browser';
+
+  useEffect(() => {
+    if (needsCode) codeInput.current?.focus();
+  }, [needsCode]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,6 +69,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   }, []);
 
   const submit = async (mail: string, pass: string, totp?: string) => {
+    if (submitting.current) return;
+    submitting.current = true;
     setError(null);
     setIsSubmitting(true);
     try {
@@ -77,10 +87,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               ? 'تعذر الاتصال بالخادم؛ تحقق من الشبكة ثم أعد المحاولة'
               : err?.message || 'تعذر تسجيل الدخول'
         );
-        if (totp !== undefined) setCode('');
-        else setPassword('');
+        if (totp !== undefined) {
+          setCode('');
+          codeInput.current?.focus();
+        } else if (!['TimeoutError', 'AbortError', 'TypeError'].includes(err?.name)) {
+          setPassword('');
+          passwordInput.current?.focus();
+        }
       }
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -91,26 +107,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0f172a] flex items-center justify-center p-4 font-sans" dir="rtl">
+    <div className="relative min-h-dvh bg-slate-950 flex items-center justify-center px-4 py-16 sm:py-12 font-sans" dir="rtl">
       {/* Appearance before sign-in, in the top corner (the end side), clear of the card. */}
       <div className="absolute top-3 left-3">
         <ThemeToggle />
       </div>
-      <div className="w-full max-w-sm flex flex-col gap-5">
+      <section className="w-full max-w-md flex flex-col gap-5" aria-label="الدخول إلى مدار">
       <StationClock variant="hero" onDark />
-      <div className="w-full bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-8">
+      <div className="w-full bg-white border border-slate-200 rounded-2xl p-5 sm:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center">
             <Radio className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">{APP_NAME} · {APP_TAGLINE}</h1>
-            <p className="text-xs text-slate-500">{creatingAdministrator ? 'إنشاء حساب المسؤول الأول' : 'سجّل الدخول بحسابك المؤسسي'}</p>
+            <h1 className="text-2xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
+            <p className="text-sm text-slate-600">{APP_TAGLINE}</p>
           </div>
         </div>
 
         {notice && (
-          <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-semibold">{notice}</div>
+          <div role="status" className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-800 font-semibold">{notice}</div>
         )}
 
         {setupMode && (
@@ -150,7 +166,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
         {administratorCreated && (
           <p role="status" className="mb-4 rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800">أُنشئ حساب المسؤول. سجّل الدخول به لإكمال الإعداد.</p>
         )}
-        {!creatingAdministrator && <form onSubmit={handleSubmit} className="space-y-4">
+        {!creatingAdministrator && <form onSubmit={handleSubmit} aria-busy={isSubmitting} className="space-y-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900">{needsCode ? 'التحقق بخطوتين' : 'تسجيل الدخول'}</h2>
+            <p className="text-sm text-slate-600">{needsCode ? 'أدخل الرمز المكوّن من ستة أرقام من تطبيق المصادقة.' : 'استخدم بريدك المؤسسي وكلمة المرور للمتابعة.'}</p>
+          </div>
           <div>
             <label htmlFor="login-email" className="block text-xs font-bold text-slate-700 mb-1.5">
               البريد الإلكتروني
@@ -159,12 +179,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input
                 id="login-email"
+                ref={emailInput}
+                readOnly={isSubmitting || needsCode}
+                autoCapitalize="none"
+                spellCheck={false}
                 type="email"
                 autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full text-sm pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
+                className="w-full min-h-12 text-base pr-9 pl-3 py-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-left read-only:bg-slate-50"
                 dir="ltr"
               />
             </div>
@@ -178,6 +202,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <input
                 id="login-password"
+                ref={passwordInput}
+                readOnly={isSubmitting || needsCode}
+                aria-describedby={error ? 'login-error' : undefined}
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 required
@@ -186,7 +213,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="w-full text-sm pr-9 pl-12 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
+                className="w-full min-h-12 text-base pr-9 pl-12 py-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-left read-only:bg-slate-50"
                 dir="ltr"
               />
               <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute left-1 top-0" />
@@ -200,6 +227,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               </label>
               <input
                 id="login-totp"
+                ref={codeInput}
+                readOnly={isSubmitting}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -208,17 +237,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 required
                 autoFocus
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setCode(e.target.value.replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) - (digit <= '٩' ? 0x660 : 0x6f0))).replace(/\D/g, ''))}
                 className="w-full text-lg tracking-[0.5em] text-center px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
                 dir="ltr"
               />
-              <button type="button" onClick={() => { setNeedsCode(false); setCode(''); setPassword(''); setEmail(''); setError(null); }}
+              <button type="button" disabled={isSubmitting} onClick={() => { setNeedsCode(false); setCode(''); setPassword(''); setEmail(''); setError(null); emailInput.current?.focus(); }}
                 className="mt-2 min-h-10 text-xs font-semibold text-blue-700 hover:underline">تبديل الحساب</button>
             </div>
           )}
 
           {error && (
-            <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
+            <div id="login-error" role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-semibold">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -227,11 +256,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors disabled:opacity-60"
+            className="w-full min-h-12 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-base font-bold transition-colors disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
             <span>{isSubmitting ? 'جارٍ الدخول…' : 'تسجيل الدخول'}</span>
           </button>
+          <details className="text-sm text-slate-600">
+            <summary className="min-h-11 flex items-center cursor-pointer font-semibold text-blue-700">هل نسيت كلمة المرور؟</summary>
+            <p className="leading-relaxed">اطلب من مدير النظام إصدار كلمة مرور مؤقتة من «المستخدمون والصلاحيات». ستختار كلمة جديدة عند أول دخول.</p>
+          </details>
         </form>}
 
         {demo && demo.accounts.length > 0 && demo.password && (
@@ -248,7 +281,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               <ChevronDown className={`w-4 h-4 transition-transform ${demoOpen ? 'rotate-180' : ''}`} />
             </button>
             {demoOpen && (
-              <ul className="mt-2 space-y-1 max-h-72 overflow-y-auto" aria-label="حسابات التجربة">
+              <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto" aria-label="حسابات التجربة">
                 {demo.accounts.map((a) => (
                   <li key={a.email}>
                     <button
@@ -279,7 +312,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           </div>
         )}
       </div>
-      </div>
+      </section>
     </div>
   );
 };

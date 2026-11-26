@@ -64,6 +64,7 @@ import { presenterReading } from '../shared/presenterTiming';
 import { moduleForLink, moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { moduleAvailability, moduleAllowed, moduleAllowedForUser } from './moduleAccess';
 import { matchesQuery } from '../shared/search';
+import { episodeGuestList, guestKey } from '../shared/episodePlan';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -805,13 +806,13 @@ export class SyncService {
     const available = this.canPageCollection(auth, 'episodes');
     const canSummarizePrograms = auth.can('programs.view') || auth.can('programs.manage');
     const canSummarizeGuests = auth.can('guests.view') || auth.can('guests.manage');
-    const programCounts: Record<string, number> = {};
+    const programCounts: Record<string, number> = Object.create(null);
     const guestSummaries: Record<string, {
       totalAppearances: number;
       lastAppearanceDate?: string;
       appearanceHistory: { episodeId: string; episodeTitle: string; programName: string; date: string }[];
       monthlyAppearanceCounts: Record<string, number>;
-    }> = {};
+    }> = Object.create(null);
     if (!available) return { available, programCounts, guestSummaries };
 
     const deletedPrograms = new Set(this.db.listCollection('programs')
@@ -827,8 +828,8 @@ export class SyncService {
 
       if (!canSummarizeGuests) continue;
       const guestIds = new Set<string>();
-      for (const booking of episode.guests || []) {
-        const id = booking?.guestId || booking?.id;
+      for (const booking of episodeGuestList(episode)) {
+        const id = guestKey(booking);
         if (typeof id === 'string' && id) guestIds.add(id);
       }
       for (const id of guestIds) {

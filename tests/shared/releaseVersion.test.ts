@@ -1,5 +1,5 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer as createNetServer } from 'node:net';
 import os from 'node:os';
@@ -8,6 +8,16 @@ import { describe, expect, it } from 'vitest';
 import { APP_VERSION } from '../../src/server/app';
 import { BACKUP_REHEARSAL_VERSION } from '../../src/server/databaseRecovery';
 import { CURRENT_VERSION, RELEASES } from '../../src/content/whatsNew';
+
+
+function runNpm(args: string[], options: SpawnSyncOptionsWithStringEncoding) {
+  const cli = process.env.npm_execpath || (process.platform === 'win32'
+    ? path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js') : undefined);
+  if (cli) {
+    return spawnSync(process.execPath, [cli, ...args], options);
+  }
+  return spawnSync('npm', args, options);
+}
 
 function assertVersionAt(location: string, actual: string, expected: string) {
   if (actual !== expected) {
@@ -61,7 +71,7 @@ describe('release version', () => {
   });
 
   it('keeps the built browser, health endpoint, and built release notes in sync', async () => {
-    const build = spawnSync('npm', ['run', 'build'], { encoding: 'utf8', timeout: 120_000 });
+    const build = runNpm(['run', 'build'], { encoding: 'utf8', timeout: 120_000 });
     expect(build.status, `${build.stdout}\n${build.stderr}`).toBe(0);
 
     const dist = path.resolve('dist');
@@ -189,7 +199,7 @@ describe('release version', () => {
       };
       writeFileSync(path.join(root, 'package.json'), JSON.stringify(fixturePackage));
 
-      const result = spawnSync('npm', ['run', 'release:version', '--', '4.6.0'], {
+      const result = runNpm(['run', 'release:version', '--', '4.6.0'], {
         cwd: root,
         encoding: 'utf8',
       });
@@ -216,7 +226,7 @@ describe('release version', () => {
         '[ملاحظات الإصدار 4.5.0](docs/releases/4.5.0.md)\n',
       );
 
-      const result = spawnSync('npm', ['run', 'release:version', '--', 'not-a-version'], {
+      const result = runNpm(['run', 'release:version', '--', 'not-a-version'], {
         cwd: root,
         encoding: 'utf8',
       });
@@ -236,7 +246,7 @@ describe('release version', () => {
     try {
       const originalFiles = createReleaseFixture(root, 'No release notes link yet.\n');
 
-      const result = spawnSync('npm', ['run', 'release:version', '--', '4.6.0'], {
+      const result = runNpm(['run', 'release:version', '--', '4.6.0'], {
         cwd: root,
         encoding: 'utf8',
       });

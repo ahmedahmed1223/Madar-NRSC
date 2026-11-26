@@ -268,7 +268,12 @@ export interface EpisodeSummaries {
 
 export class ApiService {
   static async getEpisodeSummaries(signal?: AbortSignal): Promise<EpisodeSummaries> {
-    return (await apiFetch<{ data: EpisodeSummaries }>('/api/v1/data/episode-summaries', { signal })).data;
+    const { data } = await apiFetch<{ data: EpisodeSummaries }>('/api/v1/data/episode-summaries', { signal });
+    return {
+      ...data,
+      programCounts: Object.assign(Object.create(null), data.programCounts),
+      guestSummaries: Object.assign(Object.create(null), data.guestSummaries),
+    };
   }
 
   static async getShiftHandovers(signal?: AbortSignal): Promise<HandoverRow[]> {
