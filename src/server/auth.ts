@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { User } from '../types/index';
 import { computeEffectivePermissions, evaluatePermission, findUserRole, RoleDefinition, DEFAULT_ROLE_DEFINITIONS } from '../shared/rbac';
-import { allowsModule, type ModuleId } from '../shared/moduleAccess';
+import { allowsModule, moduleAllowsNewWork, moduleSubject, type ModuleId } from '../shared/moduleAccess';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
 import { MIN_PASSWORD_LENGTH, temporaryPassword, validatePasswordStrength } from '../shared/passwords';
@@ -88,7 +88,9 @@ export interface AuthContext {
   roles: RoleDefinition[];
   can: (permission: string) => boolean;
   permissions: string[];
-  moduleAllowed?: (id: ModuleId) => boolean;
+  moduleAllowed?: (id: ModuleId, stationId?: string) => boolean;
+  moduleHasStationLimits?: (id: ModuleId) => boolean;
+  moduleAllowsNewWork?: (id: ModuleId, stationId?: string) => boolean;
   productionAssignments?: () => ReadonlySet<string>;
   departmentTaskMembers?: () => ReadonlySet<string> | null;
 }
@@ -111,7 +113,8 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
   const roles = loadRoles(db);
   const roleId = findUserRole(user, roles)?.id;
   const settings = db.getRow('settings', 'singleton')?.d;
-  const moduleAllowed = (id: ModuleId) => allowsModule(settings?.moduleAccess, id, user.id, roleId);
+  const subject = moduleSubject(user, roleId, departmentsOf(settings));
+  const moduleAllowed = (id: ModuleId, stationId?: string) => allowsModule(settings?.moduleAccess, id, subject, undefined, stationId);
   const decisions = new Map<string, boolean>();
   const can = (permission: string) => {
     let allowed = decisions.get(permission);
@@ -130,6 +133,8 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
     can,
     permissions: computeEffectivePermissions(user, roles, departmentsOf(settings)),
     moduleAllowed,
+    moduleHasStationLimits: id => settings?.moduleAccess?.[id]?.scopes?.some((scope: { stationId?: string }) => !!scope.stationId) === true,
+    moduleAllowsNewWork: (id, stationId) => moduleAllowsNewWork(settings?.moduleAccess, id, subject, stationId),
     departmentTaskMembers: () => {
       if (team !== undefined) return team;
       if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || assignedWorkOnly(can)) return team = null;
@@ -143,7 +148,7 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
       if (!moduleAllowed('assignments') || can('rundown.view') || !can('cards.view') || assignedWorkOnly(can)) return assignments;
       for (const { d } of db.listCollection('productionCards')) {
         const target = cardProductionAssignment(d as ProductionCard, user.id);
-        if (target && (moduleAllowed('programmes') || !target.startsWith('episode:'))) assignments.add(target);
+        if (target && moduleAllowed(target.startsWith('episode:') ? 'programmes' : 'bulletins')) assignments.add(target);
       }
       return assignments;
     },

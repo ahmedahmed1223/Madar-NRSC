@@ -148,7 +148,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   const createActions = [
     { label: 'خبر صحفي جديد', icon: FileText, run: canOpen('news-editor') && can('news.create') ? onCreateNews : undefined },
     { label: 'خبر عاجل', icon: Flame, run: onNavigate && canOpen('news-editor') && canRequestBreaking(can) ? () => onNavigate('/news/new?breaking=1') : undefined },
-    { label: 'تكليف', icon: ClipboardList, run: canOpen('cards') && can('cards.manage') ? onCreateCard : undefined },
+    { label: 'تكليف', icon: ClipboardList, run: canOpen('cards') && can('cards.manage') && RbacService.acceptsNewAssignments(currentUser) ? onCreateCard : undefined },
     { label: 'برنامج تلفزيوني جديد', icon: Tv, run: canOpen('programs') && can('programs.manage') ? onCreateProgram : undefined },
     { label: 'حلقة برنامج جديدة', icon: Video, run: canOpen('episodes') && can('episodes.create') ? onCreateEpisode : undefined },
     { label: 'مهمة تحريرية جديدة', icon: CheckSquare, run: canOpen('tasks') && can('tasks.create_assign') ? onCreateTask : undefined },

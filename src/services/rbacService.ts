@@ -12,7 +12,7 @@ import { assignedWorkOnly } from '../shared/assignedWork';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
-import { allowsModule, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
+import { allowsModule, moduleSubject, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
 
 export * from '../shared/rbac';
 
@@ -96,10 +96,17 @@ export class RbacService {
     const effective = dataStore.moduleAvailability(user.id, id);
     if (effective !== undefined) return effective;
     const settings = dataStore.get<SystemSettings | null>(COLLECTIONS.settings.storageKey, null);
-    return allowsModule(settings?.moduleAccess, id, user.id, findUserRole(user, this.getRoleDefinitions())?.id);
+    return allowsModule(settings?.moduleAccess, id, moduleSubject(user, findUserRole(user, this.getRoleDefinitions())?.id, departmentsOf(settings)));
+  }
+
+  static acceptsNewAssignments(user: User | undefined | null): boolean {
+    return !!user && this.canUseModule(user, 'assignments') && dataStore.moduleAvailability(user.id, 'assignmentIntake') !== false;
   }
 
   static isScreenModuleAvailable(user: User | undefined | null, nav: string): boolean {
+    if (['on-air', 'studio-screen', 'calendar'].includes(nav)) {
+      return this.canUseModule(user, 'programmes') || this.canUseModule(user, 'bulletins');
+    }
     const module = moduleForScreen(nav);
     return !module || this.canUseModule(user, module);
   }

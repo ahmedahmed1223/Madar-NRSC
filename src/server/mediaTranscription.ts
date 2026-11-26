@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { Router } from 'express';
+import { moduleAllowedForUser, requireModule } from './moduleAccess';
 import { requirePermission } from './auth';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
@@ -95,6 +96,9 @@ export function createMediaTranscriber(db: NewsroomDatabase, config: AppConfig, 
       cancel?.throwIfAborted();
       const ready = db.getRow('media', id)?.d;
       if (!ready || ready.deletedAt || (ready.fileUrl || ready.url) !== sourceUrl) throw new TranscriptionError(409, 'تغيّر مصدر المادة قبل إرسالها للتفريغ');
+      if (!moduleAllowedForUser(db, 'transcription', userId ?? ready.ownerId ?? ready.uploadedById ?? upload.uploadedBy, ready.stationId)) {
+        throw new TranscriptionError(403, 'تفريغ الوسائط موقوف لهذا النطاق');
+      }
       if (userId === null && ready.rights?.status === 'RESTRICTED') throw new TranscriptionError(422, 'حقوق المادة مقيّدة للتفريغ التلقائي');
       let response: Response;
       try {
@@ -132,7 +136,7 @@ export function mediaTranscriptionRouter(db: NewsroomDatabase, config: AppConfig
   const router = Router();
   const provider = config.mediaTranscription;
   const transcribe = createMediaTranscriber(db, config, changed, send);
-  const access = [requirePermission('media.view'), requirePermission('media.upload')];
+  const access = [requirePermission('media.view'), requirePermission('media.upload'), requireModule('transcription')];
   router.get('/transcription', ...access, (_req, res) => res.json({ success: true, data: { enabled: !!provider, video: !!provider?.ffmpeg, automatic: config.mediaTranscriptionAuto } }));
   const limit = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 8, key: req => req.auth!.user.id, message: 'بلغت حد طلبات التفريغ لهذه الساعة' });
   router.post('/:id/transcription', ...access, limit, async (req, res, next) => {

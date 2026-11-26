@@ -10,7 +10,7 @@ import {
   collectionForStorageKey,
 } from '../shared/collections';
 import { ApiError, apiFetch } from './http';
-import { moduleForCollection, moduleForRecord, MODULE_UNAVAILABLE, type ModuleAvailability, type ModuleId } from '../shared/moduleAccess';
+import { moduleForCollection, moduleForRecord, MODULE_UNAVAILABLE, type ModuleAvailability } from '../shared/moduleAccess';
 
 interface RowMeta {
   /** Server version; 0 while a locally created row awaits its first acknowledgement. */
@@ -315,7 +315,7 @@ export class DataStore {
     this.emit({ type: 'sync-status', ...this.syncState() });
   }
 
-  moduleAvailability(userId: string, module: ModuleId): boolean | undefined {
+  moduleAvailability(userId: string, module: keyof ModuleAvailability): boolean | undefined {
     return this.userId === userId ? this.modules?.[module] : undefined;
   }
 
@@ -390,7 +390,7 @@ export class DataStore {
     for (const row of rows) {
       const key = keyOf(row.c, row.id);
       if (this.dirty.has(key) || this.inFlight.has(key)) continue;
-      this.replaceLocal(row.c, row);
+      this.replaceLocal(row.c, row, true);
       touched.add(row.c);
     }
     if (touched.size) this.emit({ type: 'data-changed', collections: [...touched], remote: true });
@@ -401,7 +401,7 @@ export class DataStore {
     for (const row of rows) {
       const key = keyOf(row.c, row.id);
       if (this.dirty.has(key) || this.inFlight.has(key)) continue;
-      this.replaceLocal(row.c, row);
+      this.replaceLocal(row.c, row, true);
       touched = true;
     }
     return touched;
@@ -610,7 +610,7 @@ export class DataStore {
     const c = collectionForStorageKey(storageKey);
     if (!c) return fallback;
     const module = moduleForCollection(c);
-    if (module && this.modules?.[module] === false) return [] as unknown as T;
+    if (module && c !== 'media' && this.modules?.[module] === false) return COLLECTIONS[c].kind === 'list' ? [] as unknown as T : fallback;
     const value = this.data.get(c);
     if (value === undefined || value === null) {
       return COLLECTIONS[c].kind === 'list' ? ([] as unknown as T) : fallback;
@@ -998,7 +998,7 @@ export class DataStore {
         const known = this.meta.get(row.c)!.get(row.id);
         if (known && known.v >= row.v && !row.deleted) continue;
         if (row.deleted) this.removeLocal(row.c, row.id);
-        else this.replaceLocal(row.c, row);
+        else this.replaceLocal(row.c, row, true);
         touched.add(row.c);
       }
       this.rev = res.rev;
@@ -1014,8 +1014,9 @@ export class DataStore {
     }
   }
 
-  private replaceLocal(c: CollectionName, row: EntityRow) {
-    if (!this.allowsLocalRecord(c, row.id, row.d)) return;
+  private replaceLocal(c: CollectionName, row: EntityRow, fromServer = false) {
+    // The server may send media that is explicitly attached to still-visible work.
+    if (!(fromServer && c === 'media') && !this.allowsLocalRecord(c, row.id, row.d)) return;
     const metaMap = this.meta.get(c)!;
     metaMap.set(row.id, { v: row.v, p: row.p, json: JSON.stringify(row.d) });
     if (COLLECTIONS[c].kind === 'singleton') {

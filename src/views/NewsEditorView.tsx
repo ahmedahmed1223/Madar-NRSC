@@ -132,6 +132,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const headlineRef = useRef<HTMLTextAreaElement>(null);
 
   const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
+  const canUseEditorialAi = RbacService.canUseModule(currentUser, 'editorialAi');
   // Whether this person may change the story at all (before looking at locks).
   const editableStory = canEditNewsContent(can, currentUser.id, newsItem);
   const lock = useNewsEditLock(newsItem?.id, editableStory);
@@ -1328,7 +1329,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           </summary>
         <div className="flex flex-wrap items-center gap-2 pt-2">
             <NewsTemplatePicker content={content} onChange={setContent} disabled={!canEditContent || saving} />
-          <button
+          {canUseEditorialAi && <button
             type="button"
             onClick={() => setIsAiCopilotOpen(true)}
             disabled={!canEditContent || saving}
@@ -1337,7 +1338,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
           >
             <Bot className="w-3.5 h-3.5 text-blue-600" />
             المساعد الذكي
-          </button>
+          </button>}
 
           <button
             type="button"
@@ -2329,7 +2330,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
 
       {/* AI Newsroom Co-Pilot Modal */}
       <AiNewsCoPilotModal
-        isOpen={isAiCopilotOpen && canEditContent}
+        isOpen={isAiCopilotOpen && canEditContent && canUseEditorialAi}
         onClose={() => setIsAiCopilotOpen(false)}
         currentTitle={title}
         currentShortTitle={shortTitle}

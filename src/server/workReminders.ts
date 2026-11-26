@@ -50,7 +50,7 @@ export function sendDueWorkReminders(db: NewsroomDatabase, now = new Date()): nu
     const types = stepTypesOf(db.getRow('settings', 'singleton')?.d);
     for (const job of jobs) {
       const item = db.getRow(job.collection, job.entityId)?.d;
-      if (item && !item.deletedAt && (job.collection !== 'productionCards' || moduleAllowedForUser(db, 'assignments', job.userId))) {
+      if (item && !item.deletedAt && moduleAllowedForUser(db, job.collection === 'productionCards' ? 'assignments' : 'tasks', job.userId)) {
         const stepId = job.slot.startsWith('step:') ? job.slot.slice(5) : undefined;
         const step = stepId ? (item as ProductionCard).steps.find(candidate => candidate.id === stepId) : undefined;
         const name = step ? `${item.title} — ${step.title || stepTypeName(types, step.type)}` : item.title;

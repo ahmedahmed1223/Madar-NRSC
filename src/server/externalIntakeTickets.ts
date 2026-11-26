@@ -56,7 +56,7 @@ export function bulletinIntakeTarget(db: NewsroomDatabase, storyId?: string, gue
 }
 
 export function intakeGuestTarget(db: NewsroomDatabase, subject: Pick<IntakeTicket, 'issuer' | 'episodeId' | 'guestId' | 'bulletinStoryId'>) {
-  if (subject.bulletinStoryId) return bulletinIntakeTarget(db, subject.bulletinStoryId, subject.guestId);
+  if (subject.bulletinStoryId) return moduleAllowedForUser(db, 'bulletins', subject.issuer) ? bulletinIntakeTarget(db, subject.bulletinStoryId, subject.guestId) : null;
   if (!moduleAllowedForUser(db, 'programmes', subject.issuer)) return null;
   return guestIntakeTarget(db, subject.episodeId, subject.guestId);
 }

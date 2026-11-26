@@ -72,6 +72,7 @@ const isWithinPeriod = (period: CardWorkPeriod, today: string, dates: (string | 
 export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode, openNewRequest, onOpenNewHandled }) => {
   const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
   const canManage = RbacService.hasPermission(currentUser, 'cards.manage');
+  const canCreate = canManage && RbacService.acceptsNewAssignments(currentUser);
   const actor = apiService.cardActor();
   const [cards, setCards] = useState<ProductionCard[]>(() => apiService.getCards());
   const [templates, setTemplates] = useState<WorkflowTemplate[]>(() => apiService.getWorkflowTemplates());
@@ -98,9 +99,9 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
 
   useEffect(() => {
     if (!openNewRequest) return;
-    if (canManage && !formOpen && !assignForm.open) setAssignForm({ open: true, templateId: null });
+    if (canCreate && !formOpen && !assignForm.open) setAssignForm({ open: true, templateId: null });
     onOpenNewHandled?.();
-  }, [openNewRequest, onOpenNewHandled, canManage, formOpen, assignForm.open]);
+  }, [openNewRequest, onOpenNewHandled, canCreate, formOpen, assignForm.open]);
 
   useEffect(
     () =>

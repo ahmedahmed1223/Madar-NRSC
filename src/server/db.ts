@@ -17,9 +17,17 @@ import { applySqliteMigrations, openSqliteDatabase } from './sqliteDatabase';
 import { rankPostgresArchive, rebuildPostgresArchive, updatePostgresArchiveEntry } from './postgresArchive';
 import { postgresStorageStats } from './postgresStats';
 
+function archiveScopeParameters(filters: NewsArchiveFilters) {
+  return Object.fromEntries((filters.excludedStations ?? []).map((station, index) => ['excludedStation' + index, station]));
+}
+
 function archiveScopeSql(filters: NewsArchiveFilters) {
   const publishedDay = "substr(COALESCE(NULLIF(json_extract(e.data, '$.publishDate'), ''), e.updated_at), 1, 10)";
   return [
+    filters.excludedStations?.length && `AND COALESCE(json_extract(e.data, '$.stationId'),
+      (SELECT json_extract(author.data, '$.stationId') FROM entities AS author
+       WHERE author.collection = 'users' AND author.id = json_extract(e.data, '$.authorId')), '') NOT IN
+       (${Object.keys(archiveScopeParameters(filters)).map(key => "@" + key).join(", ")})`,
     filters.from && `AND ${publishedDay} >= @from`,
     filters.to && `AND ${publishedDay} <= @to`,
     filters.station && `AND EXISTS (SELECT 1 FROM entities AS author WHERE author.collection = 'users'
@@ -339,7 +347,7 @@ export class NewsroomDatabase {
       ? `AND (json_extract(data, '$.title') LIKE @like ESCAPE '\\' OR json_extract(data, '$.summary') LIKE @like ESCAPE '\\' OR json_extract(data, '$.content') LIKE @like ESCAPE '\\')`
       : '';
     const where = `${ARCHIVE_FILTER} AND updated_at < @before ${textFilter} ${archiveScopeSql(filters)}`;
-    const params = { before: beforeIso, like, limit, offset, ...filters };
+    const params = { before: beforeIso, like, limit, offset, ...filters, ...archiveScopeParameters(filters) };
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM entities AS e INDEXED BY idx_news_archive_updated WHERE ${where}`).get(params) as { n: number }).n;
     const rows = this.db
       .prepare(`SELECT id, data, updated_at FROM entities AS e INDEXED BY idx_news_archive_updated WHERE ${where} ORDER BY updated_at DESC, id LIMIT @limit OFFSET @offset`)
@@ -362,7 +370,7 @@ export class NewsroomDatabase {
 
   rankNewsArchive(before: string, query: string, match: string, limit: number, offset: number, filters: NewsArchiveFilters = {}) {
     if (this.db instanceof PostgresDatabase) {
-      return rankPostgresArchive(this.db, query, archiveScopeSql(filters), { before, ...filters }, limit, offset);
+      return rankPostgresArchive(this.db, query, archiveScopeSql(filters), { before, ...filters, ...archiveScopeParameters(filters) }, limit, offset);
     }
     const from = match
       ? 'news_archive_fts JOIN news_archive_index AS a ON a.key = news_archive_fts.rowid'
@@ -380,7 +388,7 @@ export class NewsroomDatabase {
            SELECT id, updated_at, score FROM ranked WHERE score IS NOT NULL
            ORDER BY score DESC, updated_at DESC, id LIMIT @limit OFFSET @offset
          ) AS page JOIN entities AS e ON e.collection = 'news' AND e.id = page.id) AS items
-    `).get({ before, query, match, limit, offset, ...filters }) as { total: number; items: string };
+    `).get({ before, query, match, limit, offset, ...filters, ...archiveScopeParameters(filters) }) as { total: number; items: string };
     const items = JSON.parse(row.items) as { id: string; data: string; updatedAt: string }[];
     return { total: row.total, items: items.map(({ id, data, updatedAt }) => ({ id, d: JSON.parse(data), updatedAt })) };
   }

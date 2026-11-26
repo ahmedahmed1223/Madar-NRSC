@@ -28,8 +28,9 @@ import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds } from '../shared/mediaEditorial';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
-import { moduleAllowed } from './moduleAccess';
-import { MODULE_UNAVAILABLE } from '../shared/moduleAccess';
+import { moduleAllowed, requireModule } from './moduleAccess';
+import { canDownloadLinkedMedia } from './linkedMedia';
+import { MODULE_UNAVAILABLE, moduleForScreen } from '../shared/moduleAccess';
 import { createAiBudget } from './aiBudget';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
@@ -75,7 +76,7 @@ import { adminOverview } from './adminOverview';
 import { createFullBackup, lastVerifiedExternalBackup } from './backupDelivery';
 import { removeStation, StationRemovalError, stationUsage } from './stationRemoval';
 import { applyDepartmentSettings } from '../shared/departments';
-import { rememberStationSettings } from '../shared/stations';
+import { rememberStationSettings, stationsOf } from '../shared/stations';
 import { searchArchive } from './archiveSearch';
 import { listNewsReportRecords, summarizeNewsReport } from './newsReport';
 import { readDepartmentWork } from './departmentWork';
@@ -255,15 +256,18 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     changeBus.emit('rev', db.currentRev());
   };
 
-  app.get('/api/v1/news/:id/corrections', requireAuth, (req: ApiRequest, res) => {
+  app.get('/api/v1/news/:id/corrections', requireAuth, requireModule('news'), (req: ApiRequest, res) => {
     try {
       const { row } = correctionTarget(db, req.auth!, req.params.id);
+      if (!moduleAllowed(req.auth!, 'news', row.d.stationId)) throw new HttpError(403, MODULE_UNAVAILABLE);
       res.setHeader('Cache-Control', 'no-store');
       res.json({ success: true, data: { newsVersion: row.v, newsTitle: row.d.title || '', newsText: row.d.content || '', records: db.listCollection('newsCorrections').map(r => r.d).filter(r => r.newsId === row.id), historyVersions: db.listHistory('news', row.id).map(h => h.version) } });
     } catch (error) { if (error instanceof NewsCorrectionError) throw new HttpError(error.status, error.message); throw error; }
   });
-  app.post('/api/v1/news/:id/corrections', requireAuth, (req: ApiRequest, res) => {
+  app.post('/api/v1/news/:id/corrections', requireAuth, requireModule('news'), (req: ApiRequest, res) => {
     try {
+      const news = db.getRow('news', req.params.id)?.d;
+      if (!moduleAllowed(req.auth!, 'news', news?.stationId)) throw new HttpError(403, MODULE_UNAVAILABLE);
       const record = createNewsCorrection(db, req.auth!, { ...req.body, newsId: req.params.id });
       changeBus.emit('rev', db.currentRev()); res.json({ success: true, data: record });
     } catch (error) { if (error instanceof NewsCorrectionError) throw new HttpError(error.status, error.message); throw error; }
@@ -600,12 +604,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   app.use('/api/v1/media', mediaTranscriptionRouter(db, config, () => changeBus.emit('rev', db.currentRev())));
 
-  app.use('/api/v1/media/resumable', requirePermission('media.upload'),
+  app.use('/api/v1/media/resumable', requirePermission('media.upload'), requireModule('media'),
     createResumableUploadRouter(db, config.dataDir, config.mediaMaxUploadBytes, (record, req) => queueCopiesForUpload(db, record, req)));
 
   app.post(
     '/api/v1/media/upload',
     requirePermission('media.upload'),
+    requireModule('media'),
     wrap(async (req, res) => {
       try {
         const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id);
@@ -633,6 +638,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!record || record.scope === 'chat' || (record.scope === 'legacy' && record.uploadedBy !== req.auth!.user.id)) {
       throw new HttpError(404, 'الملف غير موجود');
     }
+    if (!moduleAllowed(req.auth!, 'media') && !canDownloadLinkedMedia(db, req.auth!, record.id)) {
+      throw new HttpError(404, 'الملف غير موجود');
+    }
     // Prevent execution and recheck authorization before reusing a cached asset.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.setHeader('Cache-Control', record.scope === 'legacy' ? 'private, no-store' : 'private, no-cache');
@@ -648,6 +656,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post(
     '/api/v1/chat/upload',
     requireAuth,
+    requireModule('messaging'),
     wrap(async (req, res) => {
       if (assignedWorkOnly(req.auth!.can)) throw new HttpError(403, 'المراسلات غير متاحة لهذا الحساب');
       try {
@@ -661,7 +670,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   );
 
   // A file is downloaded by whoever uploaded it and by the people who may read a message carrying it.
-  app.get('/api/v1/chat/files/:id', requireAuth, (req: ApiRequest, res) => {
+  app.get('/api/v1/chat/files/:id', requireAuth, requireModule('messaging'), (req: ApiRequest, res) => {
     if (assignedWorkOnly(req.auth!.can)) throw new HttpError(403, 'المراسلات غير متاحة لهذا الحساب');
     const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
     const me = req.auth!.user.id;
@@ -677,7 +686,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.sendFile(filePath, { dotfiles: 'allow' });
   });
 
-  app.get('/api/v1/chat/history', requireAuth, (req: ApiRequest, res) => {
+  app.get('/api/v1/chat/history', requireAuth, requireModule('messaging'), (req: ApiRequest, res) => {
     if (assignedWorkOnly(req.auth!.can)) throw new HttpError(403, 'المراسلات غير متاحة لهذا الحساب');
     const channel = String(req.query.channel || '');
     const before = String(req.query.before || '');
@@ -687,7 +696,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, data: messages.reverse() });
   });
 
-  app.post('/api/v1/chat/pin', requireAuth, (req, res) => {
+  app.post('/api/v1/chat/pin', requireAuth, requireModule('messaging'), (req, res) => {
     const auth = req.auth!;
     const { channel, messageId, remove } = req.body ?? {};
     if (typeof channel !== 'string' || typeof messageId !== 'string' || typeof remove !== 'boolean') throw new HttpError(400, 'طلب تثبيت غير صالح');
@@ -710,6 +719,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   // --- Data synchronisation -------------------------------------------------
+
+  app.get('/api/v1/settings/module-history', requirePermission('system.settings'), (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ rows: db.listHistory('settings', SINGLETON_ID).map(({ data, ...revision }) => ({
+      ...revision, policy: data.moduleAccess ?? {},
+    })) });
+  });
 
   app.get('/api/v1/data', requireAuth, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -738,7 +754,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, ...page });
   });
 
-  app.get('/api/v1/saved-news-filters', requireAuth, (req, res) => {
+  app.get('/api/v1/saved-news-filters', requireAuth, requireModule('news'), (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ rows: db.listCollection('savedNewsFilters').filter(row => row.d?.ownerId === req.auth!.user.id) });
   });
@@ -804,7 +820,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post('/api/v1/data/locks/release', requireAuth, (req, res) => {
     const id = req.body?.id;
     if (typeof id !== 'string' || !/^(news|episodes|bulletinStories):[^\s]{1,200}$/.test(id)) throw new HttpError(400, 'معرّف القفل غير صالح');
-    if (id.startsWith('episodes:') && !moduleAllowed(req.auth!, 'programmes')) throw new HttpError(403, MODULE_UNAVAILABLE);
+    const collection = id.split(':')[0];
+    const lockModule = moduleForScreen(collection === 'bulletinStories' ? 'bulletins' : collection);
+    if (lockModule && !moduleAllowed(req.auth!, lockModule)) throw new HttpError(403, MODULE_UNAVAILABLE);
     const lock = db.getRow('editLocks', id);
     const released = !!lock && !lock.deleted && lock.d?.userId === req.auth!.user.id;
     if (released) sync.apply(req.auth!, [{ c: 'editLocks', op: 'delete', id } as SyncOp], req.ip);
@@ -833,11 +851,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Revision history -----------------------------------------------------
 
-  app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), (req: ApiRequest, res) => {
+  app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), requireModule('news'), (req: ApiRequest, res) => {
     denyAssignedOnlyScope(req.auth!);
     const collection = req.params.collection as CollectionName;
     if (!HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
     res.setHeader('Cache-Control', 'no-store');
+    const record = db.getRow(collection, req.params.id)?.d;
+    if (record && !canRead(req.auth!, collection, record)) throw new HttpError(403, MODULE_UNAVAILABLE);
     res.json({ success: true, data: db.listHistory(collection, req.params.id) });
   });
 
@@ -885,9 +905,10 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- News archive (settled news outside the synced working set) ------------
 
-  app.get('/api/v1/reports/news', requirePermission('news.view'), (req, res) => {
+  app.get('/api/v1/reports/news', requirePermission('news.view'), requireModule('reports'), (req, res) => {
     const auth = req.auth!;
     denyAssignedOnlyScope(auth);
+    if (!moduleAllowed(auth, 'news')) throw new HttpError(403, MODULE_UNAVAILABLE);
     if (!canOpenScreen('reports', findUserRole(auth.user, auth.roles), auth.can, auth.user.role === 'SUPER_ADMIN')) {
       throw new HttpError(403, 'لا تملك صلاحية عرض التقارير');
     }
@@ -910,7 +931,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const archiveCutoff = () =>
     new Date(Date.now() - (config.newsActiveDays > 0 ? config.newsActiveDays : 36500) * 24 * 60 * 60 * 1000).toISOString();
 
-  app.get('/api/v1/archive/news', requirePermission('news.view'), (req, res) => {
+  app.get('/api/v1/archive/news', requirePermission('news.view'), requireModule('news'), (req, res) => {
     denyAssignedOnlyScope(req.auth!);
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
     const page = Math.max(1, Math.min(1000, Math.trunc(Number(req.query.page) || 1)));
@@ -923,7 +944,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
         (typeof from === 'string' && typeof to === 'string' && from > to)) {
       throw new HttpError(400, 'فلاتر الأرشيف غير صالحة');
     }
+    const excluded = stationsOf(db.getRow('settings', SINGLETON_ID)?.d).filter(s => !moduleAllowed(req.auth!, 'news', s.id)).map(s => s.id);
     const result = searchArchive(db, archiveCutoff(), q, pageSize, (page - 1) * pageSize, {
+      ...(excluded.length ? { excludedStations: excluded } : {}),
       ...(typeof station === 'string' && station !== 'ALL' && station ? { station } : {}),
       ...(typeof from === 'string' ? { from } : {}),
       ...(typeof to === 'string' ? { to } : {}),
@@ -931,19 +954,19 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, data: { ...result, page, pageSize, activeDays: config.newsActiveDays } });
   });
 
-  app.get('/api/v1/archive/news/:id', requirePermission('news.view'), (req, res) => {
+  app.get('/api/v1/archive/news/:id', requirePermission('news.view'), requireModule('news'), (req, res) => {
     denyAssignedOnlyScope(req.auth!);
     const row = db.getRow('news', String(req.params.id));
-    if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
+    if (!row || row.d?.deletedAt || !moduleAllowed(req.auth!, 'news', row.d.stationId)) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
     res.json({ success: true, data: row.d });
   });
 
   /** Brings an archived story back into the synced newsroom (e.g. to update or republish it). */
-  app.post('/api/v1/archive/news/:id/reactivate', requirePermission('news.edit_any'), (req, res) => {
+  app.post('/api/v1/archive/news/:id/reactivate', requirePermission('news.edit_any'), requireModule('news'), (req, res) => {
     denyAssignedOnlyScope(req.auth!);
     const id = String(req.params.id);
     const row = db.getRow('news', id);
-    if (!row || row.d?.deletedAt) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
+    if (!row || row.d?.deletedAt || !moduleAllowed(req.auth!, 'news', row.d.stationId)) throw new HttpError(404, 'الخبر غير موجود في الأرشيف');
     const now = new Date().toISOString();
     db.writeRow('news', id, { ...row.d, updatedAt: now }, row.p, req.auth!.user.id);
     audit(req.auth!.user, 'NEWS_REACTIVATE', 'NEWS', id, 'INFO', `إعادة خبر من الأرشيف إلى غرفة الأخبار: ${row.d.title}`, req.ip);
@@ -953,7 +976,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Agency wire feeds -----------------------------------------------------
 
-  app.get('/api/v1/wires/status', requirePermission('news.view'), (_req, res) => {
+  app.get('/api/v1/wires/status', requirePermission('news.view'), requireModule('news'), (_req, res) => {
     res.json({ success: true, data: { pollMinutes: config.wires.pollMinutes, retentionDays: config.wires.retentionDays, feeds: getFeedStatus() } });
   });
 
@@ -967,6 +990,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post(
     '/api/v1/wires/refresh',
     requirePermission('news.create'),
+    requireModule('news'),
     wireRefreshLimiter,
     wrap(async (_req, res) => {
       const feeds = await pollWires(db, config.wires);
@@ -1080,6 +1104,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       const mode = req.body?.mode as CopilotMode;
       if (!canUseCopilot(mode, permission => req.auth!.can(permission) &&
         (permission !== 'cards.work' || moduleAllowed(req.auth!, 'assignments')) &&
+        (!permission.startsWith('news.') || moduleAllowed(req.auth!, 'editorialAi')) &&
         (!permission.startsWith('episodes.') || moduleAllowed(req.auth!, 'programmes')))) {
         throw new HttpError(403, 'لا تملك صلاحية استخدام المساعد التحريري');
       }

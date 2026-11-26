@@ -257,6 +257,7 @@ let polling: Promise<FeedStatus[]> | null = null;
 
 /** Polls every enabled feed once (concurrent calls share the same run). */
 export function pollWires(db: NewsroomDatabase, cfg: WireConfig): Promise<FeedStatus[]> {
+  if (moduleRule(db.getRow('settings', 'singleton')?.d?.moduleAccess, 'news').mode === 'disabled') return Promise.resolve(getFeedStatus());
   if (polling) return polling;
   polling = (async () => {
     const sources = db.listCollection('sources').map((r) => r.d).filter((s: any) => s?.feedEnabled && s?.feedUrl && !s.deletedAt);
@@ -287,3 +288,4 @@ export function pollWires(db: NewsroomDatabase, cfg: WireConfig): Promise<FeedSt
   });
   return polling;
 }
+import { moduleRule } from '../shared/moduleAccess';

@@ -52,7 +52,7 @@ export function searchArchive(
     total: ranked.total,
     items: ranked.items.map(toItem),
   };
-  if (ranked.total <= 2 && offset === 0 && !filters.station && !filters.from && !filters.to) {
+  if (ranked.total <= 2 && offset === 0 && !filters.station && !filters.excludedStations && !filters.from && !filters.to) {
     const fixed = didYouMean(q, db.archiveVocabulary(beforeIso));
     if (fixed && db.rankNewsArchive(beforeIso, fixed, archiveMatch(fixed), 0, 0).total > ranked.total) result.suggestion = fixed;
   }

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import { requireAuth, requirePermission, type AuthContext } from './auth';
 import { canRead } from './policy';
-import { moduleAllowed } from './moduleAccess';
+import { moduleAllowed, requireModule } from './moduleAccess';
 import { MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { sendStoredFile } from './storage';
 import type { NewsroomDatabase } from './db';
@@ -55,11 +55,14 @@ export function publishMessageWorkAttachments(db: NewsroomDatabase, collection: 
 export function messageActionsRouter(db: NewsroomDatabase, config: AppConfig, changed: () => void, HttpError: HttpErrorClass) {
   const router = Router();
 
-  router.post('/messages/:id', requireAuth, (req, res) => {
+  router.post('/messages/:id', requireAuth, requireModule('messaging'), (req, res) => {
     const auth = req.auth!;
     const { action, includeAttachments, workId } = req.body ?? {};
     if (typeof action !== 'string' || !Object.hasOwn(actionPermissions, action) || typeof includeAttachments !== 'boolean') throw new HttpError(400, 'إجراء الرسالة غير صالح');
-    if (action === 'card' && !moduleAllowed(auth, 'assignments')) throw new HttpError(403, MODULE_UNAVAILABLE);
+    const destination = action === 'card' ? 'assignments' : action === 'news' ? 'news' : action === 'request' ? 'requests' : 'media';
+    if (!moduleAllowed(auth, destination) || (destination === 'assignments' && auth.moduleAllowsNewWork?.('assignments') === false)) {
+      throw new HttpError(403, MODULE_UNAVAILABLE);
+    }
     if (!auth.can(actionPermissions[action as Action])) throw new HttpError(403, 'صلاحياتك لا تسمح بهذا الإجراء');
     if (includeAttachments && (!auth.can('media.upload') || !auth.can('media.view'))) throw new HttpError(403, 'صلاحياتك لا تسمح بحفظ مرفقات الرسالة في المكتبة');
     const message = readableActionMessage(db, auth, req.params.id);

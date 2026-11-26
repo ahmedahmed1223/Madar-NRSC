@@ -1,3 +1,4 @@
+import { requireModule } from './moduleAccess';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -368,7 +369,7 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
   });
 
   /** Where the copies of some library files are (for the badges in the library). */
-  app.post('/api/v1/storage/copies', requirePermission('media.view'), (req, res) => {
+  app.post('/api/v1/storage/copies', requirePermission('media.view'), requireModule('media'), (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: unknown) => typeof x === 'string' && /^[A-Za-z0-9_-]+$/.test(x)).slice(0, 1000) : [];
     const map = db.copiesFor(ids);
     const data: Record<string, StorageCopy[]> = {};
@@ -476,7 +477,7 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
   };
 
   // Registered before the /:provider routes, which would otherwise take «share».
-  app.get('/api/v1/storage/share/search', requirePermission('media.view'), (req, res) => {
+  app.get('/api/v1/storage/share/search', requirePermission('media.view'), requireModule('media'), (req, res) => {
     const s = settingsOf(db).share;
     if (!s.enabled) throw new HttpError(409, 'المجلد المشترك غير مفعّل');
     const query = str(req.query.q, 200);
@@ -486,7 +487,7 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
 
   app.get(
     '/api/v1/storage/:provider/search',
-    requirePermission('media.view'),
+    requirePermission('media.view'), requireModule('media'),
     wrap(async (req: Request<Record<string, string>>, res: Response) => {
       const provider = cloudOr404(req.params.provider);
       const query = str(req.query.q, 200);
@@ -505,7 +506,7 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
 
   app.get(
     '/api/v1/storage/:provider/list',
-    requirePermission('media.view'),
+    requirePermission('media.view'), requireModule('media'),
     wrap(async (req: Request<Record<string, string>>, res: Response) => {
       const provider = cloudOr404(req.params.provider);
       const at = str(req.query.at, 1000);
@@ -530,6 +531,7 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
   /** Makes a cloud file part of the library without copying it to the server. */
   app.post(
     '/api/v1/storage/:provider/import',
+    requireModule('media'),
     requirePermission('media.upload'),
     wrap(async (req: Request<Record<string, string>>, res: Response) => {
       const provider = req.params.provider === 'share' ? 'share' : cloudOr404(req.params.provider);

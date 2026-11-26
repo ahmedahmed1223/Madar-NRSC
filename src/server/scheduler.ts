@@ -7,6 +7,7 @@ import { logger } from './logger';
 import { localDateString } from '../shared/dates';
 import { Bulletin, BulletinFormat, bulletinFromFormat, isScheduledOn, scheduledBulletinId } from '../shared/bulletins';
 import { scheduledBulletinExists } from '../shared/bulletinReadiness';
+import { moduleRule } from '../shared/moduleAccess';
 
 const SYSTEM_ACTOR = { id: 'system', name: 'النشر المجدول', role: 'SUPER_ADMIN' as const };
 
@@ -19,9 +20,18 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
   const nowIso = now.toISOString();
 
   db.transaction(() => {
+    const settings = db.getRow('settings', 'singleton')?.d;
+    const rule = moduleRule(settings?.moduleAccess, 'news');
+    if (rule.mode === 'disabled') return;
     for (const row of db.listCollection('news')) {
       const item = row.d as NewsItem;
       if (item.status !== 'SCHEDULED' || item.deletedAt || !item.scheduledDate) continue;
+      if (rule.scopes?.length) {
+        const author = db.getRow('users', item.authorId)?.d;
+        if (rule.scopes.some(scope => scope.mode === 'disabled' &&
+          (!scope.stationId || scope.stationId === (row.d.stationId ?? author?.stationId)) &&
+          (!scope.departmentId || scope.departmentId === author?.departmentId))) continue;
+      }
       const due = new Date(item.scheduledDate).getTime();
       if (!Number.isFinite(due) || due > now.getTime()) continue;
       // Never publish ahead of an embargo (it waits for the embargo to lift).
@@ -48,7 +58,7 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
         ],
       };
       if (updated.isBreaking) {
-        const hours = db.getRow('settings', 'singleton')?.d?.breakingDurationHours ?? DEFAULT_BREAKING_HOURS;
+        const hours = settings?.breakingDurationHours ?? DEFAULT_BREAKING_HOURS;
         updated.breakingUntil = new Date(now.getTime() + hours * 3600_000).toISOString();
       }
 
@@ -95,6 +105,7 @@ export function createScheduledBulletins(db: NewsroomDatabase, now = new Date())
   const created: string[] = [];
   const days = [0, 1].map((d) => localDateString(new Date(now.getTime() + d * 86400_000)));
   db.transaction(() => {
+    if (moduleRule(db.getRow('settings', 'singleton')?.d?.moduleAccess, 'bulletins').mode === 'disabled') return;
     // A day already holding this format's bulletin (made by hand, imported or seeded) is not given a second one.
     const existing = db.listCollection('bulletins').map((r) => r.d as Bulletin).filter(Boolean);
     for (const row of db.listCollection('bulletinFormats')) {

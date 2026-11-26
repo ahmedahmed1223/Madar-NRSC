@@ -1,4 +1,5 @@
 import type { NewsroomDatabase } from './db';
+import { moduleAllowedForUser } from './moduleAccess';
 import { writeNotification } from './notifications';
 import { changeBus } from './sync';
 import type { PersonalTask } from '../shared/personalTasks';
@@ -10,7 +11,7 @@ export function sendDuePersonalTaskReminders(db: NewsroomDatabase, now = new Dat
     const due = db.duePersonalTaskReminders(stamp);
     for (const row of due) {
       const task = row.d as PersonalTask;
-      writeNotification(db, {
+      if (moduleAllowedForUser(db, 'personalTasks', task.ownerId)) writeNotification(db, {
         userId: task.ownerId,
         category: 'personal-task',
         type: 'TASK',

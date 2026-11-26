@@ -1,22 +1,53 @@
-import { allowsModule, moduleRule, type ModuleAvailability, type ModuleId } from '../shared/moduleAccess';
+import { allowsModule, MODULE_IDS, MODULE_UNAVAILABLE, moduleSubject, type ModuleAvailability, type ModuleId } from '../shared/moduleAccess';
+import { departmentsOf } from '../shared/departments';
 import { findUserRole } from '../shared/rbac';
+import type { RequestHandler } from 'express';
+import type { CollectionName } from '../shared/collections';
 import type { User } from '../types';
 import { loadRoles, type AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 
-export function moduleAllowed(auth: AuthContext, module: ModuleId): boolean {
-  return auth.moduleAllowed?.(module) !== false;
+export function moduleAllowed(auth: AuthContext, module: ModuleId, stationId?: string): boolean {
+  return auth.moduleAllowed?.(module, stationId) !== false;
+}
+
+export function moduleAllowsRecord(auth: AuthContext, module: ModuleId, collection: CollectionName, data: any,
+  lookup?: (collection: CollectionName, id: string) => any): boolean {
+  if (!moduleAllowed(auth, module, data?.stationId ?? data?.ownerStationId)) return false;
+  if (!data || !lookup || !auth.moduleHasStationLimits?.(module)) return true;
+  const get = (target: CollectionName, id: unknown) => typeof id === 'string' ? lookup(target, id) : undefined;
+  const station = collection === 'news' ? get('users', data.authorId)?.stationId
+    : collection === 'tasks' ? get('users', data.assigneeId || data.assignedToId)?.stationId
+    : collection === 'bulletinStories' ? get('bulletins', data.bulletinId)?.stationId
+    : collection === 'media' ? get('users', data.ownerId || data.uploadedById)?.stationId
+    : undefined;
+  return moduleAllowed(auth, module, data.stationId ?? data.ownerStationId ?? station);
 }
 
 export function moduleAvailability(auth: AuthContext): ModuleAvailability {
-  return { programmes: moduleAllowed(auth, 'programmes'), assignments: moduleAllowed(auth, 'assignments') };
+  return {
+    ...Object.fromEntries(MODULE_IDS.map(id => [id, moduleAllowed(auth, id)])) as Record<ModuleId, boolean>,
+    assignmentIntake: auth.moduleAllowsNewWork?.('assignments') ?? moduleAllowed(auth, 'assignments'),
+  };
 }
 
 /** Background work has no request context. Evaluate the recipient using the same stored policy. */
-export function moduleAllowedForUser(db: NewsroomDatabase, module: ModuleId, userId: string): boolean {
-  const access = db.getRow('settings', 'singleton')?.d?.moduleAccess;
-  const { mode } = moduleRule(access, module);
-  if (mode !== 'selected') return mode === 'everyone';
-  const user = db.getRow('users', userId)?.d as User | undefined;
-  return !!user?.isActive && !user.deletedAt && allowsModule(access, module, userId, findUserRole(user, loadRoles(db))?.id);
+export function moduleAllowedForUser(db: NewsroomDatabase, module: ModuleId, userId: string | undefined, stationId?: string): boolean {
+  const settings = db.getRow('settings', 'singleton')?.d;
+  const access = settings?.moduleAccess;
+  if (!access || Object.keys(access).length === 0) return true;
+  const user = userId ? db.getRow('users', userId)?.d as User | undefined : undefined;
+  if (user?.isActive === false || user?.deletedAt) return false;
+  const subject = user ? moduleSubject(user, findUserRole(user, loadRoles(db))?.id, departmentsOf(settings)) : { id: '' };
+  return allowsModule(access, module, subject, undefined, stationId);
+}
+
+export function requireModule(module: ModuleId): RequestHandler {
+  return (req, res, next) => {
+    if (!req.auth) return res.status(401).json({ success: false, code: 'UNAUTHENTICATED' });
+    if (!moduleAllowed(req.auth, module)) {
+      return res.status(403).json({ success: false, code: 'FORBIDDEN', error: MODULE_UNAVAILABLE });
+    }
+    next();
+  };
 }

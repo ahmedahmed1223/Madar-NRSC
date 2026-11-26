@@ -9,6 +9,7 @@ import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { isDepartmentId } from '../shared/departments';
 import { handoverDraftError, handoverPlainText, shiftHandoverPath, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
 import { canRead } from './policy';
+import { requireModule } from './moduleAccess';
 
 class HandoverError extends Error {
   constructor(public status: number, message: string, public current?: HandoverRow) { super(message); }
@@ -73,7 +74,7 @@ function checkDraftAuthority(db: NewsroomDatabase, auth: AuthContext, draft: Han
 
 export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => void): Router {
   const router = Router();
-  router.use(requireAuth);
+  router.use(requireAuth, requireModule('planning'));
   const endpoint = (operation: (auth: AuthContext, req: any) => any, mutation = false) => (req: any, res: any, next: any) => {
     try {
       res.setHeader('Cache-Control', 'no-store');

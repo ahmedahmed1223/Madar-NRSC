@@ -67,6 +67,7 @@ export function readDepartmentWork(db: NewsroomDatabase, auth: AuthContext, now 
 
   const items: DepartmentWorkItem[] = [];
   for (const assigneeId of members.keys()) for (const task of snapshot.tasks.get(assigneeId) || []) {
+    if (!moduleAllowed(auth, 'tasks', members.get(assigneeId)?.stationId)) continue;
     const id = task.id;
     items.push({ id, kind: 'task', title: task.title, assigneeId, status: normalizeTaskStatus(task.status), dueAt: task.dueDate,
       activeSeconds: task.execution?.startedAt ? taskTiming(task, now).activeSeconds : null, blockedReason: task.blockedReason, entityId: id });
@@ -75,6 +76,7 @@ export function readDepartmentWork(db: NewsroomDatabase, auth: AuthContext, now 
   for (const card of teamCards) {
     const id = card.id;
     for (const step of card.steps || []) {
+      if (!moduleAllowed(auth, 'assignments', step.stationId)) continue;
       if (!step.assigneeId || !members.has(step.assigneeId) || step.status === 'SKIPPED') continue;
       const laborMinutes = stepLaborMinutes(step);
       items.push({ id: `${id}:${step.id}`, kind: 'step', title: card.title, detail: step.title, assigneeId: step.assigneeId,

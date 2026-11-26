@@ -62,7 +62,8 @@ import { parseChannel, type ChatMessage, type Conversation } from '../shared/cha
 import { prepareDigitalPackage } from '../shared/digitalPublishing';
 import { presenterReading } from '../shared/presenterTiming';
 import { moduleForLink, moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
-import { moduleAvailability, moduleAllowed, moduleAllowedForUser } from './moduleAccess';
+import { moduleAvailability, moduleAllowed, moduleAllowedForUser, moduleAllowsRecord } from './moduleAccess';
+import { linkedMediaAsset, linkedMediaIds } from './linkedMedia';
 import { matchesQuery } from '../shared/search';
 import { episodeGuestList, guestKey } from '../shared/episodePlan';
 
@@ -344,11 +345,16 @@ export class SyncService {
     const assigned = assignedWorkOnly(auth.can) ? this.db.assignedWorkIds(auth.user.id) : [];
     const team = auth.departmentTaskMembers?.();
     const teamTasks = team ? departmentTaskIds(this.db, auth.user.id, team) : null;
-    const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks, moduleAvailability(auth)]);
+    const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks, moduleAvailability(auth), auth.user.stationId, auth.user.departmentId,
+      this.lookup('settings', SINGLETON_ID)?.moduleAccess,
+      !moduleAllowed(auth, 'media') && auth.can('media.view') ? [...linkedMediaIds(this.db, auth)].sort() : null]);
     return createHash('sha256').update(access).digest('base64url');
   }
 
   private visible(auth: AuthContext, row: EntityRow): boolean {
+    if (row.c === 'media' && !moduleAllowed(auth, 'media')) {
+      return row.deleted ? auth.can('media.view') && linkedMediaIds(this.db, auth).has(row.id) : !!linkedMediaAsset(this.db, auth, row.id);
+    }
     if (row.c === 'shiftHandovers' || row.c === 'handoverReceipts') return false;
     if (isPrivateRecord(row.c) && row.deleted) return this.db.privateRecordOwner(row.c, row.id) === auth.user.id;
     // A changed assigned-work scope prompts a fresh bootstrap; no hidden IDs travel as tombstones.
@@ -356,7 +362,7 @@ export class SyncService {
     if (row.deleted && row.c === 'tasks' && auth.departmentTaskMembers?.()) return false;
     if (row.deleted) {
       const module = moduleForRecord(row.c, row.id, row.d, id => !!this.lookup('episodes', id));
-      return !module || moduleAllowed(auth, module);
+      return !module || moduleAllowed(auth, module, row.d?.stationId);
     }
     return canRead(auth, row.c, row.d, this.lookup);
   }
@@ -373,7 +379,7 @@ export class SyncService {
 
   private canPageCollection(auth: AuthContext, collection: CollectionName): boolean {
     if (collection === 'guests') return auth.can('guests.view') || auth.can('guests.manage');
-    if (collection === 'tasks') return auth.can('tasks.view') || auth.can('tasks.create_assign') || !!auth.departmentTaskMembers?.();
+    if (collection === 'tasks') return moduleAllowed(auth, 'tasks') && (auth.can('tasks.view') || auth.can('tasks.create_assign') || !!auth.departmentTaskMembers?.());
     if (collection === 'episodes') {
       return moduleAllowed(auth, 'programmes') &&
         (auth.can('rundown.view') || auth.can('rundown.edit') || auth.can('episodes.create') || auth.can('episodes.edit') || !!auth.productionAssignments?.().size);
@@ -922,7 +928,10 @@ export class SyncService {
         const before = current?.d ?? null;
         const module = moduleForRecord(collection, id, before, key => !!this.lookup('episodes', key)) ??
           moduleForRecord(collection, id, op.d, key => !!this.lookup('episodes', key));
-        if (module && !moduleAllowed(auth, module)) return { ok: false, code: 'FORBIDDEN', message: MODULE_UNAVAILABLE } as SyncOpResult;
+        if (module && (!moduleAllowsRecord(auth, module, collection, before, this.lookup) ||
+          !moduleAllowsRecord(auth, module, collection, op.d, this.lookup))) {
+          return { ok: false, code: 'FORBIDDEN', message: MODULE_UNAVAILABLE } as SyncOpResult;
+        }
         if (isPrivateRecord(collection)) {
           const owner = this.db.privateRecordOwner(collection, id);
           if ((owner && owner !== auth.user.id) || (collection === 'workspacePrefs' && id !== auth.user.id)) {
@@ -1190,6 +1199,9 @@ export class SyncService {
           position = this.db.positionBounds(collection).min - 1;
         }
 
+        if (current && collection === 'settings' && JSON.stringify(before.moduleAccess) !== JSON.stringify(after.moduleAccess)) {
+          this.db.recordHistory(collection, id, current.v, { moduleAccess: before.moduleAccess }, auth.user.id, auth.user.fullName, MERGE_HISTORY_KEEP);
+        }
         if (current && HISTORY_COLLECTIONS.has(collection)) {
           this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
         }
@@ -1217,7 +1229,7 @@ export class SyncService {
         }
         if (collection === 'media' && kind === 'create' && !after.deletedAt && this.autoMedia) {
           const job = newAutoTranscriptionJob(after, this.autoMedia.video);
-          if (job) after.autoTranscriptionJob = job;
+          if (job && moduleAllowed(auth, 'transcription', after.stationId)) after.autoTranscriptionJob = job;
         }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'news' || collection === 'requests' || collection === 'productionCards') {

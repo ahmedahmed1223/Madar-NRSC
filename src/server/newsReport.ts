@@ -1,6 +1,7 @@
 import { managerScope, stationFilterMatcher, stationGroupsOf } from '../shared/managerToday';
 import { stationsOf } from '../shared/stations';
 import type { NewsReport, NewsReportCounts } from '../shared/newsReport';
+import { moduleAllowed } from './moduleAccess';
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 
@@ -19,7 +20,7 @@ function newsReportScope(db: NewsroomDatabase, auth: AuthContext, filters: NewsR
   const groups = allGroups.filter(group => group.stationIds.some(id => scope.has(id)));
   const matchesStation = stationFilterMatcher(filters.station, groups);
   const seesAll = stations.every(station => scope.has(station.id));
-  return { scope, includes: (stationId: string | null) => (seesAll || scope.has(stationId ?? '')) && matchesStation(stationId) };
+  return { scope, includes: (stationId: string | null) => (seesAll || scope.has(stationId ?? '')) && matchesStation(stationId) && moduleAllowed(auth, 'news', stationId ?? undefined) };
 }
 
 export function listNewsReportRecords(db: NewsroomDatabase, auth: AuthContext, filters: NewsReportFilters, status: string, page: number) {

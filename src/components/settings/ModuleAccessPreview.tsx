@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { User } from '../../types';
-import { allowsModule, MODULE_IDS, MODULE_LABELS, moduleForScreen, type ModuleAccessSettings } from '../../shared/moduleAccess';
+import { allowsModule, FEATURE_PARENTS, moduleSubject, moduleRestrictions, MODULE_IDS, MODULE_LABELS, moduleForScreen, type ModuleAccessSettings } from '../../shared/moduleAccess';
 import { evaluatePermission, findUserRole, type RoleDefinition } from '../../shared/rbac';
 import { ASSIGNABLE_SCREENS, canOpenScreen, screenLabel } from '../../shared/screens';
 import type { Department } from '../../shared/departments';
@@ -30,12 +30,15 @@ export function ModuleAccessPreview({ policy, users, roles, departments }: {
           <p className="text-xs text-slate-600">تجمع المعاينة بين الإتاحة المختارة هنا وصلاحيات الحساب المحفوظة.</p>
           <dl className="mt-2 divide-y divide-slate-200 text-sm">
             {MODULE_IDS.map(id => {
-              const included = allowsModule(policy, id, user.id, role?.id);
+              const included = allowsModule(policy, id, moduleSubject(user, role?.id, departments));
               const screens = included ? ASSIGNABLE_SCREENS.filter(nav => moduleForScreen(nav) === id &&
                 canOpenScreen(nav, role, code => evaluatePermission(user, code, roles, departments), user.role === 'SUPER_ADMIN')) : [];
+              const finishing = moduleRestrictions(policy, id, moduleSubject(user, role?.id, departments)).some(rule => rule.mode === 'finishing');
               return <div key={id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2">
                 <dt className="font-medium text-slate-800">{MODULE_LABELS[id]}</dt>
                 <dd className="text-slate-700">{!included ? 'محجوبة بإعداد إتاحة الوحدة' :
+                  finishing ? 'متاحة لإنهاء العمل القائم' :
+                  FEATURE_PARENTS[id] ? 'الضبط يتيح الميزة لحساب يملك صلاحية استخدامها' :
                   screens.length ? screens.map(screenLabel).join('، ') : 'لا توجد صفحة متاحة بصلاحيات الحساب ودوره'}</dd>
               </div>;
             })}

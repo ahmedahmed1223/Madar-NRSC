@@ -90,7 +90,7 @@ interface SettingsViewProps {
   focusSourceId?: string | null;
 }
 
-export type SettingsSection = 'station' | 'stations' | 'structure' | 'departments' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
+export type SettingsSection = 'modules' | 'station' | 'stations' | 'structure' | 'departments' | 'monitor' | 'editorial' | 'production' | 'airDisplay' | 'preferences' | 'system' | 'storage' | 'datetime' | 'categories' | 'sources' | 'data';
 type SectionGroup = 'org' | 'news' | 'system' | 'device';
 const GROUPS: { id: SectionGroup; label: string }[] = [
   { id: 'org', label: 'المؤسسة' },
@@ -110,6 +110,7 @@ const SECTIONS: { id: SettingsSection; group: SectionGroup; label: string; hint:
   { id: 'airDisplay', group: 'news', label: 'عرض الهواء', hint: 'العرض التشغيلي ونص المذيع', icon: Tv },
   { id: 'datetime', group: 'news', label: 'التاريخ والوقت', hint: 'التوقيت الموحد والتقويم والساعة', icon: CalendarClock },
   { id: 'monitor', group: 'system', label: 'مراقبة النظام', hint: 'الجلسات النشطة والتخزين والمهام الدورية وما يحتاج تدخلاً', icon: Activity },
+  { id: 'modules', group: 'system', label: 'وحدات النظام', hint: 'إتاحة وحدات العمل والميزات حسب المحطات والأقسام', icon: Settings },
   { id: 'system', group: 'system', label: 'حالة النظام', hint: 'الخادم والأمان والنسخ الاحتياطي', icon: Settings },
   { id: 'storage', group: 'system', label: 'التخزين', hint: 'Dropbox وGoogle Drive والمجلد المشترك وجسر مدار', icon: Cloud },
   { id: 'data', group: 'system', label: 'البيانات', hint: 'التصدير والاستعادة والبيانات التجريبية', icon: HardDrive },
@@ -734,7 +735,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         <label className="flex items-center gap-2 min-h-11 text-sm font-bold text-slate-700"><input type="checkbox" checked={lessMotion} onChange={e => { setLessMotion(e.target.checked); setReducedMotion(e.target.checked); }} />تقليل الحركة</label>
       </section>}
-      {section === 'system' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ModuleAccessSettings />}
+      {section === 'system' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && (
+        <button type="button" className="min-h-11 px-3 rounded-lg border border-slate-300 text-sm font-bold" onClick={() => void chooseSection('modules')}>إدارة إتاحة الوحدات</button>
+      )}
+      {section === 'modules' && RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings') && <ModuleAccessSettings />}
       {section === 'system' && <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4" aria-labelledby="settings-system-title">
         <div>
           <h2 id="settings-system-title" className="text-base font-bold text-slate-900">حالة الأمان والخادم</h2>

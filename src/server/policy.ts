@@ -22,8 +22,8 @@ import { messageWorkMediaIds, type PrivateMessageMedia } from '../shared/message
 import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
-import { allowsModule, moduleForRecord, moduleRule, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
-import { moduleAllowed } from './moduleAccess';
+import { allowsModule, moduleForRecord, moduleSubject, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
+import { moduleAllowed, moduleAllowsRecord } from './moduleAccess';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
 import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
@@ -495,15 +495,16 @@ const settingsPolicy: Policy = (input) => {
   const permissionsInvalid = permissionChangeError(input);
   if (permissionsInvalid) return permissionsInvalid;
   const users = (list?.('users') || []).filter((u: any) => u && !u.deletedAt);
-  const previousProgrammes = moduleRule(before?.moduleAccess, 'programmes');
-  const nextProgrammes = moduleRule(after?.moduleAccess, 'programmes');
-  if (JSON.stringify(previousProgrammes) !== JSON.stringify(nextProgrammes) && nextProgrammes.mode !== 'everyone') {
+  if (JSON.stringify(before?.moduleAccess) !== JSON.stringify(after?.moduleAccess)) {
     const running = new Set((list?.('onAir') || []).filter(state => state.status === 'LIVE' && !state.deletedAt).map(state => state.episodeId || state.id));
-    if (running.size && (list?.('episodes') || []).some(episode => !episode.deletedAt && running.has(episode.id)) &&
-        users.some(user => user.isActive &&
-          allowsModule(before?.moduleAccess, 'programmes', user.id, findUserRole(user, input.auth.roles)?.id) &&
-          !allowsModule(after?.moduleAccess, 'programmes', user.id, findUserRole(user, input.auth.roles)?.id))) {
-      return 'أوقف بث الحلقة المباشر قبل تقييد إتاحة البرامج';
+    for (const [collection, module] of [['episodes', 'programmes'], ['bulletins', 'bulletins']] as const) {
+      const live = (list?.(collection) || []).filter(show => !show.deletedAt && running.has(show.id));
+      if (live.some(show => users.some(user => {
+        if (!user.isActive) return false;
+        const roleId = findUserRole(user, input.auth.roles)?.id;
+        return allowsModule(before?.moduleAccess, module, moduleSubject(user, roleId, departmentsOf(before)), undefined, show.stationId) &&
+          !allowsModule(after?.moduleAccess, module, moduleSubject(user, roleId, departmentsOf(after)), undefined, show.stationId);
+      }))) return 'تنتهي جلسة البث المباشر قبل تقييد إتاحة هذه الوحدة';
     }
   }
   const removedStations = stationsOf(before).filter((s) => !stationsOf(after).some((x) => x.id === s.id));
@@ -806,6 +807,12 @@ export const POLICIES: Record<CollectionName, Policy> = {
     const error = cardChangeError(before, after, actor, ctx);
     if (error) return error;
     const scope = assignmentScope(auth.user, settings);
+    const isNewWork = !before || before.status !== 'OPEN' && after.status === 'OPEN' ||
+      after.steps.some((step: { id: string }) => !before.steps?.some((old: { id: string }) => old.id === step.id));
+    if (isNewWork && (auth.moduleAllowsNewWork?.('assignments', after.stationId) === false ||
+        after.steps.some((step: { stationId?: string }) => auth.moduleAllowsNewWork?.('assignments', step.stationId) === false))) {
+      return 'التكليفات في وضع إنهاء الأعمال القائمة، ويمكن متابعة العمل المسند حالياً';
+    }
     const recipients = new Set<string>();
     if (after.ownerId && after.ownerId !== before?.ownerId) recipients.add(after.ownerId);
     const previous = new Map<string, { assigneeId?: string; stationId?: string; departmentId?: string }>((before?.steps || []).map(step => [step.id, step]));
@@ -829,7 +836,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
       const recipient = users.find(u => u.id === id);
       const denied = scope.errorFor(recipient);
       if (denied) return denied;
-      if (recipient && !allowsModule(settings?.moduleAccess, 'assignments', id, findUserRole(recipient, auth.roles)?.id)) {
+      if (recipient && !allowsModule(settings?.moduleAccess, 'assignments', moduleSubject(recipient, findUserRole(recipient, auth.roles)?.id, departments))) {
         return 'التكليفات غير متاحة لأحد الزملاء المختارين';
       }
     }
@@ -847,7 +854,7 @@ const SUPPORT_COLLECTIONS = new Set<CollectionName>(['roles', 'users', 'settings
 /** Read filter per collection; returning false hides the row from the user. */
 export function canRead(auth: AuthContext, collection: CollectionName, data: any, lookup?: (collection: CollectionName, id: string) => any): boolean {
   const module = moduleForRecord(collection, data?.id, data, id => !!lookup?.('episodes', id));
-  if (module && !moduleAllowed(auth, module)) return false;
+  if (module && !moduleAllowsRecord(auth, module, collection, data, lookup)) return false;
   if (assignedWorkOnly(auth.can)) {
     if (!SUPPORT_COLLECTIONS.has(collection)) return false;
     if (collection === 'users') return data?.id === auth.user.id;
@@ -902,8 +909,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       const work = lookup?.(collection, id);
       if (!work || work.deletedAt || work.messageOrigin?.messageId !== reference.messageId || !messageWorkMediaIds(collection, work).includes(data.id)) return false;
       if (collection === 'requests') {
-        return auth.can('requests.manage') || any(auth, 'requests.view', 'requests.create') &&
-          (work.departmentId === departmentIdOf(auth.user) || work.requesterId === auth.user.id);
+        return moduleAllowed(auth, 'requests', work.stationId) && (auth.can('requests.manage') || any(auth, 'requests.view', 'requests.create') &&
+          (work.departmentId === departmentIdOf(auth.user) || work.requesterId === auth.user.id));
       }
       return canRead(auth, collection, work, lookup);
     }
@@ -917,7 +924,7 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'pronunciationTerms':
       return any(auth, 'system.settings', 'news.view', 'episodes.view', 'rundown.presenter_teleprompter', 'bulletins.view');
     case 'reviewThreads':
-      return data?.collection === 'news' ? auth.can('news.view') : parentVisible('bulletinStories', data?.entityId);
+      return data?.collection === 'news' ? parentVisible('news', data?.entityId) : parentVisible('bulletinStories', data?.entityId);
     case 'comments':
       return !data?.threadId || parentVisible('reviewThreads', data.threadId);
     case 'auditLogs':

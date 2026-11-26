@@ -9,7 +9,7 @@ test('administrator controls module access in settings and connected workspaces 
     await producer.page.goto('/programs');
     await expect(producer.page.getByRole('button', { name: 'إضافة برنامج جديد', exact: true })).toBeVisible();
     await openNav(admin.page, 'الإعدادات');
-    await openSettingsSection(admin.page, 'حالة النظام');
+    await openSettingsSection(admin.page, 'وحدات النظام');
     const controls = admin.page.getByRole('region', { name: 'إتاحة الوحدات' });
     const programmes = controls.getByLabel('البرامج والحلقات', { exact: true });
     const assignments = controls.getByLabel('التكليفات', { exact: true });
@@ -39,7 +39,7 @@ test('administrator controls module access in settings and connected workspaces 
     await admin.page.goto('/bulletins');
     await expect(admin.page.getByRole('heading', { name: 'النشرات', exact: true }).first()).toBeVisible();
     await openNav(admin.page, 'الإعدادات');
-    await openSettingsSection(admin.page, 'حالة النظام');
+    await openSettingsSection(admin.page, 'وحدات النظام');
     await programmes.selectOption('everyone');
     await assignments.selectOption('everyone');
     await save.click();
@@ -49,5 +49,34 @@ test('administrator controls module access in settings and connected workspaces 
     expect(producer.errors).toEqual([]);
   } finally {
     await Promise.all([admin.close(), producer.close()]);
+  }
+});
+
+test('a scoped feature can be stopped and restored from the administrative history', async ({ browser }) => {
+  const admin = await signIn(browser, 'admin@akhbar.tv');
+  const editor = await signIn(browser, 'editor@akhbar.tv');
+  try {
+    const { user } = await (await editor.page.request.get('/api/v1/auth/me')).json();
+    await openNav(admin.page, 'الإعدادات');
+    await openSettingsSection(admin.page, 'وحدات النظام');
+    const controls = admin.page.getByRole('region', { name: 'إتاحة الوحدات' });
+    if (user.stationId) await controls.getByRole('combobox', { name: 'المحطة', exact: true }).selectOption(user.stationId);
+    if (user.departmentId) await controls.getByRole('combobox', { name: 'القسم', exact: true }).selectOption(user.departmentId);
+    await controls.getByLabel('المساعد التحريري للأخبار', { exact: true }).selectOption('disabled');
+    await controls.getByRole('button', { name: 'حفظ إتاحة الوحدات' }).click();
+    await expect(controls.getByRole('status')).toHaveText('حُفظت إتاحة الوحدات');
+    const modules = async () => (await (await editor.page.request.get('/api/v1/data')).json()).modules;
+    expect(await modules()).toMatchObject({ news: true, editorialAi: false, tasks: true });
+    await editor.page.goto('/news');
+    await expect(editor.page.getByRole('heading', { name: 'الأخبار', exact: true }).first()).toBeVisible();
+    await controls.getByText('استعادة إعداد سابق', { exact: true }).click();
+    await controls.getByRole('button', { name: /معاينة المراجعة/ }).first().click();
+    await controls.getByRole('button', { name: 'حفظ إتاحة الوحدات' }).click();
+    await expect(controls.getByRole('status')).toHaveText('حُفظت إتاحة الوحدات');
+    expect(await modules()).toMatchObject({ news: true, editorialAi: true, tasks: true });
+    expect(admin.errors).toEqual([]);
+    expect(editor.errors).toEqual([]);
+  } finally {
+    await Promise.all([admin.close(), editor.close()]);
   }
 });

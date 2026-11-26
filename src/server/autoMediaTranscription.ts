@@ -2,6 +2,7 @@ import type { AppConfig } from './config';
 import type { NewsroomDatabase } from './db';
 import { logger } from './logger';
 import { createMediaTranscriber, TranscriptionError } from './mediaTranscription';
+import { moduleAllowedForUser } from './moduleAccess';
 import { uploadIdFromMedia } from './uploads';
 import type { AutoTranscriptionJob } from '../shared/mediaEditorial';
 
@@ -21,7 +22,8 @@ export function autoTranscriptionTick(db: NewsroomDatabase, config: AppConfig, c
     if (cancel?.aborted || !config.mediaTranscriptionAuto || !config.mediaTranscription) return false;
     const due = db.listCollection('media').filter(row => {
       const { autoTranscriptionJob: job, deletedAt } = row.d;
-      return !deletedAt && job && !job.failed && job.nextAt <= now.toISOString();
+      return !deletedAt && job && !job.failed && job.nextAt <= now.toISOString() &&
+        moduleAllowedForUser(db, 'transcription', row.d.ownerId ?? row.d.uploadedById, row.d.stationId);
     }).sort((a, b) => a.d.autoTranscriptionJob.nextAt.localeCompare(b.d.autoTranscriptionJob.nextAt))[0];
     if (!due) return false;
     const job: AutoTranscriptionJob = due.d.autoTranscriptionJob;
@@ -31,7 +33,7 @@ export function autoTranscriptionTick(db: NewsroomDatabase, config: AppConfig, c
         await transcribe(due.id, null, cancel);
         return true;
       } catch (error) {
-        if (cancel?.aborted) return false;
+        if (cancel?.aborted || error instanceof TranscriptionError && error.status === 403) return false;
         const retryable = !(error instanceof TranscriptionError) || error.status >= 500 || error.status === 429;
         const wait = RETRY_MINUTES[job.attempts];
         const next = { ...job, attempts: job.attempts + 1, failed: !retryable || wait === undefined,
