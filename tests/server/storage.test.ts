@@ -304,9 +304,9 @@ describe('shared folder', () => {
     try {
       const bridge = path.resolve('bridge/madar-bridge.mjs');
       const env = { ...process.env, MADAR_URL: live.baseUrl, MADAR_BRIDGE_TOKEN: token, SHARE_PATH: shareDir };
-      await run(process.execPath, [bridge, '--once'], { env });
+      const bridgeRun = await run(process.execPath, [bridge, '--once'], { env });
       const copy = server.db.copiesOf(id).find((c) => c.target === 'share')!;
-      expect(copy.state).toBe('DONE');
+      expect(copy.state, bridgeRun.stdout).toBe('DONE');
       expect(fs.readFileSync(path.join(shareDir, copy.remotePath!)).toString()).toBe('via bridge');
       expect((await editor.get('/api/v1/storage/status')).body.data.share).toMatchObject({ mode: 'bridge', bridgeOnline: true });
 

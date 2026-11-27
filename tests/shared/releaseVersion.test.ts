@@ -71,7 +71,7 @@ describe('release version', () => {
   });
 
   it('keeps the built browser, health endpoint, and built release notes in sync', async () => {
-    const build = runNpm(['run', 'build'], { encoding: 'utf8', timeout: 120_000 });
+    const build = runNpm(['run', 'build'], { encoding: 'utf8', timeout: 120_000, env: { ...process.env, NODE_ENV: 'production' } });
     expect(build.status, `${build.stdout}\n${build.stderr}`).toBe(0);
 
     const dist = path.resolve('dist');
@@ -104,7 +104,9 @@ describe('release version', () => {
     const port = address.port;
     await new Promise<void>((resolve, reject) => portProbe.close(error => error ? reject(error) : resolve()));
 
-    const builtServer = spawn(process.execPath, [path.join(dist, 'server.cjs')], {
+    expect(readdirSync(dist)).not.toContain('server.cjs');
+    expect(readdirSync(dist)).not.toContain('server.cjs.map');
+    const builtServer = spawn(process.execPath, [path.resolve('dist-server/server.cjs')], {
       env: {
         PATH: process.env.PATH,
         NODE_ENV: 'production',
@@ -146,6 +148,15 @@ describe('release version', () => {
       }
       if (!healthResponse) throw new Error(`Built server did not answer /api/health: ${startupErrors}`);
       const healthPayload = await healthResponse.json() as { status?: string; version?: string };
+      const origin = new URL(healthUrl).origin;
+      for (const asset of ['/server.cjs', '/server.cjs.map', '/assets/example.js.map']) {
+        expect((await fetch(origin + asset)).status, asset).toBe(404);
+      }
+      for (const route of ['/news', '/offline-air.html']) {
+        const response = await fetch(origin + route);
+        expect(response.ok, route).toBe(true);
+        expect(response.headers.get('content-type')).toContain('text/html');
+      }
       expect(healthPayload.status, '/api/health returned an unexpected status payload').toBe('ok');
       const healthVersion = healthPayload.version ?? 'missing';
       assertVersionAt('dist/index.html application-version vs /api/health', htmlVersion, healthVersion);

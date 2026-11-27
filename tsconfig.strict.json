@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": [
+    "src/services/http.ts",
+    "src/server/rateLimit.ts",
+    "src/server/networkDestinations.ts",
+    "src/server/storedSecrets.ts"
+  ]
+}

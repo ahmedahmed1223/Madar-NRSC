@@ -52,6 +52,7 @@ it('rehearses and restores schema 5 while classifying old uploads', async () => 
       DROP TABLE news_archive_index;
       DROP TABLE news_archive_fts;
       DROP INDEX idx_news_archive_updated;
+      DROP INDEX idx_news_scheduled;
       DROP INDEX idx_message_channel_timestamp;
       ALTER TABLE uploads DROP COLUMN scope;
       DELETE FROM schema_migrations WHERE version >= 6;

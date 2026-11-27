@@ -10,7 +10,7 @@ export function openConfiguredDatabase(dataDir: string, options: DatabaseEngineC
   if (state.activeId && state.active.engine === 'sqlite' && !fs.existsSync(path.join(dataDir, state.active.filename))) {
     throw new Error('ملف قاعدة SQLite النشطة غير موجود');
   }
-  const source = new NewsroomDatabase(dataDir, state.active, options.postgresUrl, state.activeId);
+  const source = new NewsroomDatabase(dataDir, state.active, options.postgresUrl, state.activeId, options.storedSecrets);
 
   if (!state.pending || state.pending.engine === source.engine) {
     try { saveDatabaseEngineState(dataDir, { ...state, pending: undefined, activeId: source.dbId }); }
@@ -25,7 +25,7 @@ export function openConfiguredDatabase(dataDir: string, options: DatabaseEngineC
       throw new Error('لا يمكن تبديل القاعدة مع وجود بث نشط');
     }
     source.verifyLocalUploadInventory();
-    destination = new NewsroomDatabase(dataDir, next, options.postgresUrl);
+    destination = new NewsroomDatabase(dataDir, next, options.postgresUrl, undefined, options.storedSecrets);
     const evidence = destination.importFrom(source);
     if (!destination.isHealthy() || destination.dbId !== source.dbId) throw new Error('تعذر التحقق من هوية القاعدة المنقولة');
     const records = evidence.tables.reduce((total, table) => total + table.rows, 0);

@@ -247,6 +247,15 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const contextRef = useRef<WorkContext>(savedContext);
   const leavingRef = useRef(false);
   contextRef.current = { schemaVersion: 1, definition: { activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }, page: currentPage, anchorId: anchorRef.current, anchorOffset: offsetRef.current };
+  const changePage = (nextPage: number) => {
+    restoredPosition.current = true;
+    anchorRef.current = undefined;
+    offsetRef.current = undefined;
+    // Save the user's choice even if the list unmounts before its effects run.
+    contextRef.current = { ...contextRef.current, page: nextPage, anchorId: undefined, anchorOffset: undefined };
+    saveContext(contextRef.current);
+    setPage(nextPage);
+  };
   const rememberPosition = (id?: string) => {
     anchorRef.current = id;
     const scroller = document.getElementById('app-main')?.parentElement;
@@ -261,11 +270,13 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const onReviewNews = (id: string, queue: string[]) => { rememberPosition(id); openReview(id, queue); };
   useEffect(() => {
     if (restoredPosition.current || !dataStore.isReady()) return;
-    restoredPosition.current = true;
-    setPage(currentPage);
     const scroller = document.getElementById('app-main')?.parentElement;
     if (!scroller) return;
     const frame = requestAnimationFrame(() => {
+      if (restoredPosition.current) return;
+      // A data update can cancel this frame before it runs. Leave restoration pending until applied.
+      restoredPosition.current = true;
+      setPage(currentPage);
       const target = savedContext.anchorId ? findNewsRow(scroller, savedContext.anchorId) : null;
       if (!target) scroller.scrollTop = 0;
       else if (savedContext.anchorOffset === undefined) target.scrollIntoView({ block: 'center', inline: 'nearest' });
@@ -1030,7 +1041,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 disabled={currentPage === 0}
-                onClick={() => { anchorRef.current = undefined; setPage(currentPage - 1); }}
+                onClick={() => changePage(currentPage - 1)}
                 className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 السابق
@@ -1041,7 +1052,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               <button
                 type="button"
                 disabled={currentPage >= pageCount - 1}
-                onClick={() => { anchorRef.current = undefined; setPage(currentPage + 1); }}
+                onClick={() => changePage(currentPage + 1)}
                 className="min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-40 font-bold"
               >
                 التالي

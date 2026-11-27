@@ -173,7 +173,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   const [statusComment, setStatusComment] = useState('');
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<NewsStatus | null>(null);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [draftSavedMinute, setDraftSavedMinute] = useState<number | null>(null);
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
 
   // Broadcast Production State
@@ -308,9 +308,11 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   persistDraftRef.current = () => {
     if (!loadedSnapshotRef.current || loadedSnapshotRef.current !== renderSnapshot || !isDirty || !editableStory || lockedByOther || hasEmergencyDraft) return;
     try {
-      localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: new Date().toISOString(), baseUpdatedAt }));
+      const savedAt = new Date();
+      localStorage.setItem(draftKey, JSON.stringify({ ...formFields(), savedAt: savedAt.toISOString(), baseUpdatedAt }));
       setDraftStorageFailed(false);
-      setLastSaved(new Date());
+      // Preserve immediate crash recovery while keeping the status text stable as the user types.
+      setDraftSavedMinute(Math.floor(savedAt.getTime() / 60_000));
     } catch {
       setDraftStorageFailed(true);
     }
@@ -1117,10 +1119,10 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
               {reviewMode && <span className="text-xs text-slate-600">زمن الإلقاء: <strong className="text-slate-800">{textStats.label}</strong></span>}
               {!ro && (
                 <div role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                  {saving ? 'جارٍ الحفظ على الخادم...' : saveState === 'queued' && !isDirty ? 'غير متصل: محفوظ على جهازك وسيُرسل عند عودة الاتصال' : saveState === 'failed' ? 'تعذر الحفظ؛ تعديلاتك باقية في المحرر' : saveState === 'saved' && !isDirty ? 'تم الحفظ على الخادم' : lastSaved && isDirty && !draftStorageFailed ? (
+                  {saving ? 'جارٍ الحفظ على الخادم...' : saveState === 'queued' && !isDirty ? 'غير متصل: محفوظ على جهازك وسيُرسل عند عودة الاتصال' : saveState === 'failed' ? 'تعذر الحفظ؛ تعديلاتك باقية في المحرر' : saveState === 'saved' && !isDirty ? 'تم الحفظ على الخادم' : draftSavedMinute !== null && isDirty && !draftStorageFailed ? (
                     <>
                       <CheckCircle className="w-3 h-3 text-amber-500" />
-                      تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {lastSaved.toLocaleTimeString(appLocale(), zoneOptions())})
+                      تغييرات غير محفوظة (نسخة احتياطية على هذا الجهاز {new Date(draftSavedMinute * 60_000).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })})
                     </>
                   ) : isDirty ? 'تغييرات غير محفوظة' : newsItem?.id ? 'لا توجد تغييرات غير محفوظة' : null}
                 </div>

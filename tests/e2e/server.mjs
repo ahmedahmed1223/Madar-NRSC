@@ -37,4 +37,4 @@ Object.assign(process.env, {
     LOG_LEVEL: 'warn',
 });
 process.chdir(path.dirname(distDir));
-await import(pathToFileURL(path.join(distDir, 'server.cjs')).href);
+await import(pathToFileURL(path.resolve(distDir, '../dist-server/server.cjs')).href);

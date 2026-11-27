@@ -17,7 +17,7 @@ const TITLES: Record<DatabaseOperation, string> = {
 /**
  * Re-confirms the administrator's identity (password, and the authenticator code when enabled)
  * before restoring, resetting, or taking a full copy of the database off the server. A download
- * starts once the server issued its one-time link; every download is audited.
+ * starts after the server accepts the one-time confirmation; every download is audited.
  */
 export function DatabaseOperationConfirmation({ action, fileName, totpRequired, onClose, onComplete }: {
   action: DatabaseOperation; fileName?: string; totpRequired: boolean;
@@ -41,14 +41,16 @@ export function DatabaseOperationConfirmation({ action, fileName, totpRequired, 
     form.current?.focus();
     try {
       if (isDownload) {
-        const url = await apiService.confirmedDownloadUrl(action, { fileName, password, totp: totpRequired ? totp : undefined });
+        const file = await apiService.downloadConfirmedDatabase(action, { fileName, password, totp: totpRequired ? totp : undefined });
+        const url = URL.createObjectURL(file.blob);
         setPassword(''); setTotp('');
         const link = document.createElement('a');
         link.href = url;
-        link.download = '';
+        link.download = file.fileName;
         document.body.appendChild(link);
         link.click();
         link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
         onComplete();
         return;
       }

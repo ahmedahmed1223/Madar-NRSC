@@ -1,7 +1,7 @@
 import { SETTLED_NEWS_STATUSES } from '../../shared/collections';
 import type { PostgresDatabase } from './driver';
 
-export const POSTGRES_SCHEMA_VERSION = 1;
+export const POSTGRES_SCHEMA_VERSION = 2;
 
 // Keep raw payloads and timestamps reversible. SQLite BINARY and PostgreSQL C
 // both compare UTF-8 byte order, which also keeps transfer pagination stable.
@@ -193,6 +193,12 @@ const baseline = `
     EXECUTE FUNCTION madar_delete_work_reminders();
 `;
 
+const migrations = [
+  baseline,
+  `CREATE INDEX idx_news_scheduled ON entities(position, id)
+    WHERE collection = 'news' AND deleted = 0 AND (data::json ->> 'status') = 'SCHEDULED';`,
+];
+
 export function initializePostgresSchema(db: PostgresDatabase): void {
   db.transaction(() => {
     // Existing schemas can be used by roles without CREATE on the database.
@@ -200,11 +206,12 @@ export function initializePostgresSchema(db: PostgresDatabase): void {
     if (!exists) db.exec(`CREATE SCHEMA "${db.schema}"`);
     db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
     const { rows } = db.query<{ version: number }>('SELECT version FROM schema_migrations ORDER BY version');
-    if (rows.length === 0) {
-      db.exec(baseline);
-      db.query('INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)', [POSTGRES_SCHEMA_VERSION, new Date().toISOString()]);
-    } else if (rows.length !== 1 || rows[0].version !== POSTGRES_SCHEMA_VERSION) {
+    if (rows.length > POSTGRES_SCHEMA_VERSION || rows.some(({ version }, index) => version !== index + 1)) {
       throw new Error('Incompatible PostgreSQL schema version');
+    }
+    for (let index = rows.length; index < POSTGRES_SCHEMA_VERSION; index++) {
+      db.exec(migrations[index]);
+      db.query('INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)', [index + 1, new Date().toISOString()]);
     }
     const operator = db.query<{ operator_class: string }>(`
       SELECT pg_catalog.format('%I.gin_trgm_ops', n.nspname) AS operator_class

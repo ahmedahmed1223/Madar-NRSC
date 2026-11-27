@@ -1,5 +1,8 @@
 /** Copies text in secure contexts and falls back for embedded or restricted browser windows. */
-export async function copyTextToClipboard(text: string): Promise<boolean> {
+export async function copyTextToClipboard(text: string, trigger?: HTMLButtonElement): Promise<boolean> {
+  // WebKit does not focus a button on pointer activation. Set focus now, while
+  // handling that activation, so a later clipboard response cannot steal it.
+  if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
@@ -10,6 +13,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 
   if (typeof document === 'undefined' || !document.body) return false;
+  if (trigger && !document.hasFocus()) return false;
   const previousFocus = document.activeElement;
   const textarea = document.createElement('textarea');
   textarea.value = text;
@@ -25,8 +29,11 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   } catch {
     copied = false;
   } finally {
+    const needsFocusRestore = document.activeElement === textarea;
     textarea.remove();
-    if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true });
+    if (needsFocusRestore && previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+      previousFocus.focus({ preventScroll: true });
+    }
   }
   return copied;
 }

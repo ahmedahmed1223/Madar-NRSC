@@ -4,6 +4,7 @@
  * from the database, so nothing is lost across restarts and nothing old is re-sent.
  */
 import webpush from 'web-push';
+import { Agent } from 'node:https';
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
@@ -13,11 +14,13 @@ import { categoryName, inQuietHours, wantsDelivery } from '../shared/notificatio
 import { validZone } from '../shared/dateFormat';
 import { moduleForLink } from '../shared/moduleAccess';
 import { moduleAllowedForUser } from './moduleAccess';
+import { allowedPushEndpoint, lookupPublicAddress } from './networkDestinations';
 
 const CURSOR_KEY = 'notify_delivery_rev';
 /** Notifications older than this when the worker sees them (e.g. after downtime) stay in the bell only. */
 const MAX_AGE_MS = 60 * 60 * 1000;
 const BATCH = 200;
+const pushAgent = new Agent({ lookup: lookupPublicAddress });
 
 export interface DeliveryStats {
   push: number;
@@ -96,17 +99,23 @@ export async function sendPush(db: NewsroomDatabase, config: AppConfig, userId: 
   const keys = vapidKeys(db, config);
   let sent = 0;
   for (const s of subs) {
+    // Old subscriptions may predate the endpoint policy.
+    if (!allowedPushEndpoint(s.endpoint)) {
+      db.deletePushSubscription(s.endpoint, userId);
+      continue;
+    }
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), {
+      await webpush.sendNotification({ endpoint: new URL(s.endpoint).href, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), {
         vapidDetails: { subject: config.vapid.subject, publicKey: keys.publicKey, privateKey: keys.privateKey },
         TTL: 60 * 60,
         urgency: payload.urgent ? 'high' : 'normal',
         timeout: 10_000,
+        agent: pushAgent,
       });
       sent++;
     } catch (err: any) {
       if (err?.statusCode === 404 || err?.statusCode === 410) db.deletePushSubscription(s.endpoint);
-      else logger.warn('push delivery failed', { userId, status: err?.statusCode, error: String(err?.body || err?.message || err).slice(0, 200) });
+      else logger.warn('push delivery failed', { userId, status: err?.statusCode, code: err?.code });
     }
   }
   return sent;

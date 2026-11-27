@@ -17,7 +17,7 @@ import { startAutoMediaTranscription } from './src/server/autoMediaTranscription
 import { runRetention } from './src/server/retention';
 import { pollWires } from './src/server/wires';
 import { deliverPending, initializeNotificationDelivery } from './src/server/delivery';
-import { createFullBackup } from './src/server/backupDelivery';
+import { cleanupBackupStaging, createFullBackup } from './src/server/backupDelivery';
 import { deploymentWarnings, scanDemoPasswords } from './src/server/deploymentChecks';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
@@ -37,6 +37,7 @@ async function main() {
 
   const db = openConfiguredDatabase(config.dataDir, config.database);
   await cleanupRehearsals(path.join(config.dataDir, 'rehearsals'));
+  await cleanupBackupStaging(db, config).catch(() => logger.warn('local backup staging cleanup failed'));
   await seedDatabase(db, config);
   logger.info('database ready', { engine: db.engine, rev: db.currentRev() });
   if (process.env.K_SERVICE) {
@@ -56,9 +57,17 @@ async function main() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    app.use((req, res, next) => {
+      if (/(?:\.map|\/server\.cjs)$/i.test(req.path)) {
+        res.sendStatus(404);
+        return;
+      }
+      next();
+    });
     app.use(
       express.static(distPath, {
         index: false,
+        extensions: false,
         setHeaders: (res, filePath) => {
           if (filePath.includes(`${path.sep}assets${path.sep}`)) {
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -77,16 +86,28 @@ async function main() {
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
   const backupSchedule = { stopped: false };
+  const backgroundJobs = new Map<string, Promise<unknown>>();
+  let shuttingDown = false;
+  const backgroundJob = (name: string, work: () => Promise<unknown>) => () => {
+    if (shuttingDown) return Promise.resolve();
+    const active = backgroundJobs.get(name);
+    if (active) return active;
+    const pending = Promise.resolve().then(work).finally(() => backgroundJobs.delete(name));
+    backgroundJobs.set(name, pending);
+    return pending;
+  };
   registerJob(JOBS.publish, 0.5);
   registerJob(JOBS.bulletins, 10);
   registerJob(JOBS.housekeeping, 60);
   if (config.deliverySeconds > 0) initializeNotificationDelivery(db);
-  const checkBackupIncidents = async () => {
+  const checkBackupIncidents = backgroundJob('backup-incidents', async () => {
     try {
+      const before = db.currentRev();
       await reconcileBackupIncidents(db, backupStatus(db, config.backupIntervalHours));
-      changeBus.emit('rev', db.currentRev());
+      const after = db.currentRev();
+      if (after !== before) changeBus.emit('rev', after);
     } catch { logger.warn('backup incident notifications unavailable'); }
-  };
+  });
   timers.push(setInterval(checkBackupIncidents, 60000));
   await checkBackupIncidents();
   timers.push(
@@ -107,14 +128,16 @@ async function main() {
   // Agency wire feeds.
   if (config.wires.pollMinutes > 0) {
     registerJob(JOBS.wires, config.wires.pollMinutes);
-    const poll = () => trackJob(JOBS.wires, () => pollWires(db, config.wires)).catch((err) => logger.error('wire polling failed', { error: String(err) }));
+    const poll = backgroundJob(JOBS.wires, () => trackJob(JOBS.wires, () => pollWires(db, config.wires))
+      .catch((err) => logger.error('wire polling failed', { error: String(err) })));
     timers.push(setInterval(poll, config.wires.pollMinutes * 60 * 1000));
-    setTimeout(poll, 5_000).unref();
+    timers.push(setTimeout(poll, 5_000).unref());
   }
   // Library files to Dropbox / Google Drive / the shared folder.
   if (config.storageSyncSeconds > 0) {
     registerJob(JOBS.storage, config.storageSyncSeconds / 60);
-    const copy = () => trackJob(JOBS.storage, () => runStorageSync(db, config)).catch((err) => logger.error('storage copy failed', { error: String(err) }));
+    const copy = backgroundJob(JOBS.storage, () => trackJob(JOBS.storage, () => runStorageSync(db, config))
+      .catch((err) => logger.error('storage copy failed', { error: String(err) })));
     timers.push(setInterval(copy, config.storageSyncSeconds * 1000));
   }
   // Scheduled publishing: checked every 30 seconds.
@@ -172,14 +195,10 @@ async function main() {
   if (config.autoGuestTechnicalEmail && config.mail && config.appUrl) {
     const guestJob = 'الفحص التقني قبل البث';
     registerJob(guestJob, 1);
-    let sendingInvitations = false;
-    const invite = async () => {
-      if (sendingInvitations) return;
-      sendingInvitations = true;
+    const invite = backgroundJob(guestJob, async () => {
       try { await trackJob(guestJob, () => sendDueGuestTechnicalInvitations(db, config)); }
       catch (error) { logger.error('guest technical invitations failed', { error: String(error) }); }
-      finally { sendingInvitations = false; }
-    };
+    });
     timers.push(setInterval(invite, 60_000));
     void invite();
   }
@@ -200,22 +219,19 @@ async function main() {
   // E-mail and phone/desktop push for new notifications (per-colleague preferences).
   if (config.deliverySeconds > 0) {
     registerJob(JOBS.delivery, config.deliverySeconds / 60);
-    const deliver = () => trackJob(JOBS.delivery, async () => {
+    const deliver = backgroundJob(JOBS.delivery, () => trackJob(JOBS.delivery, async () => {
       const revision = db.currentRev();
       const result = await deliverPending(db, config);
       if (db.currentRev() !== revision) changeBus.emit('rev', db.currentRev());
       return result;
-    }).catch((err) => logger.error('notification delivery failed', { error: String(err) }));
+    }).catch((err) => logger.error('notification delivery failed', { error: String(err) })));
     timers.push(setInterval(deliver, config.deliverySeconds * 1000));
     deliver();
   }
 
   if (config.backupIntervalHours > 0) {
     registerJob(JOBS.backup, config.backupIntervalHours * 60);
-    let backingUp = false;
-    const backup = async () => {
-      if (backingUp) return;
-      backingUp = true;
+    const backup = backgroundJob(JOBS.backup, async () => {
       try {
         await databaseOperationLock(db).run(async () => {
         // Same full bundle as «نسخة احتياطية كاملة الآن» (database + uploads + SHA-256 manifest).
@@ -227,8 +243,8 @@ async function main() {
         if (err instanceof DatabaseOperationBusy) return;
         recordJob(JOBS.backup, err);
         logger.error('complete backup failed', { error: String(err) });
-      } finally { backingUp = false; await checkBackupIncidents(); }
-    };
+      } finally { await checkBackupIncidents(); }
+    });
     const scheduleNextBackup = () => {
       if (backupSchedule.stopped) return;
       const status = backupStatus(db, config.backupIntervalHours, config);
@@ -244,7 +260,8 @@ async function main() {
 
   // Deployment settings that put production at risk: loud in the log, and listed in «مراقبة النظام».
   const warnDeployment = () => deploymentWarnings(db, config).forEach((w) => (w.level === 'error' ? logger.error : logger.warn)(`DEPLOYMENT WARNING: ${w.log}`));
-  void scanDemoPasswords(db, config).then(warnDeployment).catch((err) => logger.warn('demo password check failed', { error: String(err) }));
+  void backgroundJob('scan-demo-passwords', () => scanDemoPasswords(db, config).then(warnDeployment)
+    .catch((err) => logger.warn('demo password check failed', { error: String(err) })))();
 
   const server = app.listen(config.port, config.host, () => {
     logger.info('server listening', { url: `http://localhost:${config.port}`, env: config.isProduction ? 'production' : 'development' });
@@ -252,7 +269,6 @@ async function main() {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
 
-  let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
@@ -269,6 +285,7 @@ async function main() {
     }, 10_000);
     force.unref();
     server.close(async () => {
+      await Promise.allSettled(backgroundJobs.values());
       await journal.close();
       db.close();
       logger.info('shutdown complete');

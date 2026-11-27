@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -29,6 +32,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Type check
         run: npm run lint
       - name: Tests
@@ -91,7 +96,9 @@ jobs:
           COOKIE_SECURE: 'false'
           PORT: '3100'
         run: |
-          node dist/server.cjs &
+          node dist-server/server.cjs &
+          smoke_pid=$!
+          trap 'kill "$smoke_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/api/ready && break; sleep 1; done
           curl -sf http://127.0.0.1:3100/api/ready
           curl -sf http://127.0.0.1:3100/ | grep -q '<div id="root">'
@@ -102,6 +109,8 @@ jobs:
         run: node tests/e2e/run-isolated.mjs tests/e2e/offline-air-preparation.spec.ts tests/e2e/offline-air-shell.spec.ts tests/e2e/offline-air-store.spec.ts tests/e2e/offline-air-drafts.spec.ts tests/e2e/prompter-controls.spec.ts tests/e2e/production-lists-settings.spec.ts tests/e2e/production-name-fields.spec.ts tests/e2e/air-text-display.spec.ts
       - name: Recover an in-flight editor lock after navigation
         run: node tests/e2e/run-isolated.mjs lock-unload lock-reload-leave
+      - name: Verify accessibility in both themes and on phones
+        run: node tests/e2e/run-isolated.mjs accessibility.spec.ts
       - name: Database administration workflows
         env:
           POSTGRES_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci

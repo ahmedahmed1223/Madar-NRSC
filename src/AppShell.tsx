@@ -5,6 +5,7 @@ import { dataStore } from './services/dataStore';
 import { setPasswordChangeHandler, setUnauthorizedHandler } from './services/http';
 import { LoginView } from './components/auth/LoginView';
 import { ChangePasswordView } from './components/auth/ChangePasswordView';
+import { hasPreparedOfflineShell } from './services/offlineAirShell';
 
 const App = lazy(() => import('./App'));
 
@@ -15,6 +16,29 @@ const FullScreenMessage: React.FC<{ children: React.ReactNode }> = ({ children }
     <div className="flex flex-col items-center gap-3 text-sm font-semibold text-center">{children}</div>
   </div>
 );
+
+function OfflineMessage() {
+  const [airPrepared, setAirPrepared] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void hasPreparedOfflineShell().then(prepared => {
+      if (mounted) setAirPrepared(prepared);
+    });
+    return () => { mounted = false; };
+  }, []);
+  return (
+    <FullScreenMessage>
+      <AlertTriangle className="w-8 h-8 text-amber-400" aria-hidden="true" />
+      <span role="status">غير متصل — سيفتح «مدار» تلقائياً عند عودة الاتصال. ما حفظته على هذا الجهاز باقٍ.</span>
+      {airPrepared && <a
+        href="/offline-air.html"
+        className="inline-flex min-h-11 items-center rounded-lg bg-blue-600 px-4 font-semibold text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300"
+      >
+        فتح وضع الهواء دون اتصال
+      </a>}
+    </FullScreenMessage>
+  );
+}
 
 /**
  * Authentication gate: resolves the session, forces a password change when required,
@@ -135,14 +159,7 @@ export default function AppShell() {
     );
   }
 
-  if (phase === 'offline') {
-    return (
-      <FullScreenMessage>
-        <AlertTriangle className="w-8 h-8 text-amber-400" aria-hidden="true" />
-        <span role="status">غير متصل — سيفتح «مدار» تلقائياً عند عودة الاتصال. ما حفظته على هذا الجهاز باقٍ.</span>
-      </FullScreenMessage>
-    );
-  }
+  if (phase === 'offline') return <OfflineMessage />;
 
   if (phase === 'login') return <LoginView onLogin={handleLogin} notice={notice} />;
 

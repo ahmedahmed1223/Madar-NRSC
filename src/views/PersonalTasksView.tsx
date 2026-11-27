@@ -115,8 +115,8 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
       void write(task.id, () => apiService.deletePersonalTask(task.id), 'حُذفت المهمة الشخصية.', () => { if (focusId) onClearFocus(); });
     }
   };
-  const copyTask = async (task: PersonalTask) => {
-    const copied = await copyTextToClipboard([task.title, task.notes, task.dueAt ? `الموعد: ${new Date(task.dueAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}` : ''].filter(Boolean).join('\n'));
+  const copyTask = async (task: PersonalTask, trigger: HTMLButtonElement) => {
+    const copied = await copyTextToClipboard([task.title, task.notes, task.dueAt ? `الموعد: ${new Date(task.dueAt).toLocaleString(appLocale(), { ...zoneOptions(), dateStyle: 'short', timeStyle: 'short' })}` : ''].filter(Boolean).join('\n'), trigger);
     setFeedback({ error: !copied, text: copied ? 'نُسخت المهمة إلى الحافظة.' : 'تعذّر النسخ إلى الحافظة.' });
   };
   const setDueInHours = (hours: number) => {
@@ -190,7 +190,7 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
                   {task.completed ? <Circle className="size-4" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
                   {task.completed ? 'إعادة فتح' : 'إكمال'}
                 </button>
-                <button type="button" disabled={busy || pending(task.id)} className={`${secondary} min-w-11 justify-center`} aria-label={`نسخ ${task.title}`} onClick={() => void copyTask(task)}>
+                <button type="button" disabled={busy || pending(task.id)} className={`${secondary} min-w-11 justify-center`} aria-label={`نسخ ${task.title}`} onClick={(event) => void copyTask(task, event.currentTarget)}>
                   <Copy className="size-4" aria-hidden="true" />
                 </button>
                 <button type="button" disabled={busy || pending(task.id)} className={`${secondary} min-w-11 text-rose-700`} aria-label={`حذف ${task.title}`} onClick={() => void remove(task)}><Trash2 className="size-4" aria-hidden="true" /></button>

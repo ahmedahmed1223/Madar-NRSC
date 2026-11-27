@@ -37,6 +37,12 @@ start() {
 }
 
 start
+for private_asset in server.cjs server.cjs.map assets/example.js.map; do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$endpoint/$private_asset")"
+  test "$code" = "404"
+done
+curl -fsS "$endpoint/news" >/dev/null
+curl -fsS "$endpoint/offline-air.html" >/dev/null
 curl -fsS -c "$credentials" -H 'X-NRCS-Client: web' -H 'Content-Type: application/json' \
   -d '{"email":"container-check@example.com","password":"InitialContainer2026"}' "$endpoint/api/v1/auth/login" >/dev/null
 curl -fsS -b "$credentials" -H 'X-NRCS-Client: web' -H 'Content-Type: application/json' \

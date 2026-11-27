@@ -3,6 +3,10 @@ services:
     build: .
     image: madar-nrcs:latest
     restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     # Reachable from this machine only: put an HTTPS reverse proxy in front (example below) and
     # set TRUST_PROXY=loopback. Publishing "3000:3000" on all interfaces without a proxy serves
     # plain HTTP to the network, where secure cookies (COOKIE_SECURE=true) cannot work.

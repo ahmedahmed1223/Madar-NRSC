@@ -1,23 +1,23 @@
 {
   "name": "madar-nrcs",
   "private": true,
-  "version": "4.7.0",
+  "version": "4.7.1",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist-server/server.cjs",
+    "start": "node dist-server/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"for (const dir of ['dist', 'dist-server']) require('node:fs').rmSync(dir, { recursive: true, force: true })\"",
+    "lint": "npm run typecheck && biome lint src",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.strict.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm test && npm run build",
     "release:version": "node scripts/set-release-version.mjs",
     "test:e2e": "npm run build && node tests/e2e/run-isolated.mjs",
     "test:e2e:offline-air": "npm run build && playwright test tests/e2e/offline-air-shell.spec.ts",
-    "test:e2e:work-controls": "playwright test --config playwright.work-controls.config.ts"
+    "test:e2e:work-controls": "node tests/e2e/run-isolated.mjs --config playwright.work-controls.config.ts"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
@@ -32,6 +32,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.9",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
     "@playwright/test": "^1.65.1",
@@ -48,14 +49,12 @@
     "@types/supertest": "^7.2.1",
     "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.3.0",
-    "autoprefixer": "^10.7.0",
     "axe-core": "^4.14.1",
     "docx": "^9.16.0",
     "dompurify": "^3.5.0",
     "esbuild": "^0.28.2",
     "jszip": "^3.10.2",
     "lucide-react": "^1.80.0",
-    "motion": "^14.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

@@ -45,7 +45,7 @@ import { INITIAL_SETTINGS } from './mockData';
 import { settingsError } from '../shared/settings';
 import { dataStore } from './dataStore';
 import { authClient } from './authClient';
-import { apiFetch } from './http';
+import { apiFetch, downloadDatabaseFile } from './http';
 import { newId } from '../shared/ids';
 
 export interface WireFeedStatus {
@@ -2518,10 +2518,6 @@ export class ApiService {
     return res.data;
   }
 
-  static getExportDbUrl(): string {
-    return '/api/v1/db/export';
-  }
-
   static async getBackups(): Promise<DbBackupFileInfo[]> {
     const res = await apiFetch<{ data: DbBackupFileInfo[] }>('/api/v1/db/backups');
     return res.data;
@@ -2545,12 +2541,12 @@ export class ApiService {
     return (await apiFetch<{ data: { token: string; expiresAt: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: input, confirmationErrors: true })).data;
   }
 
-  /** Confirms the identity again before a full database file leaves the server; returns the one-time download link. */
-  static async confirmedDownloadUrl(kind: 'download' | 'export', input: { fileName?: string; password: string; totp?: string }): Promise<string> {
+  /** Sends the one-time confirmation in the request body before reading the file. */
+  static async downloadConfirmedDatabase(kind: 'download' | 'export', input: { fileName?: string; password: string; totp?: string }) {
     const { token } = (await apiFetch<{ data: { token: string } }>('/api/v1/db/confirm-operation', { method: 'POST', json: { action: kind, ...input }, confirmationErrors: true })).data;
-    return kind === 'download'
-      ? `/api/v1/db/backups/download?fileName=${encodeURIComponent(input.fileName || '')}&confirmationToken=${encodeURIComponent(token)}`
-      : `/api/v1/db/export?confirmationToken=${encodeURIComponent(token)}`;
+    return downloadDatabaseFile(kind === 'download' ? '/api/v1/db/backups/download' : '/api/v1/db/export', {
+      fileName: input.fileName, confirmationToken: token,
+    });
   }
 
   /** Colleagues, general managers and open card steps still belonging to a station. */

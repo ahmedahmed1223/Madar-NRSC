@@ -34,7 +34,7 @@ import {
  * network, which also reports the folder's files so the library can search them.
  */
 
-export const BRIDGE_VERSION = '1.0.0';
+export const BRIDGE_VERSION = '1.1.0';
 const BRIDGE_ONLINE_MS = 90_000;
 const EXT_TO_MIME = Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).map(([mime, ext]) => [ext, mime]));
 /** Extensions not in the upload list that are still useful to bring in from a share/cloud. */

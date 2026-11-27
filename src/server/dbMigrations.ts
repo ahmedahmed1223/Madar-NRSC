@@ -251,4 +251,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         END;
     `,
   },
+  {
+    version: 10,
+    sql: `
+      CREATE INDEX idx_news_scheduled ON entities(position, id)
+        WHERE collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') = 'SCHEDULED';
+    `,
+  },
 ];

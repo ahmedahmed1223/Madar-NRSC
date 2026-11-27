@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import type { AddressInfo } from 'net';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestServer } from '../helpers';
 import { deliverPending, notificationEmail, openUrl } from '../../src/server/delivery';
 import { writeNotification } from '../../src/server/notifications';
@@ -15,14 +15,14 @@ let server: Awaited<ReturnType<typeof createTestServer>>;
 let receiver: https.Server;
 let received: { headers: http.IncomingHttpHeaders; body: Buffer }[] = [];
 let status = 201;
-let endpoint = '';
+const endpoint = 'https://fcm.googleapis.com/push/abc';
+let certificateDirectory: string;
 
 beforeAll(async () => {
   server = await createTestServer({ APP_URL: 'https://madar.example.com' });
   // web-push only speaks HTTPS: a throwaway self-signed receiver, trusted in this test process only.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'push-'));
+  const dir = certificateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'push-'));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1', '-keyout', path.join(dir, 'k.pem'), '-out', path.join(dir, 'c.pem')], { stdio: 'ignore' });
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   receiver = https.createServer({ key: fs.readFileSync(path.join(dir, 'k.pem')), cert: fs.readFileSync(path.join(dir, 'c.pem')) }, (req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c) => chunks.push(c));
@@ -33,11 +33,21 @@ beforeAll(async () => {
     });
   });
   await new Promise<void>((r) => receiver.listen(0, '127.0.0.1', () => r()));
-  endpoint = `https://127.0.0.1:${(receiver.address() as AddressInfo).port}/push/abc`;
+  // Keep provider validation and Web Push encoding real. Only route the test socket to our fixture.
+  const request = https.request.bind(https);
+  vi.spyOn(https, 'request').mockImplementation(((options: https.RequestOptions, callback: (res: http.IncomingMessage) => void) => {
+    expect(options.hostname).toBe('fcm.googleapis.com');
+    return request({
+      ...options, hostname: '127.0.0.1', port: (receiver.address() as AddressInfo).port,
+      agent: false, rejectUnauthorized: false,
+    }, callback);
+  }) as typeof https.request);
 });
 afterAll(() => {
+  vi.restoreAllMocks();
   receiver.close();
   server.close();
+  fs.rmSync(certificateDirectory, { recursive: true, force: true });
 });
 
 /** A subscription with real P-256 keys, as a browser would create it. */

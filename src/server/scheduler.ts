@@ -23,19 +23,21 @@ export function publishDueScheduledNews(db: NewsroomDatabase, now = new Date()):
     const settings = db.getRow('settings', 'singleton')?.d;
     const rule = moduleRule(settings?.moduleAccess, 'news');
     if (rule.mode === 'disabled') return;
-    for (const row of db.listCollection('news')) {
+    const authors = new Map<string, ReturnType<NewsroomDatabase['getRow']>>();
+    for (const row of db.listScheduledNews()) {
       const item = row.d as NewsItem;
-      if (item.status !== 'SCHEDULED' || item.deletedAt || !item.scheduledDate) continue;
-      if (rule.scopes?.length) {
-        const author = db.getRow('users', item.authorId)?.d;
-        if (rule.scopes.some(scope => scope.mode === 'disabled' &&
-          (!scope.stationId || scope.stationId === (row.d.stationId ?? author?.stationId)) &&
-          (!scope.departmentId || scope.departmentId === author?.departmentId))) continue;
-      }
+      if (item.deletedAt || !item.scheduledDate) continue;
       const due = new Date(item.scheduledDate).getTime();
       if (!Number.isFinite(due) || due > now.getTime()) continue;
       // Never publish ahead of an embargo (it waits for the embargo to lift).
       if (item.embargoUntil && Date.parse(item.embargoUntil) > now.getTime()) continue;
+      if (rule.scopes?.length) {
+        if (!authors.has(item.authorId)) authors.set(item.authorId, db.getRow('users', item.authorId));
+        const author = authors.get(item.authorId)?.d;
+        if (rule.scopes.some(scope => scope.mode === 'disabled' &&
+          (!scope.stationId || scope.stationId === (row.d.stationId ?? author?.stationId)) &&
+          (!scope.departmentId || scope.departmentId === author?.departmentId))) continue;
+      }
 
       const updated: NewsItem = {
         ...item,

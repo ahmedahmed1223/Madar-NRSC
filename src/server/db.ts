@@ -16,6 +16,8 @@ import { initializePostgresSchema } from './postgres/schema';
 import { applySqliteMigrations, openSqliteDatabase } from './sqliteDatabase';
 import { rankPostgresArchive, rebuildPostgresArchive, updatePostgresArchiveEntry } from './postgresArchive';
 import { postgresStorageStats } from './postgresStats';
+import { StoredSecrets, type StoredSecretsOptions } from './storedSecrets';
+import { readConsoleQuery } from './sqlConsole';
 
 function archiveScopeParameters(filters: NewsArchiveFilters) {
   return Object.fromEntries((filters.excludedStations ?? []).map((station, index) => ['excludedStation' + index, station]));
@@ -159,8 +161,11 @@ export class NewsroomDatabase {
   private archiveVocabularyCache?: { revision: number; before: string; vocabulary: Vocabulary };
   private newsReportCache = { revision: -1, periods: new Map<string | null, NewsReportGroup[]>() };
 
+  private readonly storedSecrets: StoredSecrets;
+
   constructor(dataDir: string, private readonly target: DatabaseTarget = { engine: 'sqlite', filename: 'newsroom.sqlite' },
-    private readonly postgresUrl?: string, private readonly startupIdentity?: string) {
+    private readonly postgresUrl?: string, private readonly startupIdentity?: string, storedSecrets?: StoredSecretsOptions) {
+    this.storedSecrets = new StoredSecrets(storedSecrets);
     this.dataDir = dataDir;
     this.engine = target.engine;
     this.filePath = path.join(dataDir, target.engine === 'sqlite' ? target.filename : 'newsroom.sqlite');
@@ -180,6 +185,13 @@ export class NewsroomDatabase {
         finally { probe.close(); }
       }
       this.db = openSqliteDatabase(this.filePath);
+      try {
+        this.db.pragma('secure_delete = ON');
+        if (this.storedSecrets.migrate(this.db)) this.db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch (error) {
+        this.db.close();
+        throw error;
+      }
       return;
     }
     if (!this.postgresUrl) throw new Error('يتطلب تشغيل PostgreSQL رابط اتصال مضبوطًا على الخادم');
@@ -192,6 +204,7 @@ export class NewsroomDatabase {
         this.verifyStartupIdentity(identity);
       }
       initializePostgresSchema(postgres);
+      this.storedSecrets.migrate(postgres);
       this.db = postgres;
     } catch (error) {
       postgres.close();
@@ -285,11 +298,12 @@ export class NewsroomDatabase {
 
   getMeta(key: string): string | null {
     const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined;
-    return row?.value ?? null;
+    return row ? this.storedSecrets.decodeMeta(key, row.value) : null;
   }
 
   setMeta(key: string, value: string) {
-    this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+    this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, this.storedSecrets.encodeMeta(key, value));
   }
 
   pruneExternalIntake(prefix: string, now: string) {
@@ -313,6 +327,13 @@ export class NewsroomDatabase {
     const sql = `SELECT * FROM entities WHERE collection = ? AND deleted = 0 ORDER BY position ASC, id ASC${opts.limit ? ' LIMIT ?' : ''}`;
     const stmt = this.db.prepare(sql);
     const rows = (opts.limit ? stmt.all(collection, opts.limit) : stmt.all(collection)) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  listScheduledNews(): EntityRow[] {
+    const rows = this.db.prepare(`SELECT * FROM entities
+      WHERE collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') = 'SCHEDULED'
+      ORDER BY position ASC, id ASC`).all() as RawEntityRow[];
     return rows.map(toEntityRow);
   }
 
@@ -763,7 +784,7 @@ export class NewsroomDatabase {
       mustChangePassword: !!r.must_change_password,
       failedAttempts: r.failed_attempts,
       lockedUntil: r.locked_until,
-      totpSecret: r.totp_secret ?? null,
+      totpSecret: this.storedSecrets.decodeTotp(r.user_id, r.totp_secret ?? null),
       totpEnabled: !!r.totp_enabled,
       totpLastCounter: r.totp_last_counter ?? 0,
     };
@@ -773,7 +794,7 @@ export class NewsroomDatabase {
   setTotp(userId: string, secret: string | null, enabled: boolean) {
     this.db
       .prepare('UPDATE user_credentials SET totp_secret = ?, totp_enabled = ?, totp_last_counter = 0 WHERE user_id = ?')
-      .run(secret, enabled ? 1 : 0, userId);
+      .run(this.storedSecrets.encodeTotp(userId, secret), enabled ? 1 : 0, userId);
   }
 
   /** Records the last accepted time-step so a code cannot be replayed. */
@@ -1070,7 +1091,16 @@ export class NewsroomDatabase {
   }
 
   updateCredentialEmail(userId: string, email: string) {
-    this.db.prepare('UPDATE user_credentials SET email = ? WHERE user_id = ?').run(email, userId);
+    try {
+      this.db.prepare('UPDATE user_credentials SET email = ? WHERE user_id = ?').run(email, userId);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      // Updating only email can violate the unique email index on either engine.
+      if (code === '23505' || code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        throw Object.assign(new Error('Credential email already in use'), { code: 'CREDENTIAL_EMAIL_IN_USE' });
+      }
+      throw error;
+    }
   }
 
   deleteCredentials(userId: string) {
@@ -1240,34 +1270,7 @@ export class NewsroomDatabase {
    * row-returning statements are allowed; credential/session tables are off limits.
    */
   runReadOnlyQuery(sql: string, maxRows = 1000) {
-    const started = Date.now();
-    const trimmed = sql.trim().replace(/;\s*$/, '');
-    if (!trimmed) throw new Error('الاستعلام فارغ');
-    if (/\b(user_credentials|sessions|totp_secret)\b/i.test(trimmed)) {
-      throw new Error('لا يُسمح بالاستعلام عن جداول بيانات الدخول والجلسات');
-    }
-    const ro = this.db instanceof PostgresDatabase ? openSqliteDatabase(':memory:', false)
-      : new Database(this.filePath, { readonly: true, fileMustExist: true });
-    try {
-      if (this.db instanceof PostgresDatabase) {
-        transferDatabase(this.db, 'postgresql', ro, 'sqlite', ['entities', 'uploads', 'entity_history', 'upload_copies',
-          'share_index', 'share_fetches', 'work_reminders']);
-      }
-      const stmt = ro.prepare(trimmed);
-      if (!stmt.readonly || !stmt.reader) {
-        throw new Error('وحدة الاستعلام للقراءة فقط: يُسمح بجمل SELECT فقط');
-      }
-      const columns = stmt.columns().map((c) => c.name);
-      const values: unknown[][] = [];
-      stmt.raw(true);
-      for (const row of stmt.iterate() as Iterable<unknown[]>) {
-        values.push(row);
-        if (values.length >= maxRows) break;
-      }
-      return { columns, values, rowCount: values.length, executionTimeMs: Date.now() - started, truncated: values.length >= maxRows };
-    } finally {
-      ro.close();
-    }
+    return readConsoleQuery(this.db, sql, maxRows);
   }
 
   async createBackup(kind?: 'auto' | 'prerestore', retention = 20): Promise<DbBackupFileInfo> {
@@ -1365,6 +1368,7 @@ export class NewsroomDatabase {
         if (!required.every(column => actual.some(c => c.name === column.name && c.type === column.type && c.pk === column.pk))) throw new Error('Incompatible snapshot');
       }
     } finally { if (expected !== this.db) expected.close(); }
+    this.storedSecrets.migrate(probe, true);
   }
 
   /** Replace the live database with a validated backup (a safety backup is taken first). */
@@ -1375,6 +1379,10 @@ export class NewsroomDatabase {
       try {
         if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
         this.checkBackupSchema(probe);
+        // Protect legacy snapshots and check existing ciphertext before replacing the active database.
+        probe.pragma('journal_mode = DELETE');
+        probe.pragma('secure_delete = ON');
+        this.storedSecrets.migrate(probe);
       } finally { probe.close(); }
       await this.createBackup('prerestore', retention);
       beforeReplace?.();

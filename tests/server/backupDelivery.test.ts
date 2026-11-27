@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { createApp } from '../../src/server/app';
 import { NewsroomDatabase } from '../../src/server/db';
-import { createFullBackup, deliverBackup, lastVerifiedExternalBackup } from '../../src/server/backupDelivery';
+import { cleanupBackupStaging, createFullBackup, deliverBackup, lastVerifiedExternalBackup } from '../../src/server/backupDelivery';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
 let destination: string;
@@ -47,6 +47,11 @@ it('restores a verified complete bundle and serves an episode, its assignment an
   expect((await server.db.verifyBackup(backup.fileName)).valid).toBe(true);
   await deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 });
   const bundle = path.join(destination, `${backup.fileName}.bundle`);
+  // A later generation has different bytes. The first generation must still recover
+  // independently after the live file is gone, including on copy-on-write filesystems.
+  await fs.writeFile(path.join(server.dir, 'uploads', 'test.txt'), 'newer');
+  await createFullBackup(server.db, { backupDirectory: destination, backupRetention: 2 });
+  await fs.unlink(path.join(server.dir, 'uploads', 'test.txt'));
   expect(await fs.readFile(path.join(bundle, 'uploads', 'test.txt'), 'utf8')).toBe('media');
   const manifest = JSON.parse(await fs.readFile(path.join(bundle, 'manifest.json'), 'utf8'));
   expect(manifest.files).toHaveLength(2);
@@ -86,6 +91,49 @@ it('never reports a complete bundle when a referenced upload is missing', async 
   const backup = await server.db.createBackup('auto');
   await expect(deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 })).rejects.toThrow();
   expect(await fs.readdir(destination)).toEqual([]);
+  expect(await fs.readdir(server.db.backupsDir)).toEqual([backup.fileName]);
+});
+
+it('cleans abandoned local staging at boot without touching complete backups', async () => {
+  const complete = 'newsroom_backup_2026-08-01T00-00-00-000Z.sqlite.bundle';
+  const next = 'newsroom_backup_2026-08-02T00-00-00-000Z.sqlite.bundle';
+  const own = createHash('sha256').update(server.db.dbId).digest('hex');
+  const stale = path.join(destination, `${complete}.pending-${own}`);
+  const recent = `${next}.pending-${own}`;
+  const anotherOrigin = `${complete}.pending-${'0'.repeat(64)}`;
+  await fs.mkdir(path.join(server.db.backupsDir, complete));
+  await fs.mkdir(path.join(server.db.backupsDir, `${complete}.pending`));
+  await fs.mkdir(path.join(server.db.backupsDir, 'unrelated.pending'));
+  await fs.mkdir(stale);
+  await fs.utimes(stale, new Date(0), new Date(0));
+  await fs.mkdir(path.join(destination, recent));
+  await fs.mkdir(path.join(destination, anotherOrigin));
+  await cleanupBackupStaging(server.db, { backupDirectory: destination });
+  expect((await fs.readdir(server.db.backupsDir)).sort()).toEqual([complete, 'unrelated.pending'].sort());
+  expect((await fs.readdir(destination)).sort()).toEqual([anotherOrigin, recent].sort());
+});
+
+it('leaves an older external bundle intact and cleans its own staging when delivery cannot be committed', async () => {
+  const backup = await server.db.createBackup('auto');
+  const name = `${backup.fileName}.bundle`;
+  const existing = path.join(destination, name);
+  await fs.mkdir(existing);
+  await fs.writeFile(path.join(existing, 'manifest.json'), 'existing generation');
+  await expect(deliverBackup(server.db, backup.fileName, { directory: destination, retention: 2 })).rejects.toThrow();
+  expect(await fs.readdir(destination)).toEqual([name]);
+  expect(await fs.readFile(path.join(existing, 'manifest.json'), 'utf8')).toBe('existing generation');
+  expect(await fs.stat(path.join(server.db.backupsDir, name))).toBeTruthy();
+});
+
+it('prunes only app-owned complete generations after a successful external delivery', async () => {
+  const config = { backupDirectory: destination, backupRetention: 1 };
+  const legacy = 'newsroom_backup_2000-01-01T00-00-00-000Z.sqlite.bundle';
+  await fs.mkdir(path.join(destination, legacy));
+  await fs.writeFile(path.join(destination, legacy, 'manifest.json'), JSON.stringify({ format: 1 }));
+  const prior = await createFullBackup(server.db, config, 'auto');
+  const current = await createFullBackup(server.db, config);
+  expect(current.file.fileName).not.toBe(prior.file.fileName);
+  expect((await fs.readdir(destination)).sort()).toEqual([legacy, `${current.file.fileName}.bundle`].sort());
 });
 
 it('records only verified external delivery for the same configured destination', async () => {

@@ -1,5 +1,6 @@
 import path from 'path';
 import { z } from 'zod';
+import { storedSecretKeyFormat } from './storedSecrets';
 
 export const AI_PROVIDERS = ['gemini', 'openai', 'openrouter'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
@@ -35,6 +36,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     DATABASE_ENGINE: z.enum(['sqlite', 'postgresql']).default('sqlite'),
     POSTGRES_URL: z.string().trim().refine(value => !value || /^postgres(?:ql)?:\/\//.test(value), 'must be a PostgreSQL connection URL').optional(),
     POSTGRES_SCHEMA: z.string().regex(/^[a-z][a-z0-9_]{0,45}$/).default('madar'),
+    STORED_SECRETS_KEY: z.string().regex(storedSecretKeyFormat, 'must encode 32 bytes in hexadecimal').optional().or(z.literal('')),
+    STORED_SECRETS_PREVIOUS_KEY: z.string().regex(storedSecretKeyFormat, 'must encode 32 bytes in hexadecimal').optional().or(z.literal('')),
     APP_URL: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default(isProduction ? 'info' : 'debug'),
@@ -120,6 +123,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(`Invalid environment configuration: ${details}`);
   }
   const c = parsed.data;
+  if (c.STORED_SECRETS_PREVIOUS_KEY && !c.STORED_SECRETS_KEY) {
+    throw new Error('STORED_SECRETS_PREVIOUS_KEY requires STORED_SECRETS_KEY');
+  }
   const roleLimit = z.record(z.string().regex(/^[A-Z][A-Z0-9_]{0,39}$/), z.number().int().min(0));
   let aiRoleLimits: Record<string, number> = {};
   try {
@@ -163,7 +169,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     port: c.PORT,
     host: c.HOST,
     dataDir: path.resolve(c.DATA_DIR),
-    database: { defaultEngine: c.DATABASE_ENGINE, postgresUrl: c.POSTGRES_URL || undefined, postgresSchema: c.POSTGRES_SCHEMA },
+    database: {
+      defaultEngine: c.DATABASE_ENGINE,
+      postgresUrl: c.POSTGRES_URL || undefined,
+      postgresSchema: c.POSTGRES_SCHEMA,
+      storedSecrets: { key: c.STORED_SECRETS_KEY || undefined, previousKey: c.STORED_SECRETS_PREVIOUS_KEY || undefined },
+    },
     appUrl: c.APP_URL,
     trustProxy,
     logLevel: c.LOG_LEVEL,
