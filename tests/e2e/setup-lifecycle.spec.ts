@@ -27,6 +27,13 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
       await page.goto('/');
       const launcher = page.getByRole('button', { name: 'بدء إعداد النظام' });
       await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+      const hint = page.getByRole('group', { name: 'بيانات الدخول الأولى' });
+      await expect(hint).toBeVisible();
+      await expect(hint).toContainText('اسم المستخدم');
+      await expect(hint).toContainText('كلمة المرور الأولى');
+      await expect(hint).toContainText(browserSetup ? 'اخترها في المعالج' : 'سجل التشغيل الأول');
+      await expect(hint).not.toContainText(email);
+      await expect(hint).not.toContainText(temporary);
       await launcher.press('Enter');
       const journey = page.getByRole('list', { name: 'رحلة إعداد مدار' });
       await expect(journey.getByRole('listitem')).toHaveCount(3);
@@ -63,7 +70,6 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
         }
         await page.getByRole('button', { name: 'إنشاء الحساب والمتابعة' }).click();
       } else {
-        await expect(page.getByText(/كلمة المرور الأولى التي عيّنها مشغّل الخادم/)).toBeVisible();
         await page.getByLabel('البريد الإلكتروني').fill(email);
         await page.getByLabel('كلمة المرور', { exact: true }).fill(temporary);
         await page.getByRole('checkbox', { name: 'تذكّرني على هذا الجهاز', exact: true }).check();
@@ -99,9 +105,12 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
       }
       const freshPage = await browser.newPage({ baseURL: http.baseUrl });
       try {
+        const setupResponse = freshPage.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/auth/setup');
         await freshPage.goto('/');
+        expect((await (await setupResponse).json()).data.mode).toBeNull();
         await expect(freshPage.getByRole('button', { name: 'تسجيل الدخول', exact: true })).toBeVisible();
         await expect(freshPage.getByRole('button', { name: 'بدء إعداد النظام' })).toHaveCount(0);
+        await expect(freshPage.getByRole('group', { name: 'بيانات الدخول الأولى' })).toHaveCount(0);
         await expect(freshPage.getByRole('button', { name: 'توليد كلمة مرور مؤقتة' })).toHaveCount(0);
         if (mode === 'browser') await expect(freshPage.locator('html')).toHaveAttribute('data-color-palette', 'olive');
       } finally {
