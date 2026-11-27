@@ -601,7 +601,6 @@ export const POLICIES: Record<CollectionName, Policy> = {
   news: newsPolicy,
   newsCorrections: () => 'سجل التصحيحات يكتب من الخادم فقط ولا يمكن تعديله أو حذفه',
   stories: storiesPolicy,
-  breaking: require('news.breaking_push'),
   programs: require('programs.manage'),
   episodes: episodesPolicy,
   guests: require('guests.manage'),
@@ -999,7 +998,6 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'news':
       return auth.can('news.view');
     case 'stories':
-    case 'breaking':
       return auth.can('news.view');
     case 'programs':
       return any(auth, 'programs.view', 'programs.manage');

@@ -12,7 +12,6 @@ import {
   AppNotification,
   ActivityLog,
   AuditLog,
-  SystemSettings,
   NewsItem,
 } from '../types';
 
@@ -1211,16 +1210,6 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   },
 ];
 
-export const INITIAL_SETTINGS: SystemSettings = {
-  organizationName: 'شبكة الأخبار والإنتاج التلفزيوني الإقليمية',
-  organizationNameEn: 'Regional News & Broadcast Network',
-  logoUrl: '',
-  defaultTimezone: 'Asia/Riyadh',
-  defaultLanguage: 'العربية (Arabic)',
-  primaryChannelName: 'القناة الإخبارية الأولى HD',
-  autoSaveIntervalSeconds: 30,
-  allowGuestProposals: true,
-  enableAuditLog: true,
-};
+export { INITIAL_SETTINGS } from '../shared/settings';
 
 

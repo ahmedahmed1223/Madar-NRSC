@@ -10,7 +10,6 @@ export const COLLECTIONS = {
   news: { storageKey: 'nrcs_news_v1', kind: 'list' },
   newsCorrections: { storageKey: 'madar_news_corrections_v1', kind: 'list' },
   stories: { storageKey: 'nrcs_stories_v1', kind: 'list' },
-  breaking: { storageKey: 'nrcs_breaking_v1', kind: 'list' },
   programs: { storageKey: 'nrcs_programs_v1', kind: 'list' },
   episodes: { storageKey: 'nrcs_episodes_v1', kind: 'list' },
   guests: { storageKey: 'nrcs_guests_v1', kind: 'list' },

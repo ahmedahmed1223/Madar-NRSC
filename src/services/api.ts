@@ -42,8 +42,7 @@ import {
   WireItem,
 } from '../types';
 
-import { INITIAL_SETTINGS } from './mockData';
-import { settingsError } from '../shared/settings';
+import { INITIAL_SETTINGS, settingsError } from '../shared/settings';
 import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch, downloadDatabaseFile } from './http';
@@ -150,7 +149,6 @@ const STORAGE_KEYS = {
   USERS: COLLECTIONS.users.storageKey,
   NEWS: COLLECTIONS.news.storageKey,
   STORIES: COLLECTIONS.stories.storageKey,
-  BREAKING: COLLECTIONS.breaking.storageKey,
   PROGRAMS: COLLECTIONS.programs.storageKey,
   EPISODES: COLLECTIONS.episodes.storageKey,
   GUESTS: COLLECTIONS.guests.storageKey,
