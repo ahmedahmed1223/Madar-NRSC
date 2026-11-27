@@ -24,7 +24,11 @@ for (const mode of ['browser', 'sign-in'] as const) {
       const page = await context.newPage();
       await page.goto('/');
       const launcher = page.getByRole('button', { name: 'بدء إعداد النظام' });
-      await launcher.click();
+      await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+      await launcher.press('Enter');
+      const journey = page.getByRole('list', { name: 'رحلة إعداد مدار' });
+      await expect(journey.getByRole('listitem')).toHaveCount(3);
+      await expect(journey).toContainText(mode === 'browser' ? 'إنشاء حساب المسؤول' : 'الدخول بحساب المسؤول');
       await expect(page.getByText(/تبدأ التهيئة بقيم قابلة للتعديل/)).toBeVisible();
       if (mode === 'browser') {
         await page.getByLabel('اسم المسؤول').fill('مدير غرفة الأخبار');
@@ -61,6 +65,16 @@ for (const mode of ['browser', 'sign-in'] as const) {
       await expect(wizard.getByLabel('اسم المؤسسة *')).toBeVisible();
       await expect(wizard.getByText(/القيم الأولية لهوية النظام/)).toBeVisible();
       await expect(page.getByText('حسابات التجربة', { exact: true })).toHaveCount(0);
+      if (mode === 'browser') {
+        const engine = wizard.getByRole('region', { name: 'محرك قاعدة البيانات' });
+        await expect(engine).toBeHidden();
+        await wizard.getByText('خيارات قاعدة البيانات', { exact: true }).click();
+        await expect(engine).toBeVisible();
+        await wizard.getByRole('button', { name: /الانتهاء/ }).click();
+        await wizard.getByRole('button', { name: 'إنهاء الإعداد', exact: true }).click();
+        await wizard.getByRole('button', { name: 'فتح مساحة العمل', exact: true }).click();
+        await expect(wizard).toHaveCount(0);
+      }
       const freshPage = await browser.newPage({ baseURL: http.baseUrl });
       try {
         await freshPage.goto('/');

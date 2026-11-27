@@ -253,8 +253,6 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
             </p>
           )}
 
-          {stepId === 'organization' && RbacService.hasPermission(currentUser, 'system.database_manage') && <DatabaseEnginePanel />}
-
           {stepId === 'organization' && (
             <form
               className="space-y-4 max-w-2xl"
@@ -311,6 +309,15 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
               </div>
               <StepActions busy={busy} primary="حفظ والمتابعة" onSkip={() => go(1)} />
             </form>
+          )}
+
+          {stepId === 'organization' && RbacService.hasPermission(currentUser, 'system.database_manage') && (
+            <details className="max-w-2xl rounded-lg border border-slate-200 bg-white px-3">
+              <summary className="min-h-11 cursor-pointer py-2.5 text-sm font-semibold text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+                خيارات قاعدة البيانات
+              </summary>
+              <div className="pb-3"><DatabaseEnginePanel /></div>
+            </details>
           )}
 
           {stepId === 'administrator' && <AdministratorSetup currentUser={currentUser} busy={busy} onBack={() => go(-1)} onSkip={() => go(1)} onContinue={() => void run(() => confirmStep('administrator'), 'سُجّلت مراجعة حساب المسؤول.')} />}
@@ -502,7 +509,11 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 <p className="text-sm text-slate-700">يمكنك الإنهاء الآن وإكمال ما بقي لاحقاً؛ يبقى المعالج في «المساعدة».</p>
               )}
               <div className="flex flex-wrap gap-2">
-                {!settings.setup?.completedAt && (
+                {settings.setup?.completedAt ? (
+                  <button type="button" disabled={busy} onClick={onClose} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50">
+                    فتح مساحة العمل
+                  </button>
+                ) : (
                   <button
                     type="button"
                     disabled={busy}

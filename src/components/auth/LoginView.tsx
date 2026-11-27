@@ -6,8 +6,9 @@ import type { LoginSetupMode } from '../../shared/setup';
 import { apiFetch } from '../../services/http';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
+import { LoginSetupPanel } from './LoginSetupPanel';
 import React, { useEffect, useRef, useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
+import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
 import { PasswordVisibilityButton } from './PasswordFields';
 
 interface LoginViewProps {
@@ -146,40 +147,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
         </div>}
 
         {setupMode && (
-          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
-            <p className="px-1 pt-1 text-sm text-slate-700">{setupMode === 'demo' ? 'تجربة إعداد غرفة الأخبار' : 'التهيئة الأولى لغرفة الأخبار'}</p>
-            <button
-              type="button"
-              aria-expanded={setupOpen}
-              aria-controls="login-setup"
-              disabled={isSubmitting || savingAdministrator}
-              onClick={() => { setSetupOpen(!setupOpen); if (setupMode === 'demo') setDemoOpen(true); }}
-              className="flex min-h-11 w-full items-center gap-2 rounded-md px-1 text-start text-sm font-bold text-blue-800 hover:text-blue-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60"
-            >
-              <Settings2 className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>{creatingAdministrator ? 'العودة إلى تسجيل الدخول' : 'بدء إعداد النظام'}</span>
-            </button>
-            <div id="login-setup" hidden={!setupOpen} className="mt-2 space-y-3">
-              <p className="text-sm leading-relaxed text-slate-700">
-                {setupMode === 'browser' && 'أدخل رمز إعداد الخادم واختر اسم المسؤول وبريده وكلمة مروره. بعد الدخول يفتح المعالج لمراجعة المؤسسة والمحطات.'}
-                {setupMode === 'sign-in' && 'سجّل الدخول ببريد المسؤول وكلمة المرور الأولى التي عيّنها مشغّل الخادم أو ولّدها الخادم في سجل بدء التشغيل. بعد تغييرها، يفتح معالج إعداد المؤسسة.'}
-                {setupMode === 'demo' && 'اختر حساب مدير النظام من حسابات التجربة أدناه لتجربة المعالج. يعرض النظام بيانات نموذجية يمكنك حذفها من الإعدادات بعد إنشاء حساب إدارة خاص بالمؤسسة.'}
-              </p>
-              {setupMode !== 'demo' && <p className="text-xs leading-relaxed text-slate-700">تبدأ التهيئة بقيم قابلة للتعديل لاسم المؤسسة والقناة والتوقيت والمحطات. تُضبط بيانات دخول المسؤول من خلال إعداد الخادم.</p>}
-              {creatingAdministrator && <FirstAdministratorForm saving={savingAdministrator} onSavingChange={setSavingAdministrator} onCreated={(mail, pass) => {
-                setSetupMode(null);
-                setSetupOpen(false);
-                setSavingAdministrator(false);
-                setAdministratorCreated(true);
-                setEmail(mail);
-                setPassword(pass);
-                setNeedsCode(false);
-                setCode('');
-                setRememberMe(false);
-                void submit(mail, pass);
-              }} />}
-            </div>
-          </div>
+          <LoginSetupPanel mode={setupMode} open={setupOpen} disabled={isSubmitting || savingAdministrator}
+            onToggle={() => { setSetupOpen(!setupOpen); if (setupMode === 'demo') setDemoOpen(true); }}>
+            {creatingAdministrator && <FirstAdministratorForm saving={savingAdministrator} onSavingChange={setSavingAdministrator} onCreated={(mail, pass) => {
+              setSetupMode(null);
+              setSetupOpen(false);
+              setSavingAdministrator(false);
+              setAdministratorCreated(true);
+              setEmail(mail);
+              setPassword(pass);
+              setNeedsCode(false);
+              setCode('');
+              setRememberMe(false);
+              void submit(mail, pass);
+            }} />}
+          </LoginSetupPanel>
         )}
 
         {administratorCreated && (
