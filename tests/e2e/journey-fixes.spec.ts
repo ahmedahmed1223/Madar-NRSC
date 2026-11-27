@@ -143,17 +143,24 @@ test('task creation preserves the draft on refusal and a later status move waits
 
 test('on-air defaults to a current show rather than yesterday and warns on past selection', async ({ browser }) => {
   const { page, errors, close } = await signIn(browser, 'producer@akhbar.tv');
-  await openNav(page, 'وضع الهواء');
-  const select = page.getByLabel('الحلقة أو النشرة');
-  const initialId = await select.inputValue();
-  const oldId = 'ep-101'; // The demo episode seeded for the day before the demo anchor.
-  await expect(select.locator(`option[value="${oldId}"]`)).toHaveCount(1);
-  expect(initialId).toBeTruthy();
-  expect(initialId).not.toBe(oldId);
-  await select.selectOption(oldId);
-  await expect(page.getByRole('alert')).toContainText('موعد سابق');
-  expect(errors).toEqual([]);
-  await close();
+  try {
+    const data = await (await page.request.get('/api/v1/data')).json();
+    const currentDay = data.collections.episodes.find((row: { id: string }) => row.id === 'ep-102')?.d.broadcastDate;
+    expect(currentDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Match the saved schedule even when the newsroom day has rolled over ahead of the test server.
+    await page.clock.setFixedTime(new Date(`${currentDay}T12:00:00Z`));
+    await openNav(page, 'وضع الهواء');
+    const select = page.getByLabel('الحلقة أو النشرة');
+    const oldId = 'ep-101';
+    await expect(select.locator(`option[value="${oldId}"]`)).toHaveCount(1);
+    await expect(select).not.toHaveValue('');
+    await expect(select).not.toHaveValue(oldId);
+    await select.selectOption(oldId);
+    await expect(page.getByRole('alert')).toContainText('موعد سابق');
+    expect(errors).toEqual([]);
+  } finally {
+    await close();
+  }
 });
 
 test('episode brief and script survive tab changes and reload; templates append and undo', async ({ browser }) => {

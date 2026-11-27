@@ -3,22 +3,25 @@ import { openNav, signIn } from './helpers';
 
 test('connection feedback remains in layout on desktop and mobile without claiming every field is saved', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'producer@akhbar.tv');
+  const sidebar = page.locator('#workspace-navigation');
+  const header = page.getByRole('banner');
+  const offlineBanner = page.getByRole('status').and(page.locator('.app-shell > div > [aria-live="polite"]'));
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    if (width < 768 && await page.locator('aside').getAttribute('aria-hidden') !== 'true') {
-      await page.getByTitle('إغلاق القائمة', { exact: true }).click();
-      await expect.poll(async () => (await page.locator('aside').boundingBox())?.x ?? width).toBeGreaterThanOrEqual(width);
+    if (width < 768 && await sidebar.getAttribute('aria-hidden') !== 'true') {
+      await sidebar.getByRole('button', { name: 'إغلاق القائمة', exact: true }).click();
+      await expect.poll(async () => (await sidebar.boundingBox())?.x ?? width).toBeGreaterThanOrEqual(width);
     }
     await page.context().setOffline(true);
-    const status = page.getByRole('status').filter({ hasText: 'غير متصل' });
-    await expect(status).toBeVisible();
-    const rect = await status.boundingBox();
-    const header = await page.locator('header').boundingBox();
-    expect(header!.y).toBeGreaterThanOrEqual(rect!.y + rect!.height);
+    await expect(offlineBanner).toBeVisible();
+    await expect(offlineBanner).toHaveText('غير متصل — ما تحفظه يبقى على جهازك حتى يعود الاتصال');
+    const bannerBox = await offlineBanner.boundingBox();
+    const headerBox = await header.boundingBox();
+    expect(headerBox!.y).toBeGreaterThanOrEqual(bannerBox!.y + bannerBox!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/save-feedback-settled-${width}.png`, animations: 'disabled' });
     await page.context().setOffline(false);
-    await expect(status).not.toBeVisible();
+    await expect(offlineBanner).toBeEmpty();
   }
   await close();
 });

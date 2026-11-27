@@ -1,3 +1,4 @@
+import { browserBuildDir } from './buildDir';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -126,7 +127,7 @@ test('replaces a saved app release with the complete current build', async ({ pa
 });
 
 test('refreshes the release when an open app visits another page after a build changes', async ({ page }) => {
-  const manifestPath = path.resolve('dist/app-assets.json');
+  const manifestPath = path.join(browserBuildDir, 'app-assets.json');
   const builtManifest = await readFile(manifestPath, 'utf8');
   const newManifest = JSON.parse(builtManifest) as { version: string; assets: string[] };
   const oldManifest = {

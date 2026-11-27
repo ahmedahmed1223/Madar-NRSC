@@ -14,7 +14,7 @@ import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
 import type { SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
-import { createSearchIndex, type SearchIndex } from '../shared/arabicSearch';
+import { createSearchIndex, matchesSearch, parseQuery, prepareText, scorePrepared, type SearchIndex } from '../shared/arabicSearch';
 import {
   NewsItem,
   Story,
@@ -231,10 +231,22 @@ export function hasPermission(
 
 const htmlText = (html: string | undefined) => (html || '').replace(/<[^>]*>/g, ' ');
 const versionOf = (r: { updatedAt?: string; createdAt?: string }) => `${r.updatedAt || ''}|${r.createdAt || ''}`;
+const newsSearchTitle = (news: NewsItem) => [news.title, news.shortTitle];
+const newsSearchMetadata = (news: NewsItem) => [news.keywords, news.summary, news.locationName];
+
+/** Whether a news result needs its content to satisfy the global search query. */
+export function newsMatchUsesContent(news: NewsItem, query: string): boolean {
+  const parsed = parseQuery(query);
+  const title = newsSearchTitle(news);
+  const metadata = newsSearchMetadata(news);
+  return parsed.empty
+    ? !matchesSearch(query, title, metadata)
+    : scorePrepared(parsed, prepareText(title), prepareText(metadata)) === null;
+}
 
 /** Search indexes of the unified search, memoised per record id + updatedAt. */
 const GLOBAL_INDEX = {
-  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: (n) => [n.title, n.shortTitle], body: (n) => [n.keywords, n.summary, n.locationName, htmlText(n.content)] }),
+  news: createSearchIndex<NewsItem>({ id: (n) => n.id, version: versionOf, title: newsSearchTitle, body: (n) => [...newsSearchMetadata(n), htmlText(n.content)] }),
   programs: createSearchIndex<Program & { createdAt?: string }>({ id: (p) => p.id, version: versionOf, title: (p) => [p.name], body: (p) => [p.description, p.presenterName, p.producerName] }),
   episodes: createSearchIndex<Episode & { createdAt?: string }>({ id: (e) => e.id, version: versionOf, title: (e) => [e.title], body: (e) => [e.description, e.programName, e.episodeNumber, e.broadcastDate] }),
   guests: createSearchIndex<Guest & { createdAt?: string }>({ id: (g) => g.id, version: versionOf, title: (g) => [g.fullName], body: (g) => [g.organization, g.specialty, g.jobTitle] }),
@@ -2176,57 +2188,61 @@ export class ApiService {
 
   /**
    * Acquires (or renews / takes over) the edit lock on a story and waits for the server's verdict.
-   * Returns the lock as stored on the server.
+   * Returns the server's lock, null if there is no lock, or undefined if sync is unconfirmed.
    */
-  static async acquireNewsLock(entityId: string): Promise<EditLock | null> {
+  static async acquireNewsLock(entityId: string): Promise<EditLock | null | undefined> {
     return this.acquireEditLock('news', entityId);
   }
 
-  static async acquireEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): Promise<EditLock | null> {
+  static async acquireEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): Promise<EditLock | null | undefined> {
     const id = lockIdFor(collection, entityId);
     const locks = this.getEditLocks().filter((l) => l.id !== id);
     // `heartbeat` makes every renewal a real change; the server recomputes the expiry.
     locks.unshift({ id, collection, entityId, heartbeat: Date.now() } as EditLock);
     setStored(COLLECTIONS.editLocks.storageKey, locks);
-    await dataStore.settle();
+    const outcome = await dataStore.awaitWrite('editLocks', id);
+    if (outcome.pending) return undefined;
     return this.getEditLocks().find((l) => l.id === id) || null;
   }
 
   static releaseNewsLock(entityId: string): void {
-    this.releaseEditLock('news', entityId);
+    void this.releaseEditLock('news', entityId);
   }
 
   /**
    * Asks the server to drop the lock if, and only if, this user holds it. Works while the page is
    * unloading (keepalive) and before the local data has loaded, when the store cannot write yet.
    */
-  static releaseEditLockOnServer(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
-    this.releaseLockIdOnServer(lockIdFor(collection, entityId));
+  static releaseEditLockOnServer(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): Promise<boolean> {
+    return this.releaseLockIdOnServer(lockIdFor(collection, entityId));
   }
 
-  static releaseLockIdOnServer(id: string): void {
+  static async releaseLockIdOnServer(id: string): Promise<boolean> {
     try {
-      void fetch('/api/v1/data/locks/release', {
+      const response = await fetch('/api/v1/data/locks/release', {
         method: 'POST',
         keepalive: true,
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-NRCS-Client': 'web' },
         body: JSON.stringify({ id }),
-      }).catch(() => undefined);
+      });
+      return response.ok;
     } catch {
-      // the lock simply expires
+      return false;
     }
   }
 
-  static releaseEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): void {
-    // Leaving right after a reload: the store has not loaded the locks yet, but one may be ours.
-    if (!dataStore.isReady()) return this.releaseEditLockOnServer(collection, entityId);
+  static async releaseEditLock(collection: 'news' | 'episodes' | 'bulletinStories', entityId: string): Promise<boolean> {
     const id = lockIdFor(collection, entityId);
     const me = authClient.getSession()?.user.id;
     const locks = this.getEditLocks();
-    if (!isOwnLock(locks.find((l) => l.id === id), me)) return;
+    const lock = locks.find((l) => l.id === id);
+    // The store may not have received our lease yet. The direct endpoint checks the owner.
+    if (!lock) return this.releaseLockIdOnServer(id);
+    if (!isOwnLock(lock, me)) return true;
     setStored(COLLECTIONS.editLocks.storageKey, locks.filter((l) => l.id !== id));
     void dataStore.flush();
+    return (await dataStore.awaitWrite('editLocks', id)).ok;
   }
 
   // --- REVISION HISTORY & TRASH ---

@@ -6,7 +6,7 @@ test('a story carries several ordered clips, including where to find a clip that
   await openNav(page, 'الأخبار');
   await page.locator('button[title="تحرير الخبر"]').first().click();
   const clips = page.getByTestId('news-videos');
-  const title = await page.locator('input').first().inputValue();
+  const title = await page.locator('#news-headline-input').inputValue();
 
   // Remove whatever the story had, then add a link and a written location.
   while (await clips.getByRole('button', { name: /^حذف المقطع/ }).count()) await clips.getByRole('button', { name: /^حذف المقطع/ }).first().click();
@@ -25,12 +25,12 @@ test('a story carries several ordered clips, including where to find a clip that
   await expect(page).toHaveURL(/\/news$/);
 
   // Reopen: order and texts are kept; the preview tells production where each clip is.
-  const row = page.locator('tr', { hasText: title.slice(0, 20) });
+  const row = page.getByRole('row').filter({ has: page.getByText(title, { exact: true }) });
   await row.locator('button[title="تحرير الخبر"]').click();
   await expect(page.getByTestId('news-videos').getByLabel('اسم المقطع 1')).toHaveValue('لقطات الافتتاح');
   await expect(page.getByTestId('news-videos').getByLabel('رابط المقطع 2')).toHaveValue('https://cdn.example/minister.mp4');
   await page.goBack();
-  await page.locator('tr', { hasText: title.slice(0, 20) }).locator('button[title="معاينة وسجل التدقيق"]').click();
+  await row.locator('button[title="معاينة وسجل التدقيق"]').click();
   const list = page.getByRole('region', { name: 'مقاطع الفيديو' });
   await expect(list).toContainText('1');
   await expect(list).toContainText('لقطات الافتتاح');

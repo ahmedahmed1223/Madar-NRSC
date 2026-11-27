@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, FileText, Tv, Video, Users, CheckSquare, X, History, FilePlus2, ArrowUpLeft, ListVideo, ClipboardList } from 'lucide-react';
-import { ApiService } from '../../services/api';
+import { ApiService, newsMatchUsesContent } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { NewsItem, Program, Episode, Guest, User } from '../../types';
 import { statusLabel } from '../../shared/labels';
@@ -43,6 +43,7 @@ interface Result {
   title: string;
   meta?: string;
   badge?: string;
+  news?: NewsItem;
   open: () => void;
 }
 
@@ -189,7 +190,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     const bulletins = canScreen('bulletins') ? r.bulletins : [];
     const cards = canScreen('cards') ? r.cards : [];
     return [
-      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), open: pick('news', n.id, n.title) })),
+      ...r.news.map((n) => ({ key: `n-${n.id}`, group: 'الأخبار', icon: FileText, title: n.title, meta: n.summary, badge: statusLabel(n.status, 'news'), news: n, open: pick('news', n.id, n.title) })),
       ...bulletins.map((b) => ({ key: `b-${b.id}`, group: 'النشرات', icon: ListVideo, title: b.title, meta: [bulletinKindName(b.kind), `${b.date} ${b.startTime}`, b.editorName && `المحرر: ${b.editorName}`].filter(Boolean).join(' · '), badge: BULLETIN_STATUSES.find((x) => x.id === b.status)?.name, open: pick('bulletin', b.id, b.title) })),
       ...cards.map((c) => ({ key: `c-${c.id}`, group: 'التكليفات', icon: ClipboardList, title: c.title, meta: [cardKindName(c.kind), c.ownerName && `المسؤول: ${c.ownerName}`, c.brief].filter(Boolean).join(' · '), badge: CARD_STATUSES.find((x) => x.id === c.status)?.name, open: pick('card', c.id, c.title) })),
       ...r.programs.map((p) => ({ key: `p-${p.id}`, group: 'البرامج', icon: Tv, title: p.name, meta: [p.presenterName && `تقديم: ${p.presenterName}`, p.producerName && `إنتاج: ${p.producerName}`].filter(Boolean).join(' · '), open: pick('program', p.id, p.name) })),
@@ -329,6 +330,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 const header = r.group !== lastGroup ? r.group : null;
                 lastGroup = r.group;
                 const Icon = r.icon;
+                const contentMatch = r.news && newsMatchUsesContent(r.news, searchTerm);
                 return (
                   <React.Fragment key={r.key}>
                     {header && (
@@ -352,7 +354,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       <Icon className={`w-4 h-4 shrink-0 ${i === active ? 'text-blue-600' : 'text-slate-500'}`} aria-hidden />
                       <span className="truncate flex-1 min-w-0">
                         <span className="text-sm font-semibold text-slate-800 block truncate" title={r.title}><Highlight text={r.title} query={searchTerm} /></span>
-                        {r.meta && <span className="text-2xs text-slate-500 block truncate"><Highlight text={r.meta} query={searchTerm} /></span>}
+                        {(contentMatch || r.meta) && (
+                          <span className="text-2xs text-slate-600 block truncate">
+                            {contentMatch && <span className="font-semibold">مطابقة في نص الخبر{r.meta ? ' · ' : ''}</span>}
+                            {r.meta && <Highlight text={r.meta} query={searchTerm} />}
+                          </span>
+                        )}
                       </span>
                       {r.badge && <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium shrink-0">{r.badge}</span>}
                     </li>

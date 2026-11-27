@@ -1,7 +1,7 @@
+import { browserBuildDir } from './buildDir';
 import { expect, test } from '@playwright/test';
 import express from 'express';
 import { build } from 'esbuild';
-import path from 'node:path';
 import { createTestServer, listen } from '../helpers';
 
 for (const mode of ['browser', 'sign-in'] as const) {
@@ -14,9 +14,9 @@ for (const mode of ['browser', 'sign-in'] as const) {
       SEED_DEMO_DATA: 'false',
       ...(mode === 'browser' ? { INSTALL_SETUP_TOKEN: token } : { ADMIN_EMAIL: email, ADMIN_PASSWORD: temporary }),
     });
-    const dist = path.resolve('dist');
+    const dist = browserBuildDir;
     instance.app.use(express.static(dist));
-    instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    instance.app.get('/{*path}', (_req, res) => res.sendFile('index.html', { root: dist }));
     const http = await listen(instance.app);
     const context = await browser.newContext({ baseURL: http.baseUrl, viewport: { width: 390, height: 844 } });
     try {
@@ -122,9 +122,9 @@ test('opening a new form in React Strict Mode keeps its browser history entry', 
 test('first setup, institutional administrator and demo cleanup use the saved organization', async ({ browser }) => {
   // Cleanup removes samples. Give this journey its own database even when the entire suite runs.
   const instance = await createTestServer();
-  const dist = path.resolve('dist');
+  const dist = browserBuildDir;
   instance.app.use(express.static(dist));
-  instance.app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  instance.app.get('/{*path}', (_req, res) => res.sendFile('index.html', { root: dist }));
   const http = await listen(instance.app);
   const context = await browser.newContext({ baseURL: http.baseUrl });
   try {

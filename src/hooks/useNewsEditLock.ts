@@ -54,11 +54,11 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
 
   useEffect(() => {
     let held = false;
+    let mayHoldLock = false;
     const lockId = newsId ? lockIdFor(collection, newsId) : '';
-    // Remembered per tab so the next load can release it if this page goes away without cleanup.
-    const markHeld = (value: boolean) => {
-      held = value;
-      if (value) rememberHeldLock(lockId);
+    const rememberLock = () => {
+      mayHoldLock = true;
+      rememberHeldLock(lockId);
     };
     let acquiring = false;
     let disposed = false;
@@ -76,20 +76,17 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
         await previous;
         if (disposed) return;
         setStatus('acquiring');
-        rememberHeldLock(lockId); // the server may grant it after this page is gone
+        rememberLock(); // the server can grant it before the browser gets the reply
         try {
           const lock = await apiService.acquireEditLock(collection, newsId);
-          if (disposed) {
-            // The screen closed while we waited; the answer may still be unconfirmed (no owner yet).
-            if (isOwnLock(lock, me)) {
-              apiService.releaseEditLock(collection, newsId);
-              await dataStore.settle();
-            }
-            return;
+          if (disposed) return;
+          held = !!lock && lock.userId === me && isLockActive(lock);
+          // Losing the response leaves the lease's server state unknown, so keep its recovery record.
+          if (!held && lock !== undefined) {
+            mayHoldLock = false;
+            forgetHeldLock(lockId);
           }
-          markHeld(!!lock && lock.userId === me && isLockActive(lock));
-          if (!held) forgetHeldLock(lockId);
-          setHolder(held ? null : lock);
+          setHolder(held ? null : lock ?? null);
           setStatus(held ? 'held' : lock && isLockActive(lock) ? 'locked' : 'none');
         } catch {
           if (!disposed) setStatus('none');
@@ -103,9 +100,10 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
     acquireRef.current = acquire;
     const evaluate = () => {
       if (disposed || acquiring) return;
-      const lock = apiService.getEditLocks().find(l => l.id === lockIdFor(collection, newsId));
+      const lock = apiService.getEditLocks().find(l => l.id === lockId);
       if (lock && isLockActive(lock)) {
-        markHeld(lock.userId === me);
+        held = lock.userId === me;
+        if (held) rememberLock();
         setHolder(held ? null : lock);
         setStatus(held ? 'held' : 'locked');
       } else {
@@ -139,8 +137,8 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       unsubscribe();
       // A request still in flight may be granted after the page is gone, so release then too;
       // this endpoint only removes a lock the server shows as ours.
-      if (!held && !acquiring) return;
-      apiService.releaseEditLockOnServer(collection, newsId);
+      if (!mayHoldLock) return;
+      void apiService.releaseEditLockOnServer(collection, newsId);
     };
     // pagehide runs only after navigation is accepted, unlike a cancellable beforeunload.
     const onRestore = (event: PageTransitionEvent) => {
@@ -159,10 +157,14 @@ export function useEditLock(collection: LockTarget, entityId: string | undefined
       unsubscribe();
       window.removeEventListener('pagehide', onUnload);
       window.removeEventListener('pageshow', onRestore);
-      // Also covers a request still in flight: releaseEditLock only removes our own lock or request.
-      apiService.releaseEditLock(collection, newsId);
-      forgetHeldLock(lockId);
-      held = false;
+      if (!mayHoldLock) return;
+      // Queue the release now, even if the acquire is still in flight. A reopened editor can
+      // then queue its own acquisition, and an interrupted release still has a reload fallback.
+      void apiService.releaseEditLock(collection, newsId).then((released) => {
+        if (!released || dataStore.hasPendingWrite('editLocks', lockId)) return;
+        const current = apiService.getEditLocks().find(l => l.id === lockId);
+        if (!isOwnLock(current, me)) forgetHeldLock(lockId);
+      }).catch(() => undefined);
     };
   }, [collection, newsId, me]);
 

@@ -1,0 +1,103 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version of the candidate tag, for example 4.7.0
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: release-candidate
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: madar_candidate
+          POSTGRES_USER: madar_candidate
+          POSTGRES_PASSWORD: madar_candidate
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U madar_candidate -d madar_candidate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Validate the release tag
+        id: release
+        env:
+          RELEASE_INPUT: ${{ inputs.version }}
+        run: |
+          version="${RELEASE_INPUT#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify the exact commit passed main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$sha" origin/main
+          test "$(node -p 'require("./package.json").version')" = "$RELEASE_VERSION"
+          conclusion="$(gh run list --workflow ci.yml --branch main --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion')"
+          test "$conclusion" = success
+      - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Type-check, test both databases and build
+        env:
+          POSTGRES_TEST_URL: postgresql://madar_candidate:madar_candidate@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_candidate
+        run: npm run check
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Complete isolated browser suite
+        env:
+          E2E_FILE_WORKERS: '2'
+          POSTGRES_URL: postgresql://madar_candidate:madar_candidate@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_candidate
+          DATABASE_ENGINE: sqlite
+        run: node tests/e2e/run-isolated.mjs
+      - run: npm run test:e2e:work-controls
+      - name: Build the release container and verify persistent startup
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: bash scripts/smoke-release-container.sh
+      - name: Save tested container
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker save "madar-nrcs:$RELEASE_VERSION" | gzip > madar-container.tar.gz
+          sha256sum madar-container.tar.gz > madar-container.tar.gz.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: madar-${{ steps.release.outputs.tag }}-linux-container
+          path: |
+            madar-container.tar.gz
+            madar-container.tar.gz.sha256
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: candidate-browser-failure
+          path: test-results/
+          if-no-files-found: ignore

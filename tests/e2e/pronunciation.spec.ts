@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openNav, signIn } from './helpers';
+import { openNav, openSettingsSection, signIn } from './helpers';
 import fs from 'fs';
 import { createRequire } from 'module';
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -7,7 +7,7 @@ for (const width of [390, 1440]) test(`dictionary confirmed saving, duplicates a
   const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: { width, height: 900 }, bypassCSP: true });
   try {
     await openNav(page, 'الإعدادات');
-    await page.getByRole('button', { name: /الأخبار والتحرير/ }).click();
+    await openSettingsSection(page, 'الأخبار والتحرير');
     const section = page.getByRole('region', { name: 'قاموس النطق' });
     const name = `أحمد اختبار ${width}`;
     await section.getByRole('button', { name: 'إضافة اسم للنطق' }).click();

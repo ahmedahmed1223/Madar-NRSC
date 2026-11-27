@@ -1,3 +1,4 @@
+import { browserBuildDir } from './buildDir';
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers';
 import { createRequire } from 'module';
@@ -5,14 +6,14 @@ import fs from 'fs';
 import path from 'path';
 const axeSource = fs.readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 test('prepared shell opens offline and restores durable local operation after reload', async ({ browser }) => {
-  const manifestPath = path.resolve('dist/offline-air-assets.json');
+  const manifestPath = path.join(browserBuildDir, 'offline-air-assets.json');
   expect(fs.existsSync(manifestPath), `Missing generated offline-air manifest: ${manifestPath}`).toBe(true);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { version: string; assets: string[] };
   expect(manifest.version, 'Generated offline-air manifest has an invalid version').toMatch(/^[a-f0-9]{24}$/);
   expect(manifest.assets, 'Generated offline-air manifest must include its HTML shell').toContain('/offline-air.html');
   expect(new Set(manifest.assets).size, 'Generated offline-air manifest contains duplicate files').toBe(manifest.assets.length);
 
-  const shellPath = path.resolve('dist/offline-air.html');
+  const shellPath = path.join(browserBuildDir, 'offline-air.html');
   expect(fs.existsSync(shellPath), `Missing generated offline-air shell: ${shellPath}`).toBe(true);
   const shellHtml = fs.readFileSync(shellPath, 'utf8');
   const htmlAssets = [...shellHtml.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
@@ -20,7 +21,7 @@ test('prepared shell opens offline and restores durable local operation after re
     expect(manifest.assets, `Generated offline-air manifest is missing shell dependency ${asset}`).toContain(asset);
   }
   for (const asset of manifest.assets) {
-    const builtFile = path.resolve('dist', `.${asset}`);
+    const builtFile = path.resolve(browserBuildDir, `.${asset}`);
     expect(fs.existsSync(builtFile), `Missing generated offline-air file ${asset} (${builtFile})`).toBe(true);
   }
 

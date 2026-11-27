@@ -143,8 +143,12 @@ test('a team prepares a program and a bulletin in parallel, supervises a handoff
     await expect.poll(async () => (await data(control.page)).collections.bulletinStories.find((r: any) => r.d.bulletinId === bulletinId && r.d.slug === lateLead)?.d.status).toBe('APPROVED');
     await openNav(control.page, 'وضع الهواء');
     await control.page.getByLabel('الحلقة أو النشرة', { exact: true }).selectOption(bulletinId);
+    const isPastBroadcast = await control.page.getByRole('alert').filter({ hasText: 'تم اختيار محتوى من موعد سابق' }).isVisible();
     await control.page.getByRole('button', { name: 'بدء البث', exact: true }).click();
-    if (await control.page.getByRole('alertdialog').isVisible()) await control.page.getByRole('alertdialog').getByRole('button', { name: 'تأكيد', exact: true }).click();
+    if (isPastBroadcast) {
+      await control.page.getByRole('alertdialog', { name: 'حلقة أو نشرة من موعد سابق' })
+        .getByRole('button', { name: 'بث المحتوى السابق', exact: true }).click();
+    }
     await expect.poll(async () => (await data(control.page)).collections.onAir.find((r: any) => r.id === bulletinId)?.d.status).toBe('LIVE');
     await control.page.getByRole('button', { name: 'إنهاء البث', exact: true }).click();
     await control.page.getByRole('alertdialog').getByRole('button', { name: 'تأكيد', exact: true }).click();
