@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { createApp } from '../../src/server/app';
 import { NewsroomDatabase } from '../../src/server/db';
-import { cleanupBackupStaging, createFullBackup, deliverBackup, lastVerifiedExternalBackup } from '../../src/server/backupDelivery';
+import { cleanupBackupStaging, createFullBackup, deliverBackup, lastVerifiedExternalBackup, verifyBackupBundle } from '../../src/server/backupDelivery';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
 let destination: string;
@@ -152,4 +152,54 @@ it('does not call a bundle complete when a referenced upload exists only in its 
   const created = await createFullBackup(server.db, config);
   expect(created.filesKeptElsewhere).toBe(1);
   expect(lastVerifiedExternalBackup(server.db, config)).toBeNull();
+});
+
+it('detects tampering on bundled files and rejects unsafe manifest entries via SHA-256 verification', async () => {
+  await fs.mkdir(path.join(server.dir, 'uploads'), { recursive: true });
+  await fs.writeFile(path.join(server.dir, 'uploads', 'z-clip.txt'), 'media');
+  await fs.writeFile(path.join(server.dir, 'uploads', 'a-clip.txt'), 'audio');
+  server.db.insertUpload({ id: 'u-z', storedName: 'z-clip.txt', originalName: 'z-clip.txt',
+    mimeType: 'text/plain', sizeBytes: 5, uploadedBy: 'usr-1', scope: 'media', createdAt: new Date().toISOString() });
+  server.db.insertUpload({ id: 'u-a', storedName: 'a-clip.txt', originalName: 'a-clip.txt',
+    mimeType: 'text/plain', sizeBytes: 5, uploadedBy: 'usr-1', scope: 'media', createdAt: new Date().toISOString() });
+
+  const created = await createFullBackup(server.db, { backupDirectory: destination, backupRetention: 2 });
+  const bundle = path.join(destination, `${created.file.fileName}.bundle`);
+
+  const manifest = JSON.parse(await fs.readFile(path.join(bundle, 'manifest.json'), 'utf8'));
+  expect(manifest.files.map((f: { path: string }) => f.path)).toEqual([
+    'newsroom.sqlite',
+    'uploads/a-clip.txt',
+    'uploads/z-clip.txt',
+  ]);
+  expect(await verifyBackupBundle(bundle)).toMatchObject({ valid: true, filesChecked: 3 });
+
+  // Same-length byte mutation must be caught by SHA-256 check.
+  await fs.writeFile(path.join(bundle, 'uploads', 'z-clip.txt'), 'MEDIA');
+  expect(await verifyBackupBundle(bundle)).toEqual({
+    valid: false,
+    reason: 'SHA-256 checksum mismatch',
+    tamperedPath: 'uploads/z-clip.txt',
+  });
+
+  // Restore upload, then delete a bundled file.
+  await fs.writeFile(path.join(bundle, 'uploads', 'z-clip.txt'), 'media');
+  await fs.unlink(path.join(bundle, 'uploads', 'a-clip.txt'));
+  expect(await verifyBackupBundle(bundle)).toEqual({
+    valid: false,
+    reason: 'Missing bundled file',
+    tamperedPath: 'uploads/a-clip.txt',
+  });
+
+  // Path traversal in manifest.json must be rejected.
+  const tamperedManifest = {
+    ...manifest,
+    files: [{ path: '../escape.txt', bytes: 5, sha256: 'a'.repeat(64) }],
+  };
+  await fs.writeFile(path.join(bundle, 'manifest.json'), JSON.stringify(tamperedManifest));
+  expect(await verifyBackupBundle(bundle)).toEqual({
+    valid: false,
+    reason: 'Unsafe manifest file path',
+    tamperedPath: '../escape.txt',
+  });
 });
