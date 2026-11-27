@@ -1,0 +1,18 @@
+:root {
+  --madar-login-backdrop: #0b2930;
+}
+
+:root[data-color-palette='editorial'] {
+  --madar-signal-hue-offset: 44;
+  --madar-login-backdrop: #101e36;
+}
+
+:root[data-color-palette='olive'] {
+  --madar-signal-hue-offset: -85;
+  --madar-login-backdrop: #192619;
+}
+
+:root[data-color-palette='violet'] {
+  --madar-signal-hue-offset: 82;
+  --madar-login-backdrop: #251b36;
+}

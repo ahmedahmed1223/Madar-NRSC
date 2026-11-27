@@ -7,11 +7,12 @@ const check = (patch: Record<string, unknown>, allowed = true) => POLICIES.setti
   before: INITIAL_SETTINGS, after: { ...INITIAL_SETTINGS, ...patch },
 });
 it('accepts valid station and editorial defaults', () => {
-  expect(check({ defaultNewsPriority: 'HIGH', breakingDurationHours: 4 })).toBeNull();
+  expect(check({ defaultNewsPriority: 'HIGH', breakingDurationHours: 4, colorPalette: 'editorial' })).toBeNull();
 });
 it.each([{ organizationName: ' ' }, { defaultTimezone: 'invalid/zone' },
   { defaultSegmentDurationSeconds: 0 }, { breakingDurationHours: 100 },
   { defaultNewsPriority: 'INVALID' }, { enableAuditLog: false },
+  { colorPalette: 'unknown' },
   { moduleAccess: { settings: { mode: 'disabled' } } },
   { moduleAccess: { assignments: { mode: 'selected' } } },
   { moduleAccess: { programmes: { mode: 'selected', roleIds: ['invalid id'] } } },

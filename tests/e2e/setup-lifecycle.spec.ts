@@ -66,6 +66,12 @@ for (const mode of ['browser', 'sign-in'] as const) {
       await expect(wizard.getByText(/القيم الأولية لهوية النظام/)).toBeVisible();
       await expect(page.getByText('حسابات التجربة', { exact: true })).toHaveCount(0);
       if (mode === 'browser') {
+        const colors = wizard.getByRole('group', { name: 'ألوان الواجهة' });
+        await expect(colors.getByRole('radio')).toHaveCount(4);
+        await colors.getByRole('radio', { name: 'أخضر زيتوني' }).check();
+        await wizard.getByRole('button', { name: 'حفظ والمتابعة' }).click();
+        await expect(page.locator('html')).toHaveAttribute('data-color-palette', 'olive');
+        await wizard.getByRole('button', { name: /المؤسسة/ }).click();
         const engine = wizard.getByRole('region', { name: 'محرك قاعدة البيانات' });
         await expect(engine).toBeHidden();
         await wizard.getByText('خيارات قاعدة البيانات', { exact: true }).click();
@@ -80,6 +86,7 @@ for (const mode of ['browser', 'sign-in'] as const) {
         await freshPage.goto('/');
         await expect(freshPage.getByRole('button', { name: 'تسجيل الدخول', exact: true })).toBeVisible();
         await expect(freshPage.getByRole('button', { name: 'بدء إعداد النظام' })).toHaveCount(0);
+        if (mode === 'browser') await expect(freshPage.locator('html')).toHaveAttribute('data-color-palette', 'olive');
       } finally {
         await freshPage.close();
       }

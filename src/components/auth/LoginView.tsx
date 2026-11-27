@@ -1,14 +1,15 @@
 import { StationClock } from '../common/StationClock';
 import { configureDateFormat } from '../../shared/dateFormat';
-import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import { APP_ICON_URL, APP_NAME, APP_TAGLINE } from '../../shared/brand';
 import { APP_VERSION } from '../../shared/releaseVersion';
 import type { LoginSetupMode } from '../../shared/setup';
 import { apiFetch } from '../../services/http';
+import { applyColorPalette } from '../../services/theme';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
 import { LoginSetupPanel } from './LoginSetupPanel';
 import React, { useEffect, useRef, useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
 import { PasswordVisibilityButton } from './PasswordFields';
 
 interface LoginViewProps {
@@ -73,7 +74,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   useEffect(() => {
     fetch('/api/v1/auth/station', { headers: { 'X-NRCS-Client': 'web' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => j?.data && configureDateFormat(j.data))
+      .then((j) => {
+        if (!j?.data) return;
+        configureDateFormat(j.data);
+        applyColorPalette(j.data.colorPalette);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -117,7 +122,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   return (
     <div className="relative isolate min-h-dvh flex items-center justify-center px-4 py-16 sm:py-12 font-sans" dir="rtl">
-      <div aria-hidden className="theme-fixed absolute inset-0 -z-10 bg-slate-950" />
+      <div aria-hidden className="theme-fixed absolute inset-0 -z-10 bg-[var(--madar-login-backdrop)]" />
       {/* Appearance before sign-in, in the top corner (the end side), clear of the card. */}
       <div className="absolute top-3 left-3">
         <ThemeToggle />
@@ -126,11 +131,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
       <StationClock variant="hero" onDark />
       <div className="w-full bg-white border border-slate-200 rounded-2xl p-5 sm:p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center">
-            <Radio className="w-6 h-6 text-white" />
-          </div>
+          <img src={APP_ICON_URL} alt="" width={48} height={48} className="size-12 shrink-0 rounded-xl" />
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
+            <h1 className="font-sans text-3xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
             <p className="text-sm text-slate-600">{APP_TAGLINE}</p>
             <p className="mt-1 text-xs text-slate-600">الإصدار <bdi dir="ltr" className="tabular-nums">{APP_VERSION}</bdi></p>
           </div>

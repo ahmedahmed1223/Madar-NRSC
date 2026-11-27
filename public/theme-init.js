@@ -4,6 +4,8 @@
     var saved = localStorage.getItem('nrcs-theme');
     var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (dark) document.documentElement.classList.add('dark');
+    var palette = localStorage.getItem('nrcs-color-palette');
+    if (palette) document.documentElement.setAttribute('data-color-palette', palette);
     if (localStorage.getItem('nrcs-reduce-motion') === '1') document.documentElement.classList.add('reduce-motion');
     var scale = localStorage.getItem('nrcs-text-scale');
     if (scale === 'compact' || scale === 'large' || scale === 'larger') document.documentElement.setAttribute('data-text-scale', scale);

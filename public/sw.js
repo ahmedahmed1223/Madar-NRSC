@@ -238,7 +238,7 @@ self.addEventListener('push', (event) => {
       requireInteraction: !!data.urgent,
       dir: 'rtl',
       lang: 'ar',
-      icon: '/icon.svg',
+      icon: '/icon-192.png',
       badge: '/icon.svg',
       data: { url: typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/' },
     })

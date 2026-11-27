@@ -7,6 +7,13 @@ test.use({ serviceWorkers: 'block' });
 test('login stays within the viewport on small phones and wide desks', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#login-email')).toBeVisible();
+  const entry = page.getByRole('region', { name: 'الدخول إلى مدار' });
+  await expect(entry.getByText('لوحة التحكم للمنصة', { exact: true })).toBeVisible();
+  await expect(entry.getByRole('heading', { name: 'مدار', exact: true })).toHaveCSS('font-family', /IBM Plex Sans Arabic/);
+  const logo = entry.locator('img[src="/icon-192.png"]');
+  await expect(logo).toBeVisible();
+  await expect.poll(() => logo.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(192);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/icon-192.png');
   const health = await page.request.get('/api/health');
   expect(health.ok()).toBe(true);
   const { version } = await health.json();

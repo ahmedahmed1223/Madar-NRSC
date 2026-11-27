@@ -1,4 +1,4 @@
-import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import { APP_ICON_URL, APP_NAME, APP_TAGLINE } from '../../shared/brand';
 import { hasSeenWhatsNew, WHATS_NEW_SEEN_EVENT } from '../../services/whatsNewSeen';
 import { departmentIdOf } from '../../shared/departments';
 import { isApprover } from '../../shared/bulletins';
@@ -371,11 +371,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="min-h-16 shrink-0 border-b border-white/10 flex items-center justify-between gap-1 px-4">
           {!isCollapsed && <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-md bg-red-600 flex items-center justify-center text-white shrink-0">
-                <Radio className="w-5 h-5" />
-              </div>
+              <img src={APP_ICON_URL} alt="" width={32} height={32} className="size-8 rounded-md shrink-0" />
               <div className="truncate">
-                <span className="font-bold text-white text-sm block leading-tight tracking-tight">
+                <span className="font-sans font-bold text-white text-sm block leading-tight">
                   {APP_NAME}
                 </span>
                 <span className="text-2xs text-slate-400 block leading-tight">
@@ -385,9 +383,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>}
 
           {isCollapsed && (
-            <div className="mx-auto w-8 h-8 rounded-md bg-red-600 hidden lg:flex items-center justify-center text-white">
-              <Radio className="w-5 h-5" />
-            </div>
+            <img src={APP_ICON_URL} alt="" width={32} height={32} className="mx-auto size-8 rounded-md hidden lg:block" />
           )}
 
           <div className="flex items-center gap-1">

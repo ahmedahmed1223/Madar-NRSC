@@ -1,7 +1,21 @@
+import { resolveColorPalette } from '../shared/appearancePalette';
+
 export type ThemeMode = 'light' | 'dark';
 
 const STORAGE_KEY = 'nrcs-theme';
 const listeners = new Set<(mode: ThemeMode) => void>();
+
+export function applyColorPalette(value: unknown) {
+  const palette = resolveColorPalette(value);
+  const root = document.documentElement;
+  if (root.dataset.colorPalette === palette) return;
+  root.dataset.colorPalette = palette;
+  try {
+    localStorage.setItem('nrcs-color-palette', palette);
+  } catch {
+    // The server supplies the institution's palette on the next visit.
+  }
+}
 
 function savedPreference(): ThemeMode | null {
   try {

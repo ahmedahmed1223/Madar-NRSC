@@ -1,4 +1,5 @@
 import { sanitizeDateSettings } from '../shared/dateFormat';
+import { resolveColorPalette } from '../shared/appearancePalette';
 import { APP_VERSION } from '../shared/releaseVersion';
 import { correctionTarget, createNewsCorrection, NewsCorrectionError } from './newsCorrections';
 import { shiftHandoverRouter } from './shiftHandovers';
@@ -465,6 +466,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
         organizationName: typeof settings.organizationName === 'string' ? settings.organizationName : '',
         defaultTimezone: typeof settings.defaultTimezone === 'string' ? settings.defaultTimezone : '',
         dateTime: sanitizeDateSettings(settings.dateTime),
+        colorPalette: resolveColorPalette(settings.colorPalette),
       },
     });
   });

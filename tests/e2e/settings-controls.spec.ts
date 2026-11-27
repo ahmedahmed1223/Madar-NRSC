@@ -44,6 +44,29 @@ test('settings sections fit desktop and mobile and device preferences apply', as
   await close();
 });
 
+test('an administrator can save one of the organization palettes and keep night mode', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv');
+  try {
+    await openNav(page, 'الإعدادات');
+    await openSettingsSection(page, 'المؤسسة والفريق');
+    const colors = page.getByRole('group', { name: 'ألوان الواجهة' });
+    await expect(colors.getByRole('radio')).toHaveCount(4);
+    await colors.getByRole('radio', { name: 'بنفسجي حبري' }).check();
+    const accent = () => page.locator('html').evaluate(root => getComputedStyle(root).getPropertyValue('--color-blue-600').trim());
+    const before = await accent();
+    await page.getByRole('button', { name: 'حفظ الإعدادات العامة', exact: true }).click();
+    await expect(page.getByText('تم حفظ إعدادات النظام وتطبيقها بنجاح على غرفة الأخبار ولوحة التحكم.', { exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-color-palette', 'violet');
+    await expect.poll(accent).not.toBe(before);
+    await page.reload();
+    await expect(colors.getByRole('radio', { name: 'بنفسجي حبري' })).toBeChecked();
+    await openSettingsSection(page, 'تفضيلات هذا الجهاز');
+    await page.getByLabel('المظهر', { exact: true }).selectOption('dark');
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await expect(page.locator('html')).toHaveAttribute('data-color-palette', 'violet');
+  } finally { await close(); }
+});
+
 test('station timezone changes the clock and entered dates, and persists after reload', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv');
   await openNav(page, 'الإعدادات');

@@ -42,7 +42,7 @@ Success: every item that airs has a visible chain of who did what; managers can 
 
 ## Brand Commitments
 
-- Name «مدار» and its red on-air mark (client: current identity is good; designer may evaluate).
+- Name «مدار» with a petrol, ivory and amber orbital mark. Broadcast red remains reserved for live and urgent states.
 - IBM Plex Sans Arabic for the interface, IBM Plex Mono for clocks and timecodes (chosen by the client).
 - Day and night modes plus «حسب الجهاز».
 
