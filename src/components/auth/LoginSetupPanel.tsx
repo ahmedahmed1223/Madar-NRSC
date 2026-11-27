@@ -13,7 +13,7 @@ const descriptions = {
   'sign-in': {
     summary: 'ابدأ بحساب المسؤول الأول لمراجعة المؤسسة والمحطات.',
     firstStep: 'الدخول بحساب المسؤول',
-    instructions: 'سجّل الدخول ببريد المسؤول وكلمة المرور الأولى التي عيّنها مشغّل الخادم أو التي حفظتها عند إنشاء الحساب. إذا ولّدها الخادم تجدها في سجل بدء التشغيل الأول. بعد تغييرها، يفتح معالج إعداد المؤسسة.',
+    instructions: 'بعد الدخول يطلب مدار تغيير كلمة المرور الأولى، ثم يفتح معالج إعداد المؤسسة.',
   },
   demo: {
     summary: 'جرّب مسار التهيئة بحساب مدير النظام التجريبي.',
@@ -21,6 +21,17 @@ const descriptions = {
     instructions: 'اختر حساب مدير النظام من حسابات التجربة أدناه. يمكنك حذف البيانات النموذجية من الإعدادات بعد إنشاء حساب إدارة خاص بالمؤسسة.',
   },
 } satisfies Record<SetupMode, { summary: string; firstStep: string; instructions: string }>;
+
+const firstCredentials = {
+  browser: {
+    email: 'البريد الإلكتروني الذي تعيّنه لمسؤول النظام في المعالج.',
+    password: 'اخترها في المعالج، أو ولّد كلمة مؤقتة وغيّرها عند الدخول.',
+  },
+  'sign-in': {
+    email: 'البريد الإلكتروني للمسؤول الذي أُعدّ عند التثبيت.',
+    password: 'استخدم الكلمة التي حفظتها أثناء الإعداد أو استلمتها من مشغّل الخادم. إذا ولّدها مدار، يجدها المشغّل في سجل التشغيل الأول.',
+  },
+};
 
 interface LoginSetupPanelProps {
   mode: SetupMode;
@@ -32,6 +43,7 @@ interface LoginSetupPanelProps {
 
 export function LoginSetupPanel({ mode, open, disabled, onToggle, children }: LoginSetupPanelProps) {
   const description = descriptions[mode];
+  const credentials = mode === 'demo' ? null : firstCredentials[mode];
   const openLabel = mode === 'browser' ? 'العودة إلى تسجيل الدخول' : 'إغلاق خطوات الإعداد';
 
   return (
@@ -40,6 +52,21 @@ export function LoginSetupPanel({ mode, open, disabled, onToggle, children }: Lo
         {mode === 'demo' ? 'تجربة إعداد غرفة الأخبار' : 'تشغيل مدار لأول مرة'}
       </h2>
       <p id="login-setup-summary" className="mt-1 text-sm leading-relaxed text-slate-700">{description.summary}</p>
+      {credentials && (
+        <div role="group" aria-labelledby="login-first-credentials-title" className="mt-3 space-y-2 rounded-lg border border-blue-100 bg-white p-3">
+          <p id="login-first-credentials-title" className="text-sm font-bold text-slate-900">بيانات الدخول الأولى</p>
+          <dl className="space-y-2 text-xs leading-relaxed text-slate-700">
+            <div>
+              <dt className="font-semibold text-slate-900">اسم المستخدم</dt>
+              <dd>{credentials.email}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-slate-900">كلمة المرور الأولى</dt>
+              <dd>{credentials.password}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
       <button
         type="button"
         aria-expanded={open}
