@@ -1,5 +1,17 @@
 # Production Operations
 
+## تشغيل البناء وقياس الحمل
+
+يقدّم خادم الإنتاج ملفات الواجهة من `dist/` ويشغّل Node من `dist-server/server.cjs`.
+عند نسخ البناء يدويًا احتفظ بالمجلدين وشغّل `npm start` من جذر التطبيق.
+اجعل جذر الويب في الوكيل العكسي منفصلًا عن ملفات الخادم وخرائط المصدر.
+
+للقياس المحلي استخدم `npx tsx scripts/benchmark-newsroom.ts`. ينشئ القياس بيئة
+SQLite مؤقتة و50 حسابًا وأربع محطات و5,000 خبر. يقيس المئين 95 لتسجيل الدخول
+والتهيئة وحفظ التكليف وقراءة التغييرات والبحث في الأرشيف، ويطابق التكليفات
+مع ما استلمه الزملاء. احفظ ناتج الأمر لكل نسخة على الجهاز نفسه. استخدم
+المناوبة أدناه لقياس الوصول بين المحطات وعلى الأجهزة التي تستخدمها غرفة الأخبار.
+
 ## مناوبة مشتركة عبر المحطات
 
 استخدم [ملف تشغيل المناوبة](../docker-compose.rehearsal.yml) على خادم مستقل يشغّل Docker Compose. وجّه اسم نطاق الاختبار إلى الخادم وأتح منافذ HTTP وHTTPS لإصدار الشهادة. يحفظ الملف بيانات المناوبة ونسخها الاحتياطية في مجلدات Docker مخصصة، ويمرّر الوصول إلى مدار عبر HTTPS.
@@ -36,9 +48,12 @@ Missing files fail the backup instead of producing a success message.
 - Both can be enabled together. Empty values keep complete bundles locally only.
 - rclone must be installed on the host/container and its configuration made available to the service account.
   The stock image does not include rclone. Keep credentials outside Git; use provider encryption and restricted access.
-- Local complete bundles follow `BACKUP_RETENTION`. External retention must be configured separately,
-  preferably with provider lifecycle/versioning. Remote destinations are never deleted by the application.
-- Failed `.pending` bundles are not complete backups. Investigate the error before manually removing them.
+- Local bundles and verified complete bundles in `BACKUP_DIRECTORY` follow `BACKUP_RETENTION`.
+  Directory retention starts with bundles carrying this database's origin marker. Keep or retire older and
+  incomplete bundles separately. Configure retention and versioning at the provider for `BACKUP_REMOTE`.
+- Interrupted staging directories are removed after a failed attempt. Startup also removes abandoned local
+  staging and external staging owned by this database after 24 hours. On filesystems that support
+  copy-on-write clones, bundles share unchanged disk blocks while remaining independent of the source file.
 - When no complete bundle has been delivered, the last delivery is overdue, or the process restarts close
   to the next due time, the scheduler runs within one minute of the due time. It anchors the next run to
   the last complete delivery rather than resetting the clock at every server restart. After a failed
@@ -81,6 +96,18 @@ large uploads or increase the application/container deadlines together.
 Health probes bypass traffic quotas. Authenticated quotas are per user; a wider per-IP
 limit protects the server before session processing. Configure trusted proxies accurately.
 Monitor disk capacity, backup failures, HTTP latency, 429/503 rates and sync errors.
+
+### Local performance baseline
+
+Run `npm exec -- tsx scripts/benchmark-newsroom.ts` on each candidate and save the JSON output
+with the candidate commit. The script uses temporary SQLite storage, 50 synthetic accounts in four
+stations and 5,000 archived stories. It measures p95 for simultaneous login, bootstrap, writes,
+reads by the assigned colleague, and Arabic archive search. It checks that every assignment was
+written once and reached its intended user, then reports RSS and event-loop delay.
+
+Use a quiet machine and repeat on the same environment when comparing changes. The fixture exercises
+the HTTP API locally. For the production gate, repeat on the deployed database and station network
+and record typing responsiveness in the editor, media upload and live broadcast continuity.
 
 ## Release Gate
 

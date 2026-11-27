@@ -50,29 +50,45 @@ test('prepared shell opens offline and restores durable local operation after re
       const url = new URL(request.url());
       if (offlineAssets.has(url.pathname)) offlineAssetFailures.push(url.pathname);
     });
+    await page.evaluate(async () => {
+      const worker = await navigator.serviceWorker.ready;
+      worker.active?.postMessage({ type: 'precache-app' });
+    });
+    await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/active-app', { cacheName: 'madar-control-app' })))).toBe(true);
     await page.context().setOffline(true);
-    const offlineNavigation = await page.goto(`/offline-air.html?packet=${packet.packetId}`);
+    await page.goto('/');
+    await expect(page.getByRole('status')).toContainText('غير متصل');
+    const themeBootstrap = await page.evaluate(async () => (await fetch('/theme-init.js')).ok);
+    expect(themeBootstrap).toBe(true);
+    const offlineLink = page.getByRole('link', { name: 'فتح وضع الهواء دون اتصال', exact: true });
+    await expect(offlineLink).toBeVisible();
+    const [offlineNavigation] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/offline-air.html'),
+      offlineLink.click(),
+    ]);
     expect(offlineNavigation?.fromServiceWorker(), 'Offline-air shell navigation was not served by the service worker').toBe(true);
     await expect(page.getByLabel('كلمة فتح النسخة', { exact: true })).toBeVisible();
     expect(offlineAssetFailures, `Offline-air files failed to open: ${offlineAssetFailures.join(', ')}`).toEqual([]);
-    await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
-    await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    const unlock = async () => {
+      await page.getByLabel('النسخة المحفوظة', { exact: true }).selectOption(packet.packetId);
+      await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
+      await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    };
+    await unlock();
     await expect(page.getByRole('heading', { name: packet.show.title, exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'تشغيل محلي', exact: true }).click();
     await expect(page.locator('footer output')).toContainText('RUNNING');
     await page.getByRole('button', { name: 'إيقاف مؤقت', exact: true }).click();
     await expect(page.locator('footer output')).toContainText('PAUSED');
     await page.reload();
-    await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
-    await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    await unlock();
     await expect(page.locator('footer output')).toContainText('PAUSED');
     for (let index = 0; index < packet.show.segments.length; index++) {
       await page.getByLabel('الفقرة المعروضة', { exact: true }).selectOption(String(index));
       await expect(page.getByRole('heading', { level: 2, name: packet.show.segments[index].title, exact: true })).toBeVisible();
     }
     await page.reload();
-    await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
-    await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    await unlock();
     await expect(page.getByLabel('الفقرة المعروضة', { exact: true })).toHaveValue(String(packet.show.segments.length - 1));
     await page.getByRole('article', { name: 'نص الحلقة المحلي' }).focus();
     await page.keyboard.press('ArrowRight');
@@ -98,8 +114,7 @@ test('prepared shell opens offline and restores durable local operation after re
         return original(...args);
       };
     });
-    await page.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
-    await page.getByRole('button', { name: 'فتح النسخة', exact: true }).click();
+    await unlock();
     await expect.poll(() => page.evaluate(() => !!(window as any).derivationStarted)).toBe(true);
     await page.evaluate(async userId => {
       const channel = new BroadcastChannel('madar-offline-air');

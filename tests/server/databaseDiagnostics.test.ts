@@ -38,11 +38,11 @@ it('checks and downloads the selected snapshot without changing the live databas
   expect(verified.body.data.valid).toBe(true);
   expect(server.db.currentRev()).toBe(before);
   // Downloading needs the identity confirmed again (the file holds every password hash).
-  expect((await admin.get(`/api/v1/db/backups/download?fileName=${encodeURIComponent(name)}`)).status).toBe(401);
+  expect((await admin.post('/api/v1/db/backups/download').set('X-NRCS-Client', 'web').send({ fileName: name })).status).toBe(401);
   const confirm = await admin.post('/api/v1/db/confirm-operation').set('X-NRCS-Client', 'web').send({ action: 'download', fileName: name, password: 'Madar@Demo2026' });
   expect(confirm.status).toBe(200);
   const token = confirm.body.data.token;
-  const downloaded = await admin.get(`/api/v1/db/backups/download?fileName=${encodeURIComponent(name)}&confirmationToken=${encodeURIComponent(token)}`).buffer(true).parse((response, callback) => {
+  const downloaded = await admin.post('/api/v1/db/backups/download').set('X-NRCS-Client', 'web').send({ fileName: name, confirmationToken: token }).buffer(true).parse((response, callback) => {
     const chunks: Buffer[] = [];
     response.on('data', chunk => chunks.push(Buffer.from(chunk)));
     response.on('end', () => callback(null, Buffer.concat(chunks)));
@@ -54,9 +54,9 @@ it('checks and downloads the selected snapshot without changing the live databas
   expect(downloaded.body).toEqual(fs.readFileSync(path.join(server.db.backupsDir, name)));
   expect(downloaded.body).not.toEqual(server.db.serialize());
   // One confirmation, one download; and it is in the audit trail.
-  expect((await admin.get(`/api/v1/db/backups/download?fileName=${encodeURIComponent(name)}&confirmationToken=${encodeURIComponent(token)}`)).status).toBe(401);
+  expect((await admin.post('/api/v1/db/backups/download').set('X-NRCS-Client', 'web').send({ fileName: name, confirmationToken: token })).status).toBe(401);
   expect(server.db.listCollection('auditLogs').some((r) => r.d.actionType === 'DB_BACKUP_DOWNLOAD' && r.d.targetId === name)).toBe(true);
-  expect((await admin.get('/api/v1/db/backups/download?fileName=../newsroom.sqlite')).status).toBe(400);
+  expect((await admin.post('/api/v1/db/backups/download').set('X-NRCS-Client', 'web').send({ fileName: 'missing.sqlite' })).status).toBe(400);
   fs.writeFileSync(path.join(server.db.backupsDir, name), 'corrupted snapshot');
   expect((await admin.post('/api/v1/db/backups/verify').set('X-NRCS-Client', 'web').send({ fileName: name })).status).toBe(400);
   const status = await admin.get('/api/v1/db/backup-status');

@@ -19,36 +19,31 @@ const APP_RUNTIME = APP_PREFIX + 'runtime';
 /** Remembers which build cache is current. Not under APP_PREFIX, so cleanup never removes it. */
 const APP_CONTROL = 'madar-control-app';
 const SHELL_KEY = '/index.html';
+const THEME_KEY = '/theme-init.js';
+const OFFLINE_CONTROL = 'madar-offline-control';
 /** A navigation slower than this falls back to the cached shell (weak field connections). */
 const NAVIGATION_TIMEOUT_MS = 4000;
 const MAX_APP_ASSETS = 400;
 const APP_ASSET_RE = /^\/assets\/[A-Za-z0-9_.-]+\.(js|css|woff2?|png|svg|jpg|webp)$/;
 
-async function activeAppCacheName() {
-  const control = await caches.open(APP_CONTROL);
-  const hit = await control.match('/active-app');
-  return hit ? hit.text() : '';
+async function cachePointer(controlName, key) {
+  const control = await caches.open(controlName);
+  const response = await control.match(key);
+  return response ? response.text() : '';
 }
 
-async function dropOldAppCaches() {
-  const active = await activeAppCacheName();
-  if (!active) return;
-  const names = (await caches.keys()).filter((name) => name.startsWith(APP_PREFIX) && name !== active);
-  await Promise.all(names.map((name) => caches.delete(name)));
+function activeAppCacheName() {
+  return cachePointer(APP_CONTROL, '/active-app');
 }
 
-async function preservePreviousAppAssets(currentCache, currentCacheName) {
-  const previousNames = (await caches.keys()).filter((name) => name.startsWith(APP_PREFIX) && name !== currentCacheName);
-  for (const name of previousNames) {
-    const previousCache = await caches.open(name);
-    for (const request of await previousCache.keys()) {
-      const url = new URL(request.url);
-      if (url.origin !== self.location.origin || !APP_ASSET_RE.test(url.pathname)) continue;
-      if (await currentCache.match(url.pathname)) continue;
-      const response = await previousCache.match(request);
-      if (response) await currentCache.put(url.pathname, response);
-    }
-  }
+async function promoteCache({ controlName, activeKey, previousKey, prefix, name }) {
+  const control = await caches.open(controlName);
+  const oldActive = await cachePointer(controlName, activeKey);
+  if (oldActive && oldActive !== name) await control.put(previousKey, new Response(oldActive));
+  await control.put(activeKey, new Response(name));
+  const keep = new Set([name, await cachePointer(controlName, previousKey)]);
+  const obsolete = (await caches.keys()).filter(candidate => candidate.startsWith(prefix) && !keep.has(candidate));
+  await Promise.all(obsolete.map(candidate => caches.delete(candidate)));
 }
 
 let precaching = null;
@@ -65,7 +60,7 @@ function precacheApp() {
     if (manifest.assets.some((url) => typeof url !== 'string' || !APP_ASSET_RE.test(url))) return;
     const name = APP_PREFIX + manifest.version;
     const cache = await caches.open(name);
-    if (name === await activeAppCacheName() && await cache.match('/app-complete')) return;
+    if (name === await activeAppCacheName() && await cache.match('/app-complete') && await cache.match(THEME_KEY)) return;
     const queue = [...manifest.assets];
     // A few at a time, so a phone on a weak link is not flooded.
     const worker = async () => {
@@ -80,14 +75,19 @@ function precacheApp() {
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
-    const shell = await fetch(SHELL_KEY, { cache: 'no-store', credentials: 'same-origin' });
-    if (shell.ok) await cache.put(SHELL_KEY, shell);
-    await preservePreviousAppAssets(cache, name);
+    // Only publish a cache when all files needed to open it are present.
+    for (const url of [SHELL_KEY, THEME_KEY]) {
+      const file = await fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error' });
+      if (!file.ok) throw new Error('asset ' + url);
+      await cache.put(url, file);
+    }
+    // Older workers copied a cumulative set of historical files into the active cache.
+    const files = new Set([...manifest.assets, SHELL_KEY, THEME_KEY, '/app-complete']);
+    for (const request of await cache.keys()) {
+      if (!files.has(new URL(request.url).pathname)) await cache.delete(request);
+    }
     await cache.put('/app-complete', new Response(manifest.version));
-    const control = await caches.open(APP_CONTROL);
-    await control.put('/active-app', new Response(name));
-    await dropOldAppCaches();
-    await caches.delete(APP_RUNTIME);
+    await promoteCache({ controlName: APP_CONTROL, activeKey: '/active-app', previousKey: '/previous-app', prefix: APP_PREFIX, name });
   })().catch(() => undefined).finally(() => { precaching = null; });
   return precaching;
 }
@@ -96,10 +96,6 @@ function precacheApp() {
 function refreshAppIfStale() {
   if (Date.now() - lastManifestCheck < 5 * 60_000) return Promise.resolve();
   return precacheApp();
-}
-
-async function writableAppCache() {
-  return caches.open((await activeAppCacheName()) || APP_RUNTIME);
 }
 
 async function cachedShell() {
@@ -122,7 +118,7 @@ async function navigationResponse(event) {
     if (response.ok && (response.headers.get('content-type') || '').includes('text/html')) {
       const copy = response.clone();
       event.waitUntil((async () => {
-        await (await writableAppCache()).put(SHELL_KEY, copy);
+        if (!await activeAppCacheName()) await (await caches.open(APP_RUNTIME)).put(SHELL_KEY, copy);
         await refreshAppIfStale();
       })().catch(() => undefined));
     }
@@ -143,12 +139,11 @@ async function navigationResponse(event) {
 }
 
 /** Offline-air shells first (as before), then the app caches, then the network (and keep a copy). */
-async function assetResponse(request, url) {
-  const control = await caches.open('madar-offline-control');
-  const active = await control.match('/active-offline-air');
-  const current = active ? await active.text() : '';
-  const names = (await caches.keys()).filter(name => name.startsWith(OFFLINE_PREFIX));
-  names.sort((a, b) => a === current ? -1 : b === current ? 1 : 0);
+async function assetResponse(event, url) {
+  const request = event.request;
+  const active = await cachePointer(OFFLINE_CONTROL, '/active-offline-air');
+  const previous = await cachePointer(OFFLINE_CONTROL, '/previous-offline-air');
+  const names = [...new Set([active, previous].filter(Boolean))];
   // Serve complete shells only; keep old asset hashes available for already-open sessions.
   for (const name of names) {
     const cache = await caches.open(name);
@@ -156,16 +151,21 @@ async function assetResponse(request, url) {
     const hit = await cache.match(url.pathname);
     if (hit) return hit;
   }
-  if (!url.pathname.startsWith('/assets/')) return fetch(request);
-  const appNames = (await caches.keys()).filter((name) => name.startsWith(APP_PREFIX));
+  if (url.pathname === '/offline-air.html') return fetch(request);
+  const appNames = [await activeAppCacheName(), await cachePointer(APP_CONTROL, '/previous-app'), APP_RUNTIME].filter(Boolean);
   for (const name of appNames) {
     const hit = await (await caches.open(name)).match(url.pathname);
     if (hit) return hit;
   }
   const response = await fetch(request);
-  if (response.ok && response.type === 'basic' && APP_ASSET_RE.test(url.pathname)) {
+  if (!await activeAppCacheName() && response.ok && response.type === 'basic' && APP_ASSET_RE.test(url.pathname)) {
     const copy = response.clone();
-    writableAppCache().then((cache) => cache.put(url.pathname, copy)).catch(() => undefined);
+    event.waitUntil((async () => {
+      const runtime = await caches.open(APP_RUNTIME);
+      await runtime.put(url.pathname, copy);
+      const files = (await runtime.keys()).filter(entry => APP_ASSET_RE.test(new URL(entry.url).pathname));
+      for (const entry of files.slice(0, Math.max(0, files.length - MAX_APP_ASSETS))) await runtime.delete(entry);
+    })().catch(() => undefined));
   }
   return response;
 }
@@ -175,17 +175,15 @@ self.addEventListener('message', event => {
   event.waitUntil(precacheApp());
 });
 
-self.addEventListener('message', event => {
-  if (event.data?.type !== 'prepare-offline-air' || !event.ports[0]) return;
-  event.waitUntil((async () => {
-    let cacheName;
-    try {
+let preparingAir = null;
+function prepareOfflineAir() {
+  preparingAir ??= (async () => {
       const response = await fetch('/offline-air-assets.json', { cache: 'no-store', credentials: 'omit' });
       if (!response.ok) throw new Error('غلاف الأوفلاين غير متاح؛ يلزم بناء الإنتاج');
       const manifest = await response.json();
       if (!/^[a-f0-9]{24}$/.test(manifest.version) || !Array.isArray(manifest.assets) || manifest.assets.length > 100 || !manifest.assets.includes('/offline-air.html')) throw new Error('بيان الأوفلاين غير صالح');
       if (manifest.assets.some(url => typeof url !== 'string' || !(/^\/assets\/[a-zA-Z0-9_.-]+\.(js|css|woff2?|png|svg)$/.test(url) || url === '/offline-air.html'))) throw new Error('أصل أوفلاين غير مسموح');
-      cacheName = OFFLINE_PREFIX + manifest.version;
+      const cacheName = OFFLINE_PREFIX + manifest.version;
       const cache = await caches.open(cacheName);
       for (const url of manifest.assets) {
         if (!await cache.match(url)) {
@@ -196,11 +194,19 @@ self.addEventListener('message', event => {
         if (!await cache.match(url)) throw new Error('فشل التحقق من تخزين الغلاف');
       }
       await cache.put('/offline-air-complete', new Response(JSON.stringify(manifest)));
-      const control = await caches.open('madar-offline-control');
-      await control.put('/active-offline-air', new Response(cacheName));
-      event.ports[0].postMessage({ ok: true, version: manifest.version });
-    } catch (error) { event.ports[0].postMessage({ ok: false, error: error.message }); }
-  })());
+      await promoteCache({ controlName: OFFLINE_CONTROL, activeKey: '/active-offline-air', previousKey: '/previous-offline-air', prefix: OFFLINE_PREFIX, name: cacheName });
+      return manifest.version;
+  })().finally(() => { preparingAir = null; });
+  return preparingAir;
+}
+
+self.addEventListener('message', event => {
+  if (event.data?.type !== 'prepare-offline-air' || !event.ports[0]) return;
+  const port = event.ports[0];
+  event.waitUntil(prepareOfflineAir().then(
+    version => port.postMessage({ ok: true, version }),
+    error => port.postMessage({ ok: false, error: error.message }),
+  ));
 });
 
 self.addEventListener('fetch', event => {
@@ -208,8 +214,8 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
-  if (url.pathname === '/offline-air.html' || url.pathname.startsWith('/assets/')) {
-    event.respondWith(assetResponse(request, url));
+  if (url.pathname === '/offline-air.html' || url.pathname === THEME_KEY || url.pathname.startsWith('/assets/')) {
+    event.respondWith(assetResponse(event, url));
     return;
   }
   // Page loads of the app itself (any client route); other files (manifest, icons, JSON) go to the network.

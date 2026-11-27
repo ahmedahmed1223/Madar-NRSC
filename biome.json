@@ -1,0 +1,19 @@
+{
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "correctness": {
+        "useHookAtTopLevel": "error"
+      },
+      "suspicious": {
+        "noDuplicateJsxProps": "error"
+      }
+    }
+  }
+}

@@ -70,6 +70,7 @@ import {
 } from './auth';
 import { fetchFeed, getFeedStatus, parseFeed, pollWires } from './wires';
 import { mailEnabled, notificationEmail, sendEmail, sendPush, vapidKeys } from './delivery';
+import { allowedPushEndpoint } from './networkDestinations';
 import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS, PAGED_BOOTSTRAP_COLLECTIONS, SINGLETON_ID, isCollectionName } from '../shared/collections';
 import { adminOverview } from './adminOverview';
@@ -151,7 +152,6 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.locals.beginShutdown = () => {
     draining = true;
     for (const stream of streams) stream.end();
-    streams.clear();
   };
 
   app.disable('x-powered-by');
@@ -478,9 +478,17 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, ...publicUser(req.auth!.user, !!cred?.mustChangePassword, req.auth!.permissions), trashRetentionDays: config.retention.trashDays });
   });
 
+  const accountSecurityLimiter = createRateLimiter({
+    windowMs: 5 * 60_000,
+    max: 12,
+    key: req => req.auth!.user.id,
+    message: 'محاولات كثيرة لتغيير إعدادات الأمان. حاول بعد بضع دقائق.',
+  });
+
   app.post(
     '/api/v1/auth/change-password',
     requireAuth,
+    accountSecurityLimiter,
     wrap(async (req, res) => {
       const { currentPassword, newPassword } = req.body ?? {};
       const user = req.auth!.user;
@@ -542,6 +550,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post(
     '/api/v1/auth/2fa/setup',
     requireAuth,
+    accountSecurityLimiter,
     wrap(async (req, res) => {
       const user = req.auth!.user;
       const cred = await requireCurrentPassword(user.id, req.body?.password);
@@ -553,7 +562,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     })
   );
 
-  app.post('/api/v1/auth/2fa/enable', requireAuth, (req, res) => {
+  app.post('/api/v1/auth/2fa/enable', requireAuth, accountSecurityLimiter, (req, res) => {
     const user = req.auth!.user;
     const cred = db.getCredentials(user.id);
     if (!cred?.totpSecret) throw new HttpError(400, 'ابدأ إعداد التحقق بخطوتين أولاً');
@@ -571,6 +580,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.post(
     '/api/v1/auth/2fa/disable',
     requireAuth,
+    accountSecurityLimiter,
     wrap(async (req, res) => {
       const user = req.auth!.user;
       const cred = await requireCurrentPassword(user.id, req.body?.password);
@@ -579,6 +589,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
         throw new HttpError(400, 'رمز التحقق غير صحيح');
       }
       db.setTotp(user.id, null, false);
+      db.deleteUserSessions(user.id, req.auth!.sessionId);
       setTwoFactorFlag(user.id, false, user.id);
       audit(user, '2FA_DISABLED', 'USER', user.id, 'SECURITY', `إلغاء التحقق بخطوتين للحساب ${user.fullName}`, req.ip);
       res.json({ success: true });
@@ -830,7 +841,15 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   /** Server-Sent Events: tells browsers a new revision exists so they pull changes immediately. */
+  const streamsByUser = new Map<string, number>();
   app.get('/api/v1/data/stream', requireAuth, (req, res) => {
+    const userId = req.auth!.user.id;
+    const count = streamsByUser.get(userId) ?? 0;
+    if (count >= 2 * MAX_SESSIONS_PER_USER) {
+      res.setHeader('Retry-After', '30');
+      throw new HttpError(429, 'عدد اتصالات التحديث المباشر لهذا الحساب بلغ الحد المسموح', 'RATE_LIMITED');
+    }
+    streamsByUser.set(userId, count + 1);
     streams.add(res);
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -838,15 +857,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
-    res.write(`retry: 5000\nevent: rev\ndata: ${db.currentRev()}\n\n`);
-    const onRev = (rev: number) => res.write(`event: rev\ndata: ${rev}\n\n`);
-    const heartbeat = setInterval(() => res.write(`: ping\n\n`), 25_000);
-    changeBus.on('rev', onRev);
-    req.on('close', () => {
-      streams.delete(res);
+    const write = (message: string) => {
+      if (!res.destroyed && !res.writableEnded && !res.write(message)) res.destroy();
+    };
+    const onRev = (rev: number) => write(`event: rev\ndata: ${rev}\n\n`);
+    const heartbeat = setInterval(() => write(': ping\n\n'), 25_000);
+    const cleanup = () => {
+      if (!streams.delete(res)) return;
+      const remaining = (streamsByUser.get(userId) ?? 1) - 1;
+      if (remaining) streamsByUser.set(userId, remaining);
+      else streamsByUser.delete(userId);
       clearInterval(heartbeat);
       changeBus.off('rev', onRev);
-    });
+    };
+    changeBus.on('rev', onRev);
+    res.once('close', cleanup);
+    res.once('error', cleanup);
+    write(`retry: 5000\nevent: rev\ndata: ${db.currentRev()}\n\n`);
   });
 
   // --- Revision history -----------------------------------------------------
@@ -1043,7 +1070,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const endpoint = typeof sub?.endpoint === 'string' ? sub.endpoint : '';
     const p256dh = sub?.keys?.p256dh;
     const authKey = sub?.keys?.auth;
-    if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || typeof p256dh !== 'string' || typeof authKey !== 'string' || p256dh.length > 200 || authKey.length > 100) {
+    if (!allowedPushEndpoint(endpoint) || typeof p256dh !== 'string' || typeof authKey !== 'string' || p256dh.length > 200 || authKey.length > 100) {
       throw new HttpError(400, 'اشتراك التنبيهات غير صالح');
     }
     if (db.listPushSubscriptions(req.auth!.user.id).length >= 10) throw new HttpError(400, 'سجّلت عشرة أجهزة؛ احذف جهازاً قديماً أولاً');
@@ -1260,14 +1287,14 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   /** A file holding every password hash and 2FA secret leaves the server only after the identity is confirmed again. */
   const requireDownloadConfirmation = (req: Request, action: 'download' | 'export', target?: string) => {
     const auth = currentDatabaseActor(req);
-    const token = req.query.confirmationToken;
+    const token = req.body?.confirmationToken;
     if (typeof token !== 'string' || !token) throw new HttpError(401, 'أعد تأكيد هويتك قبل التنزيل', 'CONFIRMATION_REQUIRED');
     if (!confirmations.consume(token, { actorId: auth.user.id, sessionId: auth.sessionId, action, target })) throw new HttpError(401, 'انتهى التأكيد؛ أعد تأكيد هويتك', 'CONFIRMATION_INVALID');
     return auth;
   };
-  app.get('/api/v1/db/backups/download', dbAdmin, (req, res) => {
+  app.post('/api/v1/db/backups/download', dbAdmin, (req, res) => {
     let source: string;
-    const fileName = typeof req.query.fileName === 'string' ? req.query.fileName : '';
+    const fileName = typeof req.body?.fileName === 'string' ? req.body.fileName : '';
     try {
       if (!fileName) throw new Error();
       source = db.backupFilePath(fileName);
@@ -1304,11 +1331,12 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.json({ success: true, data });
   });
 
-  app.get('/api/v1/db/export', dbAdmin, (req, res) => {
+  app.post('/api/v1/db/export', dbAdmin, (req, res) => {
     requireDownloadConfirmation(req, 'export');
     const buffer = db.serialize();
     audit(req.auth!.user, 'DB_EXPORT', 'DATABASE', 'newsroom', 'SECURITY', 'تنزيل نسخة كاملة من قاعدة البيانات', req.ip);
     res.setHeader('Content-Type', 'application/x-sqlite3');
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Disposition', `attachment; filename="newsroom_${new Date().toISOString().slice(0, 10)}.sqlite"`);
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
@@ -1408,8 +1436,10 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     wrap(async (req, res) => {
       if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
       if (req.body?.includeUsers === true && !req.auth!.can('users.suspend_delete')) throw new HttpError(403, 'يتطلب حذف الحسابات التجريبية صلاحية حذف المستخدمين');
-      await db.createBackup('prerestore', config.backupRetention);
-      const removed = removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
+      const removed = await databaseWork(async () => {
+        await db.createBackup('prerestore', config.backupRetention);
+        return removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
+      });
       const total = Object.values(removed).reduce((a, b) => a + b, 0);
       audit(req.auth!.user, 'DEMO_DATA_REMOVED', 'DATABASE', 'newsroom', 'SECURITY', `حذف البيانات التجريبية (${total} سجلاً)`, req.ip);
       changeBus.emit('rev', db.currentRev());

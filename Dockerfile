@@ -18,6 +18,7 @@ WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/dist-server ./dist-server
 # «جسر مدار», downloaded from the storage settings and run on a computer inside the station's network.
 COPY --from=build /app/bridge ./bridge
 # tzdata: TZ=Asia/Riyadh (or any zone) works for logs and scheduled jobs.
@@ -28,4 +29,4 @@ VOLUME ["/data", "/backups"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "dist/server.cjs"]
+CMD ["node", "dist-server/server.cjs"]

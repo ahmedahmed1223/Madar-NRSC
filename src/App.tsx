@@ -28,6 +28,7 @@ import { apiService } from './services/api';
 import { authClient } from './services/authClient';
 import { NEWS_STATUS_LABELS, isBreakingLive } from './shared/newsWorkflow';
 import { dataStore } from './services/dataStore';
+import type { CollectionName } from './shared/collections';
 import { registerServiceWorker } from './services/push';
 import { Sidebar, personalBadgeCounts } from './components/layout/Sidebar';
 import { cardProductionAssignment } from './shared/productionCards';
@@ -137,7 +138,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
   /** Set when the server answers from different databases (misconfigured multi-instance hosting). */
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<User>(() => apiService.getCurrentUser());
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -218,7 +219,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
   // Prefilled fields for a new story written from an agency wire.
   const [newsSeed, setNewsSeed] = useState<NewsDraftSeed | null>(null);
-  const [programTypes, setProgramTypes] = useState(apiService.getProgramTypes());
+  const [programTypes, setProgramTypes] = useState(() => apiService.getProgramTypes());
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
   // Selection state
@@ -229,35 +230,50 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const [episodeSegmentId, setEpisodeSegmentId] = useState<string>();
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [filterProgramId, setFilterProgramId] = useState<string | null>(null);
-  // Load all initial data from apiService
-  const refreshData = () => {
-    // Station-wide date/time conventions follow the shared settings (redraws when they change).
-    configureDateFormat(apiService.getSettings());
-    setCurrentUser(apiService.getCurrentUser());
-    setIsLiveLockActive(apiService.getBroadcastState().liveLock);
-    setProgramTypes(apiService.getProgramTypes());
-    setStories(apiService.getStories());
-    setNewsList(apiService.getNews());
-    setPrograms(apiService.getPrograms());
-    setEpisodes(apiService.getEpisodes());
-    setGuests(apiService.getGuests());
-    setTasks(apiService.getTasks());
-    setMediaAssets(apiService.getMediaAssets());
-    setAuditLogs(apiService.getAuditLogs());
-    setCategories(apiService.getCategories());
-    setSources(apiService.getNewsSources());
-    setWires(apiService.getWires());
-    setAllUsers(apiService.getUsers());
-  };
-
+  // Some child views read smaller collections directly from the store on render.
+  const [, renderCollectionReaders] = useState(0);
   useEffect(() => {
+    const refreshData = (changed?: ReadonlySet<CollectionName>) => {
+      const includes = (...names: CollectionName[]) => !changed || names.some(name => changed.has(name));
+      if (includes('settings')) configureDateFormat(apiService.getSettings());
+      if (includes('users')) {
+        setAllUsers(apiService.getUsers());
+        setCurrentUser(apiService.getCurrentUser());
+      }
+      if (includes('broadcastState')) setIsLiveLockActive(apiService.getBroadcastState().liveLock);
+      if (includes('programTypes')) setProgramTypes(apiService.getProgramTypes());
+      if (includes('stories')) setStories(apiService.getStories());
+      if (includes('news')) setNewsList(apiService.getNews());
+      // Program counts and guest appearances depend on episode records.
+      if (includes('programs', 'episodes')) {
+        setPrograms(apiService.getPrograms());
+        setEpisodes(apiService.getEpisodes());
+        setGuests(apiService.getGuests());
+      } else if (includes('guests')) {
+        setGuests(apiService.getGuests());
+      }
+      if (includes('tasks')) setTasks(apiService.getTasks());
+      if (includes('media')) setMediaAssets(apiService.getMediaAssets());
+      if (includes('auditLogs')) setAuditLogs(apiService.getAuditLogs());
+      if (includes('categories')) setCategories(apiService.getCategories());
+      if (includes('sources')) setSources(apiService.getNewsSources());
+      if (includes('wires')) setWires(apiService.getWires());
+      if (changed) renderCollectionReaders(revision => revision + 1);
+    };
+
     refreshData();
-    // Re-render when this or another user changes shared data; surface rejected writes.
-    let frame = 0;
-    return dataStore.subscribe((evt) => {
+    let frame: number | undefined;
+    let changed = new Set<CollectionName>();
+    const unsubscribe = dataStore.subscribe((evt) => {
       if (evt.type === 'data-changed') {
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(refreshData);
+        // Editing screens already subscribe directly to their lock collection.
+        evt.collections.forEach(collection => { if (collection !== 'editLocks') changed.add(collection); });
+        if (changed.size && frame === undefined) frame = requestAnimationFrame(() => {
+          const batch = changed;
+          changed = new Set();
+          frame = undefined;
+          refreshData(batch);
+        });
       } else if (evt.type === 'sync-error') {
         const titles: Record<string, string> = {
           CONFLICT: 'تعارض في التعديل',
@@ -274,46 +290,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         setStorageWarning(evt.message);
       }
     });
-  }, []);
-
-  // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+N)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.repeat || e.isComposing || document.querySelector('[role=dialog], [role=alertdialog]') || document.body.classList.contains('form-page-open') || isEditingTarget(e.target)) return;
-      // Command Palette (Ctrl+K or Cmd+K)
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && matchesShortcutKey(e, 'k')) {
-        e.preventDefault();
-        setIsCommandPaletteOpen((prev) => !prev);
-        return;
-      }
-
-      // Help / Keyboard shortcuts reference (?)
-      const targetTag = (e.target as HTMLElement)?.tagName?.toUpperCase();
-      const isInputting = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
-
-      if (e.key === '?' && !isInputting) {
-        e.preventDefault();
-        setIsKeyboardShortcutsOpen((prev) => !prev);
-        return;
-      }
-
-      // Live Lock Toggle (Ctrl+Alt+L)
-      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'l')) {
-        e.preventDefault();
-        handleToggleLiveLock();
-        return;
-      }
-
-      // Quick New News (Ctrl+Alt+N)
-      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'n')) {
-        e.preventDefault();
-        handleCreateNewNewsClick();
-        return;
-      }
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      unsubscribe();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+  }, []);
 
   // Breaking news ticker items
   // Only published, non-expired breaking stories go on air.
@@ -339,7 +320,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleSaveNews = async (newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, opts: { stay?: boolean } = {}): Promise<NewsItem | null> => {
     try {
       const saved = apiService.saveNews(newsData, currentUser);
-      refreshData();
       // Offline the write waits on this device; the editor says so once (no «تعذر الحفظ»).
       if (await queuedOffline(saved.id)) return null;
       // «تم الحفظ» only once the server has stored it (the sync layer reports refusals).
@@ -359,7 +339,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleUpdateNewsStatus = async (newsId: string, toStatus: NewsStatus, comment?: string, scheduledDate?: string): Promise<boolean> => {
     try {
       apiService.updateNewsStatus(newsId, toStatus, currentUser, comment, { scheduledDate });
-      refreshData();
       if (await queuedOffline(newsId)) return false;
       return await confirmSaved('news', newsId, `أصبحت حالة الخبر: ${NEWS_STATUS_LABELS[toStatus] || toStatus}`);
     } catch (err: any) {
@@ -375,7 +354,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleDeleteNews = (newsId: string) => {
     try {
       apiService.deleteNews(newsId, currentUser);
-      refreshData();
       if (selectedNewsItem?.id === newsId) {
         setSelectedNewsItem(null);
       }
@@ -413,7 +391,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         skipped.push(`«${title.slice(0, 30)}»: ${err.message}`);
       }
     }
-    refreshData();
     if (done > 0) {
       addToast({ type: 'success', title: 'إجراء جماعي', message: `تم تنفيذ الإجراء على ${done} من ${newsIds.length} خبراً` });
     }
@@ -513,6 +490,48 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     setActiveNav('news-editor');
   };
   const handleCreateNewNewsClick = () => openNewStory(false);
+  const shortcuts = useRef({ toggleLiveLock: handleToggleLiveLock, createNews: handleCreateNewNewsClick });
+  shortcuts.current = { toggleLiveLock: handleToggleLiveLock, createNews: handleCreateNewNewsClick };
+
+  // Keyboard shortcuts (Ctrl+K, ?, Ctrl+Alt+L, Ctrl+Alt+N)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat || e.isComposing || document.querySelector('[role=dialog], [role=alertdialog]') || document.body.classList.contains('form-page-open') || isEditingTarget(e.target)) return;
+      // Command Palette (Ctrl+K or Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && matchesShortcutKey(e, 'k')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Help / Keyboard shortcuts reference (?)
+      const targetTag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      const isInputting = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === '?' && !isInputting) {
+        e.preventDefault();
+        setIsKeyboardShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // Live Lock Toggle (Ctrl+Alt+L)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'l')) {
+        e.preventDefault();
+        shortcuts.current.toggleLiveLock();
+        return;
+      }
+
+      // Quick New News (Ctrl+Alt+N)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && matchesShortcutKey(e, 'n')) {
+        e.preventDefault();
+        shortcuts.current.createNews();
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
 
   const handleEditNewsClick = (itemOrId: NewsItem | string, reviewing = false) => {
     if (activeNav !== 'news-editor') setNewsReturnDesk(activeNav === 'breaking' ? 'breaking' : 'news');
@@ -542,7 +561,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     try {
       const on = !isBreakingLive(item);
       apiService.setBreaking(item.id, on);
-      refreshData();
       addToast(
         on
           ? { type: 'warning', title: 'خبر عاجل على الهواء', message: `«${item.title.slice(0, 40)}» على شريط العاجل لمدة ${apiService.getSettings().breakingDurationHours ?? 4} ساعات` }
@@ -557,7 +575,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleSaveProgram = async (progData: Partial<Program>): Promise<boolean> => {
     let saved: Program | null = null;
     if (!attempt('حفظ البرنامج', () => (saved = apiService.saveProgram(progData, currentUser)))) return false;
-    refreshData();
     return confirmSaved('programs', saved!.id, 'حُفظ البرنامج');
   };
 
@@ -571,7 +588,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       return;
     }
     if (!attempt('حذف البرنامج', () => apiService.deleteProgram(programId, currentUser))) return;
-    refreshData();
   };
 
   const handleSelectProgramEpisodes = (programId: string) => {
@@ -582,7 +598,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleSaveEpisode = async (epData: Partial<Episode>): Promise<boolean> => {
     let saved: Episode | null = null;
     if (!attempt('حفظ الحلقة', () => (saved = apiService.saveEpisode(epData, currentUser)))) return false;
-    refreshData();
     return confirmSaved('episodes', saved!.id, 'حُفظت الحلقة');
   };
 
@@ -596,7 +611,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       return;
     }
     if (!attempt('حذف الحلقة', () => apiService.deleteEpisode(episodeId, currentUser))) return;
-    refreshData();
     if (selectedEpisodeId === episodeId) {
       setSelectedEpisodeId(null);
       setActiveNav('episodes');
@@ -611,20 +625,17 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   const handleUpdateRundown = (episodeId: string, segments: RundownSegment[]) => {
     if (!attempt('تحديث الرانداون', () => apiService.updateEpisodeRundown(episodeId, segments, currentUser))) return;
-    refreshData();
   };
 
   // --- GUESTS ACTIONS ---
   const handleSaveGuest = async (guestData: Partial<Guest>): Promise<boolean> => {
     let saved: Guest | null = null;
     if (!attempt('حفظ الضيف', () => (saved = apiService.saveGuest(guestData, currentUser)))) return false;
-    refreshData();
     return confirmSaved('guests', saved!.id, 'حُفظ الضيف');
   };
 
   const handleDeleteGuest = (guestId: string) => {
     if (!attempt('حذف الضيف', () => apiService.deleteGuest(guestId, currentUser))) return;
-    refreshData();
   };
 
   // --- TASKS ACTIONS ---
@@ -632,7 +643,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     const existing = taskData.id && apiService.getTasks().some(task => task.id === taskData.id);
     let saved: EditorialTask | null = null;
     if (!attempt('حفظ المهمة', () => (saved = apiService.saveTask(taskData, currentUser)))) return false;
-    refreshData();
     // Quick status moves confirm quietly; creating or editing a task waits for the server.
     const quickMove = Object.keys(taskData).length <= 2;
     return confirmSaved('tasks', saved!.id, quickMove ? undefined : existing ? 'حُفظت المهمة' : `أُسندت المهمة «${saved!.title}»`);
@@ -640,14 +650,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   const handleDeleteTask = (taskId: string) => {
     if (!attempt('حذف المهمة', () => apiService.deleteTask(taskId, currentUser))) return;
-    refreshData();
   };
 
   // --- STORIES ACTIONS ---
   const handleSaveStory = async (storyData: Partial<Story>): Promise<boolean> => {
     try {
       const saved = apiService.saveStory(storyData, currentUser);
-      refreshData();
       return await confirmSaved('stories', saved.id, `حُفظت التغطية «${saved.title}»`);
     } catch (err: any) {
       addToast({ title: 'تعذر حفظ التغطية', message: err?.message || 'حاول مرة أخرى', type: 'error' });
@@ -658,7 +666,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleDeleteStory = (id: string) => {
     try {
       apiService.deleteStory(id, currentUser);
-      refreshData();
       addToast({
         title: 'حُذفت التغطية',
         message: 'تم حذف التغطية؛ بقيت أخبارها في قائمة الأخبار.',
@@ -674,7 +681,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleUploadMedia = async (mediaData: Partial<MediaAsset>): Promise<boolean> => {
     try {
       const saved = apiService.saveMediaAsset(mediaData, currentUser);
-      refreshData();
       return await confirmSaved('media', saved.id, 'حُفظت المادة في مكتبة الوسائط');
     } catch (err: any) {
       addToast({ type: 'error', title: 'تعذر حفظ المادة', message: err.message || 'حدث خطأ' });
@@ -684,7 +690,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
   const handleDeleteMedia = (id: string) => {
     if (!attempt('حذف الوسائط', () => apiService.deleteMediaAsset(id, currentUser))) return;
-    refreshData();
   };
 
   // --- SETTINGS ACTIONS ---
@@ -693,7 +698,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     try {
       const isNew = !cat.id;
       const saved = apiService.saveCategory(cat);
-      refreshData();
       return await confirmSaved('categories', saved.id, isNew ? `أُضيف القسم «${saved.nameAr}»` : `حُفظ القسم «${saved.nameAr}»`);
     } catch (err: any) {
       addToast({
@@ -708,7 +712,6 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   const handleDeleteCategory = (id: string) => {
     try {
       apiService.deleteCategory(id);
-      refreshData();
       addToast({
         title: 'تم حذف التصنيف',
         message: 'تم حذف التصنيف بنجاح من النظام',
@@ -727,13 +730,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
     const saved = apiService.saveNewsSource(source);
     const outcome = await dataStore.awaitWrite('sources', saved.id);
     if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ المصدر');
-    refreshData();
     return true;
   };
 
   const handleDeleteSource = (id: string) => {
     if (!attempt('حذف المصدر', () => apiService.deleteNewsSource(id))) return;
-    refreshData();
   };
 
   // Program selection handler
@@ -883,7 +884,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
         <Sidebar
           activeNav={activeNav}
           currentUser={currentUser}
-          breakingCount={newsList.filter((n) => isBreakingLive(n)).length}
+          breakingCount={breakingNewsItems.length}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           onSelectNav={(navId) => openLink(`/${navId}`)}

@@ -66,6 +66,7 @@ interface CollectionSearchWindow extends CollectionPageResponse {
 /** Said to the user when a write waits on this device for the connection to come back. */
 export const QUEUED_MESSAGE = 'محفوظ على جهازك — سيُرسل تلقائياً عند عودة الاتصال.';
 const QUEUED_OUTCOME: WriteOutcome = { ok: false, pending: true, queued: true, message: QUEUED_MESSAGE };
+const PENDING_STORAGE_WARNING = 'تعذّر حفظ التعديلات على هذا الجهاز. أبقِ الصفحة مفتوحة حتى يعود الاتصال ويكتمل إرسالها.';
 
 /** Browser connectivity as seen by the sync layer; injectable for tests. */
 export interface Connectivity {
@@ -114,6 +115,24 @@ interface PersistedPending {
 
 const PENDING_KEY = 'nrcs_pending_sync_v3';
 const JOURNAL_KEY = 'nrcs_recent_writes_v1';
+const accountStorageKey = (key: string, userId: string) => `${key}:${userId}`;
+
+function readAccountStorage<T extends { userId: string }>(key: string, userId: string): T | null {
+  const accountKey = accountStorageKey(key, userId);
+  const value: T | null = JSON.parse(localStorage.getItem(accountKey) || 'null');
+  if (value?.userId === userId) return value;
+  const legacy = localStorage.getItem(key);
+  const previous: T | null = JSON.parse(legacy || 'null');
+  if (previous?.userId !== userId) return null;
+  // A failed migration must leave the only durable copy available for this employee.
+  try {
+    localStorage.setItem(accountKey, legacy!);
+    localStorage.removeItem(key);
+  } catch {
+    // Recovery can proceed in memory, even when the browser refuses the new key.
+  }
+  return previous;
+}
 /** Writes the server confirmed recently, kept to resend if it later answers from older data. */
 const JOURNAL_MS = 30 * 60_000;
 const JOURNAL_MAX = 300;
@@ -214,7 +233,7 @@ export class DataStore {
     const k = keyOf(c, id);
     if (!this.hasPendingWrite(c, id)) return Promise.resolve({ ok: true });
     // No connection: say so at once instead of waiting; the write stays queued on this device.
-    if (this.waitingForConnection()) return Promise.resolve({ ...QUEUED_OUTCOME });
+    if (this.waitingForConnection()) return Promise.resolve(this.offlineWriteOutcome());
     return new Promise((resolve) => {
       const done = (o: WriteOutcome) => {
         clearTimeout(timer);
@@ -244,7 +263,13 @@ export class DataStore {
 
   /** Every write still waiting is kept on this device: tell its form now. */
   private settleAllWaitersQueued() {
-    for (const k of [...this.waiters.keys()]) this.settleWaiters(k, { ...QUEUED_OUTCOME });
+    for (const k of [...this.waiters.keys()]) this.settleWaiters(k, this.offlineWriteOutcome());
+  }
+
+  private offlineWriteOutcome(): WriteOutcome {
+    return this.pendingStorageFailed
+      ? { ok: false, pending: true, message: PENDING_STORAGE_WARNING }
+      : { ...QUEUED_OUTCOME };
   }
 
   /** True while writes cannot reach the server: the browser is offline or the last attempt hit the network. */
@@ -417,6 +442,8 @@ export class DataStore {
   // --- Lifecycle -------------------------------------------------------------
 
   private starting: Promise<void> | null = null;
+  private pendingLoaded = false;
+  private pendingStorageFailed = false;
 
   /** Idempotent per user (React StrictMode mounts effects twice in development). */
   start(userId: string): Promise<void> {
@@ -431,6 +458,7 @@ export class DataStore {
       this.watchConnectivity();
       await this.bootstrap(lifecycle, userId);
       if (!this.isCurrent(lifecycle, userId)) return;
+      this.pendingLoaded = true;
       this.replayPersistedPending();
       this.connectRealtime();
     })().catch((err) => {
@@ -446,7 +474,7 @@ export class DataStore {
   }
 
   stop() {
-    if (this.userId) this.persistPending();
+    if (this.pendingLoaded && this.pendingCount() > 0) this.persistPending();
     this.lifecycle++;
     this.lifecycleController?.abort();
     this.lifecycleController = null;
@@ -477,6 +505,8 @@ export class DataStore {
     this.ready = false;
     this.userId = null;
     this.starting = null;
+    this.pendingLoaded = false;
+    this.pendingStorageFailed = false;
     this.rev = 0;
     this.accessRevision = undefined;
     this.modules = undefined;
@@ -913,7 +943,10 @@ export class DataStore {
       if (this.connectivity.isOnline() && Date.now() - this.lastErrorAt > 60_000 && entries[0]) {
         this.lastErrorAt = Date.now();
         const reason = err instanceof ApiError ? err.message : 'تعذر الاتصال بالخادم';
-        this.emit({ type: 'sync-error', code: 'RETRY', message: `${reason} — تعديلاتك محفوظة على جهازك وستُرسل تلقائياً عند استجابة الخادم.`, collection: entries[0][1].c });
+        const message = this.pendingStorageFailed
+          ? PENDING_STORAGE_WARNING
+          : `${reason} — تعديلاتك محفوظة على جهازك وستُرسل تلقائياً عند استجابة الخادم.`;
+        this.emit({ type: 'sync-error', code: 'RETRY', message, collection: entries[0][1].c });
       }
       return network ? 'network' : 'server';
     } finally {
@@ -1085,16 +1118,16 @@ export class DataStore {
     this.pruneJournal();
     try {
       const payload: PersistedJournal = { userId: this.userId, dbId: this.journalDbId, rev: this.journalRev, entries: [...this.journal.values()] };
-      localStorage.setItem(JOURNAL_KEY, JSON.stringify(payload));
+      localStorage.setItem(accountStorageKey(JOURNAL_KEY, this.userId), JSON.stringify(payload));
     } catch {
       // Storage full or disabled: the journal still protects this tab.
     }
   }
 
   private loadJournal() {
-    if (typeof localStorage === 'undefined') return;
+    if (typeof localStorage === 'undefined' || !this.userId) return;
     try {
-      const saved: PersistedJournal | null = JSON.parse(localStorage.getItem(JOURNAL_KEY) || 'null');
+      const saved = readAccountStorage<PersistedJournal>(JOURNAL_KEY, this.userId);
       if (!saved || saved.userId !== this.userId || !Array.isArray(saved.entries)) return;
       this.journal = new Map(saved.entries.filter(e => e.c !== 'editLocks').map((e) => [keyOf(e.c, e.id), e]));
       this.journalDbId = saved.dbId;
@@ -1150,30 +1183,40 @@ export class DataStore {
   private persistPending() {
     if (typeof localStorage === 'undefined' || !this.userId) return;
     try {
+      const storageKey = accountStorageKey(PENDING_KEY, this.userId);
       const keys = [...this.dirty.values(), ...[...this.inFlight].map((k) => {
         const [c, id] = k.split('\u0000') as [CollectionName, string];
         return { c, id, op: this.meta.get(c)?.has(id) ? ('upsert' as const) : ('delete' as const) };
       })].filter(e => e.c !== 'editLocks' || e.op === 'delete');
       if (keys.length === 0) {
-        localStorage.removeItem(PENDING_KEY);
+        // The scoped queue is empty after acknowledgement. Remove a legacy copy only if owned.
+        const legacy: PersistedPending | null = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+        if (legacy?.userId === this.userId) localStorage.removeItem(PENDING_KEY);
+        localStorage.removeItem(storageKey);
+        this.pendingStorageFailed = false;
         return;
       }
       const payload: PersistedPending = { userId: this.userId, ops: keys.map((e) => this.buildOp(e.c, e.id, e.op)) };
-      localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+      this.pendingStorageFailed = false;
     } catch {
-      // Storage full or disabled: changes are still retried while the tab stays open.
+      if (this.pendingStorageFailed) return;
+      this.pendingStorageFailed = true;
+      this.emit({
+        type: 'storage-warning',
+        message: PENDING_STORAGE_WARNING,
+      });
     }
   }
 
   private replayPersistedPending() {
-    if (typeof localStorage === 'undefined') return;
+    if (typeof localStorage === 'undefined' || !this.userId) return;
     let saved: PersistedPending | null = null;
     try {
-      saved = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+      saved = readAccountStorage<PersistedPending>(PENDING_KEY, this.userId);
     } catch {
       saved = null;
     }
-    localStorage.removeItem(PENDING_KEY);
     if (!saved || saved.userId !== this.userId || !Array.isArray(saved.ops) || saved.ops.length === 0) return;
 
     const touched = new Set<CollectionName>();

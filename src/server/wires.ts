@@ -1,6 +1,8 @@
 import crypto from 'crypto';
-import dns from 'dns/promises';
-import net from 'net';
+import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { isIP } from 'node:net';
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { XMLParser } from 'fast-xml-parser';
 import type { NewsroomDatabase } from './db';
 import type { WireItem } from '../types/index';
@@ -8,6 +10,7 @@ import { changeBus } from './sync';
 import { logger } from './logger';
 import { alertForWires } from './notifications';
 import { isFlashWire } from '../shared/notifications';
+import { isPublicNetworkAddress, lookupPublicAddress } from './networkDestinations';
 
 export interface WireConfig {
   pollMinutes: number;
@@ -151,17 +154,7 @@ export function parseFeed(xml: string): ParsedFeed {
 
 // ---------- fetching (SSRF-safe) ----------
 
-function isPrivateAddress(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  const v6 = ip.toLowerCase();
-  if (v6.startsWith('::ffff:')) return isPrivateAddress(v6.slice(7));
-  return v6 === '::1' || v6 === '::' || v6.startsWith('fc') || v6.startsWith('fd') || v6.startsWith('fe80');
-}
-
-async function assertPublicUrl(raw: string, allowPrivate: boolean): Promise<URL> {
+function checkedFeedUrl(raw: string, allowPrivate: boolean): URL {
   let url: URL;
   try {
     url = new URL(raw);
@@ -170,47 +163,66 @@ async function assertPublicUrl(raw: string, allowPrivate: boolean): Promise<URL>
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('يُسمح فقط بروابط http و https');
   if (url.username || url.password) throw new Error('لا يُسمح ببيانات الدخول داخل الرابط');
-  if (!allowPrivate) {
-    const host = url.hostname.replace(/^\[|\]$/g, '');
-    const addresses = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true })).map((a) => a.address);
-    if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
-      throw new Error('الرابط يشير إلى عنوان داخلي غير مسموح (WIRE_ALLOW_PRIVATE_HOSTS)');
-    }
+  // Node bypasses lookup for literal addresses.
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (!allowPrivate && isIP(host) && !isPublicNetworkAddress(host)) {
+    throw new Error('الرابط يشير إلى عنوان داخلي أو غير عام');
   }
   return url;
 }
 
+function openFeed(url: URL, allowPrivate: boolean): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const request = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const req = request(url, {
+      agent: false,
+      lookup: allowPrivate ? undefined : lookupPublicAddress,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      headers: {
+        'User-Agent': 'Madar-NRCS/1.0 (+wire desk)',
+        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+      },
+    }, resolve);
+    req.once('error', reject);
+    req.end();
+  });
+}
+
+const feedDecoders = new Map([
+  ['gzip', createGunzip], ['deflate', createInflate], ['br', createBrotliDecompress],
+]);
+
 export async function fetchFeed(rawUrl: string, allowPrivate: boolean): Promise<string> {
   let current = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const url = await assertPublicUrl(current, allowPrivate);
-    const res = await fetch(url, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { 'User-Agent': 'Madar-NRCS/1.0 (+wire desk)', Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5' },
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-      current = new URL(res.headers.get('location')!, url).toString();
-      continue;
-    }
-    if (!res.ok) throw new Error(`استجاب مصدر الخلاصة بالرمز ${res.status}`);
-    const declared = Number(res.headers.get('content-length') || 0);
-    if (declared > MAX_FEED_BYTES) throw new Error('حجم الخلاصة يتجاوز الحد المسموح');
-    const reader = res.body?.getReader();
-    if (!reader) return '';
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_FEED_BYTES) {
-        await reader.cancel();
-        throw new Error('حجم الخلاصة يتجاوز الحد المسموح');
+    const url = checkedFeedUrl(current, allowPrivate);
+    const res = await openFeed(url, allowPrivate);
+    try {
+      const status = res.statusCode ?? 0;
+      if (status >= 300 && status < 400 && res.headers.location) {
+        current = new URL(res.headers.location, url).toString();
+        continue;
       }
-      chunks.push(value);
+      if (status < 200 || status >= 300) throw new Error(`استجاب مصدر الخلاصة بالرمز ${status}`);
+      const declared = Number(res.headers['content-length'] ?? 0);
+      if (declared > MAX_FEED_BYTES) throw new Error('حجم الخلاصة يتجاوز الحد المسموح');
+      const encoding = res.headers['content-encoding']?.toLowerCase() || 'identity';
+      const decoder = feedDecoders.get(encoding)?.();
+      if (!decoder && encoding !== 'identity') throw new Error('ترميز ضغط الخلاصة غير مدعوم');
+      if (decoder) res.once('error', error => decoder.destroy(error));
+      const stream = decoder ? res.pipe(decoder) : res;
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of stream) {
+        size += chunk.length;
+        if (size > MAX_FEED_BYTES) throw new Error('حجم الخلاصة يتجاوز الحد المسموح');
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks).toString('utf8');
+    } finally {
+      res.destroy();
     }
-    return Buffer.concat(chunks).toString('utf8');
   }
   throw new Error('عدد كبير من إعادات التوجيه');
 }

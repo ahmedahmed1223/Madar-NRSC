@@ -68,7 +68,13 @@ describe.skipIf(!testUrl)('PostgreSQL wire integration', () => {
     const db = new PostgresDatabase(testUrl!, { schema });
     try {
       initializePostgresSchema(db);
+      // Simulate the previous schema with real stored data and verify incremental startup.
+      db.exec("DROP INDEX idx_news_scheduled; DELETE FROM schema_migrations WHERE version = 2; INSERT INTO meta(key, value) VALUES ('migration-check', 'preserve')");
       initializePostgresSchema(db);
+      expect(db.query('SELECT version FROM schema_migrations ORDER BY version').rows)
+        .toEqual([{ version: 1 }, { version: 2 }]);
+      expect(db.query("SELECT value FROM meta WHERE key = 'migration-check'").rows).toEqual([{ value: 'preserve' }]);
+      expect(db.query("SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'idx_news_scheduled'", [schema]).rows).toHaveLength(1);
       const tables = db.query<{ tablename: string }>(
         'SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = $1 ORDER BY tablename', [schema],
       ).rows.map(row => row.tablename);

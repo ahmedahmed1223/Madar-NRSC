@@ -249,9 +249,10 @@ describe('deployment hardening (D1–D7)', () => {
   });
 
   it('requires re-confirming identity before exporting the database', async () => {
-    expect((await admin.get('/api/v1/db/export')).status).toBe(401);
+    expect((await admin.post('/api/v1/db/export').set(H).send({})).status).toBe(401);
     const confirm = await admin.post('/api/v1/db/confirm-operation').set(H).send({ action: 'export', password: DEMO_PASSWORD });
-    const res = await admin.get(`/api/v1/db/export?confirmationToken=${confirm.body.data.token}`);
+    const res = await admin.post('/api/v1/db/export').set(H).send({ confirmationToken: confirm.body.data.token });
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.status).toBe(200);
   });
 

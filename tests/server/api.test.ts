@@ -210,7 +210,7 @@ describe('server-side authorization', () => {
   it('restricts database administration to authorised users', async () => {
     const editor = await loginAgent(server.app, 'editor@akhbar.tv');
     expect((await editor.get('/api/v1/db/stats')).status).toBe(403);
-    expect((await editor.get('/api/v1/db/export')).status).toBe(403);
+    expect((await editor.post('/api/v1/db/export').set(H).send({})).status).toBe(403);
     expect((await editor.post('/api/v1/db/query').set(H).send({ query: 'SELECT 1' })).status).toBe(403);
   });
 });
@@ -222,7 +222,11 @@ describe('SQL console', () => {
     expect(select.body.success).toBe(true);
     expect(select.body.data.values[0][0]).toBeGreaterThan(0);
 
-    for (const query of ['DELETE FROM entities', 'DROP TABLE entities', 'SELECT * FROM user_credentials', 'SELECT 1; DELETE FROM entities']) {
+    for (const query of [
+      'DELETE FROM entities', 'DROP TABLE entities', 'SELECT * FROM user_credentials',
+      'SELECT * FROM meta', 'SELECT * FROM push_subscriptions', 'PRAGMA table_list',
+      'SELECT 1; DELETE FROM entities',
+    ]) {
       const res = await admin.post('/api/v1/db/query').set(H).send({ query });
       expect(res.body.success, query).toBe(false);
     }

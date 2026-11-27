@@ -82,8 +82,8 @@ function AccountNotes({ userId }: { userId: string }) {
     const confirmed = await confirmDialog({ title: 'حذف الملاحظة', message: `حذف «${note.title}»؟`, confirmLabel: 'حذف', danger: true });
     if (confirmed) void run(note.id, () => apiService.deletePersonalNote(note.id), 'حُذفت الملاحظة.');
   };
-  const copyNote = async (note: PersonalNote) => {
-    const copied = await copyTextToClipboard([note.title, note.body].filter(Boolean).join('\n\n'));
+  const copyNote = async (note: PersonalNote, trigger: HTMLButtonElement) => {
+    const copied = await copyTextToClipboard([note.title, note.body].filter(Boolean).join('\n\n'), trigger);
     setFeedback({ kind: copied ? 'success' : 'error', text: copied ? 'نُسخ محتوى الملاحظة.' : 'تعذّر النسخ إلى الحافظة.' });
   };
 
@@ -136,7 +136,7 @@ function AccountNotes({ userId }: { userId: string }) {
                   {note.pinned ? <PinOff className="size-4" aria-hidden="true" /> : <Pin className="size-4" aria-hidden="true" />}
                   {note.pinned ? 'إلغاء التثبيت' : 'تثبيت'}
                 </button>
-                <button type="button" disabled={busy || pending(note.id)} onClick={() => void copyNote(note)} aria-label={`نسخ ${note.title}`} className={`${secondary} min-w-11 justify-center`}>
+                <button type="button" disabled={busy || pending(note.id)} onClick={(event) => void copyNote(note, event.currentTarget)} aria-label={`نسخ ${note.title}`} className={`${secondary} min-w-11 justify-center`}>
                   <Copy className="size-4" aria-hidden="true" />
                 </button>
                 <button type="button" disabled={busy || pending(note.id)} onClick={() => void remove(note)} aria-label={`حذف ${note.title}`} className={`${secondary} min-w-11 justify-center`}>

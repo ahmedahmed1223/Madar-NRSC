@@ -5,6 +5,7 @@ build/
 !src/build/
 !src/build/offlineAirManifest.ts
 dist/
+dist-server/
 coverage/
 .DS_Store
 *.log

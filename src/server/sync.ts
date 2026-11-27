@@ -1339,7 +1339,7 @@ export class SyncService {
       });
     } catch (err: any) {
       if (err instanceof SyncReject) return { ok: false, code: err.code, message: err.message, current: this.db.getRow(collection, id) };
-      if (String(err?.message).includes('UNIQUE constraint failed: user_credentials.email')) {
+      if (err?.code === 'CREDENTIAL_EMAIL_IN_USE') {
         return { ok: false, code: 'INVALID', message: 'البريد الإلكتروني مستخدم لحساب آخر' };
       }
       throw err;

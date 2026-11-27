@@ -122,6 +122,7 @@ if (args.includes('--list') || args.includes('--help')) {
     let next = 0;
     try {
       await cp('dist', distDir, { recursive: true });
+      await cp('dist-server', path.join(snapshot, 'dist-server'), { recursive: true });
       await cp('bridge', path.join(snapshot, 'bridge'), { recursive: true });
       await build({ entryPoints: ['tests/e2e/offline-test-entry.ts'], bundle: true, format: 'esm', platform: 'browser',
         outfile: path.join(distDir, 'offline-store-test.js') });

@@ -3,11 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { DatabaseEngine, DatabaseEngineStatus } from '../shared/databaseEngine';
+import type { StoredSecretsOptions } from './storedSecrets';
 
 export interface DatabaseEngineConfig {
   defaultEngine: DatabaseEngine;
   postgresUrl?: string;
   postgresSchema: string;
+  storedSecrets?: StoredSecretsOptions;
 }
 
 const engineName = z.enum(['sqlite', 'postgresql']);

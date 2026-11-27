@@ -130,10 +130,10 @@ describe('notification preferences, wire alerts and delivery', () => {
     const ok = await reporter
       .post('/api/v1/notifications/push/subscribe')
       .set(H)
-      .send({ subscription: { endpoint: 'https://push.example.com/abc', keys: { p256dh: 'BExample', auth: 'secret' } } });
+      .send({ subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/example', keys: { p256dh: 'BExample', auth: 'secret' } } });
     expect(ok.status).toBe(200);
     expect(server.db.listPushSubscriptions('usr-6')).toHaveLength(1);
-    await reporter.post('/api/v1/notifications/push/unsubscribe').set(H).send({ endpoint: 'https://push.example.com/abc' });
+    await reporter.post('/api/v1/notifications/push/unsubscribe').set(H).send({ endpoint: 'https://fcm.googleapis.com/fcm/send/example' });
     expect(server.db.listPushSubscriptions('usr-6')).toHaveLength(0);
   });
 });
