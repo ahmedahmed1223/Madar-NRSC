@@ -87,6 +87,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -o pipefail
           docker save "madar-nrcs:$RELEASE_VERSION" | gzip > madar-container.tar.gz
           sha256sum madar-container.tar.gz > madar-container.tar.gz.sha256
       - uses: actions/upload-artifact@v7

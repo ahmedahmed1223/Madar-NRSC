@@ -42,9 +42,16 @@ npm run dev          # http://localhost:3000
 ### باستخدام Docker (موصى به)
 
 ```bash
-cp .env.example .env      # عدّل ADMIN_EMAIL و APP_URL و TZ على الأقل
-docker compose up -d --build
+cp .env.example .env
 ```
+
+اضبط عنوان HTTPS وبيانات المسؤول، وولّد قيمتين مختلفتين لـ `MADAR_POSTGRES_PASSWORD` و`MADAR_POSTGRES_ADMIN_PASSWORD` باستخدام `openssl rand -hex 32`. ثم شغّل صورة التطبيق مع PostgreSQL 18.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build --wait
+```
+
+تستخدم الصورة PostgreSQL افتراضيًا في التثبيت الجديد. إذا كانت لديك قاعدة PostgreSQL خارجية، اضبط `POSTGRES_URL` وشغّل ملف Compose الأساسي. يبقى تثبيت SQLite القائم على قاعدته في `DATA_DIR`. [دليل تشغيل الصورة](/docs/PRODUCTION_OPERATIONS.md#database-engine-selection-and-switching)
 
 البيانات تُحفظ في الـ volume `nrcs-data` (المسار `/data` داخل الحاوية)، والنسخ الاحتياطية الكاملة في volume منفصل `nrcs-backups` (`/backups`، ويُفضّل ربطه بقرص آخر). يعمل الخادم بمستخدم غير root ويحتوي على فحص صحة `/api/ready`، وسجلات Docker محدودة الحجم (`max-size`).
 

@@ -1,0 +1,33 @@
+services:
+  nrcs:
+    environment:
+      POSTGRES_URL: postgresql://madar:${MADAR_POSTGRES_PASSWORD:?Set MADAR_POSTGRES_PASSWORD}@postgres:5432/madar
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  postgres:
+    image: postgres:18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: madar
+      POSTGRES_PASSWORD: ${MADAR_POSTGRES_ADMIN_PASSWORD:?Set MADAR_POSTGRES_ADMIN_PASSWORD}
+      MADAR_POSTGRES_PASSWORD: ${MADAR_POSTGRES_PASSWORD:?Set MADAR_POSTGRES_PASSWORD}
+    volumes:
+      - nrcs-postgres:/var/lib/postgresql
+      - ./docker/postgres/10-madar.sh:/docker-entrypoint-initdb.d/10-madar.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "madar"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  nrcs-postgres:

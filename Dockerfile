@@ -12,6 +12,7 @@ RUN npm run build && npm prune --omit=dev
 # ---- Runtime: only production dependencies and built assets ----------------
 FROM node:24-trixie-slim AS runtime
 ENV NODE_ENV=production \
+    DATABASE_ENGINE=postgresql \
     PORT=3000 \
     DATA_DIR=/data
 WORKDIR /app
@@ -25,6 +26,8 @@ COPY --from=build /app/bridge ./bridge
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data /backups && chown -R node:node /data /backups
 USER node
+LABEL org.opencontainers.image.title="Madar NRCS" \
+      org.opencontainers.image.source="https://github.com/ahmedahmed1223/Madar-NRSC"
 VOLUME ["/data", "/backups"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

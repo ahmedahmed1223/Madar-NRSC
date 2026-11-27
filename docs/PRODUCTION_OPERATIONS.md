@@ -132,7 +132,19 @@ production smoke tests. Run one active application instance and persist `DATA_DI
 
 ### Database engine selection and switching
 
-SQLite is the default for a fresh installation. To start a new deployment directly on PostgreSQL, configure `DATABASE_ENGINE=postgresql` and `POSTGRES_URL` before the first startup. The PostgreSQL account must own the configured schema or be able to create application schemas. `POSTGRES_SCHEMA` defaults to `madar`. Supply the connection URL through the deployment's secret configuration.
+The Docker image defaults to PostgreSQL on a fresh data volume. Running via `npm start` defaults to SQLite. An installation with existing data keeps the engine selected in `DATA_DIR`.
+
+For a dedicated host with Docker Compose, copy `.env.example` to `.env`. Generate distinct hexadecimal values with `openssl rand -hex 32` for `MADAR_POSTGRES_PASSWORD` and `MADAR_POSTGRES_ADMIN_PASSWORD`. Configure the HTTPS address, the first administrator or setup token, and the key used to encrypt stored secrets. Then run the production stack.
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --wait
+```
+
+The second file adds PostgreSQL 18 with private networking. Its initialization creates a dedicated application login and a separate administrator. It persists PostgreSQL files in `nrcs-postgres` at `/var/lib/postgresql`. Keep that volume together with `nrcs-data` and the backup location. Bring the stack up with the same Compose project name after updates. Store an independent backup outside the host and follow the recovery rehearsal before switching production.
+
+For an existing PostgreSQL server, set `POSTGRES_URL` in `.env` and use `docker compose up -d --wait` with the base file. Restrict the supplied login to the application database and give it ownership of the configured schema or permission to create application schemas. `POSTGRES_SCHEMA` defaults to `madar`. For a fresh SQLite deployment, explicitly set `DATABASE_ENGINE=sqlite` and use the base file.
+
+To install a checked image archive, verify its SHA-256 checksum and load it with `docker load -i madar-container.tar.gz`. Set `MADAR_IMAGE=madar-nrcs:<version>` in `.env` to use that image and add `--no-build` to the Compose command. The release-candidate workflow produces the archive and its checksum from the tested tag.
 
 For an existing deployment, configure `POSTGRES_URL` and choose the destination engine in Database Administration or the organization step of the setup wizard. End active broadcasts first. The request schedules the transfer for the next server startup. The existing deployment keeps serving from its current engine until it is stopped and restarted. Run only one instance against the deployment's `DATA_DIR` during the switch.
 

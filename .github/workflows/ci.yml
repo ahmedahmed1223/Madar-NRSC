@@ -127,5 +127,19 @@ jobs:
           node-version: 24
       - name: Build the production container and test its persistent volume
         run: |
+          set -o pipefail
           export RELEASE_VERSION="$(node -p 'require("./package.json").version')"
           bash scripts/smoke-release-container.sh
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            docker save "madar-nrcs:$RELEASE_VERSION" | gzip > madar-container.tar.gz
+            sha256sum madar-container.tar.gz > madar-container.tar.gz.sha256
+          fi
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request'
+        with:
+          name: madar-docker-candidate-${{ github.run_id }}
+          path: |
+            madar-container.tar.gz
+            madar-container.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
