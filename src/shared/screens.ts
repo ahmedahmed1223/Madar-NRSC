@@ -43,8 +43,14 @@ export function roleOpensScreen(role: Pick<RoleDefinition, 'screens'> | undefine
   return role!.screens!.includes(screen);
 }
 
+/** Screens strictly limited to system administrators (not inheritable via generic settings access). */
+const ADMIN_DIAGNOSTIC_SCREENS = new Set(['tests']);
+
 /** Whether a user opens a screen: the permission the screen needs, and their role's screen list. */
 export function canOpenScreen(nav: string, role: Pick<RoleDefinition, 'screens'> | undefined, can: (permission: string) => boolean, isSuperAdmin = false): boolean {
+  if (ADMIN_DIAGNOSTIC_SCREENS.has(nav)) {
+    return isSuperAdmin || can('system.database_manage');
+  }
   const permission = screenPermission(nav) ?? screenPermission(PARENT_SCREEN[nav] || '');
   if (permission && !can(permission)) return false;
   return isSuperAdmin || roleOpensScreen(role, nav);
