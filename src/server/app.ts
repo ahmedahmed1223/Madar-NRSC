@@ -19,7 +19,7 @@ import { withBackupSource, databaseOperationLock, DatabaseOperationBusy, rehears
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
 import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
-import { changeBus, isValidCollectionPageCursor, MAX_OPS_PER_REQUEST, SyncService } from './sync';
+import { changeBus, createRevCoalescer, isValidCollectionPageCursor, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { canRead } from './policy';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { canPinAnnouncement, canonicalMessageChannel } from '../shared/chat';
@@ -925,13 +925,15 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const write = (message: string) => {
       if (!res.destroyed && !res.writableEnded && !res.write(message)) res.destroy();
     };
-    const onRev = (rev: number) => write(`event: rev\ndata: ${rev}\n\n`);
+    const revCoalescer = createRevCoalescer((rev) => write(`event: rev\ndata: ${rev}\n\n`));
+    const onRev = (rev: number) => revCoalescer.push(rev);
     const heartbeat = setInterval(() => write(': ping\n\n'), 25_000);
     const cleanup = () => {
       if (!streams.delete(res)) return;
       const remaining = (streamsByUser.get(userId) ?? 1) - 1;
       if (remaining) streamsByUser.set(userId, remaining);
       else streamsByUser.delete(userId);
+      revCoalescer.cancel();
       clearInterval(heartbeat);
       changeBus.off('rev', onRev);
     };

@@ -104,6 +104,35 @@ export const MAX_CHANGES_PER_POLL = 5000;
 export const changeBus = new EventEmitter();
 changeBus.setMaxListeners(0);
 
+export const SSE_REV_COALESCE_MS = 80;
+
+/** Micro-batches rapid `changeBus` revision bursts into one flush with the latest revision. */
+export function createRevCoalescer(flush: (rev: number) => void, delayMs = SSE_REV_COALESCE_MS) {
+  let pendingRev: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const push = (rev: number) => {
+    pendingRev = rev;
+    if (timer !== null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const latest = pendingRev;
+      pendingRev = null;
+      if (latest !== null) flush(latest);
+    }, delayMs);
+  };
+
+  const cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pendingRev = null;
+  };
+
+  return { push, cancel };
+}
+
 /** Thrown inside a write transaction to reject one op (the transaction rolls back). */
 class SyncReject extends Error {
   constructor(public code: 'FORBIDDEN' | 'INVALID', message: string) {
