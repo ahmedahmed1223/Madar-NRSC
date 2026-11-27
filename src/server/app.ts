@@ -41,7 +41,7 @@ import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
-import { MEDIA_FILE_URL_PREFIX, UploadError, mediaUploadIsTrashed, receiveUpload, uploadsDir } from './uploads';
+import { MEDIA_FILE_URL_PREFIX, UploadError, mediaUploadIsTrashed, receiveUpload, sendErrorAfterDrain, uploadsDir } from './uploads';
 import { externalIntakeRouter } from './externalIntake';
 import { databaseEngineStatus, readDatabaseEngineState, scheduleDatabaseEngine } from './databaseEngineState';
 import { createResumableUploadRouter } from './resumableUploads';
@@ -1697,16 +1697,19 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // Central error handler: never leak internals to clients.
   app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof HttpError) {
-      return res.status(err.status).json({ success: false, error: err.message, code: err.code });
+      sendErrorAfterDrain(req, res, err.status, { success: false, error: err.message, code: err.code });
+      return;
     }
     if (err?.type === 'entity.too.large') {
-      return res.status(413).json({ success: false, error: 'حجم الطلب أكبر من المسموح', code: 'TOO_LARGE' });
+      sendErrorAfterDrain(req, res, 413, { success: false, error: 'حجم الطلب أكبر من المسموح', code: 'TOO_LARGE' });
+      return;
     }
     if (err?.type === 'entity.parse.failed') {
-      return res.status(400).json({ success: false, error: 'صيغة JSON غير صالحة', code: 'BAD_JSON' });
+      sendErrorAfterDrain(req, res, 400, { success: false, error: 'صيغة JSON غير صالحة', code: 'BAD_JSON' });
+      return;
     }
     logger.error('unhandled error', { path: req.originalUrl, error: String(err?.stack || err) });
-    res.status(500).json({ success: false, error: 'حدث خطأ داخلي في الخادم', code: 'INTERNAL' });
+    sendErrorAfterDrain(req, res, 500, { success: false, error: 'حدث خطأ داخلي في الخادم', code: 'INTERNAL' });
   });
 
   return { app, limiters: { apiLimiter, loginAccountLimiter, loginIpLimiter, aiLimiter } };

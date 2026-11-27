@@ -12,7 +12,7 @@ import { moduleAllowed } from './moduleAccess';
 import { createRateLimiter } from './rateLimit';
 import { changeBus } from './sync';
 import { mediaUploadPersistence, queueCopiesForUpload } from './storage';
-import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, UploadError } from './uploads';
+import { ALLOWED_UPLOAD_TYPES, drainRequestBody, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, UploadError } from './uploads';
 import { activeIntakeIssuer as activeUser, intakeGuestTarget, issueContributorDropLink, issueIntakeTicket as issue, readIntakeTicket as readTicket } from './externalIntakeTickets';
 
 const uploadTypes = Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).filter(([mime]) => /^(audio|video)\//.test(mime)));
@@ -89,11 +89,11 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
     const token = req.get('X-Madar-Intake');
     const found = readTicket(db, token);
     if (!found || found.ticket.kind !== 'upload' || uploading.has(found.key)) {
-      req.resume();
+      await drainRequestBody(req);
       return denied(res);
     }
     const permitted = () => mayRedeemDropLink(db, found.ticket.issuer);
-    if (!permitted()) { req.resume(); return denied(res); }
+    if (!permitted()) { await drainRequestBody(req); return denied(res); }
     const mayCommit = (lock = false) => readTicket(db, token, lock) && permitted();
     uploading.add(found.key);
     let upload: UploadRecord | undefined;

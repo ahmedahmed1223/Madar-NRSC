@@ -37,3 +37,26 @@ it('continues from the acknowledged offset, checks contents and hides unfinished
   expect((await reconnected.post(`${target}/complete`).set(H)).body.data).toEqual(complete.body.data);
   expect(server.db.getUpload(id)?.scope).toBe('media');
 });
+
+it('rejects early-failed resumable PUT chunks cleanly without socket reset', async () => {
+  const owner = await loginAgent(server.app, 'media@akhbar.tv');
+  const opened = await owner.post(URL).set(H).send({ name: 'big.mp4', mimeType: 'video/mp4', size: chunkBytes + 1024 });
+  expect(opened.status).toBe(201);
+  const { id } = opened.body.data;
+
+  // Unknown session with a large streaming body -> 404 without ECONNRESET
+  const missing = await owner.put(`${URL}/upl-missing-session`)
+    .set(H)
+    .set('Content-Type', 'application/octet-stream')
+    .set('X-Upload-Offset', '0')
+    .send(Buffer.alloc(1024 * 1024, 1));
+  expect(missing.status).toBe(404);
+
+  // Oversized chunk exceeding 2MB limit -> 413 without ECONNRESET
+  const tooLarge = await owner.put(`${URL}/${id}`)
+    .set(H)
+    .set('Content-Type', 'application/octet-stream')
+    .set('X-Upload-Offset', '0')
+    .send(Buffer.alloc(chunkBytes + 1024, 2));
+  expect(tooLarge.status).toBe(413);
+});

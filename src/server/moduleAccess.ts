@@ -6,6 +6,7 @@ import type { CollectionName } from '../shared/collections';
 import type { SystemSettings, User } from '../types';
 import { loadRoles, type AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
+import { sendErrorAfterDrain } from './uploads';
 
 export function moduleAllowed(auth: AuthContext, module: ModuleId, stationId?: string): boolean {
   return auth.moduleAllowed?.(module, stationId) !== false;
@@ -61,9 +62,13 @@ export function moduleAllowedForUser(db: NewsroomDatabase, module: ModuleId, use
 
 export function requireModule(module: ModuleId): RequestHandler {
   return (req, res, next) => {
-    if (!req.auth) return res.status(401).json({ success: false, code: 'UNAUTHENTICATED' });
+    if (!req.auth) {
+      sendErrorAfterDrain(req, res, 401, { success: false, code: 'UNAUTHENTICATED' });
+      return;
+    }
     if (!moduleAllowed(req.auth, module)) {
-      return res.status(403).json({ success: false, code: 'FORBIDDEN', error: MODULE_UNAVAILABLE });
+      sendErrorAfterDrain(req, res, 403, { success: false, code: 'FORBIDDEN', error: MODULE_UNAVAILABLE });
+      return;
     }
     next();
   };
