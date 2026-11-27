@@ -45,11 +45,11 @@ export const authClient = {
   },
 
   /** Throws ApiError with code TOTP_REQUIRED when the account needs an authenticator code. */
-  async login(email: string, password: string, totp?: string): Promise<SessionInfo> {
+  async login(email: string, password: string, totp?: string, rememberMe = false): Promise<SessionInfo> {
     const res = await apiFetch<SessionInfo & { success: boolean }>('/api/v1/auth/login', {
       signal: AbortSignal.timeout(20_000),
       method: 'POST',
-      json: totp ? { email, password, totp } : { email, password },
+      json: { email, password, totp, rememberMe },
     });
     session = { user: res.user, permissions: res.permissions, mustChangePassword: res.mustChangePassword, trashRetentionDays: res.trashRetentionDays, setupReviewId: res.setupReviewId };
     return session;
@@ -60,21 +60,19 @@ export const authClient = {
     if (session?.setupReviewId === id) session = { ...session, setupReviewId: undefined };
   },
 
-  async logout(beforeRequest?: () => void): Promise<boolean> {
+  async logout(beforeRequest?: () => void): Promise<'cancelled' | 'completed' | 'cleanup-failed'> {
     const userId = session?.user.id;
     if (userId && typeof indexedDB !== 'undefined') {
       const saved = (await listPacketMetadata()).filter(row => row.userId === userId);
-      if (saved.length && !await confirmDialog({ title: 'نسخ الهواء المحلية', message: 'سيحذف تسجيل الخروج نسخ الهواء المشفرة والتشغيل المحلي على هذا الجهاز. صدّر النسخ من شاشة الهواء قبل المتابعة للاحتفاظ بالسجلات غير المستوردة.', confirmLabel: 'حذف النسخ وتسجيل الخروج', cancelLabel: 'البقاء', danger: true })) return false;
-      await purgeUser(userId);
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('madar-offline-air');
-        channel.postMessage({ type: 'logout', userId }); channel.close();
-      }
+      if (saved.length && !await confirmDialog({ title: 'نسخ الهواء المحلية', message: 'سيحذف تسجيل الخروج نسخ الهواء المشفرة والتشغيل المحلي على هذا الجهاز. صدّر النسخ من شاشة الهواء قبل المتابعة للاحتفاظ بالسجلات غير المستوردة.', confirmLabel: 'حذف النسخ وتسجيل الخروج', cancelLabel: 'البقاء', danger: true })) return 'cancelled';
     }
     beforeRequest?.();
     await apiFetch('/api/v1/auth/logout', { method: 'POST', signal: AbortSignal.timeout(15_000) });
-    session = null;
-    return true;
+    this.setSession(null);
+    if (userId && typeof indexedDB !== 'undefined') {
+      try { await purgeUser(userId); } catch { return 'cleanup-failed'; }
+    }
+    return 'completed';
   },
 
   /** The server answered PASSWORD_CHANGE_REQUIRED: the session now has to change its password first. */

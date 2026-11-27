@@ -44,10 +44,11 @@ export function FirstAdministratorForm({ saving, onSavingChange, onCreated }: {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 text-sm">
+    <form onSubmit={submit} aria-busy={saving} className="space-y-3 text-sm">
       <label className="block font-semibold">اسم المسؤول<input name="fullName" required maxLength={120} autoComplete="name" className={input} /></label>
       <label className="block font-semibold">بريد المسؤول<input name="email" type="email" required maxLength={254} autoComplete="username" dir="ltr" className={input} /></label>
-      <label className="block font-semibold">رمز إعداد الخادم<input name="token" type="password" required maxLength={200} autoComplete="off" dir="ltr" className={input} /></label>
+      <label className="block font-semibold">رمز إعداد الخادم<input name="token" type="password" required maxLength={200} autoComplete="off" aria-describedby="first-admin-token-hint" dir="ltr" className={input} /></label>
+      <p id="first-admin-token-hint" className="text-xs text-slate-600">احصل على رمز التهيئة من مشغّل الخادم.</p>
       <label className="block font-semibold">كلمة المرور<input name="password" type={showPasswords ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={200} autoComplete="new-password" aria-describedby="first-admin-password-hint" dir="ltr" className={input} /></label>
       <p id="first-admin-password-hint" className="text-xs text-slate-600">استخدم 10 أحرف على الأقل، على أن تتضمن حروفاً وأرقاماً.</p>
       <label className="block font-semibold">تأكيد كلمة المرور<input name="confirmation" type={showPasswords ? 'text' : 'password'} value={confirmation} onChange={event => setConfirmation(event.target.value)} required maxLength={200} autoComplete="new-password" dir="ltr" className={input} /></label>

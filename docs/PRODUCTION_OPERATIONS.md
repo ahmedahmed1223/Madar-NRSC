@@ -252,6 +252,9 @@ existing installation.
   call except `/auth/me`, `/auth/logout` and `/auth/change-password` with 403
   `PASSWORD_CHANGE_REQUIRED`. Temporary passwords issued by an administrator expire after
   `TEMP_PASSWORD_HOURS` (72). Each person keeps at most 10 signed-in devices.
+- **Session lifetime.** Regular sign-in uses a browser-session cookie and a server expiration
+  of `SESSION_TTL_HOURS`. The optional «تذكّرني على هذا الجهاز» checkbox keeps a persistent
+  cookie for `REMEMBER_SESSION_DAYS` (14 by default, maximum 30). Logout revokes either session.
 - **Health.** `/api/health` shows `dbId`/`instance` to signed-in users only; use `/api/ready` for probes.
 - **Audit trail.** Only the server writes audit entries (accounts, roles, permission exceptions,
   suspensions, stations, departments, settings, backups and downloads); browsers cannot add rows.

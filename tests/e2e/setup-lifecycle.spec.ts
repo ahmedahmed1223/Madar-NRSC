@@ -11,6 +11,7 @@ for (const mode of ['browser', 'sign-in'] as const) {
     const temporary = 'InitialOwner2026';
     const password = 'PrivateOwner2026';
     const instance = await createTestServer({
+      NODE_ENV: 'production',
       SEED_DEMO_DATA: 'false',
       ...(mode === 'browser' ? { INSTALL_SETUP_TOKEN: token } : { ADMIN_EMAIL: email, ADMIN_PASSWORD: temporary }),
     });
@@ -24,6 +25,7 @@ for (const mode of ['browser', 'sign-in'] as const) {
       await page.goto('/');
       const launcher = page.getByRole('button', { name: 'بدء إعداد النظام' });
       await launcher.click();
+      await expect(page.getByText(/تبدأ التهيئة بقيم قابلة للتعديل/)).toBeVisible();
       if (mode === 'browser') {
         await page.getByLabel('اسم المسؤول').fill('مدير غرفة الأخبار');
         await page.getByLabel('بريد المسؤول').fill(email);
@@ -55,6 +57,7 @@ for (const mode of ['browser', 'sign-in'] as const) {
       }
       const wizard = page.getByRole('region', { name: 'الإعداد السريع للنظام' });
       await expect(wizard.getByLabel('اسم المؤسسة *')).toBeVisible();
+      await expect(wizard.getByText(/القيم الأولية لهوية النظام/)).toBeVisible();
       await expect(page.getByText('حسابات التجربة', { exact: true })).toHaveCount(0);
       const freshPage = await browser.newPage({ baseURL: http.baseUrl });
       try {

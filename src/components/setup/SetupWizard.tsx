@@ -277,7 +277,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 }, 'حُفظت بيانات المؤسسة.');
               }}
             >
-              <p className="text-sm text-slate-600">راجع اسم المؤسسة والقناة كما سيظهران للفريق. يمكنك تعديل القيم المعروضة، ثم اختيار «حفظ والمتابعة». المنطقة الزمنية تضبط ساعة المحطة والمواعيد.</p>
+              <p className="text-sm leading-relaxed text-slate-700">
+                {facts.setup?.confirmed?.includes('organization')
+                  ? 'راجع اسم المؤسسة والقناة كما يظهران للفريق.'
+                  : 'هذه القيم الأولية لهوية النظام. عدّل اسم المؤسسة والقناة والتوقيت بما يناسب غرفة الأخبار.'}
+                {' '}تضبط المنطقة الزمنية ساعة المحطة والمواعيد.
+              </p>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="setup-org" className={LABEL}>اسم المؤسسة *</label>

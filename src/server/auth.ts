@@ -155,13 +155,13 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
   };
 }
 
-export function setSessionCookie(res: Response, token: string, config: AppConfig) {
+export function setSessionCookie(res: Response, token: string, config: AppConfig, maxAge?: number) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: config.cookieSecure,
     sameSite: 'lax',
     path: '/',
-    maxAge: config.sessionTtlMs,
+    ...(maxAge !== undefined ? { maxAge } : {}),
   });
 }
 
@@ -190,7 +190,7 @@ export function sessionMiddleware(db: NewsroomDatabase, config: AppConfig) {
       return next();
     }
     if (Date.now() - new Date(session.lastSeenAt).getTime() > TOUCH_INTERVAL_MS) {
-      db.touchSession(sessionId, config.sessionTtlMs);
+      db.touchSession(sessionId);
     }
     req.auth = buildAuthContext(db, user, sessionId);
     next();

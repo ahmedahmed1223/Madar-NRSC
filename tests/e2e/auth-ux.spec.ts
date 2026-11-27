@@ -75,3 +75,21 @@ test('logout failure stays visible and the operator can retry', async ({ page })
     await expect(page.locator('#login-email')).toBeVisible();
     await expect(feedback).toHaveCount(0);
 });
+
+test('remembering this device creates an opt-in cookie that logout removes', async ({ page }) => {
+  await page.goto('/');
+  const remember = page.getByRole('checkbox', { name: 'تذكّرني على هذا الجهاز', exact: true });
+  await expect(remember).not.toBeChecked();
+  await page.locator('#login-email').fill('editor@akhbar.tv');
+  await page.locator('#login-password').fill(DEMO_PASSWORD);
+  await remember.check();
+  await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+  await enterWorkspace(page);
+  const session = (await page.context().cookies()).find(cookie => cookie.name === 'nrcs_sid');
+  expect(session?.httpOnly).toBe(true);
+  expect(session?.expires).toBeGreaterThan(Date.now() / 1000 + 86_400);
+  await page.getByRole('button', { name: /^الحساب / }).click();
+  await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
+  await expect(remember).not.toBeChecked();
+  expect((await page.context().cookies()).some(cookie => cookie.name === 'nrcs_sid')).toBe(false);
+});

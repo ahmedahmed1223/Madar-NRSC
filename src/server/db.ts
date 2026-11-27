@@ -1144,11 +1144,8 @@ export class NewsroomDatabase {
     return { id: r.id, userId: r.user_id, createdAt: r.created_at, expiresAt: r.expires_at, lastSeenAt: r.last_seen_at };
   }
 
-  touchSession(id: string, ttlMs: number) {
-    const now = new Date();
-    this.db
-      .prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?')
-      .run(now.toISOString(), new Date(now.getTime() + ttlMs).toISOString(), id);
+  touchSession(id: string) {
+    this.db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(new Date().toISOString(), id);
   }
 
   deleteSession(id: string) {

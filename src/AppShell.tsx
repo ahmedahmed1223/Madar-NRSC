@@ -104,8 +104,8 @@ export default function AppShell() {
     };
   }, [enter]);
 
-  const handleLogin = async (email: string, password: string, totp?: string) => {
-    const session = await authClient.login(email, password, totp);
+  const handleLogin = async (email: string, password: string, totp?: string, rememberMe?: boolean) => {
+    const session = await authClient.login(email, password, totp, rememberMe);
     setNotice(null);
     await enter(session);
   };
@@ -116,13 +116,15 @@ export default function AppShell() {
     setLoggingOut(true);
     setLogoutError(null);
     try {
+      let outcome: Awaited<ReturnType<typeof authClient.logout>>;
       try {
         await dataStore.flush();
       } catch {
         // unsent edits stay queued in this browser for the next sign-in
       }
       try {
-        if (!await authClient.logout(() => dataStore.stop())) return;
+        outcome = await authClient.logout(() => dataStore.stop());
+        if (outcome === 'cancelled') return;
       } catch {
         const session = authClient.getSession();
         if (session) {
@@ -133,7 +135,9 @@ export default function AppShell() {
       }
       dataStore.stop();
       setIsChangingPassword(false);
-      setNotice('تم تسجيل الخروج بأمان. يمكنك الدخول بحساب آخر.');
+      setNotice(outcome === 'cleanup-failed'
+        ? 'تم تسجيل الخروج. تعذّر حذف نسخ الهواء المشفّرة من هذا الجهاز.'
+        : 'تم تسجيل الخروج بأمان. يمكنك الدخول بحساب آخر.');
       setPhase('login');
     } finally {
       logoutPending.current = false;
@@ -164,7 +168,7 @@ export default function AppShell() {
   if (phase === 'login') return <LoginView onLogin={handleLogin} notice={notice} />;
 
   if (phase === 'change-password') {
-    return <ChangePasswordView forced onSubmit={handleChangePassword} onLogout={handleLogout} />;
+    return <ChangePasswordView forced onSubmit={handleChangePassword} onLogout={handleLogout} loggingOut={loggingOut} logoutError={logoutError} />;
   }
 
   if (phase === 'error') {

@@ -362,6 +362,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     loginIpLimiter,
     loginAccountLimiter,
     wrap(async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
       const password = typeof req.body?.password === 'string' ? req.body.password : '';
       if (!email || !password) throw new HttpError(400, 'البريد الإلكتروني وكلمة المرور مطلوبان');
@@ -402,13 +403,15 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
       db.resetFailedLogins(cred.userId);
       const token = newSessionToken();
-      const session = db.createSession(sessionIdFromToken(token), user.id, config.sessionTtlMs, req.ip, req.get('user-agent'));
+      const remembered = req.body?.rememberMe === true && !cred.mustChangePassword;
+      const ttl = remembered ? config.rememberSessionTtlMs : config.sessionTtlMs;
+      const session = db.createSession(sessionIdFromToken(token), user.id, ttl, req.ip, req.get('user-agent'));
       // At most MAX_SESSIONS_PER_USER devices: the least recently used sign-ins are ended.
       db.listSessions(new Date().toISOString()).filter((s) => s.userId === user.id && s.id !== session.id).slice(MAX_SESSIONS_PER_USER - 1).forEach((s) => db.deleteSession(s.id));
       const updatedUser = { ...user, lastLogin: new Date().toISOString() };
       db.writeRow('users', user.id, updatedUser, db.getRow('users', user.id)!.p, user.id);
       audit(user, 'LOGIN', 'USER', user.id, 'INFO', `تسجيل دخول ناجح: ${user.fullName}`, req.ip);
-      setSessionCookie(res, token, config);
+      setSessionCookie(res, token, config, remembered ? ttl : undefined);
       const ctx = buildAuthContext(db, updatedUser, session.id);
       res.json({ success: true, ...publicUser(updatedUser, cred.mustChangePassword, ctx.permissions), trashRetentionDays: config.retention.trashDays });
     })
