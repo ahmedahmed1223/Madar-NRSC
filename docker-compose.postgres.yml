@@ -8,7 +8,7 @@ services:
         restart: true
 
   postgres:
-    image: postgres:18-trixie
+    image: ${MADAR_POSTGRES_IMAGE:-postgres:19.0-trixie}
     restart: unless-stopped
     environment:
       POSTGRES_DB: madar

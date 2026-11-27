@@ -140,7 +140,9 @@ For a dedicated host with Docker Compose, copy `.env.example` to `.env`. Generat
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --wait
 ```
 
-The second file adds PostgreSQL 18 with private networking. Its initialization creates a dedicated application login and a separate administrator. It persists PostgreSQL files in `nrcs-postgres` at `/var/lib/postgresql`. Keep that volume together with `nrcs-data` and the backup location. Bring the stack up with the same Compose project name after updates. Store an independent backup outside the host and follow the recovery rehearsal before switching production.
+The runtime image uses Node.js 26.13.1 LTS. The second Compose file adds PostgreSQL 19.0 with private networking. Its initialization creates a dedicated application login and a separate administrator. It persists PostgreSQL files in `nrcs-postgres` at `/var/lib/postgresql`. Keep that volume together with `nrcs-data` and the backup location. Bring the stack up with the same Compose project name after updates. Store an independent backup outside the host and follow the recovery rehearsal before switching production.
+
+For a volume initialized by PostgreSQL 18, set `MADAR_POSTGRES_IMAGE=postgres:18.7-trixie` before updating the application. Upgrade the database major version separately once a dump and restore or a `pg_upgrade` rehearsal has succeeded.
 
 For an existing PostgreSQL server, set `POSTGRES_URL` in `.env` and use `docker compose up -d --wait` with the base file. Restrict the supplied login to the application database and give it ownership of the configured schema or permission to create application schemas. `POSTGRES_SCHEMA` defaults to `madar`. For a fresh SQLite deployment, explicitly set `DATABASE_ENGINE=sqlite` and use the base file.
 

@@ -45,7 +45,7 @@ npm run dev          # http://localhost:3000
 cp .env.example .env
 ```
 
-اضبط عنوان HTTPS وبيانات المسؤول، وولّد قيمتين مختلفتين لـ `MADAR_POSTGRES_PASSWORD` و`MADAR_POSTGRES_ADMIN_PASSWORD` باستخدام `openssl rand -hex 32`. ثم شغّل صورة التطبيق مع PostgreSQL 18.
+اضبط عنوان HTTPS وبيانات المسؤول، وولّد قيمتين مختلفتين لـ `MADAR_POSTGRES_PASSWORD` و`MADAR_POSTGRES_ADMIN_PASSWORD` باستخدام `openssl rand -hex 32`. ثم شغّل صورة التطبيق مع PostgreSQL 19.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build --wait
