@@ -436,7 +436,7 @@ const DiaryEntryPage: React.FC<{
                 </button>
               ))}
               {RbacService.hasPermission(currentUser, 'news.create') && (
-                <button type="button" onClick={writeNews} className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-900 text-white">
+                <button type="button" onClick={writeNews} className="inline-flex items-center gap-1 min-h-11 sm:min-h-10 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
                   <FilePlus2 className="w-3.5 h-3.5" /> كتابة خبر من الحدث
                 </button>
               )}

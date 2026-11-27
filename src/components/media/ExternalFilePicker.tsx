@@ -131,7 +131,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
             className="w-full min-h-11 pr-9 pl-3 border border-slate-300 rounded-lg bg-white text-sm"
           />
         </label>
-        <button type="button" className="min-h-11 px-4 rounded-lg bg-slate-900 text-white text-sm font-bold" disabled={loading} onClick={() => void search()}>بحث</button>
+        <button type="button" className="min-h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50" disabled={loading} onClick={() => void search()}>بحث</button>
         {!folder && items && source !== 'share' && <button type="button" className="min-h-11 px-2 text-sm font-bold text-blue-800" onClick={() => { setQuery(''); void browse(); }}>العودة إلى المجلد الرئيسي</button>}
       </div>
       {folder && (

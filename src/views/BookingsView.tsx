@@ -289,7 +289,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ currentUser, users, 
                     setEditing(viewing);
                     setViewing(null);
                   }}
-                  className="min-h-11 inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  className="min-h-11 inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
                 >
                   <Pencil className="w-3.5 h-3.5" /> تعديل
                 </button>

@@ -209,18 +209,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                       setStepId(step.id);
                     }}
                     aria-current={current ? 'step' : undefined}
-                    className={`w-full text-right flex items-center gap-3 px-3 min-h-11 rounded-md text-sm ${current ? 'bg-slate-900 text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
+                    className={`w-full text-right flex items-center gap-3 px-3 min-h-11 rounded-md text-sm ${current ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     <span
                       className={`w-6 h-6 shrink-0 rounded-full text-2xs font-bold flex items-center justify-center tabular-nums ${
-                        progress[step.id] ? 'bg-emerald-600 text-white' : skipped[step.id] ? 'bg-amber-400 text-amber-950' : current ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700'
+                        progress[step.id] ? 'bg-emerald-600 text-white' : skipped[step.id] ? 'bg-amber-400 text-amber-950' : current ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
                       }`}
                     >
                       {progress[step.id] ? <Check className="w-3.5 h-3.5" aria-label="مكتملة" /> : skipped[step.id] ? <span aria-label="تُجووزت">!</span> : i + 1}
                     </span>
                     <span className="min-w-0">
                       <span className="block whitespace-nowrap">{step.title}</span>
-                      <span className={`hidden lg:block text-2xs ${current ? 'text-slate-300' : 'text-slate-500'}`}>{step.hint}</span>
+                      <span className={`hidden lg:block text-2xs ${current ? 'text-blue-700' : 'text-slate-500'}`}>{step.hint}</span>
                     </span>
                   </button>
                 </li>

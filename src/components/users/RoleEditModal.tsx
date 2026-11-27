@@ -262,9 +262,9 @@ export const RoleEditModal: React.FC<RoleEditModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveCategory('ALL')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              className={`min-h-11 sm:min-h-9 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                 activeCategory === 'ALL'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >
