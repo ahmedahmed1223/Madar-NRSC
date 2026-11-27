@@ -62,13 +62,13 @@ src/
 ├── services/
 │   ├── dataStore.ts      النسخة المحلية المتزامنة (zero-copy getSnapshot، structuredClone، CoW)
 │   ├── api.ts            واجهة ApiService الموحّدة التي تفوّض لوحدات النطاق
-│   ├── domains/          وحدات النطاق المعيارية (reference.ts، news.ts، production.ts)
+│   ├── domains/          وحدات النطاق المعيارية (storeContext.ts، referenceApi.ts، newsApi.ts، productionApi.ts)
 │   ├── authClient.ts     الدخول/الخروج/تغيير كلمة المرور
 │   ├── http.ts           fetch مع ترويسة CSRF ومعالجة انتهاء الجلسة
 │   └── rbacService.ts    الأدوار (مخزنة على الخادم) + فحص الصلاحيات في الواجهة
 ├── AppShell.tsx          بوابة الدخول وتحميل البيانات قبل عرض التطبيق
 ├── App.tsx               التطبيق الرئيسي (تحميل كسول للشاشات وتحديثات انتقائية للمجموعات)
-└── views/, components/   الشاشات والمكونات (بما فيها مكونات محرر الخبر في components/news/)
+└── views/, components/   الشاشات والمكونات (بما فيها مكونات محرر الخبر في components/editor/)
 scripts/
 └── bench-newsroom.ts     اختبار قياس أداء غرفة الأخبار الآلي (npm run bench:newsroom)
 tests/                    اختبارات Vitest (منطق مشترك، API، وسيناريوهات تعدد المستخدمين)
