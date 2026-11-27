@@ -1,6 +1,7 @@
 import { StationClock } from '../common/StationClock';
 import { configureDateFormat } from '../../shared/dateFormat';
 import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import { APP_VERSION } from '../../shared/releaseVersion';
 import type { LoginSetupMode } from '../../shared/setup';
 import { apiFetch } from '../../services/http';
 import { ThemeToggle } from '../common/ThemeToggle';
@@ -130,6 +131,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           <div>
             <h1 className="text-2xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
             <p className="text-sm text-slate-600">{APP_TAGLINE}</p>
+            <p className="mt-1 text-xs text-slate-600">الإصدار <bdi dir="ltr" className="tabular-nums">{APP_VERSION}</bdi></p>
           </div>
         </div>
 

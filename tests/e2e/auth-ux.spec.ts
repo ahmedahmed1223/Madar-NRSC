@@ -7,10 +7,16 @@ test.use({ serviceWorkers: 'block' });
 test('login stays within the viewport on small phones and wide desks', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#login-email')).toBeVisible();
+  const health = await page.request.get('/api/health');
+  expect(health.ok()).toBe(true);
+  const { version } = await health.json();
+  expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+  const buildVersion = page.getByText(`الإصدار ${version}`, { exact: true });
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole('button', { name: 'تسجيل الدخول', exact: true })).toBeVisible();
+    await expect(buildVersion).toBeVisible();
     await page.screenshot({ path: test.info().outputPath(`login-${width}.png`), fullPage: true });
   }
 });
