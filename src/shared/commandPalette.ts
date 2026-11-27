@@ -75,6 +75,7 @@ export const QUICK_SCREENS: QuickScreen[] = [
   { nav: 'roster', label: 'المناوبات', keywords: 'الورديات' },
   { nav: 'workload', label: 'الأعباء والأداء', keywords: 'ملف انجاز تسليم المناوبة المحطات انتاج' },
   { nav: 'reports', label: 'التقارير', keywords: 'احصائيات' },
+  { nav: 'trash', label: 'سلة المحذوفات' },
   { nav: 'audit', label: 'سجل التدقيق', permission: 'audit.view' },
   { nav: 'users', label: 'المستخدمون والصلاحيات', keywords: 'الادوار', permission: 'users.view' },
   { nav: 'settings', label: 'الإعدادات', permission: 'system.settings' },

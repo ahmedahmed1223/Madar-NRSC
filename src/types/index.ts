@@ -554,6 +554,7 @@ export interface MediaFile {
   transcript?: import('../shared/mediaEditorial').MediaTranscript;
   autoTranscriptionJob?: import('../shared/mediaEditorial').AutoTranscriptionJob;
   privateMessageMedia?: import('../shared/messageActions').PrivateMessageMedia;
+  deletedAt?: string | null;
 }
 
 export type MediaAsset = MediaFile & {
@@ -619,6 +620,9 @@ export interface SystemSettings {
   setup?: import('../shared/setup').SetupState;
   /** Dropbox and the station's shared folder (see shared/storage). */
   storage?: import('../shared/storage').StorageSettings;
+  trashRetentionDays?: import('../shared/trash').TrashRetentionDays;
+  contributorDropLinkDailyLimit?: number;
+  contributorDropLinkExpiryHours?: number;
   onAirDisplayMode?: 'OPERATIONAL' | 'TEXT';
   studioDisplayMode?: 'OPERATIONAL' | 'TEXT';
   allowOfflineScriptEdits?: boolean;

@@ -26,7 +26,7 @@ function size(bytes: number) {
  * Finds a file already in Dropbox, Google Drive or the station's shared folder and makes it part
  * of the library without copying it to the server (it is read from where it is when opened).
  */
-export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSource[]; onPicked: (file: ImportedFile) => void }) {
+export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSource[]; onPicked: (file: ImportedFile, source: ExternalSource) => void }) {
   const [source, setSource] = useState<ExternalSource>(sources[0]);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ExternalFile[] | null>(null);
@@ -91,7 +91,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
     setAdding(file.ref);
     setError('');
     try {
-      onPicked(await storageClient.importFile(source, file.ref));
+      onPicked(await storageClient.importFile(source, file.ref), source);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذرت إضافة الملف');
     } finally {

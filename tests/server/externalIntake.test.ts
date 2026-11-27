@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createTestServer, loginAgent } from '../helpers';
 import { sendDueGuestTechnicalInvitations } from '../../src/server/guestTechInvitations';
 import { stationWall } from '../../src/shared/stationTime';
@@ -36,6 +36,65 @@ it('accepts an eligible one-time audiovisual upload into the library without a s
   expect(fixture.db.dueCopies('dropbox', 5).map(copy => copy.uploadId)).toContain(uploadId);
 });
 
+it('atomically limits successful guestless link issuance for each user', async () => {
+  const settings = fixture.db.getRow('settings', 'singleton')!;
+  fixture.db.writeRow('settings', settings.id, { ...settings.d, contributorDropLinkDailyLimit: 2 }, settings.p, null);
+  const admin = await loginAgent(fixture.app, 'admin@akhbar.tv');
+  const responses = await Promise.all(Array.from({ length: 3 }, () =>
+    admin.post(prefix + '/links').set(headers).send({ kind: 'upload' })));
+  expect(responses.map(response => response.status).sort()).toEqual([200, 200, 429]);
+  expect(Number(responses.find(response => response.status === 429)?.headers['retry-after'])).toBeGreaterThan(0);
+  const editor = await loginAgent(fixture.app, 'editor@akhbar.tv');
+  await editor.post(prefix + '/links').set(headers).send({ kind: 'upload' }).expect(200);
+});
+
+it('uses the configured expiry while counting expired links until the daily window ends', async () => {
+  const settings = fixture.db.getRow('settings', 'singleton')!;
+  const admin = await loginAgent(fixture.app, 'admin@akhbar.tv');
+  const create = (issuer = admin) => issuer.post(prefix + '/links').set(headers).send({ kind: 'upload' });
+  const hour = 3_600_000;
+  const start = Date.now();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(start);
+  try {
+    fixture.db.writeRow('settings', settings.id, {
+      ...settings.d, contributorDropLinkDailyLimit: 1, contributorDropLinkExpiryHours: 6,
+    }, settings.p, null);
+    const issued = await create().expect(200);
+    const token = tokenFrom(issued.body.data.path);
+    expect(Date.parse(issued.body.data.expiresAt)).toBe(start + 6 * hour);
+    const info = () => request(fixture.app).post(prefix + '/info').set(headers).send({ token });
+    fixture.db.writeRow('settings', settings.id, {
+      ...settings.d, contributorDropLinkDailyLimit: 1, contributorDropLinkExpiryHours: 1,
+    }, settings.p, null);
+    vi.setSystemTime(start + 2 * hour);
+    await info().expect(200);
+    vi.setSystemTime(start + 6 * hour);
+    await info().expect(410);
+    await create().expect(429);
+    vi.setSystemTime(start + 24 * hour);
+    const newSession = await loginAgent(fixture.app, 'admin@akhbar.tv');
+    const next = await create(newSession).expect(200);
+    expect(Date.parse(next.body.data.expiresAt)).toBe(start + 25 * hour);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('blocks both issuance and redemption when the media module is disabled', async () => {
+  const admin = await loginAgent(fixture.app, 'admin@akhbar.tv');
+  const create = () => admin.post(prefix + '/links').set(headers).send({ kind: 'upload' });
+  const issued = await create().expect(200);
+  const token = tokenFrom(issued.body.data.path);
+  const settings = fixture.db.getRow('settings', 'singleton')!;
+  fixture.db.writeRow('settings', settings.id, { ...settings.d, moduleAccess: { media: { mode: 'disabled' } } }, settings.p, null);
+  await create().expect(403);
+  await request(fixture.app).post(prefix + '/info').set(headers).send({ token }).expect(410);
+  await request(fixture.app).post(prefix + '/upload').set({
+    ...headers, 'X-Madar-Intake': token, 'X-File-Name': 'original.wav', 'Content-Type': 'audio/wav',
+  }).send(Buffer.from('RIFF0000WAVEfmt ')).expect(410);
+});
+
 it('stores the result on the ticket’s confirmed online guest and prevents replay', async () => {
   const id = 'ep-101';
   const episode = fixture.db.getRow('episodes', id)!;
@@ -44,6 +103,10 @@ it('stores the result on the ticket’s confirmed online guest and prevents repl
     connectionType: 'ZOOM_SKYPE', segmentTopic: 'ملف البرنامج',
   }] }, episode.p, null);
   const admin = await loginAgent(fixture.app, 'admin@akhbar.tv');
+  const settings = fixture.db.getRow('settings', 'singleton')!;
+  fixture.db.writeRow('settings', settings.id, { ...settings.d, contributorDropLinkDailyLimit: 0 }, settings.p, null);
+  await admin.post(prefix + '/links').set(headers).send({ kind: 'upload' }).expect(403);
+  await admin.post(prefix + '/links').set(headers).send({ kind: 'guest', episodeId: id }).expect(404);
   const issued = await admin.post(prefix + '/links').set(headers).send({ kind: 'guest', guestId: 'gst-1', episodeId: id }).expect(200);
   const token = tokenFrom(issued.body.data.path);
   const external = request(fixture.app);
@@ -55,7 +118,6 @@ it('stores the result on the ticket’s confirmed online guest and prevents repl
   const submit = (uploadMbps: unknown) => external.post(prefix + '/guest-result').set(headers).send({
     token, camera: true, microphone: true, light: true, uploadMbps,
   });
-  const settings = fixture.db.getRow('settings', 'singleton')!;
   fixture.db.writeRow('settings', settings.id, { ...settings.d, moduleAccess: { programmes: { mode: 'disabled' } } }, settings.p, null);
   await external.post(prefix + '/info').set(headers).send({ token }).expect(410);
   await submit(4).expect(410);

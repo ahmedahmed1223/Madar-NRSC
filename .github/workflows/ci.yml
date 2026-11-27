@@ -40,6 +40,11 @@ jobs:
         env:
           POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
         run: npm test
+      - name: Recycle bin, retention and upload links on PostgreSQL
+        env:
+          TEST_DATABASE_ENGINE: postgresql
+          POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
+        run: npm test -- tests/server/trash.test.ts tests/server/retention.test.ts tests/server/externalIntake.test.ts
       - name: Build
         run: npm run build
       - name: Install browsers for workflow tests
@@ -72,6 +77,8 @@ jobs:
         run: >-
           node tests/e2e/run-isolated.mjs tests/e2e/department-chart.spec.ts tests/e2e/assignment-routing.spec.ts
           tests/e2e/production-print.spec.ts tests/e2e/workspace-polish.spec.ts
+      - name: Recycle bin and storage diagnostics
+        run: node tests/e2e/run-isolated.mjs trash.spec.ts storage-diagnostics.spec.ts
       - name: Bulletin assembly and programme templates
         run: node tests/e2e/run-isolated.mjs bulletin-copy program-preparation
       - name: Desktop and mobile planning and production layouts

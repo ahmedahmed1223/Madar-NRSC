@@ -173,6 +173,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   }, [locks, currentUser.id]);
 
   // Filter logic
+  const trashDays = apiService.getSettings().trashRetentionDays?.news ?? authClient.getSession()?.trashRetentionDays ?? 0;
   const sourceList = activeTab === 'TRASH' ? deletedNews : newsList || [];
   const [sort, toggleSort] = usePersistentSort<NewsSortKey>('nrcs_sort_news', { key: 'updatedAt', dir: 'desc' }, NEWS_SORT_KEYS);
   const filteredNews = sortList(sourceList.filter((item) => {
@@ -442,9 +443,9 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
 
 
 
-      {activeTab === 'TRASH' && (authClient.getSession()?.trashRetentionDays ?? 0) > 0 && (
+      {activeTab === 'TRASH' && trashDays > 0 && (
         <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
-          تُحذف المواد نهائياً من السلة تلقائياً بعد {authClient.getSession()?.trashRetentionDays} يوماً من نقلها إليها.
+          تُحذف المواد نهائياً من السلة تلقائياً بعد {trashDays} يوماً من نقلها إليها.
         </div>
       )}
 

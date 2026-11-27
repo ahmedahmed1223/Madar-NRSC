@@ -49,6 +49,12 @@ export interface CollectionPagePosition {
   id: string;
 }
 
+export interface TrashPagePosition {
+  deletedAt: string;
+  collection: CollectionName;
+  id: string;
+}
+
 export interface CredentialRecord {
   userId: string;
   email: string;
@@ -301,6 +307,15 @@ export class NewsroomDatabase {
     return row ? this.storedSecrets.decodeMeta(key, row.value) : null;
   }
 
+  /** Read metadata while holding its write lock until the surrounding transaction ends. */
+  lockMeta(key: string, initialValue?: string): string | null {
+    const row = (initialValue === undefined
+      ? this.db.prepare('UPDATE meta SET value = value WHERE key = ? RETURNING value').get(key)
+      : this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = meta.value RETURNING value')
+        .get(key, this.storedSecrets.encodeMeta(key, initialValue))) as { value: string } | undefined;
+    return row ? this.storedSecrets.decodeMeta(key, row.value) : null;
+  }
+
   setMeta(key: string, value: string) {
     this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run(key, this.storedSecrets.encodeMeta(key, value));
@@ -328,6 +343,19 @@ export class NewsroomDatabase {
     const stmt = this.db.prepare(sql);
     const rows = (opts.limit ? stmt.all(collection, opts.limit) : stmt.all(collection)) as RawEntityRow[];
     return rows.map(toEntityRow);
+  }
+
+  listTrashPageAfter(collections: readonly CollectionName[], after: TrashPagePosition | null, limit: number) {
+    if (collections.length === 0) return [];
+    const date = "CAST(json_extract(data, '$.deletedAt') AS TEXT)";
+    const scope = collections.map(() => '?').join(', ');
+    const cursor = after ? `AND (${date} < ? OR (${date} = ? AND (collection > ? OR (collection = ? AND id > ?))))` : '';
+    const values = after ? [after.deletedAt, after.deletedAt, after.collection, after.collection, after.id] : [];
+    const rows = this.db.prepare(`SELECT *, ${date} AS trashed_at FROM entities
+      WHERE collection IN (${scope}) AND deleted = 0 AND ${date} <> '' ${cursor}
+      ORDER BY trashed_at DESC, collection ASC, id ASC LIMIT ?`)
+      .all(...collections, ...values, limit) as (RawEntityRow & { trashed_at: string })[];
+    return rows.map(row => ({ row: toEntityRow(row), deletedAt: row.trashed_at }));
   }
 
   listScheduledNews(): EntityRow[] {
@@ -562,7 +590,7 @@ export class NewsroomDatabase {
   /**
    * Ids of live rows eligible for a retention rule (oldest first, bounded per run).
    * - `updated`: last written before the cutoff (logs are append-only, so this is their age)
-   * - `trashed`: soft-deleted (data.deletedAt) before the cutoff
+   * - `trashed`: soft-deleted (data.deletedAt) before the cutoff and on or after the optional policy start
    * - `readNotification`: marked read and untouched since the cutoff
    * - `expiredLock`: an edit lock that expired before the cutoff
    */
@@ -570,7 +598,8 @@ export class NewsroomDatabase {
     collection: CollectionName,
     rule: 'updated' | 'trashed' | 'readNotification' | 'expiredLock',
     cutoffIso: string,
-    limit = 1000
+    limit = 1000,
+    trashActiveSince?: string
   ): string[] {
     const condition = {
       updated: 'updated_at < ?',
@@ -578,9 +607,12 @@ export class NewsroomDatabase {
       readNotification: "json_extract(data, '$.isRead') = 1 AND updated_at < ?",
       expiredLock: "json_extract(data, '$.expiresAt') < ?",
     }[rule];
+    const boundedTrash = rule === 'trashed' && trashActiveSince !== undefined;
+    const eligible = boundedTrash ? "AND json_extract(data, '$.deletedAt') >= ?" : '';
+    const values = boundedTrash ? [collection, cutoffIso, trashActiveSince, limit] : [collection, cutoffIso, limit];
     const rows = this.db
-      .prepare(`SELECT id FROM entities WHERE collection = ? AND deleted = 0 AND ${condition} ORDER BY updated_at ASC LIMIT ?`)
-      .all(collection, cutoffIso, limit) as { id: string }[];
+      .prepare(`SELECT id FROM entities WHERE collection = ? AND deleted = 0 AND ${condition} ${eligible} ORDER BY updated_at ASC LIMIT ?`)
+      .all(...values) as { id: string }[];
     return rows.map((r) => r.id);
   }
 
@@ -828,6 +860,17 @@ export class NewsroomDatabase {
     };
   }
 
+  /** Public library references, including recoverable rows and sync tombstones. */
+  mediaUploadReferences(fileUrl: string): { deleted: boolean; trashed: boolean }[] {
+    const rows = this.db.prepare(`SELECT data, deleted FROM entities WHERE collection = 'media' AND instr(data, ?) > 0`)
+      .all(fileUrl) as { data: string; deleted: number }[];
+    return rows.flatMap(({ data, deleted }) => {
+      const media = JSON.parse(data);
+      const matches = [media.url, media.fileUrl].some(url => typeof url === 'string' && url.split(/[?#]/, 1)[0] === fileUrl);
+      return matches && !media.privateMessageMedia ? [{ deleted: !!deleted, trashed: !!media.deletedAt }] : [];
+    });
+  }
+
   publishLegacyUpload(id: string, uploaderId: string) {
     this.db.prepare("UPDATE uploads SET scope = 'media' WHERE id = ? AND scope = 'legacy' AND uploaded_by = ?").run(id, uploaderId);
   }
@@ -893,7 +936,7 @@ export class NewsroomDatabase {
           `SELECT c.* FROM upload_copies c
            WHERE c.target = ? AND c.state = 'PENDING' AND (c.next_attempt_at IS NULL OR c.next_attempt_at <= ?)
              AND (
-               EXISTS (SELECT 1 FROM entities e WHERE e.collection = 'media' AND e.deleted = 0 AND instr(e.data, '/api/v1/media/files/' || c.upload_id) > 0)
+               EXISTS (SELECT 1 FROM entities e WHERE e.collection = 'media' AND e.deleted = 0 AND json_extract(e.data, '$.deletedAt') IS NULL AND instr(e.data, '/api/v1/media/files/' || c.upload_id) > 0)
                OR EXISTS (SELECT 1 FROM entities e WHERE e.collection = 'messages' AND e.deleted = 0 AND instr(e.data, '"id":"' || c.upload_id || '"') > 0)
              )
            ORDER BY c.updated_at ASC LIMIT ?`

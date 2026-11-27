@@ -121,29 +121,30 @@ export function DepartmentsSettings() {
       <div className="space-y-1">
         <h2 className="text-lg font-bold text-slate-900">الأقسام الإدارية</h2>
         <p className="text-sm text-slate-600 max-w-3xl">
-          اختر قسماً من المخطط لتعديل رئيسه ومحطاته أو إضافة قسم تابع. يُستخدم هذا الهيكل في توجيه التكليفات والطلبات والمناوبات.
+          اختر قسماً من المخطط لتعديل اسمه أو رئيسه أو محطاته. يُستخدم الهيكل في توجيه التكليفات والطلبات والمناوبات.
         </p>
       </div>
       <fieldset disabled={saving} className="space-y-3">
         <div role="group" aria-label="طريقة عرض الأقسام" className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
           {[{ value: true, icon: GitBranch, title: 'مخطط الهيكل' }, { value: false, icon: List, title: 'قائمة الأقسام' }].map(({ value, icon: Icon, title }) =>
             <button key={title} type="button" aria-pressed={chart === value} onClick={() => setChart(value)}
-              className={`min-h-11 inline-flex items-center gap-2 rounded-md px-3 text-sm font-bold ${chart === value ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}><Icon size={16} />{title}</button>)}
+              className={`min-h-11 inline-flex items-center gap-2 rounded-md px-3 text-sm font-bold ${chart === value ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}><Icon size={16} aria-hidden="true" />{title}</button>)}
         </div>
         <div className={chart ? 'grid min-w-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)] items-start' : ''}>
-        {chart && <DepartmentChart departments={list} stations={stations} users={people} selectedId={selected?.id}
-          parents={selected ? parentOptions(selected) : []} onSelect={select} onAdd={add} onMove={(id, parentId) => patch(id, { parentId })} />}
+        {chart && <DepartmentChart departments={list} stations={stations} users={people} editor={{
+          selectedId: selected?.id,
+          parents: selected ? parentOptions(selected) : [],
+          onSelect: select,
+          onAdd: add,
+          onMove: (id, parentId) => patch(id, { parentId }),
+        }} />}
         <ul className="min-w-0 space-y-3">
           {visible.map((d) => {
             const uses = usage.get(d.id) || 0;
             const isNew = !savedIds.has(d.id);
             return (
               <li key={d.id} className={`border rounded-xl p-4 space-y-2 ${d.archived ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
-                {chart && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold">تفاصيل القسم</h3>
-                  <button type="button" disabled={list.length >= MAX_DEPARTMENTS || d.archived} onClick={() => add(d)}
-                    className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"><Plus size={16} />إضافة قسم تابع</button>
-                </div>}
+                {chart && <h3 className="border-b border-slate-200 pb-2 text-sm font-bold">تفاصيل القسم</h3>}
                 <DepartmentFields department={d} parents={parentOptions(d)} stations={availableStations(d)} people={people} compact={chart}
                   removable={isNew || uses === 0} uses={uses} patch={patch} toggleStation={toggleStation}
                   label={(option) => departmentOptionLabel(option, list, stations, people)}

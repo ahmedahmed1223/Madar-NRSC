@@ -1,5 +1,5 @@
 import { apiFetch } from './http';
-import type { CloudProviderId, StorageCopy, StorageStatus } from '../shared/storage';
+import type { CloudProviderId, DropboxCheck, DropboxVerification, StorageCopy, StorageLocations, StorageStatus } from '../shared/storage';
 
 /** A file found in Dropbox, Google Drive or the shared folder. */
 export interface ExternalFile {
@@ -26,6 +26,9 @@ export const storageClient = {
   async status(): Promise<StorageStatus> {
     return (await apiFetch<{ data: StorageStatus }>('/api/v1/storage/status')).data;
   },
+  async locations(uploadId: string): Promise<StorageLocations> {
+    return (await apiFetch<{ data: StorageLocations }>(`/api/v1/storage/locations/${encodeURIComponent(uploadId)}`)).data;
+  },
   async copies(uploadIds: string[]): Promise<Record<string, StorageCopy[]>> {
     if (!uploadIds.length) return {};
     return (await apiFetch<{ data: Record<string, StorageCopy[]> }>('/api/v1/storage/copies', { method: 'POST', json: { ids: uploadIds } })).data;
@@ -40,6 +43,9 @@ export const storageClient = {
     return (await apiFetch<{ data: ImportedFile }>(`/api/v1/storage/${source}/import`, { method: 'POST', json: { ref } })).data;
   },
   // Administration
+  async verifyDropbox(check: DropboxCheck): Promise<DropboxVerification> {
+    return (await apiFetch<{ data: DropboxVerification }>('/api/v1/storage/dropbox/verify', { method: 'POST', json: { check } })).data;
+  },
   async dropboxAuthorizeUrl(appKey: string): Promise<string> {
     return (await apiFetch<{ data: { url: string } }>('/api/v1/storage/dropbox/authorize-url', { method: 'POST', json: { appKey } })).data.url;
   },

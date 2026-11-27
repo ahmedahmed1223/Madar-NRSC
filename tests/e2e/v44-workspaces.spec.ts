@@ -7,10 +7,18 @@ test('walk-up upload uses a single external link and the wallboard has no contro
   const contributor = await browser.newContext();
   try {
     const { page } = staff;
-    const reply = await page.request.post('/api/v1/external-intake/links', { headers: { 'X-NRCS-Client': 'web' }, data: { kind: 'upload' } });
-    expect(reply.ok()).toBe(true);
-    const { data } = await reply.json();
-    const publicUrl = new URL(data.path, page.url()).href;
+    await page.goto('/episodes/ep-101');
+    await page.getByRole('region', { name: 'قائمة تحضير الحلقة' }).getByRole('button', { name: 'متابعة الضيوف' }).click();
+    const prep = page.getByTestId('episode-guests');
+    await prep.getByRole('button', { name: 'رابط رفع خارجي', exact: true }).click();
+    const request = page.waitForRequest(url => url.url().endsWith('/external-intake/links') && url.method() === 'POST');
+    await prep.getByRole('button', { name: 'إنشاء رابط الرفع', exact: true }).click();
+    const submitted = (await request).postDataJSON();
+    expect(submitted).toMatchObject({ kind: 'upload' });
+    expect(submitted).not.toHaveProperty('guestId');
+    const link = prep.getByRole('textbox', { name: 'رابط المشاركة' });
+    await expect(link).toHaveValue(/\/intake#[A-Za-z0-9_-]{43}$/);
+    const publicUrl = await link.inputValue();
     const external = await contributor.newPage();
     await external.goto(publicUrl);
     await expect(external.getByRole('heading', { name: 'رفع مادة إلى مدار' })).toBeVisible();

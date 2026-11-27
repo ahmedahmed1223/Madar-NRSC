@@ -91,37 +91,61 @@ export class DropboxClient {
 
   constructor(private creds: DropboxCredentials, private hosts = dropboxHosts()) {}
 
-  private async token(): Promise<string> {
-    if (this.accessToken && Date.now() < this.expiresAt - 60_000) return this.accessToken;
+  private async refresh(scope?: string, signal?: AbortSignal) {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: this.creds.refreshToken,
+      client_id: this.creds.appKey,
+      client_secret: this.creds.appSecret,
+    });
+    if (scope) params.set('scope', scope);
     const res = await fetch(`${this.hosts.api}/oauth2/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: this.creds.refreshToken,
-        client_id: this.creds.appKey,
-        client_secret: this.creds.appSecret,
-      }),
+      body: params,
+      signal,
     });
     const body: any = await res.json().catch(() => ({}));
     if (!res.ok || !body.access_token) {
-      throw new DropboxError(401, 'انتهى تفويض Dropbox أو أُلغي؛ أعد الربط من الإعدادات', body.error_description || body.error);
+      if (res.ok || res.status === 429 || res.status >= 500) {
+        throw new DropboxError(res.ok ? 502 : res.status, 'خدمة تفويض Dropbox غير متاحة الآن');
+      }
+      throw new DropboxError(res.status, 'تعذر تجديد تفويض Dropbox؛ تحقق من المفاتيح أو أعد الربط', typeof body.error === 'string' ? body.error : undefined);
     }
-    this.accessToken = String(body.access_token);
-    this.expiresAt = Date.now() + Number(body.expires_in || 14400) * 1000;
+    if (scope && typeof body.scope === 'string' && !body.scope.split(/\s+/).includes(scope)) {
+      throw new DropboxError(400, 'الإذن المطلوب غير ممنوح في Dropbox', 'invalid_scope');
+    }
+    return { token: String(body.access_token), expiresAt: Date.now() + Number(body.expires_in || 14400) * 1000 };
+  }
+
+  private async token(signal?: AbortSignal): Promise<string> {
+    if (this.accessToken && Date.now() < this.expiresAt - 60_000) return this.accessToken;
+    const refreshed = await this.refresh(undefined, signal);
+    this.accessToken = refreshed.token;
+    this.expiresAt = refreshed.expiresAt;
     return this.accessToken;
   }
 
-  private async call(endpoint: string, args: unknown): Promise<any> {
-    const res = await this.raw(`${this.hosts.api}/2/${endpoint}`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) });
+  /** On a fresh client, verifies the saved credentials by requesting a new access token. */
+  async verifyCredentials(signal: AbortSignal): Promise<void> {
+    await this.token(signal);
+  }
+
+  /** Verify the OAuth grant using a scoped token that is never used to access a file. */
+  async verifyScope(scope: 'files.content.read' | 'files.content.write', signal: AbortSignal): Promise<void> {
+    await this.refresh(scope, signal);
+  }
+
+  private async call(endpoint: string, args: unknown, signal?: AbortSignal): Promise<any> {
+    const res = await this.raw(`${this.hosts.api}/2/${endpoint}`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(args), signal });
     return res.json();
   }
 
-  private async raw(url: string, init: { headers?: Record<string, string>; body?: any; duplex?: 'half' }, retry = true): Promise<Response> {
+  private async raw(url: string, init: { headers?: Record<string, string>; body?: any; duplex?: 'half'; signal?: AbortSignal }, retry = true): Promise<Response> {
     const res = await fetch(url, {
       method: 'POST',
       ...init,
-      headers: { authorization: `Bearer ${await this.token()}`, ...(init.headers || {}) },
+      headers: { authorization: `Bearer ${await this.token(init.signal)}`, ...(init.headers || {}) },
     } as RequestInit);
     if (res.status === 401 && retry) {
       this.accessToken = null;
@@ -216,8 +240,8 @@ export class DropboxClient {
     return (body.matches || []).map((m: any) => toEntry(m?.metadata?.metadata || {})).filter((e: DropboxEntry) => e.path);
   }
 
-  async list(path: string, limit = 200): Promise<DropboxEntry[]> {
-    const body = await this.call('files/list_folder', { path: path || '', limit: Math.min(limit, 2000), include_deleted: false });
+  async list(path: string, limit = 200, signal?: AbortSignal): Promise<DropboxEntry[]> {
+    const body = await this.call('files/list_folder', { path: path || '', limit: Math.min(limit, 2000), include_deleted: false }, signal);
     return (body.entries || []).map(toEntry);
   }
 

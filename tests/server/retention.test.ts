@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestServer } from '../helpers';
+import { createTestServer, loginAgent } from '../helpers';
 import { runRetention } from '../../src/server/retention';
 
 let server: Awaited<ReturnType<typeof createTestServer>>;
@@ -45,5 +45,53 @@ describe('data retention', () => {
     db.writeRow('news', target.id, { ...target.d, deletedAt: new Date(Date.now() - 400 * DAY).toISOString() }, target.p, null);
     runRetention(db, config.dataDir, { trashDays: 0, notificationDays: 0, logDays: 0, auditLogDays: 0 });
     expect(db.getRow('news', target.id)).not.toBeNull();
+  });
+
+  it('applies independently configured windows and the environment fallback', () => {
+    const { db, config } = server;
+    const now = Date.now();
+    const deletedAt = new Date(now - 11 * DAY).toISOString();
+    const settings = db.getRow('settings', 'singleton')!;
+    db.writeRow('settings', settings.id, { ...settings.d, trashRetentionDays: { news: 7, guests: 0, resources: 15 } }, settings.p, null);
+    db.writeRow('news', 'trash-news-week', { id: 'trash-news-week', deletedAt }, 0, null);
+    db.writeRow('guests', 'trash-guest-forever', { id: 'trash-guest-forever', deletedAt }, 0, null);
+    db.writeRow('resources', 'trash-resource-fortnight', { id: 'trash-resource-fortnight', deletedAt }, 0, null);
+    db.writeRow('programs', 'trash-program-default', { id: 'trash-program-default', deletedAt }, 0, null);
+
+    try {
+      runRetention(db, config.dataDir, { ...config.retention, trashDays: 10 }, now);
+      expect(db.getRow('news', 'trash-news-week')).toBeNull();
+      expect(db.getRow('programs', 'trash-program-default')).toBeNull();
+      expect(db.getRow('guests', 'trash-guest-forever')).not.toBeNull();
+      expect(db.getRow('resources', 'trash-resource-fortnight')).not.toBeNull();
+    } finally {
+      db.writeRow('settings', settings.id, settings.d, settings.p, null);
+    }
+  });
+
+  it('keeps old deletions in newly covered types until that type is explicitly configured', async () => {
+    const { db, config } = server;
+    const now = Date.now();
+    const old = new Date(now - 45 * DAY).toISOString();
+    const recent = new Date(now + DAY).toISOString();
+    db.writeRow('bulletins', 'trash-bulletin-legacy', { id: 'trash-bulletin-legacy', deletedAt: old }, 0, null);
+    db.writeRow('bulletins', 'trash-bulletin-new', { id: 'trash-bulletin-new', deletedAt: recent }, 0, null);
+
+    runRetention(db, config.dataDir, config.retention, now + 32 * DAY);
+    expect(db.getRow('bulletins', 'trash-bulletin-legacy')).not.toBeNull();
+    expect(db.getRow('bulletins', 'trash-bulletin-new')).toBeNull();
+
+    const settings = db.getRow('settings', 'singleton')!;
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const saved = await admin.post('/api/v1/data/sync').set('X-NRCS-Client', 'web').send({ ops: [
+      { c: 'settings', op: 'upsert', id: settings.id, baseV: settings.v, d: { ...settings.d, trashRetentionDays: { bulletins: 7 } } },
+    ] });
+    expect(saved.body.results[0].ok).toBe(true);
+    try {
+      runRetention(db, config.dataDir, config.retention, now + 32 * DAY);
+      expect(db.getRow('bulletins', 'trash-bulletin-legacy')).toBeNull();
+    } finally {
+      db.writeRow('settings', settings.id, settings.d, settings.p, null);
+    }
   });
 });

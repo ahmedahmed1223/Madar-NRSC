@@ -57,6 +57,7 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
   const allEpisodes = apiService.getEpisodes();
   const requests = apiService.getRequests();
   const canRequest = RbacService.hasPermission(currentUser, 'requests.create');
+  const canUpload = RbacService.canUseModule(currentUser, 'media') && RbacService.hasPermission(currentUser, 'media.upload');
   const [adding, setAdding] = useState(false);
   const [copilot, setCopilot] = useState(false);
   const [newGuestId, setNewGuestId] = useState('');
@@ -205,6 +206,8 @@ export const EpisodeGuestsPanel: React.FC<Props> = ({ episode, allGuests, curren
           </button>
         </div>}
       </div>
+
+      {canUpload && <ExternalLinkPanel kind="upload" />}
 
       {message && (
         <p role="status" className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">

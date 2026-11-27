@@ -9,13 +9,13 @@ import { confirmSaved } from '../services/confirmSave';
 import { notify } from '../services/notify';
 import React, { useEffect, useRef, useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, discardMediaUpload, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
-import { storageClient } from '../services/storageClient';
+import { storageClient, type ExternalSource } from '../services/storageClient';
 import { ExternalFilePicker, availableSources } from '../components/media/ExternalFilePicker';
 import { MediaEditorialPanel } from '../components/media/MediaEditorialPanel';
 import { MediaQuoteDialog } from '../components/media/MediaQuoteDialog';
 import { ExternalLinkPanel } from '../components/common/ExternalLinkPanel';
 import { mediaRightsIssue, type MediaTranscriptSegment } from '../shared/mediaEditorial';
-import { TARGET_NAMES, type StorageCopy, type StorageStatus } from '../shared/storage';
+import { TARGET_NAMES, type StorageLocations, type StorageStatus } from '../shared/storage';
 import { UploadCloud, Image as ImageIcon, Video, Music, FileText, Search, Tag, Trash2, Eye, X, Sparkles, Copy, Check, Clock, HardDrive, Download } from 'lucide-react';
 import { MediaAsset, MediaType, User } from '../types';
 
@@ -103,7 +103,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const usageCount = (id: string) => usageMap.get(id) || 0;
   // Same rule as the server: media.delete, or the owner with upload rights.
   const canDeleteAsset = (a: MediaAsset) =>
-    RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id));
+    (!a.privateMessageMedia || a.ownerId === currentUser.id) &&
+    (RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id)));
   const [selectedType, setSelectedType] = useState<MediaFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -112,7 +113,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const canQuote = (RbacService.hasPermission(currentUser, 'news.create') && RbacService.canOpenScreen(currentUser, 'news')) ||
     (RbacService.hasPermission(currentUser, 'requests.create') && RbacService.canOpenScreen(currentUser, 'requests'));
   useEffect(() => {
-    setPreviewAsset(previous => previous ? mediaAssets.find(asset => asset.id === previous.id) || previous : previous);
+    setPreviewAsset(previous => previous ? mediaAssets.find(asset => asset.id === previous.id) || null : null);
   }, [mediaAssets]);
   const previewPlayer = useRef<HTMLMediaElement | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -133,7 +134,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [keepInShare, setKeepInShare] = useState(true);
   const [showExternal, setShowExternal] = useState(false);
-  const [copies, setCopies] = useState<Record<string, StorageCopy[]>>({});
+  const [locations, setLocations] = useState<{ id: string; data?: StorageLocations; failed?: boolean } | null>(null);
   useEffect(() => {
     let active = true;
     storageClient.status().then((st) => active && setStorage(st)).catch(() => undefined);
@@ -144,20 +145,37 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const externalSources = availableSources(storage);
   const shareOffered = !!storage?.share.enabled && storage.share.mode !== 'none' && storage.isLocal;
   const clouds = storage ? (['dropbox', 'gdrive'] as const).filter((c) => storage[c].enabled && storage[c].connected).map((c) => TARGET_NAMES[c]) : [];
-  const uploadIdOf = (a?: MediaAsset | null) => {
-    const url = a?.url || a?.fileUrl || '';
-    const m = /^\/api\/v1\/media\/files\/([A-Za-z0-9_-]+)/.exec(url);
-    return m ? m[1] : null;
-  };
-  const previewUploadId = uploadIdOf(previewAsset);
+  const previewUrl = previewAsset?.fileUrl || previewAsset?.url || '';
+  let previewUploadId: string | undefined;
+  if (previewUrl) {
+    try {
+      const address = new URL(previewUrl, window.location.origin);
+      if (address.origin === window.location.origin) {
+        previewUploadId = /^\/api\/v1\/media\/files\/([A-Za-z0-9_-]+)$/.exec(address.pathname)?.[1];
+      }
+    } catch {
+      // Some legacy rows have an invalid URL and no managed file to inspect.
+    }
+  }
+  const previewLocations = locations?.id === previewUploadId ? locations : null;
   useEffect(() => {
-    if (!previewUploadId || !storage) return;
+    if (!previewUploadId) return;
     let active = true;
-    storageClient.copies([previewUploadId]).then((map) => active && setCopies((prev) => ({ ...prev, ...map }))).catch(() => undefined);
+    const refreshLocations = async () => {
+      try {
+        const data = await storageClient.locations(previewUploadId);
+        if (active) setLocations({ id: previewUploadId, data });
+      } catch {
+        if (active) setLocations({ id: previewUploadId, failed: true });
+      }
+    };
+    void refreshLocations();
+    const timer = window.setInterval(refreshLocations, 15_000);
     return () => {
       active = false;
+      window.clearInterval(timer);
     };
-  }, [previewUploadId, storage]);
+  }, [previewUploadId]);
   const shareAddress = (relative?: string) => {
     const root = storage?.share.displayPath || '';
     if (!relative) return '';
@@ -166,7 +184,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   const canApproveVideo = RbacService.hasPermission(currentUser, 'news.approve') || RbacService.hasPermission(currentUser, 'media.delete');
   const [tagsInput, setTagsInput] = useState('');
   const [description, setDescription] = useState('');
-  const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
+  const [uploaded, setUploaded] = useState<(UploadedFile & { source?: ExternalSource }) | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [retryFile, setRetryFile] = useState<File | null>(null);
@@ -513,11 +531,15 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                   <button
                     type="button"
                     onClick={async () => {
-                      if ((await confirmDialog(`حذف المادة «${asset.title || asset.fileName}» نهائياً مع ملفها؟`))) onDeleteMedia(asset.id);
+                      const name = asset.title || asset.fileName;
+                      const message = asset.privateMessageMedia
+                        ? `إزالة مرجع المرفق «${name}» من مكتبة الوسائط؟ يبقى الملف في الرسالة.`
+                        : `نقل «${name}» إلى سلة المحذوفات؟ يمكنك استعادة المادة وملفها ما دامت في السلة.`;
+                      if (await confirmDialog(message)) onDeleteMedia(asset.id);
                     }}
                     className="w-11 h-11 sm:w-9 sm:h-9 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="حذف من الأرشيف"
-                    aria-label={`حذف المادة: ${asset.title || asset.fileName}`}
+                    title={asset.privateMessageMedia ? 'إزالة مرجع المرفق' : 'نقل إلى سلة المحذوفات'}
+                    aria-label={`${asset.privateMessageMedia ? 'إزالة مرجع المرفق' : 'نقل إلى سلة المحذوفات'}: ${asset.title || asset.fileName}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -573,18 +595,18 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             )}
             {uploaded && (
               <p className="text-2xs text-emerald-700 font-semibold">
-                تم رفع الملف: {uploaded.originalName} ({(uploaded.sizeBytes / (1024 * 1024)).toFixed(2)} MB)
+                {uploaded.source ? `أُضيف الملف من ${TARGET_NAMES[uploaded.source]}` : 'تم رفع الملف'} — {uploaded.originalName} ({(uploaded.sizeBytes / (1024 * 1024)).toFixed(2)} MB)
               </p>
             )}
             {uploadError && <p role="alert" className="text-sm text-rose-800 font-semibold">{uploadError}</p>}
             {uploadError && retryFile && <button type="button" className="min-h-11 px-3 bg-white border border-blue-300 rounded-lg text-sm font-bold text-blue-700 hover:bg-blue-50" onClick={() => void handleFileSelected(retryFile)}>إعادة محاولة رفع الملف</button>}
-            {shareOffered && (
+            {shareOffered && !uploaded?.source && (
               <label className="flex items-center gap-2 min-h-11 text-xs text-slate-800">
                 <input type="checkbox" className="w-4 h-4" checked={keepInShare} disabled={uploadProgress !== null || !!uploaded || !!retryFile} onChange={(e) => setKeepInShare(e.target.checked)} />
                 احفظ نسخة في المجلد المشترك{storage?.share.displayPath ? <span dir="ltr" className="text-slate-500">({storage.share.displayPath})</span> : null}
               </label>
             )}
-            {clouds.length > 0 && <p className="text-2xs text-slate-600">يُنسخ الملف تلقائياً إلى {clouds.join(' و')} بعد حفظ المادة.</p>}
+            {clouds.length > 0 && !uploaded?.source && <p className="text-2xs text-slate-600">يُنسخ الملف المرفوع تلقائياً إلى {clouds.join(' و')} بعد حفظ المادة.</p>}
             {externalSources.length > 0 && !uploaded && (
               <button type="button" onClick={() => setShowExternal((v) => !v)} aria-expanded={showExternal} className="min-h-10 text-xs font-bold text-blue-700 underline">
                 {showExternal ? 'إخفاء' : `أو أضف ملفاً موجوداً في ${externalSources.map((x) => TARGET_NAMES[x]).join(' أو ')}`}
@@ -593,8 +615,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             {showExternal && !uploaded && (
               <ExternalFilePicker
                 sources={externalSources}
-                onPicked={(file) => {
-                  setUploaded(file);
+                onPicked={(file, source) => {
+                  setUploaded({ ...file, source });
                   setFileUrl(file.url);
                   setMediaType(mediaTypeForMime(file.mimeType));
                   if (!title.trim()) setTitle(file.originalName.replace(/\.[^.]+$/, ''));
@@ -969,28 +991,36 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
                 )}
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">تم الرفع بواسطة:</span>
+                <span className="text-slate-500">أُضيف بواسطة</span>
                 <span className="font-semibold text-slate-800">{previewAsset.uploadedByName || 'النظام'}</span>
               </div>
-              {previewUploadId && (copies[previewUploadId] || []).length > 0 && (
+              {previewUploadId && (
                 <div className="pt-1 border-t border-slate-200 space-y-1">
-                  <span className="text-slate-500 block">نسخ الملف:</span>
-                  <ul className="space-y-1">
-                    {copies[previewUploadId].map((c) => (
-                      <li key={c.target} className="flex flex-wrap items-center gap-2 text-slate-700">
-                        <span className={`px-1.5 py-0.5 rounded-md text-2xs font-bold ${c.state === 'DONE' ? 'bg-emerald-50 text-emerald-800' : c.state === 'FAILED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}`}>
-                          {TARGET_NAMES[c.target]} · {c.state === 'DONE' ? 'محفوظ' : c.state === 'FAILED' ? 'تعذّر النسخ' : 'يُنسخ'}
-                        </span>
-                        {c.target === 'share' && c.state === 'DONE' && storage?.isLocal && c.path && (
-                          <button type="button" onClick={() => navigator.clipboard.writeText(shareAddress(c.path))} className="min-h-9 px-2 rounded-md border border-slate-300 text-2xs font-semibold hover:bg-slate-50 inline-flex items-center gap-1">
-                            <Copy className="w-3 h-3" aria-hidden="true" /> نسخ المسار في الشبكة
-                          </button>
-                        )}
-                        {c.target === 'dropbox' && c.path && <span className="text-2xs text-slate-500 break-all" dir="auto">{c.path}</span>}
-                      </li>
-                    ))}
-                  </ul>
+                  <span className="text-slate-500 block">أماكن حفظ الملف</span>
+                  {previewLocations?.failed ? (
+                    <p className="text-slate-600">تعذر قراءة أماكن حفظ الملف.</p>
+                  ) : previewLocations?.data ? (
+                    <ul className="space-y-1">
+                      <li className="text-slate-700">{previewLocations.data.local ? 'الخادم · نسخة متاحة' : 'الخادم · لا توجد نسخة'}</li>
+                      {previewLocations.data.copies.map((c) => (
+                        <li key={c.target} className="flex flex-wrap items-center gap-2 text-slate-700">
+                          <span className={`px-1.5 py-0.5 rounded-md text-2xs font-bold ${c.state === 'DONE' ? 'bg-emerald-50 text-emerald-800' : c.state === 'FAILED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}`}>
+                            {TARGET_NAMES[c.target]} · {c.state === 'DONE' ? 'نسخة مسجّلة' : c.state === 'FAILED' ? 'تعذّر النسخ' : 'بانتظار النسخ'}
+                          </span>
+                          {c.target === 'share' && c.state === 'DONE' && c.path && (
+                            <button type="button" onClick={() => navigator.clipboard.writeText(shareAddress(c.path))} className="min-h-9 px-2 rounded-md border border-slate-300 text-2xs font-semibold hover:bg-slate-50 inline-flex items-center gap-1">
+                              <Copy className="w-3 h-3" aria-hidden="true" /> {storage?.share.displayPath ? 'نسخ المسار في الشبكة' : 'نسخ المسار النسبي'}
+                            </button>
+                          )}
+                          {c.target === 'dropbox' && c.path && <span className="text-2xs text-slate-500 break-all" dir="auto">{c.path}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-slate-600">جارٍ قراءة أماكن الحفظ…</p>}
                 </div>
+              )}
+              {!previewUploadId && /^https?:\/\//i.test(previewUrl) && (
+                <p className="pt-1 border-t border-slate-200 text-slate-700">مصدر الملف · رابط خارجي</p>
               )}
               {previewAsset.durationSeconds && (
                 <div className="flex justify-between">

@@ -1,4 +1,5 @@
 import { requireModule } from './moduleAccess';
+import { downloadableMediaUpload } from './linkedMedia';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -8,7 +9,7 @@ import type { AppConfig } from './config';
 import type { NewsroomDatabase, UploadRecord } from './db';
 import { logger } from './logger';
 import { requirePermission } from './auth';
-import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, uploadsDir } from './uploads';
+import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, mediaUploadIsTrashed, uploadsDir } from './uploads';
 import { DropboxClient, DropboxError, authorizeUrl as dropboxAuthorizeUrl, dropboxPath, exchangeAuthorizationCode } from './dropbox';
 import { DriveClient, DriveError, driveAuthorizeUrl, exchangeDriveCode } from './gdrive';
 import { newId } from '../shared/ids';
@@ -20,7 +21,10 @@ import {
   storageOf,
   type CloudProviderId,
   type CopyTarget,
+  type DropboxCheckStatus,
+  type DropboxVerification,
   type StorageCopy,
+  type StorageLocations,
   type StorageStatus,
 } from '../shared/storage';
 
@@ -99,6 +103,27 @@ function dropboxClient(db: NewsroomDatabase): DropboxClient | null {
   const key = c.creds.refreshToken;
   if (clients.dropbox?.key !== key) clients.dropbox = { key, client: new DropboxClient(c.creds) };
   return clients.dropbox.client;
+}
+
+async function dropboxCheck(
+  probe: () => Promise<unknown>,
+  kind: 'credentials' | 'folder' | 'scope',
+): Promise<DropboxCheckStatus> {
+  try {
+    await probe();
+    return 'verified';
+  } catch (err) {
+    if (!(err instanceof DropboxError)) return 'unavailable';
+    if (err.status === 429 || err.status >= 500) return 'unavailable';
+    const detail = err.summary || '';
+    if (/^(invalid_scope|missing_scope)(\/|$)/.test(detail)) return 'missing_scope';
+    if (kind === 'folder') {
+      if (err.status === 404 || /^path\/(not_found|not_folder)(\/|$)/.test(detail)) return 'folder_missing';
+      if (err.status === 403 || /^path\/no_permission(\/|$)/.test(detail)) return 'folder_denied';
+    }
+    if (err.status === 401 || /^(invalid_client|invalid_grant)$/.test(detail)) return 'invalid_credentials';
+    return 'failed';
+  }
 }
 
 function driveClient(db: NewsroomDatabase): DriveClient | null {
@@ -209,7 +234,7 @@ async function copyOne(db: NewsroomDatabase, config: AppConfig, target: CopyTarg
 
 /** Frees the server's disk once a cloud holds the file, when the settings ask for it. */
 function maybeEvict(db: NewsroomDatabase, config: AppConfig, uploadId: string) {
-  if (settingsOf(db).keepLocalCopy) return;
+  if (settingsOf(db).keepLocalCopy || mediaUploadIsTrashed(db, uploadId)) return;
   const copies = db.copiesOf(uploadId);
   if (!copies.length || copies.some((c) => c.state !== 'DONE')) return;
   if (!copies.some((c) => c.target === 'dropbox' || c.target === 'gdrive')) return;
@@ -368,16 +393,62 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
     res.json({ success: true, data: storageStatus(db, req) });
   });
 
+  app.get('/api/v1/storage/locations/:id', requirePermission('media.view'), (req, res) => {
+    const record = downloadableMediaUpload(db, req.auth!, req.params.id);
+    if (!record) throw new HttpError(404, 'الملف غير موجود');
+    const localNetwork = isLocalRequest(db, req);
+    const data: StorageLocations = {
+      local: !!localPathOf(config, record),
+      copies: db.copiesOf(record.id).map((c) => ({
+        target: c.target,
+        state: c.state,
+        path: c.target === 'dropbox' || (c.target === 'share' && localNetwork) ? c.remotePath : undefined,
+      })),
+    };
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ success: true, data });
+  });
+
   /** Where the copies of some library files are (for the badges in the library). */
   app.post('/api/v1/storage/copies', requirePermission('media.view'), requireModule('media'), (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: unknown) => typeof x === 'string' && /^[A-Za-z0-9_-]+$/.test(x)).slice(0, 1000) : [];
     const map = db.copiesFor(ids);
     const data: Record<string, StorageCopy[]> = {};
-    for (const [id, copies] of map) data[id] = copies.map((c) => ({ target: c.target, state: c.state, path: c.target === 'gdrive' ? undefined : c.remotePath, error: c.error }));
+    for (const [id, copies] of map) {
+      if (downloadableMediaUpload(db, req.auth!, id)) {
+        data[id] = copies.map((c) => ({ target: c.target, state: c.state, path: c.target === 'gdrive' ? undefined : c.remotePath, error: c.error }));
+      }
+    }
     res.json({ success: true, data });
   });
 
   // --- Dropbox --------------------------------------------------------------
+
+  app.post('/api/v1/storage/dropbox/verify', admin, wrap(async (req: Request, res: Response) => {
+    const check = req.body?.check;
+    if (check !== 'connection' && check !== 'permissions') throw new HttpError(400, 'فحص Dropbox غير صالح');
+    const root = dropboxPath(settingsOf(db).dropbox.rootPath);
+    const creds = dropboxCredentials(db)?.creds;
+    const data: DropboxVerification = { credentials: 'not_configured' };
+    if (check === 'connection') data.root = root || '/';
+    if (creds?.appKey && creds.appSecret && creds.refreshToken) {
+      // Use a fresh client so a cached access token cannot hide stale saved credentials.
+      const client = new DropboxClient(creds);
+      const signal = AbortSignal.timeout(10_000);
+      data.credentials = await dropboxCheck(() => client.verifyCredentials(signal), 'credentials');
+      if (data.credentials === 'verified') {
+        if (check === 'connection') {
+          data.folder = await dropboxCheck(() => client.list(root, 1, signal), 'folder');
+        } else {
+          [data.read, data.write] = await Promise.all([
+            dropboxCheck(() => client.verifyScope('files.content.read', signal), 'scope'),
+            dropboxCheck(() => client.verifyScope('files.content.write', signal), 'scope'),
+          ]);
+        }
+      }
+    }
+    res.json({ success: true, data });
+  }));
 
   app.post('/api/v1/storage/dropbox/authorize-url', admin, (req, res) => {
     const appKey = str(req.body?.appKey, 100);
