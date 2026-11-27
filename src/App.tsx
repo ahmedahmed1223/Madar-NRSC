@@ -237,6 +237,22 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Some child views read smaller collections directly from the store on render.
   const [, renderCollectionReaders] = useState(0);
   useEffect(() => {
+    const appStateCollections: ReadonlySet<CollectionName> = new Set([
+      'users',
+      'broadcastState',
+      'programTypes',
+      'stories',
+      'news',
+      'programs',
+      'episodes',
+      'guests',
+      'tasks',
+      'media',
+      'auditLogs',
+      'categories',
+      'sources',
+      'wires',
+    ]);
     const refreshData = (changed?: ReadonlySet<CollectionName>) => {
       const includes = (...names: CollectionName[]) => !changed || names.some(name => changed.has(name));
       if (includes('settings')) {
@@ -266,7 +282,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       if (includes('categories')) setCategories(apiService.getCategories());
       if (includes('sources')) setSources(apiService.getNewsSources());
       if (includes('wires')) setWires(apiService.getWires());
-      if (changed) renderCollectionReaders(revision => revision + 1);
+      if (changed && [...changed].some((name) => !appStateCollections.has(name))) {
+        renderCollectionReaders(revision => revision + 1);
+      }
     };
 
     refreshData();
