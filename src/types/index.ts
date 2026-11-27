@@ -611,6 +611,7 @@ export interface AuditLog {
 }
 
 export interface SystemSettings {
+  colorPalette?: import('../shared/appearancePalette').ColorPalette;
   moduleAccess?: import('../shared/moduleAccess').ModuleAccessSettings;
   editorialPublishing?: import('../shared/editorialStylebook').EditorialPublishingSettings;
   taskWorkflow?: import('../shared/taskWorkflow').TaskWorkflowRules;

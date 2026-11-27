@@ -11,15 +11,15 @@
   --color-slate-800: oklch(28% 0.046 264);
   --color-slate-900: oklch(21.5% 0.044 265);
   --color-slate-950: oklch(16% 0.038 266);
-  --color-blue-50: oklch(97.6% 0.016 205);
-  --color-blue-100: oklch(94.6% 0.034 205);
-  --color-blue-200: oklch(89.2% 0.06 205);
-  --color-blue-300: oklch(81.5% 0.088 205);
-  --color-blue-400: oklch(71% 0.11 207);
-  --color-blue-500: oklch(60.5% 0.115 210);
-  --color-blue-600: oklch(50.5% 0.106 213);
-  --color-blue-700: oklch(44% 0.094 215);
-  --color-blue-800: oklch(38% 0.08 217);
-  --color-blue-900: oklch(32% 0.066 219);
-  --color-blue-950: oklch(24% 0.05 221);
+  --color-blue-50: oklch(97.6% 0.016 calc(205 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-100: oklch(94.6% 0.034 calc(205 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-200: oklch(89.2% 0.06 calc(205 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-300: oklch(81.5% 0.088 calc(205 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-400: oklch(71% 0.11 calc(207 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-500: oklch(60.5% 0.115 calc(210 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-600: oklch(50.5% 0.106 calc(213 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-700: oklch(44% 0.094 calc(215 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-800: oklch(38% 0.08 calc(217 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-900: oklch(32% 0.066 calc(219 + var(--madar-signal-hue-offset, 0)));
+  --color-blue-950: oklch(24% 0.05 calc(221 + var(--madar-signal-hue-offset, 0)));
 }

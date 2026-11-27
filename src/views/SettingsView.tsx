@@ -12,6 +12,7 @@ import { SINGLETON_ID } from '../shared/collections';
 import { settingsError } from '../shared/settings';
 import { matchesQuery } from '../shared/search';
 import { sanitizeDateSettings } from '../shared/dateFormat';
+import { resolveColorPalette } from '../shared/appearancePalette';
 import { DEFAULT_BREAKING_HOURS } from '../shared/newsWorkflow';
 import { CATEGORY_HAS_CHILDREN, categoryBranchIds, categoryTree } from '../shared/newsCategories';
 import { EditorialPublishingSettings } from '../components/settings/EditorialPublishingSettings';
@@ -27,6 +28,7 @@ import { AirDisplaySettings } from '../components/settings/AirDisplaySettings';
 import { StationsSettings } from '../components/settings/StationsSettings';
 import { DepartmentsSettings } from '../components/settings/DepartmentsSettings';
 import { OrgStructureSettings } from '../components/settings/OrgStructureSettings';
+import { ColorPalettePicker } from '../components/settings/ColorPalettePicker';
 import { SystemMonitor } from '../components/settings/SystemMonitor';
 import { BackupReadinessSummary } from '../components/settings/BackupReadinessSummary';
 import { AppUpdatesPanel } from '../components/settings/AppUpdatesPanel';
@@ -301,6 +303,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [settingsSearch, setSettingsSearch] = useState('');
   const [channelName, setChannelName] = useState(initialSettings.primaryChannelName || '');
+  const [colorPalette, setColorPalette] = useState(() => resolveColorPalette(initialSettings.colorPalette));
   const [organizationNameEn, setOrganizationNameEn] = useState(initialSettings.organizationNameEn || '');
   const [newsPriority, setNewsPriority] = useState(initialSettings.defaultNewsPriority || 'NORMAL');
   const [breakingHours, setBreakingHours] = useState(initialSettings.breakingDurationHours ?? DEFAULT_BREAKING_HOURS);
@@ -319,16 +322,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return () => { active = false; };
   }, [section]);
   const [useStationTime, setUseStationTime] = useState(sanitizeDateSettings(initialSettings.dateTime).timeBasis === 'station');
-  const values = { organizationName: stationName, organizationNameEn, primaryChannelName: channelName, defaultTimezone: timezone, defaultSegmentDurationSeconds: defaultDuration, defaultNewsPriority: newsPriority, breakingDurationHours: breakingHours, timeBasis: useStationTime };
+  const values = { organizationName: stationName, organizationNameEn, primaryChannelName: channelName, colorPalette, defaultTimezone: timezone, defaultSegmentDurationSeconds: defaultDuration, defaultNewsPriority: newsPriority, breakingDurationHours: breakingHours, timeBasis: useStationTime };
   const [baseline, setBaseline] = useState(values);
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline);
   const restoreGeneral = (saved: typeof values) => {
     setStationName(saved.organizationName); setOrganizationNameEn(saved.organizationNameEn);
     setChannelName(saved.primaryChannelName); setTimezone(saved.defaultTimezone);
+    setColorPalette(resolveColorPalette(saved.colorPalette ?? apiService.getSettings().colorPalette));
     setDefaultDuration(saved.defaultSegmentDurationSeconds); setNewsPriority(saved.defaultNewsPriority);
     setBreakingHours(saved.breakingDurationHours); setUseStationTime(saved.timeBasis);
   };
-  const draft = useFormDraft(`settings:${apiService.getCurrentUser().id}`, true, values, restoreGeneral);
+  const draft = useFormDraft(`settings:${apiService.getCurrentUser().id}`, true, values, restoreGeneral, ['colorPalette']);
   const resetGeneral = () => {
     restoreGeneral(baseline);
     setGeneralError(null); setIsSaved(false);
@@ -437,6 +441,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         organizationName: name,
         organizationNameEn: organizationNameEn.trim(),
         primaryChannelName: channelName.trim(),
+        colorPalette,
         defaultTimezone: timezone.trim() || 'Asia/Riyadh',
         defaultSegmentDurationSeconds: duration,
         defaultNewsPriority: newsPriority,
@@ -792,6 +797,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <label className="flex items-center gap-2 min-h-11 font-bold text-slate-700"><input type="checkbox" checked={useStationTime} onChange={e => setUseStationTime(e.target.checked)} />اعتماد توقيت المحطة لجميع الزملاء</label>
               <p id="station-time-basis" role="status" className="text-xs text-slate-600">{useStationTime ? `تُعرض الأوقات وتُدخل بتوقيت ${timezone} على كل الأجهزة.` : 'يعمل كل زميل بتوقيت جهازه؛ لا تُطبق المنطقة المختارة على حقول المواعيد حتى تفعيل هذا الخيار.'}</p>
             </div>
+            <ColorPalettePicker value={colorPalette} onChange={setColorPalette} />
             </>}
 
             {section === 'editorial' && <>

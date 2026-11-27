@@ -8,9 +8,11 @@ interface ChangePasswordViewProps {
   onSubmit: (currentPassword: string, newPassword: string) => Promise<void>;
   onCancel?: () => void;
   onLogout?: () => void;
+  loggingOut?: boolean;
+  logoutError?: string | null;
 }
 
-export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, onSubmit, onCancel, onLogout }) => {
+export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, onSubmit, onCancel, onLogout, loggingOut, logoutError }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +50,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
         autoComplete={autoComplete}
         value={value}
         onChange={(e) => setter(e.target.value)}
-        className="w-full text-sm pe-12 ps-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-left"
+        className="w-full min-h-11 text-base px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-left"
         dir="ltr"
       />
     </div>
@@ -85,7 +87,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || loggingOut}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors disabled:opacity-60"
           >
             {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -98,14 +100,18 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
             </button>
           )}
           {forced && onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-slate-500 hover:text-slate-800"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>تسجيل الخروج</span>
-            </button>
+            <>
+              {logoutError && <p role="alert" className="text-sm text-red-700">{logoutError}</p>}
+              <button
+                type="button"
+                onClick={onLogout}
+                disabled={loggingOut || isSubmitting}
+                className="w-full min-h-11 flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-60"
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                <span>{loggingOut ? 'جارٍ تسجيل الخروج…' : 'تسجيل الخروج'}</span>
+              </button>
+            </>
           )}
         </form>
       </div>

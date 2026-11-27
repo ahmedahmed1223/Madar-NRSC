@@ -88,6 +88,7 @@ import { navigateTo, routeChanged, setupCommand, type SetupCommand } from './ser
 import { TourHost } from './components/help/TourHost';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
+import { applyColorPalette } from './services/theme';
 
 interface AppProps {
   onLogout: () => void;
@@ -235,7 +236,11 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   useEffect(() => {
     const refreshData = (changed?: ReadonlySet<CollectionName>) => {
       const includes = (...names: CollectionName[]) => !changed || names.some(name => changed.has(name));
-      if (includes('settings')) configureDateFormat(apiService.getSettings());
+      if (includes('settings')) {
+        const settings = apiService.getSettings();
+        configureDateFormat(settings);
+        applyColorPalette(settings.colorPalette);
+      }
       if (includes('users')) {
         setAllUsers(apiService.getUsers());
         setCurrentUser(apiService.getCurrentUser());

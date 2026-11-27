@@ -160,7 +160,7 @@ const SETTING_LABELS: Record<string, string> = {
   dateTime: 'التاريخ والوقت', defaultSegmentDurationSeconds: 'مدة الفقرة الافتراضية', defaultNewsPriority: 'أولوية الخبر الافتراضية',
   breakingDurationHours: 'مدة العاجل', newsTemplates: 'قوالب الأخبار', cardStepTypes: 'أنواع مهام البطاقات', setup: 'الإعداد السريع',
   storage: 'التخزين', onAirDisplayMode: 'عرض الهواء', studioDisplayMode: 'عرض الاستديو', allowOfflineScriptEdits: 'التعديل المحلي على الهواء',
-  moduleAccess: 'إتاحة الوحدات',
+  moduleAccess: 'إتاحة الوحدات', colorPalette: 'ألوان الواجهة',
   logoUrl: 'الشعار', allowGuestProposals: 'مقترحات الضيوف', autoSaveIntervalSeconds: 'الحفظ التلقائي', defaultLanguage: 'اللغة',
 };
 const SCALAR = new Set(['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone', 'defaultSegmentDurationSeconds', 'defaultNewsPriority', 'breakingDurationHours', 'onAirDisplayMode', 'studioDisplayMode']);

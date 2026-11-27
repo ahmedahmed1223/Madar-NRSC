@@ -48,6 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     UPDATE_WEBHOOK_SECRET: z.string().optional(),
 
     SESSION_TTL_HOURS: int(12, 1),
+    REMEMBER_SESSION_DAYS: int(14, 1).refine(days => days <= 30, 'must be no more than 30 days'),
     // A temporary password issued by an administrator stops working after this many hours.
     TEMP_PASSWORD_HOURS: int(72, 1),
     COOKIE_SECURE: bool(isProduction),
@@ -184,6 +185,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       webhookUrl: c.UPDATE_WEBHOOK_URL || undefined, webhookSecret: c.UPDATE_WEBHOOK_SECRET || undefined,
     },
     sessionTtlMs: c.SESSION_TTL_HOURS * 60 * 60 * 1000,
+    rememberSessionTtlMs: c.REMEMBER_SESSION_DAYS * 24 * 60 * 60 * 1000,
     tempPasswordHours: c.TEMP_PASSWORD_HOURS,
     /** The process time zone (TZ); scheduled jobs and logs follow it, so production should set it. */
     timeZone: env.TZ || undefined,

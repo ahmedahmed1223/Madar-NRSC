@@ -1,16 +1,19 @@
 import { StationClock } from '../common/StationClock';
 import { configureDateFormat } from '../../shared/dateFormat';
-import { APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import { APP_ICON_URL, APP_NAME, APP_TAGLINE } from '../../shared/brand';
+import { APP_VERSION } from '../../shared/releaseVersion';
 import type { LoginSetupMode } from '../../shared/setup';
 import { apiFetch } from '../../services/http';
+import { applyColorPalette } from '../../services/theme';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { FirstAdministratorForm } from './FirstAdministratorForm';
+import { LoginSetupPanel } from './LoginSetupPanel';
 import React, { useEffect, useRef, useState } from 'react';
-import { Radio, Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown, Settings2 } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, Loader2, Users, ChevronDown } from 'lucide-react';
 import { PasswordVisibilityButton } from './PasswordFields';
 
 interface LoginViewProps {
-  onLogin: (email: string, password: string, totp?: string) => Promise<void>;
+  onLogin: (email: string, password: string, totp?: string, rememberMe?: boolean) => Promise<void>;
   notice?: string | null;
 }
 
@@ -18,12 +21,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState('');
   const [setupMode, setSetupMode] = useState<LoginSetupMode>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [setupError, setSetupError] = useState(false);
+  const [setupAttempt, setSetupAttempt] = useState(0);
   const [savingAdministrator, setSavingAdministrator] = useState(false);
   const [administratorCreated, setAdministratorCreated] = useState(false);
   const submitting = useRef(false);
@@ -38,13 +44,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   useEffect(() => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(new DOMException('Setup check timed out', 'TimeoutError')), 8000);
     apiFetch<{ data?: { mode: LoginSetupMode } }>('/api/v1/auth/setup', { signal: controller.signal })
-      .then((result) => { if (!controller.signal.aborted) setSetupMode(result?.data?.mode ?? null); })
-      .catch(() => undefined)
+      .then((result) => {
+        if (!controller.signal.aborted) setSetupMode(result?.data?.mode ?? null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setSetupError(true);
+      })
       .finally(() => clearTimeout(timer));
     return () => { clearTimeout(timer); controller.abort(); };
-  }, []);
+  }, [setupAttempt]);
 
   // Demo installations list their real accounts (name, e-mail and role as they are now).
   const [demo, setDemo] = useState<{ password?: string; accounts: { email: string; fullName: string; jobTitle?: string; roleName: string; department?: string }[] } | null>(null);
@@ -62,19 +72,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   // The station's clock and date (its zone and conventions) before anyone signs in.
   useEffect(() => {
-    fetch('/api/v1/auth/station', { headers: { 'X-NRCS-Client': 'web' } })
+    const controller = new AbortController();
+    fetch('/api/v1/auth/station', { signal: controller.signal, headers: { 'X-NRCS-Client': 'web' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => j?.data && configureDateFormat(j.data))
+      .then((j) => {
+        if (controller.signal.aborted || !j?.data) return;
+        configureDateFormat(j.data);
+        applyColorPalette(j.data.colorPalette);
+      })
       .catch(() => undefined);
+    return () => controller.abort();
   }, []);
 
-  const submit = async (mail: string, pass: string, totp?: string) => {
+  const submit = async (mail: string, pass: string, totp?: string, keepSession = false) => {
     if (submitting.current) return;
     submitting.current = true;
     setError(null);
     setIsSubmitting(true);
     try {
-      await onLogin(mail.trim(), pass, totp);
+      await onLogin(mail.trim(), pass, totp, keepSession);
     } catch (err: any) {
       if (err?.code === 'TOTP_REQUIRED') {
         setNeedsCode(true);
@@ -103,12 +119,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void submit(email, password, needsCode ? code.trim() : undefined);
+    void submit(email, password, needsCode ? code.trim() : undefined, rememberMe);
   };
 
   return (
     <div className="relative isolate min-h-dvh flex items-center justify-center px-4 py-16 sm:py-12 font-sans" dir="rtl">
-      <div aria-hidden className="theme-fixed absolute inset-0 -z-10 bg-slate-950" />
+      <div aria-hidden className="theme-fixed absolute inset-0 -z-10 bg-[var(--madar-login-backdrop)]" />
       {/* Appearance before sign-in, in the top corner (the end side), clear of the card. */}
       <div className="absolute top-3 left-3">
         <ThemeToggle />
@@ -117,12 +133,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
       <StationClock variant="hero" onDark />
       <div className="w-full bg-white border border-slate-200 rounded-2xl p-5 sm:p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center">
-            <Radio className="w-6 h-6 text-white" />
-          </div>
+          <img src={APP_ICON_URL} alt="" width={48} height={48} className="size-12 shrink-0 rounded-xl" />
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
+            <h1 className="font-sans text-3xl font-bold text-slate-900 leading-tight">{APP_NAME}</h1>
             <p className="text-sm text-slate-600">{APP_TAGLINE}</p>
+            <p className="mt-1 text-xs text-slate-600">الإصدار <bdi dir="ltr" className="tabular-nums">{APP_VERSION}</bdi></p>
           </div>
         </div>
 
@@ -130,38 +145,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
           <div role="status" className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-800 font-semibold">{notice}</div>
         )}
 
+        {setupError && <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700">
+          <span role="status">تعذّر التحقق من حالة التهيئة.</span>
+          <button type="button" onClick={() => { setSetupError(false); setSetupAttempt(attempt => attempt + 1); }}
+            className="min-h-11 font-semibold text-blue-700 hover:underline">إعادة فحص التهيئة</button>
+        </div>}
+
         {setupMode && (
-          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
-            <button
-              type="button"
-              aria-expanded={setupOpen}
-              aria-controls="login-setup"
-              disabled={isSubmitting || savingAdministrator}
-              onClick={() => { setSetupOpen(!setupOpen); if (setupMode === 'demo') setDemoOpen(true); }}
-              className="flex min-h-9 w-full items-center gap-2 text-start text-sm font-bold text-blue-800 hover:text-blue-950 disabled:opacity-60"
-            >
-              <Settings2 className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>{creatingAdministrator ? 'العودة إلى تسجيل الدخول' : 'بدء إعداد النظام'}</span>
-            </button>
-            <div id="login-setup" hidden={!setupOpen} className="mt-2 space-y-3">
-              <p className="text-sm leading-relaxed text-slate-700">
-                {setupMode === 'browser' && 'أدخل رمز إعداد الخادم وأنشئ حساب المسؤول. بعد الدخول يبدأ المعالج بمراجعة بيانات المؤسسة والمحطات الافتراضية.'}
-                {setupMode === 'sign-in' && 'سجّل الدخول ببريد المسؤول وكلمة المرور الأولى التي عيّنها مشغّل الخادم أو ولّدها الخادم في سجل بدء التشغيل. بعد تغييرها، يفتح معالج إعداد المؤسسة.'}
-                {setupMode === 'demo' && 'اختر حساب مدير النظام من حسابات التجربة أدناه لتجربة المعالج. يعرض النظام بيانات نموذجية يمكنك حذفها من الإعدادات بعد إنشاء حساب إدارة خاص بالمؤسسة.'}
-              </p>
-              {creatingAdministrator && <FirstAdministratorForm saving={savingAdministrator} onSavingChange={setSavingAdministrator} onCreated={(mail, pass) => {
-                setSetupMode(null);
-                setSetupOpen(false);
-                setSavingAdministrator(false);
-                setAdministratorCreated(true);
-                setEmail(mail);
-                setPassword(pass);
-                setNeedsCode(false);
-                setCode('');
-                void submit(mail, pass);
-              }} />}
-            </div>
-          </div>
+          <LoginSetupPanel mode={setupMode} open={setupOpen} disabled={isSubmitting || savingAdministrator}
+            onToggle={() => { setSetupOpen(!setupOpen); if (setupMode === 'demo') setDemoOpen(true); }}>
+            {creatingAdministrator && <FirstAdministratorForm saving={savingAdministrator} onSavingChange={setSavingAdministrator} onCreated={(mail, pass) => {
+              setSetupMode(null);
+              setSetupOpen(false);
+              setSavingAdministrator(false);
+              setAdministratorCreated(true);
+              setEmail(mail);
+              setPassword(pass);
+              setNeedsCode(false);
+              setCode('');
+              setRememberMe(false);
+              void submit(mail, pass);
+            }} />}
+          </LoginSetupPanel>
         )}
 
         {administratorCreated && (
@@ -177,7 +182,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               البريد الإلكتروني
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+              <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-4" aria-hidden="true" />
               <input
                 id="login-email"
                 ref={emailInput}
@@ -200,7 +205,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               كلمة المرور
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+              <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-4" aria-hidden="true" />
               <input
                 id="login-password"
                 ref={passwordInput}
@@ -220,6 +225,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               <PasswordVisibilityButton visible={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute left-1 top-0" />
             </div>
           </div>
+
+          {!needsCode && <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-1 py-1 text-sm text-slate-800">
+            <input type="checkbox" checked={rememberMe} disabled={isSubmitting}
+              onChange={event => setRememberMe(event.target.checked)} aria-labelledby="remember-login-label" aria-describedby="remember-login-hint"
+              className="mt-0.5 size-5 shrink-0 accent-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" />
+            <span className="grid min-w-0 gap-0.5">
+              <span id="remember-login-label" className="font-semibold">تذكّرني على هذا الجهاز</span>
+              <span id="remember-login-hint" className="text-xs text-slate-600">للأجهزة الخاصة</span>
+            </span>
+          </label>}
 
           {needsCode && (
             <div>
@@ -242,7 +257,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                 className="w-full text-lg tracking-[0.5em] text-center px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
                 dir="ltr"
               />
-              <button type="button" disabled={isSubmitting} onClick={() => { setNeedsCode(false); setCode(''); setPassword(''); setEmail(''); setError(null); emailInput.current?.focus(); }}
+              <button type="button" disabled={isSubmitting} onClick={() => { setNeedsCode(false); setCode(''); setPassword(''); setEmail(''); setRememberMe(false); setError(null); emailInput.current?.focus(); }}
                 className="mt-2 min-h-10 text-xs font-semibold text-blue-700 hover:underline">تبديل الحساب</button>
             </div>
           )}
@@ -259,8 +274,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
             disabled={isSubmitting}
             className="w-full min-h-12 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-base font-bold transition-colors disabled:opacity-60"
           >
-            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-            <span>{isSubmitting ? 'جارٍ الدخول…' : 'تسجيل الدخول'}</span>
+            {isSubmitting ? <Loader2 className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" /> : <LogIn className="w-4 h-4" aria-hidden="true" />}
+            <span>{isSubmitting ? 'جارٍ الدخول…' : needsCode ? 'تحقق وسجّل الدخول' : 'تسجيل الدخول'}</span>
           </button>
           <details className="text-sm text-slate-600">
             <summary className="min-h-11 flex items-center cursor-pointer font-semibold text-blue-700">هل نسيت كلمة المرور؟</summary>
@@ -274,13 +289,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
               type="button"
               onClick={() => setDemoOpen((v) => !v)}
               aria-expanded={demoOpen}
-              className="w-full flex items-center justify-between text-xs font-bold text-slate-700"
+              className="w-full min-h-11 flex items-center justify-between text-sm font-bold text-slate-700"
             >
               <span className="flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-blue-600" /> حسابات التجربة ({demo.accounts.length})
               </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${demoOpen ? 'rotate-180' : ''}`} />
             </button>
+            {demoOpen && <p className="mb-2 text-xs text-slate-600">كلمة المرور التجريبية <code dir="ltr" className="font-semibold break-all">{demo.password}</code></p>}
             {demoOpen && (
               <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto" aria-label="حسابات التجربة">
                 {demo.accounts.map((a) => (
@@ -293,10 +309,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
                         setPassword(demo.password!);
                         setNeedsCode(false);
                         setCode('');
+                        setRememberMe(false);
                         void submit(a.email, demo.password!);
                       }}
                       aria-label={`الدخول بحساب ${a.fullName} — ${a.roleName}`}
-                      className="w-full text-right p-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+                      className="min-h-11 w-full text-right p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
                     >
                       <span className="block text-xs font-bold text-slate-800">
                         {a.fullName} <span className="font-normal text-blue-700">— {a.roleName}</span>

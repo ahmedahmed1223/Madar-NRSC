@@ -8,8 +8,10 @@ import { stepTypesError } from './productionCards';
 import { taskWorkflowError } from './taskWorkflow';
 import { editorialPublishingError } from './editorialStylebook';
 import { moduleAccessError } from './moduleAccess';
+import { isColorPalette } from './appearancePalette';
 
 export function settingsError(settings: Partial<SystemSettings>, previous?: Partial<SystemSettings>): string | null {
+  if (settings.colorPalette !== undefined && !isColorPalette(settings.colorPalette)) return 'لوحة الألوان غير معروفة';
   const modulesError = moduleAccessError(settings.moduleAccess);
   if (modulesError) return modulesError;
   const editorialError = editorialPublishingError(settings.editorialPublishing);

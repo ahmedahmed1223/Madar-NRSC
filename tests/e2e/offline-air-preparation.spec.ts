@@ -54,8 +54,17 @@ test('prepares through UI and cancels logout before purging local work', async (
     const confirmation = page.getByRole('alertdialog');
     await confirmation.getByRole('button', { name: 'البقاء', exact: true }).click();
     await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).toBeVisible();
+    await page.route('**/api/v1/auth/logout', route => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporarily unavailable' }),
+    }));
     if (!await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).isVisible()) await account.click();
     await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
+    await confirmation.getByRole('button', { name: 'حذف النسخ وتسجيل الخروج', exact: true }).click();
+    const failure = page.getByRole('alert').filter({ hasText: 'تعذر إكمال تسجيل الخروج' });
+    await expect(failure).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).toBeVisible();
+    await page.unroute('**/api/v1/auth/logout');
+    await failure.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
     await confirmation.getByRole('button', { name: 'حذف النسخ وتسجيل الخروج', exact: true }).click();
     await expect(page.locator('#login-email')).toBeVisible();
     await expect(viewer.getByRole('button', { name: 'قفل النسخة', exact: true })).not.toBeVisible();

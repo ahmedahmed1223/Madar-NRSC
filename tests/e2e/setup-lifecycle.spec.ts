@@ -4,15 +4,18 @@ import express from 'express';
 import { build } from 'esbuild';
 import { createTestServer, listen } from '../helpers';
 
-for (const mode of ['browser', 'sign-in'] as const) {
+for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
   test(`starts ${mode} setup directly from Login and reaches the organization wizard`, async ({ browser }) => {
     const token = 'example-browser-setup-token-1234567890';
     const email = 'first-owner@example.com';
     const temporary = 'InitialOwner2026';
     const password = 'PrivateOwner2026';
+    const browserSetup = mode !== 'sign-in';
+    let initialPassword = browserSetup ? undefined : temporary;
     const instance = await createTestServer({
+      NODE_ENV: 'production',
       SEED_DEMO_DATA: 'false',
-      ...(mode === 'browser' ? { INSTALL_SETUP_TOKEN: token } : { ADMIN_EMAIL: email, ADMIN_PASSWORD: temporary }),
+      ...(browserSetup ? { INSTALL_SETUP_TOKEN: token } : { ADMIN_EMAIL: email, ADMIN_PASSWORD: temporary }),
     });
     const dist = browserBuildDir;
     instance.app.use(express.static(dist));
@@ -23,44 +26,84 @@ for (const mode of ['browser', 'sign-in'] as const) {
       const page = await context.newPage();
       await page.goto('/');
       const launcher = page.getByRole('button', { name: 'بدء إعداد النظام' });
-      await launcher.click();
-      if (mode === 'browser') {
+      await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+      await launcher.press('Enter');
+      const journey = page.getByRole('list', { name: 'رحلة إعداد مدار' });
+      await expect(journey.getByRole('listitem')).toHaveCount(3);
+      await expect(journey).toContainText(browserSetup ? 'إنشاء حساب المسؤول' : 'الدخول بحساب المسؤول');
+      await expect(page.getByText(/تبدأ التهيئة بقيم قابلة للتعديل/)).toBeVisible();
+      if (browserSetup) {
         await page.getByLabel('اسم المسؤول').fill('مدير غرفة الأخبار');
         await page.getByLabel('بريد المسؤول').fill(email);
         await page.getByLabel('رمز إعداد الخادم').fill(token);
         const newPassword = page.getByLabel('كلمة المرور', { exact: true });
         const confirmation = page.getByLabel('تأكيد كلمة المرور');
         await expect(newPassword).toHaveAttribute('type', 'password');
-        await newPassword.fill('Short1');
-        await confirmation.fill('Different2026');
-        await expect(page.getByText('تأكيد كلمة المرور غير مطابق.')).toBeVisible();
-        await newPassword.fill(password);
-        await confirmation.fill(password);
-        await expect(page.getByText('تأكيد كلمة المرور مطابق.')).toBeVisible();
-        await page.getByRole('button', { name: 'إظهار كلمة المرور' }).click();
-        await expect(newPassword).toHaveAttribute('type', 'text');
-        await page.getByRole('button', { name: 'إخفاء كلمة المرور' }).click();
-        await expect(newPassword).toHaveAttribute('type', 'password');
+        if (mode === 'browser-temporary') {
+          await page.getByRole('button', { name: 'توليد كلمة مرور مؤقتة', exact: true }).click();
+          await expect(newPassword).toHaveAttribute('type', 'text');
+          initialPassword = await newPassword.inputValue();
+          expect(initialPassword).toHaveLength(12);
+          await expect(confirmation).toHaveValue(initialPassword);
+          await newPassword.fill(`${initialPassword}a`);
+          await newPassword.fill(initialPassword);
+          const persisted = await page.evaluate(value => [...Object.values(localStorage), ...Object.values(sessionStorage)].some(item => item.includes(value)), initialPassword);
+          expect(persisted).toBe(false);
+        } else {
+          await newPassword.fill('Short1');
+          await confirmation.fill('Different2026');
+          await expect(page.getByText('تأكيد كلمة المرور غير مطابق.')).toBeVisible();
+          await newPassword.fill(password);
+          await confirmation.fill(password);
+          await expect(page.getByText('تأكيد كلمة المرور مطابق.')).toBeVisible();
+          await page.getByRole('button', { name: 'إظهار كلمة المرور' }).click();
+          await expect(newPassword).toHaveAttribute('type', 'text');
+          await page.getByRole('button', { name: 'إخفاء كلمة المرور' }).click();
+          await expect(newPassword).toHaveAttribute('type', 'password');
+        }
         await page.getByRole('button', { name: 'إنشاء الحساب والمتابعة' }).click();
       } else {
         await expect(page.getByText(/كلمة المرور الأولى التي عيّنها مشغّل الخادم/)).toBeVisible();
         await page.getByLabel('البريد الإلكتروني').fill(email);
         await page.getByLabel('كلمة المرور', { exact: true }).fill(temporary);
+        await page.getByRole('checkbox', { name: 'تذكّرني على هذا الجهاز', exact: true }).check();
         await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+      }
+      if (initialPassword) {
         await expect(page.getByRole('heading', { name: 'تغيير كلمة المرور' })).toBeVisible();
-        await page.getByLabel('كلمة المرور الحالية').fill(temporary);
+        expect((await context.cookies()).find(cookie => cookie.name === 'nrcs_sid')?.expires).toBe(-1);
+        await page.getByLabel('كلمة المرور الحالية').fill(initialPassword);
         await page.getByLabel('كلمة المرور الجديدة', { exact: true }).fill(password);
         await page.getByLabel('تأكيد كلمة المرور الجديدة').fill(password);
         await page.getByRole('button', { name: 'حفظ كلمة المرور' }).click();
       }
       const wizard = page.getByRole('region', { name: 'الإعداد السريع للنظام' });
       await expect(wizard.getByLabel('اسم المؤسسة *')).toBeVisible();
+      await expect(wizard.getByText(/القيم الأولية لهوية النظام/)).toBeVisible();
       await expect(page.getByText('حسابات التجربة', { exact: true })).toHaveCount(0);
+      if (mode === 'browser') {
+        const colors = wizard.getByRole('group', { name: 'ألوان الواجهة' });
+        await expect(colors.getByRole('radio')).toHaveCount(4);
+        await colors.getByRole('radio', { name: 'أخضر زيتوني' }).check();
+        await wizard.getByRole('button', { name: 'حفظ والمتابعة' }).click();
+        await expect(page.locator('html')).toHaveAttribute('data-color-palette', 'olive');
+        await wizard.getByRole('button', { name: /المؤسسة/ }).click();
+        const engine = wizard.getByRole('region', { name: 'محرك قاعدة البيانات' });
+        await expect(engine).toBeHidden();
+        await wizard.getByText('خيارات قاعدة البيانات', { exact: true }).click();
+        await expect(engine).toBeVisible();
+        await wizard.getByRole('button', { name: /الانتهاء/ }).click();
+        await wizard.getByRole('button', { name: 'إنهاء الإعداد', exact: true }).click();
+        await wizard.getByRole('button', { name: 'فتح مساحة العمل', exact: true }).click();
+        await expect(wizard).toHaveCount(0);
+      }
       const freshPage = await browser.newPage({ baseURL: http.baseUrl });
       try {
         await freshPage.goto('/');
         await expect(freshPage.getByRole('button', { name: 'تسجيل الدخول', exact: true })).toBeVisible();
         await expect(freshPage.getByRole('button', { name: 'بدء إعداد النظام' })).toHaveCount(0);
+        await expect(freshPage.getByRole('button', { name: 'توليد كلمة مرور مؤقتة' })).toHaveCount(0);
+        if (mode === 'browser') await expect(freshPage.locator('html')).toHaveAttribute('data-color-palette', 'olive');
       } finally {
         await freshPage.close();
       }

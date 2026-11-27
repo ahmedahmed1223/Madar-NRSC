@@ -1,24 +1,18 @@
 {
   "id": "/",
-  "name": "مدار · غرفة الأخبار وإعداد البرامج",
+  "name": "مدار · لوحة التحكم للمنصة",
   "short_name": "مدار",
   "description": "منظومة إعلامية تلفزيونية متكاملة لغرفة الأخبار وإعداد وإنتاج البرامج والرانداون والضيوف والمهام وسير النشر.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#0b2930",
+  "theme_color": "#0b2930",
   "dir": "rtl",
   "lang": "ar",
   "categories": ["news", "productivity", "utilities", "business"],
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",

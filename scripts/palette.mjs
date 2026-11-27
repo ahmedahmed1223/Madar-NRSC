@@ -16,19 +16,21 @@ export const INK = {
   950: 'oklch(16% 0.038 266)',
 };
 
-/** Signal (Tailwind «blue»): actions, links, selection, focus and the strap tab. */
+const signal = (lightness, chroma, hue) => `oklch(${lightness}% ${chroma} calc(${hue} + var(--madar-signal-hue-offset, 0)))`;
+
+/** Signal (Tailwind «blue»): preserve contrast while the institution selects a hue. */
 export const SIGNAL = {
-  50: 'oklch(97.6% 0.016 205)',
-  100: 'oklch(94.6% 0.034 205)',
-  200: 'oklch(89.2% 0.06 205)',
-  300: 'oklch(81.5% 0.088 205)',
-  400: 'oklch(71% 0.11 207)',
-  500: 'oklch(60.5% 0.115 210)',
-  600: 'oklch(50.5% 0.106 213)',
-  700: 'oklch(44% 0.094 215)',
-  800: 'oklch(38% 0.08 217)',
-  900: 'oklch(32% 0.066 219)',
-  950: 'oklch(24% 0.05 221)',
+  50: signal(97.6, 0.016, 205),
+  100: signal(94.6, 0.034, 205),
+  200: signal(89.2, 0.06, 205),
+  300: signal(81.5, 0.088, 205),
+  400: signal(71, 0.11, 207),
+  500: signal(60.5, 0.115, 210),
+  600: signal(50.5, 0.106, 213),
+  700: signal(44, 0.094, 215),
+  800: signal(38, 0.08, 217),
+  900: signal(32, 0.066, 219),
+  950: signal(24, 0.05, 221),
 };
 
 /** Night-mode neutrals: deep ink surfaces, paper text. */

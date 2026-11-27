@@ -153,8 +153,17 @@ For an existing deployment, configure `POSTGRES_URL` and choose the destination 
 Startup checks the local upload inventory, copies the authoritative tables to a fresh destination, compares record counts and checksums, and publishes the selection after the transfer succeeds. The original store remains available. A failed transfer leaves it active and shows a failed status in Database Administration. To return to SQLite after new PostgreSQL writes, schedule a reverse transfer from the active PostgreSQL database. The reverse transfer includes those writes.
 
 Keep `DATA_DIR` mounted across restarts. It contains the engine selection, local uploads and backup files. The `.sqlite` backup format remains portable across both engines. The PostgreSQL backup and database export assemble a logical SQLite snapshot. Schedule snapshots of large deployments outside live broadcasts and measure their impact on request latency. PostgreSQL SQL-console previews use a read-only snapshot of operational tables.
+
 Load testing, metrics/alerts, automatic failover and server-side pagination are separate
 remaining work; these changes do not promise zero downtime or zero data loss.
+
+### Hostinger VPS مع Coolify وقاعدة PostgreSQL مستقلة
+
+1. اربط مشروع مدار بالمستودع واستخدم `Dockerfile` من الإصدار المعتمد. اضبط منفذ الحاوية الداخلي `3000` ونطاق HTTPS في `APP_URL`، واترك فحص الجاهزية `/api/ready` المضمّن في الصورة. فعّل `COOKIE_SECURE` وحدّد `TRUST_PROXY` وفق عدد الوكلاء الموثوق بهم أو عناوينهم الفعلية. أتح التطبيق عبر وكيل Coolify فقط. [دليل تطبيقات Dockerfile](https://coolify.io/docs/applications/builds/dockerfile)
+2. اربط `/data` بوحدة التخزين الحالية للتطبيق واستمر باستخدامها عند استبدال الحاوية. جهّز `/backups` واضبط `BACKUP_DIRECTORY=/backups` عند استخدامه. لحاوية بجذر للقراءة فقط، اترك هاتين الوجهتين قابلتين للكتابة لحساب `node` واستخدم `tmpfs` لـ`/tmp`. احتفظ بنسخة كاملة خارج الخادم تشمل المرفقات. [دليل التخزين الدائم](https://coolify.io/docs/applications/configuration/persistent-storage)
+3. شغّل PostgreSQL على شبكة الوجهة نفسها مع إبقاء الوصول العام مغلقًا. في التثبيت الجديد شغّل `postgres:19.0-trixie` بوحدة دائمة عند `/var/lib/postgresql`. جهّز قاعدة مخصّصة وحساب تشغيل غير فائق الصلاحية، وفعّل `pg_trgm` في قاعدة مدار باستخدام حساب الإدارة. يمكن مراجعة [نمط التهيئة في المشروع](../docker/postgres/10-madar.sh) عند إنشاء مورد جديد. اضبط `POSTGRES_URL` في إعدادات التشغيل السرية باستخدام المضيف الداخلي وبيانات حساب التطبيق. [دليل PostgreSQL في Coolify](https://coolify.io/docs/databases/postgresql)
+4. عند نقل تثبيت قائم من SQLite، أنهِ جلسات البث النشطة وخذ نسخة كاملة قبل الانتقال. افتح «إدارة قاعدة البيانات» واختر PostgreSQL، ثم أعد تشغيل حاوية التطبيق بعد جدولة النقل. يظل ملف SQLite الأصلي داخل `/data` ويحدد التطبيق القاعدة النشطة بعد التحقق من النقل. عند التثبيت الجديد يكفي اتصال `POSTGRES_URL` لبدء استخدام PostgreSQL عبر الإعداد الافتراضي للصورة.
+5. تحقّق من نجاح `/api/ready` وتطابق إصدار `/api/health`. راجع نجاح النقل والمحرك النشط في «إدارة قاعدة البيانات»، ثم سجّل الدخول بحساب موجود وافتح مرفقًا محفوظًا وابحث عن خبر عربي مؤرشف. افحص أن حساب التطبيق يظهر `rolsuper=false` وأن فهرس `idx_news_archive_terms` موجود في المخطط النشط. احفظ الدليل دون رابط الاتصال أو كلمة المرور.
 
 ## In-app Updates
 
@@ -252,6 +261,9 @@ existing installation.
   call except `/auth/me`, `/auth/logout` and `/auth/change-password` with 403
   `PASSWORD_CHANGE_REQUIRED`. Temporary passwords issued by an administrator expire after
   `TEMP_PASSWORD_HOURS` (72). Each person keeps at most 10 signed-in devices.
+- **Session lifetime.** Regular sign-in uses a browser-session cookie and a server expiration
+  of `SESSION_TTL_HOURS`. The optional «تذكّرني على هذا الجهاز» checkbox keeps a persistent
+  cookie for `REMEMBER_SESSION_DAYS` (14 by default, maximum 30). Logout revokes either session.
 - **Health.** `/api/health` shows `dbId`/`instance` to signed-in users only; use `/api/ready` for probes.
 - **Audit trail.** Only the server writes audit entries (accounts, roles, permission exceptions,
   suspensions, stations, departments, settings, backups and downloads); browsers cannot add rows.

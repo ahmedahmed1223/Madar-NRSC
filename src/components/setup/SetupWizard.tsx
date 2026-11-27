@@ -20,6 +20,8 @@ import { confirmDialog } from '../../services/dialogs';
 import { stationsOf } from '../../shared/stations';
 import { AdministratorSetup } from './AdministratorSetup';
 import { DatabaseEnginePanel } from '../database/DatabaseEnginePanel';
+import { ColorPalettePicker } from '../settings/ColorPalettePicker';
+import { resolveColorPalette } from '../../shared/appearancePalette';
 
 const INPUT = 'w-full min-h-11 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-900';
 const LABEL = 'block text-sm font-bold text-slate-700 mb-1';
@@ -131,7 +133,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
   // --- Organization ---
   const readOrg = () => {
     const { hourCycle, timeBasis } = sanitizeDateSettings(settings.dateTime);
-    return { organizationName: settings.organizationName || '', organizationNameEn: settings.organizationNameEn || '', primaryChannelName: settings.primaryChannelName || '', defaultTimezone: validZone(settings.defaultTimezone) || 'Asia/Gaza', hourCycle, timeBasis };
+    return { organizationName: settings.organizationName || '', organizationNameEn: settings.organizationNameEn || '', primaryChannelName: settings.primaryChannelName || '', defaultTimezone: validZone(settings.defaultTimezone) || 'Asia/Gaza', colorPalette: resolveColorPalette(settings.colorPalette), hourCycle, timeBasis };
   };
   const [org, setOrg] = useState(readOrg);
   const [originalOrg, setOriginalOrg] = useState(readOrg);
@@ -253,8 +255,6 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
             </p>
           )}
 
-          {stepId === 'organization' && RbacService.hasPermission(currentUser, 'system.database_manage') && <DatabaseEnginePanel />}
-
           {stepId === 'organization' && (
             <form
               className="space-y-4 max-w-2xl"
@@ -266,6 +266,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                   for (const field of ['organizationName', 'organizationNameEn', 'primaryChannelName', 'defaultTimezone'] as const) {
                     if (org[field] !== originalOrg[field]) changes[field] = org[field].trim();
                   }
+                  if (org.colorPalette !== originalOrg.colorPalette) changes.colorPalette = org.colorPalette;
                   if (org.hourCycle !== originalOrg.hourCycle || org.timeBasis !== originalOrg.timeBasis) {
                     const dateTime = sanitizeDateSettings(apiService.getSettings().dateTime);
                     if (org.hourCycle !== originalOrg.hourCycle) dateTime.hourCycle = org.hourCycle;
@@ -277,7 +278,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 }, 'حُفظت بيانات المؤسسة.');
               }}
             >
-              <p className="text-sm text-slate-600">راجع اسم المؤسسة والقناة كما سيظهران للفريق. يمكنك تعديل القيم المعروضة، ثم اختيار «حفظ والمتابعة». المنطقة الزمنية تضبط ساعة المحطة والمواعيد.</p>
+              <p className="text-sm leading-relaxed text-slate-700">
+                {facts.setup?.confirmed?.includes('organization')
+                  ? 'راجع اسم المؤسسة والقناة كما يظهران للفريق.'
+                  : 'هذه القيم الأولية لهوية النظام. عدّل اسم المؤسسة والقناة والتوقيت بما يناسب غرفة الأخبار.'}
+                {' '}تضبط المنطقة الزمنية ساعة المحطة والمواعيد.
+              </p>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="setup-org" className={LABEL}>اسم المؤسسة *</label>
@@ -304,8 +310,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 <label className={LABEL}>عرض الساعة<select className={INPUT} value={org.hourCycle} onChange={e => setOrg({ ...org, hourCycle: e.target.value as HourCycle })}><option value="h23">24 ساعة</option><option value="h12">12 ساعة</option></select></label>
                 <label className={LABEL}>توقيت المواعيد<select className={INPUT} value={org.timeBasis} onChange={e => setOrg({ ...org, timeBasis: e.target.value as TimeBasis })}><option value="device">توقيت جهاز الموظف</option><option value="station">توقيت المحطة لجميع الموظفين</option></select></label>
               </div>
+              <ColorPalettePicker value={org.colorPalette} onChange={colorPalette => setOrg({ ...org, colorPalette })} disabled={busy} />
               <StepActions busy={busy} primary="حفظ والمتابعة" onSkip={() => go(1)} />
             </form>
+          )}
+
+          {stepId === 'organization' && RbacService.hasPermission(currentUser, 'system.database_manage') && (
+            <details className="max-w-2xl rounded-lg border border-slate-200 bg-white px-3">
+              <summary className="min-h-11 cursor-pointer py-2.5 text-sm font-semibold text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+                خيارات قاعدة البيانات
+              </summary>
+              <div className="pb-3"><DatabaseEnginePanel /></div>
+            </details>
           )}
 
           {stepId === 'administrator' && <AdministratorSetup currentUser={currentUser} busy={busy} onBack={() => go(-1)} onSkip={() => go(1)} onContinue={() => void run(() => confirmStep('administrator'), 'سُجّلت مراجعة حساب المسؤول.')} />}
@@ -497,7 +513,11 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 <p className="text-sm text-slate-700">يمكنك الإنهاء الآن وإكمال ما بقي لاحقاً؛ يبقى المعالج في «المساعدة».</p>
               )}
               <div className="flex flex-wrap gap-2">
-                {!settings.setup?.completedAt && (
+                {settings.setup?.completedAt ? (
+                  <button type="button" disabled={busy} onClick={onClose} className="min-h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50">
+                    فتح مساحة العمل
+                  </button>
+                ) : (
                   <button
                     type="button"
                     disabled={busy}
