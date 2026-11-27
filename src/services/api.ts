@@ -1093,7 +1093,7 @@ export class ApiService {
 
   // --- MEDIA ---
   static getMedia(): MediaFile[] {
-    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []);
+    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []).filter(asset => !asset.deletedAt);
   }
 
   static getMediaAssets(): MediaFile[] {
@@ -1105,7 +1105,7 @@ export class ApiService {
   }
 
   static saveMedia(file: Partial<MediaFile>, user?: User): MediaFile {
-    const all = this.getMedia();
+    const all = getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []);
     const currentUser = user || this.getCurrentUser();
     const now = new Date().toISOString();
 
@@ -1142,7 +1142,7 @@ export class ApiService {
   }
 
   static deleteMedia(mediaId: string, user?: User): void {
-    const all = this.getMedia();
+    const all = getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []);
     const filtered = all.filter((m) => m.id !== mediaId);
     setStored(STORAGE_KEYS.MEDIA, filtered);
     const currentUser = user || this.getCurrentUser();
@@ -1153,10 +1153,14 @@ export class ApiService {
     this.deleteMedia(mediaId, user);
   }
 
+  static trashMediaAsset(mediaId: string): void {
+    this.updateMedia(mediaId, { deletedAt: new Date().toISOString() });
+  }
+
   /** Updates metadata of a library item (e.g. the video workflow state). */
   static updateMedia(mediaId: string, changes: Partial<MediaFile>): MediaFile {
-    const all = this.getMedia();
-    const idx = all.findIndex((m) => m.id === mediaId);
+    const all = getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []);
+    const idx = all.findIndex((m) => m.id === mediaId && !m.deletedAt);
     if (idx === -1) throw new Error('المادة غير موجودة في المكتبة');
     const { id: _id, ownerId: _o, uploadedById: _u, ...allowed } = changes as any;
     all[idx] = { ...all[idx], ...allowed };

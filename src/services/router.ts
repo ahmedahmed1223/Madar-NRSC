@@ -162,6 +162,7 @@ const TITLES: Record<string, string> = {
   roster: 'المناوبات',
   reports: 'التقارير',
   audit: 'سجل التدقيق',
+  trash: 'سلة المحذوفات',
   users: 'المستخدمون والصلاحيات',
   settings: 'الإعدادات',
   database: 'قاعدة البيانات',

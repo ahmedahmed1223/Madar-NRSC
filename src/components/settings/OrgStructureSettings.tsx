@@ -4,6 +4,7 @@ import { navigateTo } from '../../services/uiEvents';
 import { countLabel } from '../../shared/arabicPlural';
 import { departmentIdOf, departmentsAtStation, departmentsOf, type Department } from '../../shared/departments';
 import { stationGroupsOf, stationScope, stationsOf, type Station } from '../../shared/stations';
+import { DepartmentChart } from './DepartmentChart';
 
 const LINK = 'min-h-11 sm:min-h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50';
 const STATIONS = { one: 'محطة واحدة', two: 'محطتان', few: 'محطات', many: 'محطة' };
@@ -29,14 +30,15 @@ function departmentRows(list: Department[]): { dept: Department; depth: number }
 
 /**
  * «الهيكل التنظيمي»: a read-only picture of the organisation — station groups, stations (main,
- * branches, links, general managers), and one table of the departments against the stations with
+ * branches, links, general managers), a department chart, and a table of the departments against the stations with
  * the number of colleagues in each and the department head — with links to where each part is edited.
  */
 export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (section: 'stations' | 'departments') => void }) {
   const settings = apiService.getSettings();
   const stations = [...stationsOf(settings)].sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
   const groups = stationGroupsOf(settings);
-  const departments = departmentsOf(settings).filter((d) => !d.archived);
+  const allDepartments = departmentsOf(settings);
+  const departments = allDepartments.filter((d) => !d.archived);
   const users = apiService.getUsers().filter((u) => !u.deletedAt && u.isActive !== false);
   const nameOf = (id?: string) => users.find((u) => u.id === id)?.fullName;
   const generalManagers = users.filter((u) => u.managedStationIds?.length || u.managedGroupIds?.length);
@@ -53,7 +55,7 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
         <div>
           <h2 id="org-structure-title" className="text-lg font-bold text-slate-900">الهيكل التنظيمي</h2>
           <p className="text-sm text-slate-600 max-w-3xl">
-            {countLabel(stations.length, STATIONS)}{groups.length ? ` في ${countLabel(groups.length, GROUPS)}` : ''}، {countLabel(departments.length, DEPARTMENTS)}، والزملاء النشطون: {countLabel(users.length, COLLEAGUES)}. للعرض فقط؛ يُعدَّل كل جزء من مكانه.
+            {countLabel(stations.length, STATIONS)}{groups.length ? ` في ${countLabel(groups.length, GROUPS)}` : ''}، {countLabel(departments.length, DEPARTMENTS)}، والزملاء النشطون: {countLabel(users.length, COLLEAGUES)}.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -104,6 +106,8 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
           })}
         </ul>
       </div>
+
+      <DepartmentChart departments={allDepartments} stations={stations} users={users} />
 
       <div className="space-y-2">
         <h3 id="org-departments-title" className="text-sm font-bold text-slate-800">الأقسام في كل محطة</h3>

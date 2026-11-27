@@ -6,7 +6,7 @@ import { confirmDialog } from '../../services/dialogs';
 import { storageClient } from '../../services/storageClient';
 import { writeBrowserHistory } from '../../services/browserHistory';
 import { SINGLETON_ID } from '../../shared/collections';
-import { storageOf, validateStorage, type ResolvedStorageSettings, type StorageStatus } from '../../shared/storage';
+import { storageOf, validateStorage, type DropboxCheck, type DropboxCheckStatus, type DropboxVerification, type ResolvedStorageSettings, type StorageStatus } from '../../shared/storage';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { PasswordVisibilityButton } from '../auth/PasswordFields';
 
@@ -22,6 +22,17 @@ const RETURN_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   'gdrive-failed': { ok: false, text: 'تعذر إكمال الربط مع Google Drive. تحقق من معرّف العميل وسرّه ومن عنوان الرجوع المسجّل.' },
 };
 
+const DROPBOX_CHECK_MESSAGES: Record<DropboxCheckStatus, string> = {
+  verified: 'تم التحقق',
+  not_configured: 'بيانات الربط غير محفوظة أو غير مكتملة',
+  invalid_credentials: 'تعذر تأكيد بيانات الربط. تحقق من مفاتيح التطبيق أو أعد التفويض.',
+  missing_scope: 'الإذن غير ممنوح. فعّله في Dropbox ثم أعد الربط.',
+  folder_missing: 'لم يعثر Dropbox على المجلد. تحقق من المسار المحفوظ.',
+  folder_denied: 'رفض Dropbox الوصول إلى المجلد.',
+  unavailable: 'خدمة Dropbox غير متاحة الآن. أعد المحاولة لاحقاً.',
+  failed: 'تعذر إكمال الفحص في Dropbox.',
+};
+
 function when(iso?: string) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -31,6 +42,15 @@ function when(iso?: string) {
 function StatusChip({ ok, warn, children }: { ok: boolean; warn?: boolean; children: React.ReactNode }) {
   const tone = ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : warn ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200';
   return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold ${tone}`}>{children}</span>;
+}
+
+function DropboxCheckRow({ label, result }: { label: React.ReactNode; result: DropboxCheckStatus }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <dt className="text-sm font-semibold text-slate-700">{label}</dt>
+      <dd><StatusChip ok={result === 'verified'} warn={result !== 'verified'}>{DROPBOX_CHECK_MESSAGES[result]}</StatusChip></dd>
+    </div>
+  );
 }
 
 /**
@@ -47,6 +67,7 @@ export function StorageSettings() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState('');
   const [dbx, setDbx] = useState({ appKey: '', appSecret: '', code: '' });
+  const [dropboxChecks, setDropboxChecks] = useState<Partial<Record<DropboxCheck, DropboxVerification>>>({});
   const [drive, setDrive] = useState({ clientId: '', clientSecret: '' });
   const [redirectUri, setRedirectUri] = useState('');
   const [token, setToken] = useState('');
@@ -104,6 +125,7 @@ export function StorageSettings() {
       if (!result.ok) throw new Error(result.message || 'لم يؤكد الخادم الحفظ');
       setSettings(current);
       setBaseline(JSON.stringify(current));
+      setDropboxChecks({});
       setMessage({ ok: true, text: 'حُفظت إعدادات التخزين.' });
       void refresh();
     } catch (err) {
@@ -118,6 +140,13 @@ export function StorageSettings() {
   };
 
   const q = status?.queue;
+  const checkDropbox = (check: DropboxCheck) => run(`dbx-check-${check}`, async () => {
+    setDropboxChecks((prev) => ({ ...prev, [check]: undefined }));
+    const result = await storageClient.verifyDropbox(check);
+    setDropboxChecks((prev) => ({ ...prev, [check]: result }));
+  });
+  const connectionCheck = dropboxChecks.connection;
+  const permissionCheck = dropboxChecks.permissions;
   const bridgeCommand = `MADAR_URL=${window.location.origin} MADAR_BRIDGE_TOKEN=${token || '<الرمز>'} SHARE_PATH=${settings.share.displayPath || '/mnt/news'} node madar-bridge.mjs`;
 
   return (
@@ -130,7 +159,7 @@ export function StorageSettings() {
         {statusError && <p role="alert" className="text-sm text-red-700">{statusError}</p>}
         <dl className="grid grid-cols-2 lg:grid-cols-4 border-y border-slate-200 divide-x divide-x-reverse divide-slate-200">
           {[
-            { label: 'Dropbox', value: status?.dropbox.connected ? (status.dropbox.enabled ? 'مفعّل' : 'مربوط وغير مفعّل') : 'غير مربوط', ok: !!status?.dropbox.connected && status.dropbox.enabled },
+            { label: 'Dropbox', value: status?.dropbox.connected ? (status.dropbox.enabled ? 'النسخ مفعّل' : 'النسخ متوقف') : 'غير مربوط', ok: !!status?.dropbox.connected && status.dropbox.enabled },
             { label: 'Google Drive', value: status?.gdrive.connected ? (status.gdrive.enabled ? 'مفعّل' : 'مربوط وغير مفعّل') : 'غير مربوط', ok: !!status?.gdrive.connected && status.gdrive.enabled },
             { label: 'المجلد المشترك', value: !status?.share.enabled ? 'غير مفعّل' : status.share.mode === 'direct' ? 'مركّب على الخادم' : status.share.bridgeOnline ? 'الجسر متصل' : status.share.mode === 'bridge' ? 'الجسر غير متصل' : 'بلا جسر', ok: !!status?.share.enabled && (status.share.mode === 'direct' || status.share.bridgeOnline) },
             { label: 'بانتظار النسخ', value: q ? `${q.pending}${q.failed ? ` · ${q.failed} تعذّر` : ''}` : '—', ok: !!q && !q.failed },
@@ -164,7 +193,7 @@ export function StorageSettings() {
       <fieldset className="space-y-4 border-t border-slate-200 pt-6" disabled={saving}>
         <legend className="text-lg font-bold text-slate-900 inline-flex items-center gap-2"><Cloud className="w-5 h-5 text-blue-600" aria-hidden="true" /> Dropbox</legend>
         <div className="flex flex-wrap items-center gap-2">
-          {status?.dropbox.connected ? <StatusChip ok><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> مربوط بحساب {status.dropbox.account || 'Dropbox'}</StatusChip> : <StatusChip ok={false}>غير مربوط</StatusChip>}
+          {status && (status.dropbox.connected ? <StatusChip ok={false}>بيانات الربط محفوظة{status.dropbox.account ? ` · ${status.dropbox.account}` : ''}</StatusChip> : <StatusChip ok={false}>غير مربوط</StatusChip>)}
           {status?.dropbox.lastError && <StatusChip ok={false} warn>آخر خطأ: {status.dropbox.lastError}</StatusChip>}
         </div>
         <div className="grid sm:grid-cols-2 gap-4 max-w-3xl">
@@ -177,12 +206,40 @@ export function StorageSettings() {
             <input className={`${INPUT} mt-1`} dir="ltr" value={settings.dropbox.rootPath} onChange={(e) => setSettings({ ...settings, dropbox: { ...settings.dropbox, rootPath: e.target.value } })} placeholder="/مدار" />
           </label>
         </div>
+        <div className="space-y-2 max-w-3xl">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={SECONDARY} disabled={!!busy} onClick={() => void checkDropbox('connection')}>
+              <RefreshCw className="w-4 h-4" aria-hidden="true" /> فحص الاتصال والمجلد
+            </button>
+            <button type="button" className={SECONDARY} disabled={!!busy} onClick={() => void checkDropbox('permissions')}>
+              <KeyRound className="w-4 h-4" aria-hidden="true" /> فحص أذونات القراءة والكتابة
+            </button>
+          </div>
+          <p className="text-sm text-slate-600">يستخدم الفحص إعدادات Dropbox المحفوظة ويتحقق من الأذونات دون رفع ملفات.</p>
+          <div aria-live="polite" className="space-y-2">
+            {busy.startsWith('dbx-check-') && <p className="text-sm text-slate-600">جارٍ التحقق من Dropbox…</p>}
+            {connectionCheck && (
+              <dl className="space-y-1">
+                <DropboxCheckRow label="تجديد تفويض Dropbox" result={connectionCheck.credentials} />
+                {connectionCheck.folder && <DropboxCheckRow label={<>عرض محتويات المجلد <bdi>{connectionCheck.root}</bdi></>} result={connectionCheck.folder} />}
+              </dl>
+            )}
+            {permissionCheck && (
+              <dl className="space-y-1">
+                {permissionCheck.credentials !== 'verified' && <DropboxCheckRow label="تجديد تفويض فحص الأذونات" result={permissionCheck.credentials} />}
+                {permissionCheck.read && <DropboxCheckRow label="تفويض قراءة الملفات" result={permissionCheck.read} />}
+                {permissionCheck.write && <DropboxCheckRow label="تفويض كتابة الملفات" result={permissionCheck.write} />}
+              </dl>
+            )}
+          </div>
+        </div>
         {status?.dropbox.managedByEnvironment ? (
           <p className="text-sm text-slate-600">مفاتيح Dropbox محددة في إعدادات الخادم (متغيرات البيئة).</p>
         ) : status?.dropbox.connected ? (
           <button type="button" className={SECONDARY} disabled={!!busy} onClick={() => run('dbx-off', async () => {
             if (!(await confirmDialog({ title: 'فصل Dropbox', message: 'يتوقف النسخ إلى Dropbox، والملفات التي لا توجد إلا فيه لن تُفتح حتى تعيد الربط. الملفات في Dropbox نفسها لا تُحذف.', confirmLabel: 'فصل', danger: true }))) return;
             setStatus(await storageClient.disconnect('dropbox'));
+            setDropboxChecks({});
           })}>فصل Dropbox</button>
         ) : (
           <details className="max-w-3xl rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -207,6 +264,7 @@ export function StorageSettings() {
                   <input className={`${INPUT} sm:w-96`} dir="ltr" aria-label="رمز التفويض من Dropbox" value={dbx.code} onChange={(e) => setDbx({ ...dbx, code: e.target.value.trim() })} />
                   <button type="button" className={PRIMARY} disabled={!dbx.appKey || !dbx.appSecret || !dbx.code || !!busy} onClick={() => run('dbx-connect', async () => {
                     setStatus(await storageClient.connectDropbox(dbx.appKey, dbx.appSecret, dbx.code));
+                    setDropboxChecks({});
                     setDbx({ appKey: '', appSecret: '', code: '' });
                     setMessage({ ok: true, text: 'رُبط Dropbox. فعّل النسخ واحفظ الإعدادات.' });
                   })}>ربط</button>

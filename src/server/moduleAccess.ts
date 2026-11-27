@@ -3,7 +3,7 @@ import { departmentsOf } from '../shared/departments';
 import { findUserRole } from '../shared/rbac';
 import type { RequestHandler } from 'express';
 import type { CollectionName } from '../shared/collections';
-import type { User } from '../types';
+import type { SystemSettings, User } from '../types';
 import { loadRoles, type AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
 
@@ -11,16 +11,33 @@ export function moduleAllowed(auth: AuthContext, module: ModuleId, stationId?: s
   return auth.moduleAllowed?.(module, stationId) !== false;
 }
 
+function stationDerivedUserId(collection: CollectionName, data: any): string | undefined {
+  const id = collection === 'news' ? data?.authorId
+    : collection === 'tasks' ? data?.assigneeId || data?.assignedToId
+    : collection === 'media' ? data?.ownerId || data?.uploadedById
+    : undefined;
+  return typeof id === 'string' ? id : undefined;
+}
+
+export function inferredStationPolicyChangeError(before: User, after: User, settings?: SystemSettings, list?: (collection: CollectionName) => any[]): string | null {
+  if ((before.stationId || undefined) === (after.stationId || undefined)) return null;
+  for (const collection of ['news', 'tasks', 'media'] as const) {
+    const affected = settings?.moduleAccess?.[collection]?.scopes?.some(scope =>
+      scope.mode !== 'everyone' && scope.stationId && (scope.stationId === before.stationId || scope.stationId === after.stationId));
+    if (affected && list?.(collection).some(record => record.stationId == null && record.ownerStationId == null && stationDerivedUserId(collection, record) === before.id)) {
+      return 'تغيير المحطة يؤثر في إتاحة الوحدات لسجلات مرتبطة بحسابك. اطلب من مسؤول مخوّل نقل الحساب.';
+    }
+  }
+  return null;
+}
+
 export function moduleAllowsRecord(auth: AuthContext, module: ModuleId, collection: CollectionName, data: any,
   lookup?: (collection: CollectionName, id: string) => any): boolean {
   if (!moduleAllowed(auth, module, data?.stationId ?? data?.ownerStationId)) return false;
   if (!data || !lookup || !auth.moduleHasStationLimits?.(module)) return true;
   const get = (target: CollectionName, id: unknown) => typeof id === 'string' ? lookup(target, id) : undefined;
-  const station = collection === 'news' ? get('users', data.authorId)?.stationId
-    : collection === 'tasks' ? get('users', data.assigneeId || data.assignedToId)?.stationId
-    : collection === 'bulletinStories' ? get('bulletins', data.bulletinId)?.stationId
-    : collection === 'media' ? get('users', data.ownerId || data.uploadedById)?.stationId
-    : undefined;
+  const station = collection === 'bulletinStories' ? get('bulletins', data.bulletinId)?.stationId
+    : get('users', stationDerivedUserId(collection, data))?.stationId;
   return moduleAllowed(auth, module, data.stationId ?? data.ownerStationId ?? station);
 }
 

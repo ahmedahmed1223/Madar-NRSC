@@ -12,7 +12,8 @@ import { assignedWorkOnly } from '../shared/assignedWork';
 import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
-import { allowsModule, moduleSubject, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
+import { allowsModule, moduleForCollection, moduleSubject, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
+import { TRASH_COLLECTIONS, TRASH_SECTIONS } from '../shared/trash';
 
 export * from '../shared/rbac';
 
@@ -115,6 +116,16 @@ export class RbacService {
   static canOpenScreen(user: User | undefined | null, nav: string, includeDepartmentWork = true): boolean {
     if (!user || !this.isScreenModuleAvailable(user, nav)) return false;
     const roles = this.getRoleDefinitions();
+    if (nav === 'trash') {
+      const can = (permission: string) => this.hasPermission(user, permission);
+      const workOnly = assignedWorkOnly(can);
+      return TRASH_COLLECTIONS.some(collection => {
+        const module = moduleForCollection(collection);
+        const { screen, permissions } = TRASH_SECTIONS[collection];
+        return (!workOnly || collection === 'productionCards') && (!module || this.canUseModule(user, module)) &&
+          permissions.some(can) && canOpenScreen(screen, findUserRole(user, roles), can, user.role === 'SUPER_ADMIN');
+      });
+    }
     if ((nav === 'workload' || nav === 'tasks') && includeDepartmentWork && this.leadsDepartment(user)) return true;
     return canOpenScreen(nav, findUserRole(user, roles), (permission) => this.hasPermission(user, permission), user.role === 'SUPER_ADMIN');
   }

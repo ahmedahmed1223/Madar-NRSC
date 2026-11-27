@@ -53,6 +53,7 @@ import {
   CalendarDays,
   CalendarRange,
   NotebookPen,
+  Trash2,
 } from 'lucide-react';
 import { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { cardsAwaitingMyDecision, isManagerRole, reviewableNews } from '../../shared/managerToday';
@@ -269,6 +270,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     roster: { id: 'roster', label: 'المناوبات', icon: CalendarClock, badge: null },
     workload: { id: 'workload', label: 'متابعة الفرق والتكاليف', icon: Scale, badge: null },
     reports: { id: 'reports', label: 'التقارير', icon: BarChart3, badge: null },
+    trash: { id: 'trash', label: 'سلة المحذوفات', icon: Trash2, badge: null },
     audit: { id: 'audit', label: 'سجل التدقيق', icon: ShieldCheck, badge: null },
     users: { id: 'users', label: 'المستخدمون والصلاحيات', icon: UserCog, badge: null },
     settings: { id: 'settings', label: 'الإعدادات', icon: Settings, badge: null },

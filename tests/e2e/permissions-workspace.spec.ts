@@ -1,6 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { openNav, signIn } from './helpers';
 
+test('the system administrator can change their own station while role and department are locked', async ({ browser }) => {
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv');
+  try {
+    const { user } = await (await page.request.get('/api/v1/auth/me')).json();
+    const station = user.stationId === 'beirut' ? 'istanbul' : 'beirut';
+    await openNav(page, 'المستخدمون والصلاحيات');
+    await page.getByRole('button', { name: `تعديل ${user.fullName}`, exact: true }).click();
+    const form = page.getByRole('region', { name: `تعديل حساب ${user.fullName}` });
+    await expect(form.locator('#user-form-modal-field-7')).toBeDisabled();
+    await expect(form.getByLabel('القسم', { exact: true })).toBeDisabled();
+    await form.getByLabel('المحطة', { exact: true }).selectOption(station);
+    await form.getByRole('button', { name: /حفظ/ }).click();
+    await expect(form).toHaveCount(0);
+    await expect.poll(async () => (await (await page.request.get('/api/v1/auth/me')).json()).user.stationId).toBe(station);
+  } finally { await close(); }
+});
+
 test('department permission drafts, full review, save, conflict and cancellation work', async ({ browser }) => {
   const session = await signIn(browser, 'admin@akhbar.tv');
   const { page } = session;

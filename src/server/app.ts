@@ -30,14 +30,14 @@ import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds } from '../
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
 import { moduleAllowed, requireModule } from './moduleAccess';
-import { canDownloadLinkedMedia } from './linkedMedia';
+import { downloadableMediaUpload } from './linkedMedia';
 import { MODULE_UNAVAILABLE, moduleForScreen } from '../shared/moduleAccess';
 import { createAiBudget } from './aiBudget';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
-import { MEDIA_FILE_URL_PREFIX, UploadError, receiveUpload, uploadsDir } from './uploads';
+import { MEDIA_FILE_URL_PREFIX, UploadError, mediaUploadIsTrashed, receiveUpload, uploadsDir } from './uploads';
 import { externalIntakeRouter } from './externalIntake';
 import { databaseEngineStatus, readDatabaseEngineState, scheduleDatabaseEngine } from './databaseEngineState';
 import { createResumableUploadRouter } from './resumableUploads';
@@ -88,6 +88,9 @@ import { createAppUpdates } from './appUpdates';
 import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
+import { isTrashCollection } from '../shared/trash';
+import { decodeTrashCursor, readTrashPage } from './trash';
+import { initializeTrashRetention, readTrashRetention } from './retention';
 
 export { APP_VERSION };
 
@@ -141,6 +144,7 @@ function securityHeaders(config: AppConfig) {
 
 export function createApp(db: NewsroomDatabase, config: AppConfig) {
   const app = express();
+  initializeTrashRetention(db);
   // Shared helpers (department names, station archive and groups) follow the stored settings.
   applyDepartmentSettings(db.getRow('settings', 'singleton')?.d);
   rememberStationSettings(db.getRow('settings', 'singleton')?.d);
@@ -650,13 +654,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   );
 
   app.get('/api/v1/media/files/:id', requirePermission('media.view'), wrap(async (req, res) => {
-    const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
-    if (!record || record.scope === 'chat' || (record.scope === 'legacy' && record.uploadedBy !== req.auth!.user.id)) {
-      throw new HttpError(404, 'الملف غير موجود');
-    }
-    if (!moduleAllowed(req.auth!, 'media') && !canDownloadLinkedMedia(db, req.auth!, record.id)) {
-      throw new HttpError(404, 'الملف غير موجود');
-    }
+    const record = downloadableMediaUpload(db, req.auth!, req.params.id);
+    if (!record) throw new HttpError(404, 'الملف غير موجود');
     // Prevent execution and recheck authorization before reusing a cached asset.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.setHeader('Cache-Control', record.scope === 'legacy' ? 'private, no-store' : 'private, no-cache');
@@ -690,7 +689,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (assignedWorkOnly(req.auth!.can)) throw new HttpError(403, 'المراسلات غير متاحة لهذا الحساب');
     const record = /^[A-Za-z0-9_\-]+$/.test(req.params.id) ? db.getUpload(req.params.id) : null;
     const me = req.auth!.user.id;
-    if (!record || !(record.uploadedBy === me || db.messagesWithUpload(record.id).some((m) => canReadMessage(m, me)))) throw new HttpError(404, 'الملف غير موجود');
+    const ownUpload = record?.uploadedBy === me && (record.scope === 'chat' || !mediaUploadIsTrashed(db, record.id));
+    if (!record || !(ownUpload || db.messagesWithUpload(record.id).some((m) => canReadMessage(m, me)))) throw new HttpError(404, 'الملف غير موجود');
     const filePath = path.join(uploadsDir(config.dataDir), record.storedName);
     if (!fs.existsSync(filePath)) throw new HttpError(404, 'الملف غير موجود');
     // Inert: never executed or sniffed; documents a browser cannot show are downloaded.
@@ -826,6 +826,30 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (ops.length > MAX_OPS_PER_REQUEST) throw new HttpError(413, 'عدد العمليات في الطلب الواحد كبير جداً');
     const results = sync.apply(req.auth!, ops as SyncOp[], req.ip);
     res.json({ success: true, rev: db.currentRev(), dbId: db.dbId, results });
+  });
+
+  app.get('/api/v1/trash', requireAuth, (req, res) => {
+    const requestedCollection = req.query.collection;
+    const collection = isTrashCollection(requestedCollection) ? requestedCollection : undefined;
+    if (requestedCollection !== undefined && collection === undefined) throw new HttpError(400, 'قسم سلة المحذوفات غير صالح');
+    const after = decodeTrashCursor(req.query.cursor);
+    if (after === undefined) throw new HttpError(400, 'مؤشر سلة المحذوفات غير صالح');
+    const data = readTrashPage(db, req.auth!, collection, after, readTrashRetention(db, config.retention.trashDays));
+    res.json({ success: true, data });
+  });
+
+  app.post('/api/v1/trash/:collection/:id/restore', requireAuth, (req, res) => {
+    const { collection, id } = req.params;
+    if (!isTrashCollection(collection)) throw new HttpError(404, 'القسم غير موجود في سلة المحذوفات');
+    if (typeof id !== 'string') throw new HttpError(400, 'معرّف السجل غير صالح');
+    const baseV: unknown = req.body?.baseV;
+    if (typeof baseV !== 'number' || !Number.isSafeInteger(baseV) || baseV < 1) throw new HttpError(400, 'نسخة السجل غير صالحة');
+    const result = sync.restoreTrash(req.auth!, collection, id, baseV, req.ip);
+    if (result.ok === false) {
+      const status = { INVALID: 400, FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409 }[result.code];
+      throw new HttpError(status, result.message, result.code);
+    }
+    res.json({ success: true });
   });
 
   /**
@@ -1492,6 +1516,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
           catch { throw new HttpError(400, 'تعذر التحقق من النسخة المختارة'); }
           authorizeDestructive(req, 'restore', sha256);
           await db.restoreBackup(fileName, config.backupRetention, sha256, () => { currentDatabaseActor(req); requireAirEnded(req); });
+          initializeTrashRetention(db);
         });
       } catch (err: any) {
         try { audit(actor, 'DB_RESTORE_FAILED', 'DATABASE', 'newsroom', 'SECURITY', 'تعذر إتمام استعادة القاعدة', req.ip); }

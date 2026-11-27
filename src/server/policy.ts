@@ -23,7 +23,7 @@ import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
 import { allowsModule, moduleForRecord, moduleSubject, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
-import { moduleAllowed, moduleAllowsRecord } from './moduleAccess';
+import { inferredStationPolicyChangeError, moduleAllowed, moduleAllowsRecord } from './moduleAccess';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
 import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
@@ -36,6 +36,7 @@ import { taskTransitionError } from '../shared/taskWorkflow';
 import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
 import { workReminderError, workReminderInstant } from '../shared/workReminders';
+import { canEditOwnStation, ownStationChangeError } from '../shared/ownStationChange';
 import { permissionChangeError, permissionListError, restrictionRemovalError } from './permissionChanges';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -64,6 +65,7 @@ const require =
 
 /** Soft-deletes arrive as updates that set `deletedAt`. */
 const isSoftDelete = (before: any, after: any) => !!after?.deletedAt && !before?.deletedAt;
+const isRestore = (before: any, after: any) => !!before?.deletedAt && !!after && !after.deletedAt;
 
 const PRIVILEGED_USER_FIELDS = ['role', 'customRoleId', 'customPermissions', 'isActive', 'departmentId', 'department', 'stationId', 'managedStationIds', 'managedGroupIds'] as const;
 
@@ -83,6 +85,10 @@ function userRoleError(before: any, after: any, list: PolicyInput['list']): stri
 
 function changed(before: any, after: any, field: string) {
   return JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after?.[field] ?? null);
+}
+
+function changesFieldsBesidesRestore(before: any, after: any) {
+  return Object.keys({ ...before, ...after }).some(field => field !== 'deletedAt' && field !== 'updatedAt' && changed(before, after, field));
 }
 
 const newsPolicy: Policy = ({ auth, kind, before, after }) => {
@@ -148,6 +154,15 @@ const newsPolicy: Policy = ({ auth, kind, before, after }) => {
   return null;
 };
 
+const storiesPolicy: Policy = ({ auth, kind, before, after }) => {
+  const canEdit = any(auth, 'news.create', 'news.edit_any');
+  if (kind === 'delete' || isSoftDelete(before, after)) return auth.can('news.delete') ? null : DENIED;
+  if (isRestore(before, after)) {
+    return auth.can('news.delete') && (canEdit || !changesFieldsBesidesRestore(before, after)) ? null : DENIED;
+  }
+  return canEdit ? null : DENIED;
+};
+
 /** Fields a status transition is allowed to touch without content-edit rights. */
 const WORKFLOW_FIELDS = new Set([
   'status',
@@ -200,12 +215,18 @@ const usersPolicy: Policy = (input) => {
     if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو مخصص أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
     return permissionChangeError(input);
   }
-  const privilegedChange = PRIVILEGED_USER_FIELDS.some((f) => changed(before, after, f));
-  if (privilegedChange) {
-    if (targetId === self) return 'لا يمكنك تعديل دورك أو صلاحياتك أو حالة حسابك بنفسك';
-    if (changed(before, after, 'isActive') && !auth.can('users.suspend_delete')) return DENIED;
-    const roleFields = PRIVILEGED_USER_FIELDS.filter((f) => f !== 'isActive');
-    if (roleFields.some((f) => changed(before, after, f)) && !auth.can('users.manage_roles_permissions')) return DENIED;
+  const privilegedChanges = PRIVILEGED_USER_FIELDS.filter((field) => changed(before, after, field));
+  if (targetId === self && privilegedChanges.length) {
+    if (privilegedChanges.length !== 1 || privilegedChanges[0] !== 'stationId') return 'لا يمكنك تعديل دورك أو صلاحياتك أو حالة حسابك بنفسك';
+    if (!canEditOwnStation(auth.user.role, auth.can)) return 'تغيير محطة حسابك يتطلب مسؤولاً مخوّلاً';
+    const settings = list?.('settings')?.[0];
+    const error = ownStationChangeError(before, after.stationId, settings, findUserRole(auth.user, auth.roles)?.id, auth.can);
+    if (error) return error;
+    const recordError = inferredStationPolicyChangeError(before, after, settings, list);
+    if (recordError) return recordError;
+  } else if (privilegedChanges.length) {
+    if (privilegedChanges.includes('isActive') && !auth.can('users.suspend_delete')) return DENIED;
+    if (privilegedChanges.some((field) => field !== 'isActive') && !auth.can('users.manage_roles_permissions')) return DENIED;
   }
   if (targetId === self) return permissionChangeError(input); // own profile fields
   return auth.can('users.edit_profile') ? permissionChangeError(input) : DENIED;
@@ -309,6 +330,7 @@ const bulletinsPolicy: Policy = ({ auth, kind, before, after }) => {
   if (kind === 'create' || kind === 'delete' || isSoftDelete(before, after)) {
     return auth.can('bulletins.manage') ? null : 'إنشاء النشرات وحذفها لمسؤولي النشرات';
   }
+  if (isRestore(before, after) && !auth.can('bulletins.manage')) return 'استعادة النشرات لمسؤولي النشرات';
   const isEditor = !!before?.editorId && before.editorId === auth.user.id;
   if (!auth.can('bulletins.manage') && !isEditor) return 'تعديل بيانات النشرة لمحررها المسؤول';
   if (!auth.can('bulletins.manage') && after?.editorId !== before?.editorId) return 'تغيير محرر النشرة لمسؤولي النشرات';
@@ -323,13 +345,16 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
   const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === record?.bulletinId);
   const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit'), role: auth.user.role };
   const approver = isApprover(bulletin, actor);
+  const canDelete = approver || auth.can('bulletins.manage') || (actor.canEdit && before?.writerId === auth.user.id);
   if (kind === 'delete' || isSoftDelete(before, after)) {
-    return approver || auth.can('bulletins.manage') || (actor.canEdit && before?.writerId === auth.user.id) ? null : 'حذف القصة لكاتبها أو لمحرر النشرة';
+    return canDelete ? null : 'حذف القصة لكاتبها أو لمحرر النشرة';
   }
   if (!bulletin || bulletin.deletedAt) return 'النشرة غير موجودة';
+  const restoring = isRestore(before, after);
+  if (restoring && !canDelete) return 'استعادة القصة لكاتبها أو لمحرر النشرة';
   if (after.remoteGuest?.guestId && after.remoteGuest.guestId !== before?.remoteGuest?.guestId &&
       !(list?.('guests') || []).some(guest => guest.id === after.remoteGuest.guestId && !guest.deletedAt)) return 'ضيف النشرة غير موجود';
-  if (!actor.canEdit && !approver) return 'صلاحياتك لا تسمح بتعديل قصص النشرة';
+  if (!actor.canEdit && !approver && (!restoring || changesFieldsBesidesRestore(before, after))) return 'صلاحياتك لا تسمح بتعديل قصص النشرة';
   if (before && before.bulletinId !== after.bulletinId) return 'لا يمكن نقل القصة بين النشرات؛ انسخها بدلاً من ذلك';
   if (after.clipMediaId && changed(before, after, 'clipMediaId')) {
     const airAt = plannedMediaAirAt(bulletin.date, bulletin.startTime, list?.('settings')[0]?.defaultTimezone);
@@ -375,6 +400,7 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
 
 const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
   if (kind === 'create' && (after.privateMessageMedia || String(after.id).startsWith('msgmedia-'))) return 'يسجل الخادم مراجع مرفقات الرسائل';
+  if (kind === 'create' && after.deletedAt) return 'أضف المادة إلى المكتبة قبل نقلها إلى سلة المحذوفات';
   if (kind !== 'delete' && changed(before, after, 'privateMessageMedia')) return 'لا يمكن تغيير مرجع مرفق الرسالة';
   if (before?.privateMessageMedia && before.ownerId !== auth.user.id) return DENIED;
   if (kind !== 'delete' && before?.privateMessageMedia && (changed(before, after, 'url') || changed(before, after, 'fileUrl'))) return 'لا يمكن تغيير مصدر مرفق الرسالة';
@@ -382,7 +408,10 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
   if (kind !== 'delete' && changed(before, after, 'transcript')) return 'يحفظ الخادم نتيجة التفريغ';
   if (kind !== 'delete' && changed(before, after, 'autoTranscriptionJob')) return 'يجدول الخادم التفريغ التلقائي';
   if (kind !== 'delete' && changed(before, after, 'broadcastUse')) return 'يسجل الخادم استخدام التصاريح لمرة واحدة';
-  if (kind === 'delete' || isSoftDelete(before, after)) {
+  if (kind === 'delete' || isSoftDelete(before, after) || isRestore(before, after)) {
+    if (kind !== 'delete' && (before?.privateMessageMedia || changesFieldsBesidesRestore(before, after))) {
+      return 'لا يمكن تغيير بيانات المادة أو نقل مرفق رسالة إلى سلة المحذوفات بهذه العملية';
+    }
     const isOwner = [before?.ownerId, before?.uploadedById].includes(auth.user.id);
     return auth.can('media.delete') || (isOwner && auth.can('media.upload')) ? null : 'صلاحياتك لا تسمح بحذف الوسائط';
   }
@@ -446,6 +475,7 @@ const notificationPrefsPolicy: Policy = ({ auth, kind, after, before }) => {
 /** Diary: planners manage entries; people assigned to an entry may note progress on it. */
 const diaryPolicy: Policy = ({ auth, kind, before, after }) => {
   if (auth.can('diary.manage')) return kind === 'delete' || !after || after.deletedAt ? null : diaryError(after);
+  if (isRestore(before, after)) return 'استعادة مواعيد التغطية لمسؤولي الأجندة';
   const assigned = (before?.assigneeIds || []).includes(auth.user.id);
   if (kind === 'update' && assigned && after && !after.deletedAt) {
     const locked = ['title', 'date', 'startTime', 'endTime', 'kind', 'coverage', 'priority', 'assigneeIds', 'location'] as const;
@@ -545,10 +575,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   roles: rolesPolicy,
   news: newsPolicy,
   newsCorrections: () => 'سجل التصحيحات يكتب من الخادم فقط ولا يمكن تعديله أو حذفه',
-  stories: ({ auth, kind, before, after }) =>
-    kind === 'delete' || isSoftDelete(before, after)
-      ? auth.can('news.delete') ? null : DENIED
-      : any(auth, 'news.create', 'news.edit_any') ? null : DENIED,
+  stories: storiesPolicy,
   breaking: require('news.breaking_push'),
   programs: require('programs.manage'),
   episodes: episodesPolicy,

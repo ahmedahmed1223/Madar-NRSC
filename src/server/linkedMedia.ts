@@ -1,8 +1,9 @@
 import type { CollectionName } from '../shared/collections';
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
+import { moduleAllowed } from './moduleAccess';
 import { canRead } from './policy';
-import { uploadIdFromMedia } from './uploads';
+import { mediaUploadIsTrashed, uploadIdFromMedia } from './uploads';
 
 const SOURCES = ['news', 'productionCards', 'requests', 'bulletinStories', 'episodes'] as const;
 const visibleIds = new WeakMap<AuthContext, Set<string>>();
@@ -49,4 +50,13 @@ export function canDownloadLinkedMedia(db: NewsroomDatabase, auth: AuthContext, 
     const asset = linkedMediaAsset(db, auth, id);
     return asset && uploadIdFromMedia(asset) === uploadId;
   });
+}
+
+/** Shared by file download and storage metadata. Callers require media.view. */
+export function downloadableMediaUpload(db: NewsroomDatabase, auth: AuthContext, id: unknown) {
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  const upload = db.getUpload(id);
+  if (!upload || upload.scope === 'chat' || (upload.scope === 'legacy' && upload.uploadedBy !== auth.user.id)) return null;
+  if (mediaUploadIsTrashed(db, id) || (!moduleAllowed(auth, 'media') && !canDownloadLinkedMedia(db, auth, id))) return null;
+  return upload;
 }

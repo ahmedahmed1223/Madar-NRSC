@@ -58,6 +58,7 @@ const TestingView = lazyWithRetry(() => import('./views/TestingView').then((m) =
 const OnAirView = lazyWithRetry(() => import('./views/OnAirView').then((m) => ({ default: m.OnAirView })));
 const StudioScreenView = lazyWithRetry(() => import('./views/StudioScreenView').then((m) => ({ default: m.StudioScreenView })));
 const WallboardView = lazyWithRetry(() => import('./views/WallboardView').then((m) => ({ default: m.WallboardView })));
+const TrashView = lazyWithRetry(() => import('./views/TrashView').then((m) => ({ default: m.TrashView })));
 const HelpView = lazyWithRetry(() => import('./views/HelpView').then((m) => ({ default: m.HelpView })));
 const GuideView = lazyWithRetry(() => import('./views/GuideView').then((m) => ({ default: m.GuideView })));
 const WhatsNewView = lazyWithRetry(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })));
@@ -694,7 +695,14 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   };
 
   const handleDeleteMedia = (id: string) => {
-    if (!attempt('حذف الوسائط', () => apiService.deleteMediaAsset(id, currentUser))) return;
+    const asset = mediaAssets.find(item => item.id === id);
+    if (asset?.privateMessageMedia) {
+      attempt('إزالة مرجع المرفق', () => apiService.deleteMediaAsset(id, currentUser));
+      return;
+    }
+    if (attempt('نقل الوسائط إلى سلة المحذوفات', () => apiService.trashMediaAsset(id))) {
+      void confirmSaved('media', id, 'نُقلت المادة إلى سلة المحذوفات');
+    }
   };
 
   // --- SETTINGS ACTIONS ---
@@ -1209,6 +1217,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
+            {activeNav === 'trash' && <TrashView />}
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (

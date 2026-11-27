@@ -1,17 +1,19 @@
 import express, { type Request } from 'express';
 import { guestKey } from '../shared/episodePlan';
 import { newId } from '../shared/ids';
+import { MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import type { Episode, Guest } from '../types';
 import { buildAuthContext, requireAuth } from './auth';
 import type { AppConfig } from './config';
 import type { NewsroomDatabase, UploadRecord } from './db';
 import { sendEmail } from './delivery';
 import { guestTechnicalEmail } from './guestTechInvitations';
+import { moduleAllowed } from './moduleAccess';
 import { createRateLimiter } from './rateLimit';
 import { changeBus } from './sync';
 import { queueCopiesForUpload } from './storage';
 import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, UploadError } from './uploads';
-import { activeIntakeIssuer as activeUser, intakeGuestTarget, issueIntakeTicket as issue, readIntakeTicket as readTicket } from './externalIntakeTickets';
+import { activeIntakeIssuer as activeUser, intakeGuestTarget, issueContributorDropLink, issueIntakeTicket as issue, readIntakeTicket as readTicket } from './externalIntakeTickets';
 
 const uploadTypes = Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).filter(([mime]) => /^(audio|video)\//.test(mime)));
 const invalid = 'الرابط غير صالح أو انتهت صلاحيته.';
@@ -19,6 +21,13 @@ const invalid = 'الرابط غير صالح أو انتهت صلاحيته.';
 function mayIssueGuestCheck(req: Request, episode: Episode) {
   const auth = req.auth!;
   return auth.can('episodes.edit') || auth.can('programs.manage') || episode.producerId === auth.user.id && auth.can('episodes.view');
+}
+
+function mayRedeemDropLink(db: NewsroomDatabase, issuer: string) {
+  const user = activeUser(db, issuer);
+  if (!user) return false;
+  const auth = buildAuthContext(db, user, 'external-intake');
+  return moduleAllowed(auth, 'media') && auth.can('media.upload');
 }
 
 export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
@@ -33,10 +42,17 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
     const kind = req.body.kind;
     const auth = req.auth!;
     if (kind === 'upload') {
+      if (!moduleAllowed(auth, 'media')) return res.status(403).json({ success: false, error: MODULE_UNAVAILABLE });
       if (!auth.can('media.upload')) return res.status(403).json({ success: false, error: 'صلاحية رفع الوسائط مطلوبة.' });
-      const expiresAt = new Date(Date.now() + 24 * 3600_000).toISOString();
-      const path = issue(db, { kind, issuer: auth.user.id, expiresAt });
-      return res.json({ success: true, data: { path, expiresAt } });
+      const issued = issueContributorDropLink(db, auth.user.id);
+      if (issued.status === 'paused') {
+        return res.status(403).json({ success: false, error: 'إنشاء روابط الرفع الخارجي متوقف في الإعدادات.' });
+      }
+      if (issued.status === 'limited') {
+        res.setHeader('Retry-After', String(issued.retryAfter));
+        return res.status(429).json({ success: false, code: 'RATE_LIMITED', error: 'بلغت الحد اليومي لروابط الرفع الخارجي.' });
+      }
+      return res.json({ success: true, data: { path: issued.path, expiresAt: issued.expiresAt } });
     }
     const { episodeId, bulletinStoryId, guestId, email } = req.body;
     const subject = {
@@ -61,9 +77,11 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
 
   router.post('/info', (req, res) => {
     const found = readTicket(db, req.body.token);
-    if (!found || !activeUser(db, found.ticket.issuer)) return denied(res);
+    if (!found) return denied(res);
     const { ticket } = found;
-    if (ticket.kind === 'guest' && !intakeGuestTarget(db, ticket)) return denied(res);
+    const valid = ticket.kind === 'upload' ? mayRedeemDropLink(db, ticket.issuer)
+      : activeUser(db, ticket.issuer) && intakeGuestTarget(db, ticket);
+    if (!valid) return denied(res);
     return res.json({ success: true, data: { kind: ticket.kind, expiresAt: ticket.expiresAt, maxUpload } });
   });
 
@@ -73,24 +91,17 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
       req.resume();
       return denied(res);
     }
-    const permitted = () => {
-      const user = activeUser(db, found.ticket.issuer);
-      return !!user && buildAuthContext(db, user, 'external-intake').can('media.upload');
-    };
+    const permitted = () => mayRedeemDropLink(db, found.ticket.issuer);
     if (!permitted()) { req.resume(); return denied(res); }
     uploading.add(found.key);
     let upload: UploadRecord | undefined;
     try {
       upload = await receiveUpload(req, db, config.dataDir, maxUpload, found.ticket.issuer, { allowed: uploadTypes });
       const savedUpload = upload;
-      if (!readTicket(db, req.get('X-Madar-Intake')) || !permitted()) {
-        removeUpload(db, config.dataDir, upload.id);
-        upload = undefined;
-        return denied(res);
-      }
       const id = newId('media');
-      const now = new Date().toISOString();
-      db.transaction(() => {
+      const recorded = db.transaction(() => {
+        if (!readTicket(db, req.get('X-Madar-Intake'), true) || !permitted()) return false;
+        const now = new Date().toISOString();
         const mediaType = savedUpload.mimeType.startsWith('audio/') ? 'AUDIO' : 'VIDEO';
         db.writeRow('media', id, {
           id, title: savedUpload.originalName, fileName: savedUpload.originalName, mediaType, mimeType: savedUpload.mimeType,
@@ -101,7 +112,13 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
         }, db.positionBounds('media').min - 1, found.ticket.issuer);
         queueCopiesForUpload(db, savedUpload);
         db.setMeta(found.key, JSON.stringify({ ...found.ticket, usedAt: now }));
+        return true;
       });
+      if (!recorded) {
+        removeUpload(db, config.dataDir, upload.id);
+        upload = undefined;
+        return denied(res);
+      }
       upload = undefined;
       changeBus.emit('rev', db.currentRev());
       return res.status(201).json({ success: true });

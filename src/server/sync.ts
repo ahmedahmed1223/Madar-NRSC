@@ -29,7 +29,7 @@ import {
 import { buildAuthContext, type AuthContext } from './auth';
 import type { CollectionPagePosition, NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
-import { removeUpload, uploadIdFromMedia } from './uploads';
+import { mediaUploadIsTrashed, removeUnreferencedMediaUpload, uploadIdFromMedia } from './uploads';
 import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
@@ -66,6 +66,8 @@ import { moduleAvailability, moduleAllowed, moduleAllowedForUser, moduleAllowsRe
 import { linkedMediaAsset, linkedMediaIds } from './linkedMedia';
 import { matchesQuery } from '../shared/search';
 import { episodeGuestList, guestKey } from '../shared/episodePlan';
+import { isTrashCollection, type TrashCollection } from '../shared/trash';
+import { canRestoreTrashRecord, trashScope } from './trash';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -907,7 +909,14 @@ export class SyncService {
     return results;
   }
 
-  private applyOne(auth: AuthContext, op: SyncOp, ip?: string): SyncOpResult {
+  restoreTrash(auth: AuthContext, collection: TrashCollection, id: string, baseV: number, ip?: string): SyncOpResult {
+    this.applySettings();
+    const result = this.applyOne(auth, { c: collection, id, op: 'upsert', baseV, d: {} }, ip, true);
+    if (result.ok) changeBus.emit('rev', this.db.currentRev());
+    return result;
+  }
+
+  private applyOne(auth: AuthContext, op: SyncOp, ip?: string, restore = false): SyncOpResult {
     if (!isPlainObject(op) || !isCollectionName(op.c) || !['upsert', 'delete'].includes(op.op)) {
       return { ok: false, code: 'INVALID', message: 'عملية مزامنة غير صالحة' };
     }
@@ -926,6 +935,24 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
+        if (collection === 'media' && before?.deletedAt && !restore && op.op === 'upsert') {
+          return { ok: false, code: 'FORBIDDEN', message: 'استعد المادة من سلة المحذوفات قبل تعديلها' } as SyncOpResult;
+        }
+        if (restore) {
+          if (!isTrashCollection(collection) || !trashScope(auth).includes(collection)) {
+            return { ok: false, code: 'FORBIDDEN', message: 'لا تملك صلاحية الاستعادة من هذا القسم' } as SyncOpResult;
+          }
+          if (!current || !before?.deletedAt || !canRestoreTrashRecord(auth, collection, before, this.lookup, this.listData)) {
+            return { ok: false, code: 'NOT_FOUND', message: 'السجل غير موجود في سلة المحذوفات' } as SyncOpResult;
+          }
+          if (current.v !== op.baseV) {
+            return { ok: false, code: 'CONFLICT', message: 'تغيّر السجل، حدّث سلة المحذوفات ثم حاول مجدداً' } as SyncOpResult;
+          }
+          op = { ...op, d: { ...before, deletedAt: null } };
+        } else if (!current && op.op === 'upsert' && typeof op.baseV === 'number' && op.baseV > 0 && isTrashCollection(collection)) {
+          // A stale edit or recovery from the old News tab must not re-create a purged record.
+          return { ok: false, code: 'NOT_FOUND', message: 'لم يعد السجل موجوداً' } as SyncOpResult;
+        }
         const module = moduleForRecord(collection, id, before, key => !!this.lookup('episodes', key)) ??
           moduleForRecord(collection, id, op.d, key => !!this.lookup('episodes', key));
         if (module && (!moduleAllowsRecord(auth, module, collection, before, this.lookup) ||
@@ -977,9 +1004,9 @@ export class SyncService {
             this.db.deleteUserPushSubscriptions(id);
           }
           const uploadId = collection === 'media' ? uploadIdFromMedia(before) : null;
-          if (uploadId) removeUpload(this.db, this.dataDir, uploadId);
           const row = this.db.deleteRow(collection, id, auth.user.id)!;
           this.auditAdministration(collection, before, null, auth, ip);
+          if (uploadId) removeUnreferencedMediaUpload(this.db, this.dataDir, uploadId);
           return { ok: true, row } as SyncOpResult;
         }
 
@@ -1011,6 +1038,7 @@ export class SyncService {
         let after: any = { ...incoming };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'media' && before && after.deletedAt) after.deletedAt = new Date().toISOString();
         const target = collection === 'productionCards' ? after.target : null;
         if (target && (target.kind === 'episode' || target.kind === 'bulletin') &&
             (target.kind !== before?.target?.kind || target.id !== before?.target?.id)) {
@@ -1231,6 +1259,20 @@ export class SyncService {
           const job = newAutoTranscriptionJob(after, this.autoMedia.video);
           if (job && moduleAllowed(auth, 'transcription', after.stationId)) after.autoTranscriptionJob = job;
         }
+        if (collection === 'media') {
+          // The uploader or a media administrator may attach a file to the library.
+          const uploadId = uploadIdFromMedia(after);
+          if (uploadId && uploadId !== uploadIdFromMedia(before)) {
+            const upload = this.db.getUpload(uploadId);
+            if (!upload || upload.scope === 'chat') throw new SyncReject('INVALID', 'الملف المرفوع غير متاح لمكتبة الوسائط');
+            if (upload.uploadedBy !== auth.user.id && !auth.can('media.delete')) throw new SyncReject('FORBIDDEN', 'لا يمكنك إرفاق ملف رفعه مستخدم آخر');
+            if (mediaUploadIsTrashed(this.db, uploadId)) throw new SyncReject('FORBIDDEN', 'استعد الملف من سلة المحذوفات قبل ربطه مجدداً');
+            if (upload.scope === 'legacy') {
+              if (upload.uploadedBy !== auth.user.id) throw new SyncReject('FORBIDDEN', 'الملف القديم متاح لمن رفعه');
+              this.db.publishLegacyUpload(uploadId, auth.user.id);
+            }
+          }
+        }
         const row = this.db.writeRow(collection, id, after, position, auth.user.id);
         if (collection === 'news' || collection === 'requests' || collection === 'productionCards') {
           publishMessageWorkAttachments(this.db, collection, id, before, row.d, auth);
@@ -1282,20 +1324,6 @@ export class SyncService {
           const bulStatus = after.status === 'LIVE' ? 'ON_AIR' : 'DONE';
           if (bul && bul.d.status !== bulStatus) {
             this.db.writeRow('bulletins', bul.id, { ...bul.d, status: bulStatus, updatedAt: new Date().toISOString() }, bul.p, null);
-          }
-        }
-
-        if (collection === 'media') {
-          // Only the uploader's own files may be attached, and each upload to a single record.
-          const uploadId = uploadIdFromMedia(after);
-          if (uploadId && uploadId !== uploadIdFromMedia(before)) {
-            const upload = this.db.getUpload(uploadId);
-            if (!upload || upload.scope === 'chat') throw new SyncReject('INVALID', 'الملف المرفوع غير متاح لمكتبة الوسائط');
-            if (upload.uploadedBy !== auth.user.id && !auth.can('media.delete')) throw new SyncReject('FORBIDDEN', 'لا يمكنك إرفاق ملف رفعه مستخدم آخر');
-            if (upload.scope === 'legacy') {
-              if (upload.uploadedBy !== auth.user.id) throw new SyncReject('FORBIDDEN', 'الملف القديم متاح لمن رفعه');
-              this.db.publishLegacyUpload(uploadId, auth.user.id);
-            }
           }
         }
 

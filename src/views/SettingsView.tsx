@@ -33,6 +33,8 @@ import { SystemMonitor } from '../components/settings/SystemMonitor';
 import { BackupReadinessSummary } from '../components/settings/BackupReadinessSummary';
 import { AppUpdatesPanel } from '../components/settings/AppUpdatesPanel';
 import { StorageSettings } from '../components/settings/StorageSettings';
+import { TrashRetentionSettings } from '../components/settings/TrashRetentionSettings';
+import { ContributorDropLinkSettings } from '../components/settings/ContributorDropLinkSettings';
 import { ProgramTypesSettings } from '../components/settings/ProgramTypesSettings';
 import { dataStore } from '../services/dataStore';
 import {
@@ -873,7 +875,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'departments' && <DepartmentsSettings />}
       {section === 'structure' && <OrgStructureSettings onOpenSection={(next) => void chooseSection(next)} />}
       {section === 'monitor' && <SystemMonitor />}
-      {section === 'storage' && <StorageSettings />}
+      {section === 'storage' && (
+        <div className="space-y-6">
+          <StorageSettings />
+          <ContributorDropLinkSettings />
+        </div>
+      )}
       {section === 'categories' && (
       <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -1461,6 +1468,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {section === 'data' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <TrashRetentionSettings />
         {/* Production Backup & Disaster Recovery Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">

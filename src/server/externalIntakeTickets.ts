@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { SINGLETON_ID } from '../shared/collections';
+import { contributorDropLinkSettings } from '../shared/contributorDropLinkSettings';
 import { bookingStatusOf, episodeGuestList, guestKey } from '../shared/episodePlan';
 import type { Episode, User } from '../types';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
@@ -16,12 +18,15 @@ export type IntakeTicket = {
 };
 
 const PREFIX = 'external_intake:';
+const DROP_LINK_ISSUANCE_PREFIX = 'contributor_drop_link_issuance:';
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
 const keyFor = (token: string) => PREFIX + crypto.createHash('sha256').update(token).digest('hex');
 
-export function readIntakeTicket(db: NewsroomDatabase, token: unknown): { key: string; ticket: IntakeTicket } | null {
+export function readIntakeTicket(db: NewsroomDatabase, token: unknown, lock = false): { key: string; ticket: IntakeTicket } | null {
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const key = keyFor(token);
-  const raw = db.getMeta(key);
+  const raw = lock ? db.lockMeta(key) : db.getMeta(key);
   const ticket: IntakeTicket | null = raw ? JSON.parse(raw) : null;
   return ticket && !ticket.usedAt && ticket.expiresAt > new Date().toISOString() ? { key, ticket } : null;
 }
@@ -31,6 +36,25 @@ export function issueIntakeTicket(db: NewsroomDatabase, ticket: IntakeTicket) {
   db.pruneExternalIntake(PREFIX, new Date().toISOString());
   db.setMeta(keyFor(token), JSON.stringify(ticket));
   return `/intake#${token}`;
+}
+
+export function issueContributorDropLink(db: NewsroomDatabase, issuer: string) {
+  const { dailyLimit, expiryHours } = contributorDropLinkSettings(db.getRow('settings', SINGLETON_ID)?.d);
+  if (!dailyLimit) return { status: 'paused' as const };
+  return db.transaction(() => {
+    const key = DROP_LINK_ISSUANCE_PREFIX + issuer;
+    const timestamps: number[] = JSON.parse(db.lockMeta(key, '[]') ?? '[]');
+    const now = Date.now();
+    const recent = timestamps.filter(at => at > now - DAY_MS).sort((left, right) => left - right);
+    if (recent.length >= dailyLimit) {
+      const availableAt = recent[recent.length - dailyLimit] + DAY_MS;
+      return { status: 'limited' as const, retryAfter: Math.ceil((availableAt - now) / 1000) };
+    }
+    const expiresAt = new Date(now + expiryHours * HOUR_MS).toISOString();
+    const path = issueIntakeTicket(db, { kind: 'upload', issuer, expiresAt });
+    db.setMeta(key, JSON.stringify([...recent, now]));
+    return { status: 'issued' as const, path, expiresAt };
+  });
 }
 
 export function activeIntakeIssuer(db: NewsroomDatabase, id: string) {

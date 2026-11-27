@@ -9,6 +9,8 @@ import { createTestServer, listen, loginAgent } from '../helpers';
 import { addressInRanges, parseCidr, safeFileName, validateStorage } from '../../src/shared/storage';
 import { headerJson, dropboxPath } from '../../src/server/dropbox';
 import { runStorageSync } from '../../src/server/storage';
+import { runRetention } from '../../src/server/retention';
+import { uploadsDir } from '../../src/server/uploads';
 
 const H = { 'X-NRCS-Client': 'web' };
 const run = promisify(execFile);
@@ -30,6 +32,9 @@ function fakeCloud() {
       return res.json({ access_token: 'at', refresh_token: 'rt', expires_in: 14400 });
     }
     if (req.body.refresh_token !== 'rt' && req.body.refresh_token !== 'g-rt') return res.status(400).json({ error: 'invalid_grant' });
+    if (req.body.scope === 'files.content.write' && req.body.client_id === 'read-only') {
+      return res.status(400).json({ error: 'invalid_scope', error_description: 'private provider detail' });
+    }
     res.json({ access_token: 'at', expires_in: 14400 });
   });
   app.post('/2/users/get_current_account', (_req, res) => res.json({ name: { display_name: 'غرفة الأخبار' }, email: 'desk@example.com' }));
@@ -76,6 +81,7 @@ function fakeCloud() {
   });
   app.post('/2/files/list_folder', express.json(), (req, res) => {
     const dir = String(req.body.path).toLowerCase();
+    if (dir === '/missing') return res.status(409).json({ error_summary: 'path/not_found/...' });
     res.json({ entries: [...dropbox.keys()].filter((p) => path.posix.dirname(p).toLowerCase() === dir).map(entry) });
   });
 
@@ -190,7 +196,119 @@ describe('storage helpers', () => {
   });
 });
 
+describe('media trash', () => {
+  it('hides managed files while trashed and restores the same bytes through the central trash', async () => {
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const bytes = Buffer.from('recoverable local clip');
+    const uploadId = await uploadToLibrary(editor, 'لقطة مستعادة.mp4', bytes);
+    const id = `med-${uploadId}`;
+    const entry = server.db.getRow('media', id)!;
+    const file = `/api/v1/media/files/${uploadId}`;
+    const locations = `/api/v1/storage/locations/${uploadId}`;
+    const trashed = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', baseV: entry.v, d: { ...entry.d, deletedAt: '2000-01-01T00:00:00.000Z' } }] });
+    expect(trashed.body.results[0].ok).toBe(true);
+    const deleted = server.db.getRow('media', id)!;
+    expect(Date.parse(deleted.d.deletedAt)).toBeGreaterThan(Date.now() - 5000);
+    expect((await editor.get(file)).status).toBe(404);
+    expect((await editor.get(locations)).status).toBe(404);
+    expect((await editor.get(`/api/v1/chat/files/${uploadId}`)).status).toBe(404);
+    expect(server.db.getUpload(uploadId)).not.toBeNull();
+    expect(server.db.findOrphanUploads(0).map(row => row.id)).not.toContain(uploadId);
+
+    const list = await admin.get('/api/v1/trash').query({ collection: 'media' });
+    expect(list.body.data.items).toContainEqual(expect.objectContaining({ id, title: 'لقطة مستعادة.mp4' }));
+    const bypass = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', baseV: deleted.v, d: { ...deleted.d, deletedAt: null } }] });
+    expect(bypass.body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    const alias = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id: `${id}-alias`, op: 'upsert', d: entry.d }] });
+    expect(alias.body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+
+    const restored = await editor.post(`/api/v1/trash/media/${id}/restore`).set(H).send({ baseV: deleted.v });
+    expect(restored.status).toBe(200);
+    expect(server.db.getRow('media', id)?.d).toMatchObject({ ...entry.d, deletedAt: null });
+    const result = await editor.get(file).set('Range', 'bytes=0-10');
+    expect(result.status).toBe(206);
+    expect(result.headers['content-range']).toBe(`bytes 0-10/${bytes.length}`);
+    expect((await editor.get(locations)).body.data.local).toBe(true);
+
+    const active = server.db.getRow('media', id)!;
+    const deletedAgain = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', baseV: active.v, d: { ...active.d, deletedAt: new Date().toISOString() } }] });
+    expect(deletedAgain.body.results[0].ok).toBe(true);
+    const localFile = path.join(uploadsDir(server.config.dataDir), server.db.getUpload(uploadId)!.storedName);
+    expect(fs.existsSync(localFile)).toBe(true);
+    runRetention(server.db, server.config.dataDir, { trashDays: 1, notificationDays: 0, logDays: 0, auditLogDays: 0 }, Date.now() + 2 * 86_400_000);
+    expect(server.db.getUpload(uploadId)).toBeNull();
+    await expect.poll(() => fs.existsSync(localFile)).toBe(false);
+  });
+
+  it('keeps a retained media alias readable when a different row for its upload is permanently deleted', async () => {
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const uploadId = await uploadToLibrary(editor, 'لقطة مشتركة.mp4', Buffer.from('shared file'));
+    const id = `med-${uploadId}`;
+    const row = server.db.getRow('media', id)!;
+    const alias = { ...row.d, id: `${id}-alias`, url: `${row.d.url}?v=1` };
+    const saved = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id: alias.id, op: 'upsert', d: alias }] });
+    expect(saved.body.results[0].ok).toBe(true);
+
+    const purged = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'delete', baseV: row.v }] });
+    expect(purged.body.results[0].ok).toBe(true);
+    expect(server.db.getRow('media', id)).toBeNull();
+    expect((await editor.get(`/api/v1/media/files/${uploadId}`)).status).toBe(200);
+  });
+});
+
 describe('Dropbox', () => {
+  it('verifies saved credentials, root and grants without changing Dropbox files', async () => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const check = (agent: typeof admin, check: 'connection' | 'permissions') => agent.post('/api/v1/storage/dropbox/verify').set(H).send({ check });
+    expect((await check(editor, 'connection')).status).toBe(403);
+    expect((await check(admin, 'connection')).body.data).toMatchObject({ credentials: 'not_configured' });
+
+    const creds = (appKey: string, refreshToken = 'rt') => server.db.setMeta('storage.dropbox.credentials', JSON.stringify({ creds: { appKey, appSecret: 'private-app-secret', refreshToken } }));
+    const original = [...cloud.dropbox.entries()];
+    try {
+      // Both checks work before mirroring is enabled.
+      creds('full-access');
+      const connection = await check(admin, 'connection');
+      expect(connection.status).toBe(200);
+      expect(connection.body.data).toMatchObject({ root: '/مدار', credentials: 'verified', folder: 'verified' });
+      expect((await check(admin, 'permissions')).body.data).toMatchObject({ credentials: 'verified', read: 'verified', write: 'verified' });
+
+      creds('read-only');
+      const permissions = await check(admin, 'permissions');
+      expect(permissions.body.data).toMatchObject({ credentials: 'verified', read: 'verified', write: 'missing_scope' });
+      expect(permissions.text).not.toContain('private provider detail');
+      expect(permissions.text).not.toContain('private-app-secret');
+
+      await saveSettings(admin, (s) => ({ ...s, storage: { dropbox: { enabled: false, rootPath: '/missing' } } }));
+      expect((await check(admin, 'connection')).body.data).toMatchObject({ root: '/missing', credentials: 'verified', folder: 'folder_missing' });
+
+      creds('full-access', 'expired');
+      expect((await check(admin, 'connection')).body.data).toMatchObject({ credentials: 'invalid_credentials' });
+      expect([...cloud.dropbox.entries()]).toEqual(original);
+    } finally {
+      server.db.setMeta('storage.dropbox.credentials', '');
+      await saveSettings(admin, (s) => ({ ...s, storage: undefined }));
+    }
+  });
+
+  it('reports local and remote locations only for accessible library files', async () => {
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const id = await uploadToLibrary(editor, 'نسخة الخادم.mp4', Buffer.from('server copy'));
+    const location = (id: string) => `/api/v1/storage/locations/${id}`;
+    const result = await editor.get(location(id));
+    expect(result.status).toBe(200);
+    expect(result.body.data).toEqual({ local: true, copies: [] });
+    expect((await editor.get(location('does-not-exist'))).status).toBe(404);
+
+    const record = server.db.getUpload(id)!;
+    server.db.insertUpload({ ...record, id: 'location-chat-only', scope: 'chat' });
+    server.db.insertUpload({ ...record, id: 'location-unowned-legacy', scope: 'legacy', uploadedBy: 'other-user' });
+    expect((await editor.get(location('location-chat-only'))).status).toBe(404);
+    expect((await editor.get(location('location-unowned-legacy'))).status).toBe(404);
+  });
+
   it('connects with a code, copies attached uploads, frees the server copy and still serves the file', async () => {
     const admin = await loginAgent(server.app, 'admin@akhbar.tv');
     const bad = await admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'abcde12345', appSecret: 's', code: 'wrong' });
@@ -221,6 +339,7 @@ describe('Dropbox', () => {
     // keepLocalCopy is off: the server's copy is gone, yet the file still opens (and seeks).
     await new Promise((r) => setTimeout(r, 50));
     expect(server.db.getUpload(smallId)!.localEvicted).toBe(true);
+    expect((await editor.get(`/api/v1/storage/locations/${smallId}`)).body.data).toMatchObject({ local: false, copies: [{ target: 'dropbox', state: 'DONE' }] });
     const file = await editor.get(`/api/v1/media/files/${smallId}`).buffer(true).parse((res, cb) => { const parts: Buffer[] = []; res.on('data', (c: Buffer) => parts.push(c)); res.on('end', () => cb(null, Buffer.concat(parts))); });
     expect(file.status).toBe(200);
     expect(Buffer.from(file.body).toString()).toBe('small clip');
@@ -238,10 +357,24 @@ describe('Dropbox', () => {
     expect(outside.status).toBe(403);
     const imported = await editor.post('/api/v1/storage/dropbox/import').set(H).send({ ref: found.body.data[0].ref });
     expect(imported.status).toBe(201);
+    expect((await editor.get(`/api/v1/storage/locations/${imported.body.data.id}`)).body.data).toMatchObject({ local: false, copies: [{ target: 'dropbox', state: 'DONE' }] });
     const file = await editor.get(imported.body.data.url);
     expect(file.status).toBe(200);
     const viewer = await loginAgent(server.app, 'trainee@akhbar.tv');
     expect((await viewer.post('/api/v1/storage/dropbox/import').set(H).send({ ref: found.body.data[0].ref })).status).toBe(403);
+
+    const { id: uploadId, url } = imported.body.data;
+    const id = `med-${uploadId}`;
+    const added = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', d: { url, fileName: 'ملف خارجي.mp4', mediaType: 'VIDEO', tags: [] } }] });
+    expect(added.body.results[0].ok).toBe(true);
+    const record = server.db.getRow('media', id)!;
+    const moved = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', baseV: record.v, d: { ...record.d, deletedAt: new Date().toISOString() } }] });
+    expect(moved.body.results[0].ok).toBe(true);
+    expect((await editor.get(url)).status).toBe(404);
+    runRetention(server.db, server.config.dataDir, { trashDays: 1, notificationDays: 0, logDays: 0, auditLogDays: 0 }, Date.now() + 2 * 86_400_000);
+    expect(server.db.getUpload(uploadId)).toBeNull();
+    expect(server.db.copiesOf(uploadId)).toHaveLength(0);
+    expect(cloud.dropbox.get(found.body.data[0].ref)?.toString()).toBe('small clip');
   });
 });
 
@@ -313,6 +446,8 @@ describe('shared folder', () => {
       const found = await editor.get('/api/v1/storage/share/search').query({ q: 'مؤتمر' });
       expect(found.body.data).toHaveLength(1);
       const imported = await editor.post('/api/v1/storage/share/import').set(H).send({ ref: found.body.data[0].ref });
+      const location = `/api/v1/storage/locations/${imported.body.data.id}`;
+      expect((await editor.get(location)).body.data).toMatchObject({ local: false, copies: [{ target: 'share', state: 'DONE' }] });
       expect(imported.status).toBe(201);
       // Not on the server yet: the bridge is asked for it and the browser told to retry.
       const first = await editor.get(imported.body.data.url);
@@ -321,6 +456,7 @@ describe('shared folder', () => {
       await run(process.execPath, [bridge, '--once', '--index-minutes=0'], { env });
       const second = await editor.get(imported.body.data.url);
       expect(second.status).toBe(200);
+      expect((await editor.get(location)).body.data).toMatchObject({ local: true, copies: [{ target: 'share', state: 'DONE' }] });
       expect(Buffer.from(second.body).toString()).toBe('archive clip');
     } finally {
       await live.close();

@@ -9,8 +9,14 @@ import { taskWorkflowError } from './taskWorkflow';
 import { editorialPublishingError } from './editorialStylebook';
 import { moduleAccessError } from './moduleAccess';
 import { isColorPalette } from './appearancePalette';
+import { trashRetentionError } from './trash';
+import { contributorDropLinkSettingsError } from './contributorDropLinkSettings';
 
 export function settingsError(settings: Partial<SystemSettings>, previous?: Partial<SystemSettings>): string | null {
+  const retentionError = trashRetentionError(settings.trashRetentionDays);
+  if (retentionError) return retentionError;
+  const linkError = contributorDropLinkSettingsError(settings);
+  if (linkError) return linkError;
   if (settings.colorPalette !== undefined && !isColorPalette(settings.colorPalette)) return 'لوحة الألوان غير معروفة';
   const modulesError = moduleAccessError(settings.moduleAccess);
   if (modulesError) return modulesError;

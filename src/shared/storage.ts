@@ -115,6 +115,23 @@ export interface StorageCopy {
   error?: string;
 }
 
+export interface StorageLocations {
+  local: boolean;
+  copies: StorageCopy[];
+}
+
+export type DropboxCheck = 'connection' | 'permissions';
+
+export type DropboxCheckStatus = 'verified' | 'not_configured' | 'invalid_credentials' | 'missing_scope' | 'folder_missing' | 'folder_denied' | 'unavailable' | 'failed';
+
+export interface DropboxVerification {
+  credentials: DropboxCheckStatus;
+  root?: string;
+  folder?: DropboxCheckStatus;
+  read?: DropboxCheckStatus;
+  write?: DropboxCheckStatus;
+}
+
 export function validateStorage(value: unknown): string | null {
   if (value === undefined) return null;
   if (!value || typeof value !== 'object') return 'إعدادات التخزين غير صالحة';

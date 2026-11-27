@@ -21,7 +21,7 @@ export const NAV_SECTIONS: Record<NavSectionId, NavSection> = {
   programs: { id: 'programs', label: 'البرامج', items: ['episodes', 'programs', 'calendar', 'guests'] },
   air: { id: 'air', label: 'الهواء والاستديو', items: ['on-air', 'studio-screen', 'wallboard'] },
   resources: { id: 'resources', label: 'الوسائط والموارد', items: ['media', 'bookings', 'roster'] },
-  admin: { id: 'admin', label: 'المتابعة والإدارة', items: ['workload', 'reports', 'audit', 'users', 'settings'] },
+  admin: { id: 'admin', label: 'المتابعة والإدارة', items: ['workload', 'reports', 'audit', 'trash', 'users', 'settings'] },
   help: { id: 'help', label: 'المساعدة', items: ['help', 'guide', 'whats-new'] },
 };
 

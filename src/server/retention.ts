@@ -1,8 +1,9 @@
 import type { NewsroomDatabase } from './db';
-import type { CollectionName } from '../shared/collections';
+import { SINGLETON_ID, type CollectionName } from '../shared/collections';
+import { TRASH_COLLECTIONS, trashRetentionError, type TrashCollection } from '../shared/trash';
 import { logger } from './logger';
 import { changeBus } from './sync';
-import { removeUpload, uploadIdFromMedia } from './uploads';
+import { removeUnreferencedMediaUpload, uploadIdFromMedia } from './uploads';
 
 export interface RetentionConfig {
   trashDays: number;
@@ -14,9 +15,30 @@ export interface RetentionConfig {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TRASH_RETENTION_START = 'trash_retention_started_at';
+const previouslyTimed: readonly TrashCollection[] = ['news', 'stories', 'programs', 'episodes', 'guests', 'media', 'diary', 'resources', 'bookings'];
 
-/** Collections whose soft-deleted rows sit in a trash that users can restore from. */
-const TRASH_COLLECTIONS: CollectionName[] = ['news', 'stories', 'programs', 'episodes', 'guests', 'media', 'diary', 'resources', 'bookings'];
+export interface TrashRetentionPolicy {
+  defaultDays: number;
+  byCollection: Record<TrashCollection, { days: number; activeSince?: string }>;
+}
+
+/** Keep deletions made before this feature recoverable when no policy previously applied. */
+export function initializeTrashRetention(db: NewsroomDatabase): void {
+  if (!db.getMeta(TRASH_RETENTION_START)) db.setMeta(TRASH_RETENTION_START, new Date().toISOString());
+}
+
+export function readTrashRetention(db: NewsroomDatabase, defaultDays: number): TrashRetentionPolicy {
+  const overrides = db.getRow('settings', SINGLETON_ID)?.d?.trashRetentionDays;
+  const startedAt = db.getMeta(TRASH_RETENTION_START) || new Date().toISOString();
+  const byCollection = Object.fromEntries(TRASH_COLLECTIONS.map(collection => {
+    const override: unknown = overrides?.[collection];
+    if (typeof override === 'number' && !trashRetentionError({ [collection]: override })) return [collection, { days: override }];
+    if (previouslyTimed.includes(collection)) return [collection, { days: defaultDays }];
+    return [collection, { days: defaultDays, activeSince: startedAt }];
+  })) as TrashRetentionPolicy['byCollection'];
+  return { defaultDays, byCollection };
+}
 
 /**
  * Keeps the synced collections from growing without bound (every browser downloads them):
@@ -28,16 +50,18 @@ export function runRetention(db: NewsroomDatabase, dataDir: string, cfg: Retenti
   const removed: Record<string, number> = {};
   const purge = (collection: CollectionName, ids: string[]) => {
     for (const id of ids) {
-      if (collection === 'media') {
-        const uploadId = uploadIdFromMedia(db.getRow('media', id)?.d);
-        if (uploadId) removeUpload(db, dataDir, uploadId);
-      }
-      if (db.deleteRow(collection, id, null)) removed[collection] = (removed[collection] || 0) + 1;
+      const uploadId = collection === 'media' ? uploadIdFromMedia(db.getRow('media', id)?.d) : null;
+      if (!db.deleteRow(collection, id, null)) continue;
+      removed[collection] = (removed[collection] || 0) + 1;
+      if (uploadId) removeUnreferencedMediaUpload(db, dataDir, uploadId);
     }
   };
 
-  if (cfg.trashDays > 0) {
-    for (const c of TRASH_COLLECTIONS) purge(c, db.retentionCandidates(c, 'trashed', cutoff(cfg.trashDays)));
+  initializeTrashRetention(db);
+  const trash = readTrashRetention(db, cfg.trashDays);
+  for (const collection of TRASH_COLLECTIONS) {
+    const { days, activeSince } = trash.byCollection[collection];
+    if (days > 0) purge(collection, db.retentionCandidates(collection, 'trashed', cutoff(days), 1000, activeSince));
   }
   if (cfg.notificationDays > 0) {
     // Read notifications go after a month (or sooner if the window is shorter); unread ones after the full window.

@@ -154,6 +154,20 @@ export function removeUpload(db: NewsroomDatabase, dataDir: string, uploadId: st
   db.deleteUpload(uploadId);
 }
 
+/** Remove only Madar's own upload and records once library and message references are gone. */
+export function removeUnreferencedMediaUpload(db: NewsroomDatabase, dataDir: string, uploadId: string) {
+  const upload = db.getUpload(uploadId);
+  if (!upload || upload.scope === 'chat' || db.messagesWithUpload(uploadId).length) return;
+  if (db.mediaUploadReferences(`${MEDIA_FILE_URL_PREFIX}${uploadId}`).some(ref => !ref.deleted)) return;
+  removeUpload(db, dataDir, uploadId);
+}
+
+/** A new upload can be previewed before attachment. A removed library upload cannot. */
+export function mediaUploadIsTrashed(db: NewsroomDatabase, uploadId: string): boolean {
+  const references = db.mediaUploadReferences(`${MEDIA_FILE_URL_PREFIX}${uploadId}`);
+  return references.length > 0 && references.every(ref => ref.deleted || ref.trashed);
+}
+
 /** Extracts the upload id referenced by a media record, if it points to an uploaded file. */
 export function uploadIdFromMedia(media: any): string | null {
   for (const candidate of [media?.url, media?.fileUrl]) {
