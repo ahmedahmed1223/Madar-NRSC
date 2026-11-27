@@ -31,7 +31,7 @@ export function PinnedNotesDock() {
   };
 
   return (
-    <aside aria-label="ملصقاتي" className="fixed bottom-16 end-3 z-20 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col items-end gap-2 lg:bottom-4 lg:end-4">
+    <aside aria-label="ملصقاتي" className="pinned-notes-dock fixed bottom-16 end-3 z-20 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col items-end gap-2 lg:bottom-4 lg:end-4">
       {expanded && <section id={panelId} aria-label="الملاحظات المثبتة" className="w-full overflow-hidden rounded-xl border border-amber-300 bg-white text-slate-900 shadow-lg">
         <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3">
           <h2 className="text-sm font-bold">ملصقاتي</h2>

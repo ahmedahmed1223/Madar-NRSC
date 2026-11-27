@@ -181,6 +181,8 @@ for (const scenario of [
   try {
     await sync(page, [{ c: 'settings', op: 'upsert', id: settings.id, baseV: settings.v,
       d: { ...settings.d, defaultTimezone: scenario.zone, dateTime: { ...settings.d.dateTime, timeBasis: scenario.basis } } }]);
+    await sync(page, [{ c: 'personalNotes', op: 'upsert', id: `form-dock-${test.info().project.name}-${scenario.basis}-${scenario.zone.replaceAll('/', '-')}`,
+      d: { title: 'ملاحظة مثبتة أثناء التحرير', body: 'متابعة المهام', pinned: true } }]);
     await page.clock.setFixedTime(new Date(scenario.now));
     await page.goto('/personal-tasks');
     await page.getByRole('button', { name: 'مهمة شخصية جديدة', exact: true }).click();

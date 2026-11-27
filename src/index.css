@@ -355,7 +355,8 @@
 :is(.rich-editor, .rich-content) figcaption { font-size: 0.75rem; color: var(--color-slate-500); text-align: center; margin-top: 0.4em; }
 
 /* While a create/edit page is open it replaces the current screen. */
-body.form-page-open #app-main { display: none; }
+body.form-page-open #app-main,
+body.form-page-open .pinned-notes-dock { display: none; }
 
 /* Drag to arrange */
 body.dnd-dragging,
