@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { DEPARTMENTS, allDepartments, departmentIdOf, departmentName, departmentOptionLabel, departmentsAtStation, departmentsLedBy } from '../../shared/departments';
 import { assignedWorkOnly } from '../../shared/assignedWork';
+import { ownStationChangeError } from '../../shared/ownStationChange';
 import { allowsModule, moduleForScreen } from '../../shared/moduleAccess';
 import { temporaryPassword, validatePasswordStrength, webRandom } from '../../shared/passwords';
 import { stationGroupsOf } from '../../shared/stations';
@@ -30,6 +31,8 @@ interface UserFormModalProps {
   canManageOverrides?: boolean;
   canSetPassword?: boolean;
   canReadModulePolicy?: boolean;
+  isOwnAccount?: boolean;
+  canEditStation?: boolean;
 }
 
 
@@ -44,6 +47,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   canManageOverrides = false,
   canSetPassword = false,
   canReadModulePolicy = false,
+  isOwnAccount = false,
+  canEditStation = true,
 }) => {
   const [fullName, setFullName] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
@@ -57,8 +62,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [departmentId, setDepartmentId] = useState<string>('newsroom');
   const [stationId, setStationId] = useState('');
   const staff = apiService.getUsers();
-  const stations = stationsOf(apiService.getSettings());
-  const stationGroups = stationGroupsOf(apiService.getSettings());
+  const settings = apiService.getSettings();
+  const stations = stationsOf(settings);
+  const stationGroups = stationGroupsOf(settings);
+  const canEditMembership = !isOwnAccount && (!userToEdit || canManageOverrides);
   /** The role a record holds: its custom role, else its system role (also a legacy custom code written into `role`). */
   const roleIdOf = (u?: Pick<User, 'role' | 'customRoleId'> | null) =>
     (u?.customRoleId && roles.find((r) => r.id === u.customRoleId)?.id) || roles.find((r) => r.roleCode === (u?.role || 'JOURNALIST'))?.id || roles[0]?.id || '';
@@ -130,11 +137,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
   function changeStation(nextStation: string) {
     setStationId(nextStation);
-    if (!departmentsAtStation(nextStation).some(d => d.id === departmentId)) setDepartmentId('');
+    if (canEditMembership && !departmentsAtStation(nextStation).some(d => d.id === departmentId)) setDepartmentId('');
+    setErrors(current => ({ ...current, stationId: '' }));
   }
   const previewPermission = (code: string) => evaluatePermission({ role, customRoleId, isActive, customPermissions, departmentId }, code, roles, allDepartments());
   const leadsTeam = userToEdit && departmentsLedBy(userToEdit.id, allDepartments()).length > 0 && !assignedWorkOnly(previewPermission);
-  const modulePolicy = apiService.getSettings().moduleAccess;
+  const modulePolicy = settings.moduleAccess;
   function previewScreen(nav: string) {
     const module = moduleForScreen(nav);
     if (module && canReadModulePolicy && !allowsModule(modulePolicy, module, userToEdit?.id || '', selectedRole?.id)) return false;
@@ -154,7 +162,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
     }
     if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
-    if (!departmentOptions.some(d => d.id === departmentId)) newErrors.departmentId = 'اختر قسماً متاحاً في المحطة المحددة';
+    if (canEditMembership && !departmentOptions.some(d => d.id === departmentId)) newErrors.departmentId = 'اختر قسماً متاحاً في المحطة المحددة';
+    if (isOwnAccount && canEditStation && userToEdit && stationId !== (userToEdit.stationId || '')) {
+      const denied = ownStationChangeError(userToEdit, stationId || undefined, settings, selectedRole?.id, previewPermission);
+      if (denied) newErrors.stationId = denied;
+      else if (userToEdit.departmentId && !departmentOptions.some(d => d.id === userToEdit.departmentId)) {
+        newErrors.stationId = 'قسمك الحالي خارج هذه المحطة. اطلب من مسؤول مخوّل نقل الحساب والقسم معاً.';
+      }
+    }
     if (!userToEdit || initialPassword) {
       const weak = validatePasswordStrength(initialPassword);
       if (weak) newErrors.initialPassword = `كلمة المرور: ${weak}`;
@@ -177,16 +192,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       fullNameEn: fullNameEn.trim(),
       email: email.trim().toLowerCase(),
       phone: phone.trim(),
-      role,
-      customRoleId,
       jobTitle: jobTitle.trim(),
-      departmentId,
-      department: departmentName(departmentId),
-      stationId: stationId || undefined,
+      ...(canEditMembership ? { role, customRoleId, departmentId, department: departmentName(departmentId) } : {}),
+      ...(canEditStation ? { stationId: stationId || undefined } : {}),
       staffId: staffId.trim(),
       bio: bio.trim(),
       avatarUrl,
-      isActive,
+      ...(!isOwnAccount ? { isActive } : {}),
       ...(overridesChanged ? { customPermissions } : {}),
       // A general manager's stations and groups are privileged: only sent by someone allowed to change them.
       ...(canManageOverrides && (isGeneralManager || userToEdit?.managedStationIds?.length || userToEdit?.managedGroupIds?.length)
@@ -357,6 +369,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <Shield className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-field-7"
                 value={roleId}
+                disabled={!canEditMembership}
                 onChange={(e) => setRoleId(e.target.value)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-bold text-slate-800"
               >
@@ -399,6 +412,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <Building className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-field-9"
                 value={departmentId}
+                disabled={!canEditMembership}
                 onChange={(e) => setDepartmentId(e.target.value)}
                 aria-invalid={!!errors.departmentId && !departmentId}
                 aria-describedby={errors.departmentId && !departmentId ? 'user-department-error' : undefined}
@@ -423,6 +437,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <MapPin className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
               <select id="user-form-modal-station"
                 value={stationId}
+                disabled={saving || !canEditStation}
+                aria-invalid={!!errors.stationId}
+                aria-describedby="user-form-station-hint"
                 onChange={(e) => changeStation(e.target.value)}
                 className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
               >
@@ -435,7 +452,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 ))}
               </select>
             </div>
-            <p className="text-2xs text-slate-500 mt-1">تُنسب إليها أعماله في التكليفات. تُدار المحطات من الإعدادات.</p>
+            <p id="user-form-station-hint" role={errors.stationId ? 'alert' : undefined} className={`text-2xs mt-1 ${errors.stationId ? 'font-semibold text-rose-700' : 'text-slate-600'}`}>
+              {errors.stationId || (!canEditStation ? 'يغيّر تعيين المحطة مسؤول مخوّل.' : isOwnAccount ? 'يمكنك اختيار محطة ضمن نطاق صلاحياتك الحالي.' : 'تُنسب إليها أعمال الحساب في التكليفات.')}
+            </p>
           </div>
         </div>
 
@@ -547,6 +566,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             <input
               type="checkbox"
               checked={isActive}
+              disabled={isOwnAccount}
               onChange={(e) => setIsActive(e.target.checked)}
               className="w-4 h-4 rounded text-emerald-700 focus:ring-emerald-500 border-slate-300"
             />
