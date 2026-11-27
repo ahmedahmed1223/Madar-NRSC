@@ -36,7 +36,7 @@ test('tablet navigation opens on demand and closes with Escape', async ({ browse
     const { page } = user;
     const opener = page.getByRole('button', { name: 'فتح القائمة الرئيسية' });
     await expect(opener).toBeVisible();
-    await expect(page.locator('aside')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#workspace-navigation')).toHaveAttribute('aria-hidden', 'true');
     await opener.click();
     await expect(page.getByRole('dialog', { name: 'القائمة الرئيسية' })).toBeVisible();
     await page.keyboard.press('Escape');
