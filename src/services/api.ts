@@ -171,6 +171,10 @@ function getStored<T>(key: string, defaultVal: T): T {
   return dataStore.get<T>(key, defaultVal);
 }
 
+function getSnapshot<T>(key: string, defaultVal: T): T {
+  return dataStore.getSnapshot<T>(key, defaultVal);
+}
+
 function setStored<T>(key: string, val: T): void {
   dataStore.set(key, val);
 }
@@ -335,7 +339,7 @@ export class ApiService {
   }
 
   static getUsers(): User[] {
-    return getStored<User[]>(STORAGE_KEYS.USERS, []);
+    return getSnapshot<User[]>(STORAGE_KEYS.USERS, []);
   }
 
   static getUserById(id: string): User | undefined {
@@ -351,7 +355,7 @@ export class ApiService {
   }
 
   static saveUser(user: Partial<User> & { id?: string }): User {
-    const users = this.getUsers();
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, []);
     if (user.id) {
       const idx = users.findIndex((u) => u.id === user.id);
       if (idx !== -1) {
@@ -403,7 +407,7 @@ export class ApiService {
   }
 
   static toggleUserStatus(id: string): User | null {
-    const users = this.getUsers();
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, []);
     const current = this.getCurrentUser();
     if (current.id === id) {
       throw new Error('لا يمكن تجميد حسابك النشط');
@@ -418,7 +422,7 @@ export class ApiService {
 
   // --- NEWS CRUD & WORKFLOW ---
   static getNews(): NewsItem[] {
-    const items = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
+    const items = getSnapshot<NewsItem[]>(STORAGE_KEYS.NEWS, []);
     return items.filter((n) => !n.deletedAt);
   }
 
@@ -662,10 +666,10 @@ export class ApiService {
 
   // --- PROGRAMS & EPISODES ---
   static getPrograms(): Program[] {
-    const items = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
+    const items = getSnapshot<Program[]>(STORAGE_KEYS.PROGRAMS, []);
     // Episode counts are derived from the episodes themselves (never a stale stored counter).
     const counts = new Map<string, number>();
-    getStored<Episode[]>(STORAGE_KEYS.EPISODES, []).forEach((e) => {
+    getSnapshot<Episode[]>(STORAGE_KEYS.EPISODES, []).forEach((e) => {
       if (!e.deletedAt) counts.set(e.programId, (counts.get(e.programId) || 0) + 1);
     });
     return items.filter((p) => !p.deletedAt).map((p) => ({ ...p, episodesCount: counts.get(p.id) || 0 }));
@@ -732,9 +736,9 @@ export class ApiService {
   }
 
   static getEpisodes(): Episode[] {
-    const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
+    const items = getSnapshot<Episode[]>(STORAGE_KEYS.EPISODES, []);
     // Episodes of a deleted program disappear with it (calendar, lists, search).
-    const deletedPrograms = new Set(getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => p.deletedAt).map((p) => p.id));
+    const deletedPrograms = new Set(getSnapshot<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => p.deletedAt).map((p) => p.id));
     return items.filter((e) => !e.deletedAt && !deletedPrograms.has(e.programId));
   }
 
@@ -907,7 +911,7 @@ export class ApiService {
 
   // --- GUESTS ---
   static getGuests(): Guest[] {
-    const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
+    const items = getSnapshot<Guest[]>(STORAGE_KEYS.GUESTS, []);
     // Appearances are derived from the episodes each guest is linked to (newest first).
     const history = new Map<string, NonNullable<Guest['appearanceHistory']>>();
     this.getEpisodes().forEach((e) =>
@@ -1024,11 +1028,11 @@ export class ApiService {
 
   // --- TASKS ---
   static getTasks(): EditorialTask[] {
-    return getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
+    return getSnapshot<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
   }
 
   static saveTask(task: Partial<EditorialTask>, user?: User): EditorialTask {
-    const all = this.getTasks();
+    const all = getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
     const currentUser = user || this.getCurrentUser();
     const existingTask = task.id ? all.find((t) => t.id === task.id) : undefined;
     const existingAssignee = taskAssigneeId(existingTask);
@@ -1115,7 +1119,7 @@ export class ApiService {
 
   // --- MEDIA ---
   static getMedia(): MediaFile[] {
-    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []).filter(asset => !asset.deletedAt);
+    return getSnapshot<MediaFile[]>(STORAGE_KEYS.MEDIA, []).filter(asset => !asset.deletedAt);
   }
 
   static getMediaAssets(): MediaFile[] {
@@ -1345,11 +1349,11 @@ export class ApiService {
   // --- REQUESTS BETWEEN DEPARTMENTS ---
   // --- BULLETINS ---
   static getBulletins(): Bulletin[] {
-    return getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).filter((b) => !b.deletedAt);
+    return getSnapshot<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).filter((b) => !b.deletedAt);
   }
 
   static getBulletinStories(bulletinId?: string): BulletinStory[] {
-    return getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, [])
+    return getSnapshot<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, [])
       .filter((s) => !s.deletedAt && (!bulletinId || s.bulletinId === bulletinId))
       .sort(byRank);
   }
@@ -1523,7 +1527,7 @@ export class ApiService {
   }
 
   static getRequests(): DeptRequest[] {
-    return getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).filter((r) => !r.deletedAt);
+    return getSnapshot<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).filter((r) => !r.deletedAt);
   }
 
   static createRequest(data: Pick<DeptRequest, 'type' | 'title'> & Partial<DeptRequest>): DeptRequest {
@@ -1592,7 +1596,7 @@ export class ApiService {
 
   // --- PRODUCTION CARDS ---
   static getCards(): ProductionCard[] {
-    return getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
+    return getSnapshot<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
   }
 
   static getCard(id: string): ProductionCard | undefined {
@@ -1722,12 +1726,12 @@ export class ApiService {
 
   // --- TAXONOMY & CONFIG ---
   static getCategories(): Category[] {
-    return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
+    return getSnapshot<Category[]>(STORAGE_KEYS.CATEGORIES, []);
   }
 
   // --- STORIES ---
   static getStories(): Story[] {
-    return getStored<Story[]>(STORAGE_KEYS.STORIES, []).filter((s) => !s.deletedAt);
+    return getSnapshot<Story[]>(STORAGE_KEYS.STORIES, []).filter((s) => !s.deletedAt);
   }
 
   static getStory(id: string): Story | undefined {
@@ -1777,7 +1781,7 @@ export class ApiService {
   }
 
   static saveCategory(cat: Partial<Category>): Category {
-    const all = this.getCategories();
+    const all = getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
     const existing = cat.id ? all.find((c) => c.id === cat.id) : undefined;
     // A partial update (e.g. only orderIndex) keeps the stored colour.
     const colorVal = cat.colorCode || cat.color || existing?.colorCode || existing?.color || '#2563eb';
@@ -1842,7 +1846,7 @@ export class ApiService {
   }
 
   static getSources(): NewsSource[] {
-    return getStored<NewsSource[]>(STORAGE_KEYS.SOURCES, []);
+    return getSnapshot<NewsSource[]>(STORAGE_KEYS.SOURCES, []);
   }
 
   static getNewsSources(): NewsSource[] {
@@ -1904,7 +1908,7 @@ export class ApiService {
   }
 
   static saveSource(src: Partial<NewsSource>): NewsSource {
-    const all = this.getSources();
+    const all = getStored<NewsSource[]>(STORAGE_KEYS.SOURCES, []);
     if (src.id) {
       const idx = all.findIndex((s) => s.id === src.id);
       if (idx !== -1) {
@@ -2011,7 +2015,7 @@ export class ApiService {
 
   // --- AGENCY WIRES ---
   static getWires(): WireItem[] {
-    return getStored<WireItem[]>(COLLECTIONS.wires.storageKey, []);
+    return getSnapshot<WireItem[]>(COLLECTIONS.wires.storageKey, []);
   }
 
   static async getWireStatus(): Promise<WireStatusInfo> {
@@ -2185,7 +2189,7 @@ export class ApiService {
   }
 
   static getProgramTypes(): ProgramType[] {
-    return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
+    return getSnapshot<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
   }
 
   /** Adds or renames a program type. Programs pick up a new name from the server (see server sync). */
@@ -2193,7 +2197,7 @@ export class ApiService {
     const nameAr = (data.nameAr ?? '').trim();
     if (!nameAr) throw new Error('اسم نوع البرنامج مطلوب');
     if (nameAr.length > 80) throw new Error('اسم نوع البرنامج حتى 80 حرفاً');
-    const all = this.getProgramTypes();
+    const all = getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
     const key = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
     if (all.some((t) => t.id !== data.id && key(t.nameAr || t.name || '') === key(nameAr))) throw new Error('يوجد نوع برنامج بالاسم نفسه');
     const idx = data.id ? all.findIndex((t) => t.id === data.id) : -1;
@@ -2206,7 +2210,7 @@ export class ApiService {
 
   /** Programs (not deleted) still classified under a program type. */
   static countProgramsOfType(id: string): number {
-    return getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => !p.deletedAt && p.typeId === id).length;
+    return getSnapshot<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => !p.deletedAt && p.typeId === id).length;
   }
 
   static deleteProgramType(id: string): void {
@@ -2220,7 +2224,7 @@ export class ApiService {
 
   // --- SETTINGS ---
   static getSettings(): SystemSettings {
-    const settings = getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const settings = getSnapshot<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     // Department names, station groups and removed stations' names follow the shared settings everywhere.
     applyDepartmentSettings(settings);
     rememberStationSettings(settings);
@@ -2332,7 +2336,7 @@ export class ApiService {
 
   // --- SHARED BROADCAST STATE ---
   static getBroadcastState(): BroadcastState {
-    return getStored<BroadcastState>(COLLECTIONS.broadcastState.storageKey, { liveLock: false });
+    return getSnapshot<BroadcastState>(COLLECTIONS.broadcastState.storageKey, { liveLock: false });
   }
 
   /** On-air lock shared by all workstations; the server blocks deleting programs/episodes while set. */
@@ -2352,7 +2356,7 @@ export class ApiService {
   // --- INTERNAL CHAT ---
   /** Messages oldest-first (the server stores newest first). */
   static getMessages(): (ChatMessage & { isUrgent?: boolean })[] {
-    return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
+    return [...getSnapshot<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
   static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): string {
@@ -2515,7 +2519,7 @@ export class ApiService {
   }
 
   static getAuditLogs(): AuditLog[] {
-    return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
+    return getSnapshot<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
   }
 
   // Audit entries are written by the server alone (see src/server/sync.ts and the auditLogs policy).
