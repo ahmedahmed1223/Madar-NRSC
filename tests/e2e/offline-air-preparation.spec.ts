@@ -24,7 +24,8 @@ test('prepares through UI and cancels logout before purging local work', async (
     await preparation.getByLabel('كلمة فتح النسخة', { exact: true }).fill('device-secret');
     await preparation.getByRole('checkbox').check();
     await preparation.getByRole('button', { name: 'تجهيز النسخة', exact: true }).click();
-    await expect(preparation.getByRole('status')).toContainText('تحقق حفظ النسخة');
+    // During the final render, progress and confirmation can both be announced.
+    await expect(preparation.getByRole('status').filter({ hasText: 'تحقق حفظ النسخة' })).toBeVisible();
     await expect(copySummary).toContainText('تطابق آخر بيانات متزامنة');
     const saved = (await (await page.request.get('/api/v1/data')).json()).collections.bulletinStories.find((row: any) => row.id === `${id}-story`);
     const updated = await page.request.post('/api/v1/data/sync', { headers: { 'X-NRCS-Client': 'web' }, data: { ops: [
