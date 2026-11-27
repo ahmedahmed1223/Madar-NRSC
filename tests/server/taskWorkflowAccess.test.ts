@@ -109,3 +109,24 @@ it('canonicalizes DONE to COMPLETED and strips legacy assignedToId/assignedToNam
   expect(stored.assignedToName).toBeUndefined();
 });
 
+it('lets a non-manager assignee progress a pre-existing legacy task row with assignedToId/assignedToName and strips legacy fields', async () => {
+  const { user, agent } = await driver();
+  server.db.writeRow('tasks', 'legacy-assigned-task', {
+    id: 'legacy-assigned-task',
+    title: 'تغطية قديمة',
+    status: 'TODO',
+    priority: 'NORMAL',
+    assignedToId: user.id,
+    assignedToName: 'اسم قديم',
+  }, 1, null);
+  const existing = server.db.getRow('tasks', 'legacy-assigned-task')!;
+  const progressed = await send(agent, 'tasks', existing.id, { ...existing.d, status: 'IN_PROGRESS' }, existing.v);
+  expect(progressed.ok, progressed.message).toBe(true);
+  expect(progressed.row.d.status).toBe('IN_PROGRESS');
+  expect(progressed.row.d.assigneeId).toBe(user.id);
+  expect(progressed.row.d.assigneeName).toBe(user.fullName);
+  expect(progressed.row.d.assignedToId).toBeUndefined();
+  expect(progressed.row.d.assignedToName).toBeUndefined();
+});
+
+

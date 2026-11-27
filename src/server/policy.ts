@@ -40,7 +40,7 @@ import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, revie
 import { handledChangeError, manualWireError } from '../shared/wires';
 import { PERSONAL_NOTE_BODY_LIMIT, PERSONAL_NOTE_TITLE_LIMIT } from '../shared/personalWorkspace';
 import { taskTransitionError } from '../shared/taskWorkflow';
-import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
+import { assignedWorkOnly, cardAssignedTo, taskAssignedTo, taskAssigneeId } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
 import { workReminderError, workReminderInstant } from '../shared/workReminders';
 import { canEditOwnStation, ownStationChangeError } from '../shared/ownStationChange';
@@ -392,7 +392,10 @@ const bulletinStoriesPolicy: Policy = ({ auth, kind, before, after, list }) => {
 
 const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   const team = auth.departmentTaskMembers?.();
-  const inTeam = (task: any) => team?.has(task?.assigneeId || task?.assignedToId) === true;
+  const inTeam = (task: any) => {
+    const id = taskAssigneeId(task);
+    return !!id && team?.has(id) === true;
+  };
   const canManage = team ? (!before || inTeam(before)) && (kind === 'delete' || inTeam(after)) : auth.can('tasks.create_assign');
   if (after && kind !== 'delete') {
     const reminder = workReminderError(after.reminderOptions, Number.isFinite(workReminderInstant(after.dueDate)));
@@ -400,8 +403,8 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
     const rules = list?.('settings')[0]?.taskWorkflow;
     const transition = taskTransitionError(before, after, rules, canManage);
     if (transition) return transition;
-    const assigneeId = after.assigneeId || after.assignedToId;
-    if (assigneeId && (before?.assigneeId || before?.assignedToId) !== assigneeId) {
+    const assigneeId = taskAssigneeId(after);
+    if (assigneeId && taskAssigneeId(before) !== assigneeId) {
       const scope = assignmentScope(auth.user, list?.('settings')[0]);
       const error = scope.errorFor((list?.('users') || []).find(u => u.id === assigneeId));
       if (error) return error;
@@ -416,8 +419,8 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   if (canManage) return null;
   // Assignees may progress their own tasks.
   if ((auth.can('tasks.view') || team) && kind === 'update' && taskAssignedTo(before, auth.user.id) && taskAssignedTo(after, auth.user.id) && !isSoftDelete(before, after)) {
-    const protectedFields = ['title', 'description', 'assigneeId', 'assignedToId', 'assignedToName', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority', 'reminderOptions'];
-    return protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
+    const protectedFields = ['title', 'description', 'dueDate', 'relatedEntityType', 'relatedEntityId', 'relatedEntityTitle', 'priority', 'reminderOptions'];
+    return taskAssigneeId(before) !== taskAssigneeId(after) || protectedFields.some(key => changed(before, after, key)) ? 'تغيير التكليف لمسؤولي المهام' : null;
   }
   return 'صلاحياتك لا تسمح بإدارة المهام';
 };
@@ -1041,7 +1044,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     }
     case 'tasks': {
       const team = auth.departmentTaskMembers?.();
-      return team ? team.has(data?.assigneeId || data?.assignedToId) || taskAssignedTo(data, auth.user.id) : auth.can('tasks.view') || auth.can('tasks.create_assign');
+      const assigneeId = taskAssigneeId(data);
+      return team ? (!!assigneeId && team.has(assigneeId)) || taskAssignedTo(data, auth.user.id) : auth.can('tasks.view') || auth.can('tasks.create_assign');
     }
     case 'newsCorrections':
       const news = typeof data?.newsId === 'string' ? lookup?.('news', data.newsId) : null;
