@@ -68,13 +68,21 @@ describe.skipIf(!testUrl)('PostgreSQL wire integration', () => {
     const db = new PostgresDatabase(testUrl!, { schema });
     try {
       initializePostgresSchema(db);
-      // Simulate the previous schema with real stored data and verify incremental startup.
-      db.exec("DROP INDEX idx_news_scheduled; DELETE FROM schema_migrations WHERE version = 2; INSERT INTO meta(key, value) VALUES ('migration-check', 'preserve')");
+      // Simulate schema 1, then check that both later migrations preserve stored data.
+      db.exec(`
+        DROP INDEX idx_news_scheduled;
+        ALTER TABLE uploads DROP COLUMN remote_primary;
+        DELETE FROM schema_migrations WHERE version >= 2;
+        INSERT INTO meta(key, value) VALUES ('migration-check', 'preserve');
+        INSERT INTO uploads(id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at)
+          VALUES ('old-upload', 'stored.mp4', 'original.mp4', 'video/mp4', 20, 'test', '2026-01-01');
+      `);
       initializePostgresSchema(db);
       expect(db.query('SELECT version FROM schema_migrations ORDER BY version').rows)
-        .toEqual([{ version: 1 }, { version: 2 }]);
+        .toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
       expect(db.query("SELECT value FROM meta WHERE key = 'migration-check'").rows).toEqual([{ value: 'preserve' }]);
       expect(db.query("SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'idx_news_scheduled'", [schema]).rows).toHaveLength(1);
+      expect(db.query('SELECT id, remote_primary FROM uploads').rows).toEqual([{ id: 'old-upload', remote_primary: 0 }]);
       const tables = db.query<{ tablename: string }>(
         'SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = $1 ORDER BY tablename', [schema],
       ).rows.map(row => row.tablename);
