@@ -56,7 +56,9 @@ test('creates a programme and starts a new episode from its confirmed template',
       return (await collections()).episodes.find((row: any) => row.d.title === title);
     };
     const first = await startEpisode(`${name} الأولى`, /حلقة فارغة/, '2037-03-02');
-    await page.goto(`/episodes/${first.id}`);
+    await expect(page.locator('#episode-title-input')).toBeHidden();
+    await page.getByRole('button', { name: first.d.title, exact: true }).click();
+    await expect(page).toHaveURL(`/episodes/${first.id}`);
     await page.getByRole('button', { name: 'مراجعة الرانداون', exact: true }).click();
     await page.getByRole('button', { name: 'إضافة فقرة', exact: true }).click();
     await page.locator('#segment-title-input').fill('افتتاحية ثابتة');
