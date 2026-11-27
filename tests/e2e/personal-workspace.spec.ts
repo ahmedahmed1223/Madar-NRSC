@@ -9,7 +9,7 @@ test('a private note follows its employee across browsers and is absent for anot
     await author.page.getByRole('button', { name: 'ملاحظة جديدة' }).click();
     await author.page.getByLabel('العنوان', { exact: true }).fill(title);
     await author.page.getByLabel('نص الملاحظة').fill('ملخصي الخاص للمناوبة');
-    await author.page.getByRole('checkbox', { name: 'تثبيت في أعلى القائمة' }).check();
+    await author.page.getByRole('checkbox', { name: 'تثبيت في القائمة وإظهارها في الملصقات' }).check();
     await author.page.getByRole('button', { name: 'حفظ الملاحظة' }).click();
     await expect(author.page.getByText(title, { exact: true })).toBeVisible();
 

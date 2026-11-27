@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { List, Map as MapIcon } from 'lucide-react';
 import type { WorkflowGraphNode, WorkflowGraph, WorkflowTone } from '../../shared/workflowGraph';
 import { FlowchartCanvas } from '../flowchart/FlowchartCanvas';
@@ -18,9 +18,12 @@ interface Props {
   label: string;
   onManage?: (node: WorkflowGraphNode) => void;
   manageLabel?: string;
+  onConnectSteps?: (source: string, target: string) => void;
+  renderStepEditor?: (node: WorkflowGraphNode) => ReactNode;
+  controls?: ReactNode;
 }
 
-export function WorkflowFlowchart({ graph, label, onManage, manageLabel = 'إدارة الخطوة' }: Props) {
+export function WorkflowFlowchart({ graph, label, onManage, manageLabel = 'إدارة الخطوة', onConnectSteps, renderStepEditor, controls }: Props) {
   const [mode, setMode] = useState<'map' | 'list'>(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches ? 'list' : 'map');
   const [selectedId, setSelectedId] = useState(graph.nodes[0]?.id);
   const selected = graph.nodes.find(node => node.id === selectedId) ?? graph.nodes[0];
@@ -34,6 +37,7 @@ export function WorkflowFlowchart({ graph, label, onManage, manageLabel = 'إد�
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
         <div>
           <h3 className="text-sm font-bold text-slate-900">{label}</h3>
+          {onConnectSteps && <p className="mt-1 text-xs text-slate-600">اختر خطوة لتحريرها. اسحب من منفذ الخطوة إلى مدخل الخطوة التابعة لإضافة تبعية.</p>}
           {fixedLayout && <p className="mt-1 text-xs text-slate-600">اختر حالة لعرض الانتقالات المتاحة منها.</p>}
         </div>
         <div role="group" aria-label={`طريقة عرض ${label}`} className="inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-1">
@@ -47,6 +51,7 @@ export function WorkflowFlowchart({ graph, label, onManage, manageLabel = 'إد�
         edges={graph.edges.map(edge => ({ ...edge, testId: `workflow-edge-${edge.source}-${edge.target}` }))}
         selectedId={selected?.id}
         onSelect={setSelectedId}
+        onConnectSteps={onConnectSteps}
         label={label}
         focusSelectedEdges={fixedLayout}
         autoLayout={!fixedLayout}
@@ -69,7 +74,9 @@ export function WorkflowFlowchart({ graph, label, onManage, manageLabel = 'إد�
           <p className="mt-2 text-xs leading-5 text-slate-600"><strong>المسار التالي:</strong> {nextLabels.length ? nextLabels.join('، ') : 'لا انتقالات لاحقة في هذا المسار'}.</p>
         </div>
         {onManage && selected.id.startsWith('step:') && <button type="button" onClick={() => onManage(selected)} className="min-h-11 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700">{manageLabel}</button>}
+        {renderStepEditor && selected.id.startsWith('step:') && <div className="w-full min-w-0 border-t border-slate-200 pt-3">{renderStepEditor(selected)}</div>}
       </section>}
+      {controls && <div className="border-t border-slate-200 p-4">{controls}</div>}
     </section>
   );
 }

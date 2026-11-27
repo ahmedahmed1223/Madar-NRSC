@@ -1,6 +1,7 @@
 import { apiFetch } from '../../services/http';
 import { dataStore } from '../../services/dataStore';
 import { mayManageTemplate, publishedWorkflow, templateScope, type PublishedWorkflow, type TemplateScope } from '../../shared/workflowPublication';
+import { stepExecutionRulesError } from '../../shared/cardExecution';
 import { WorkflowDiagram } from './WorkflowDiagram';
 import { WORKFLOW_TRACKS } from '../../shared/workflowTracks';
 import { StepExecutionFields } from './StepExecutionFields';
@@ -11,7 +12,7 @@ import { apiService } from '../../services/api';
 import { notify } from '../../services/notify';
 import { RbacService } from '../../services/rbacService';
 import { newId } from '../../shared/ids';
-import { CARD_KINDS, COMPLEXITIES, MAX_CARD_STEPS, MAX_CHECKLIST, stepTypesOf, type CardKind } from '../../shared/productionCards';
+import { CARD_KINDS, COMPLEXITIES, MAX_CARD_STEPS, MAX_CHECKLIST, stepTypeName, stepTypesOf, type CardKind } from '../../shared/productionCards';
 import { RULE_KINDS, type AssigneeRule, type TemplateStep, type WorkflowTemplate } from '../../shared/workflowTemplates';
 import { DEPARTMENTS } from '../../shared/departments';
 import { createDepartmentLabeler } from '../../services/departmentLabels';
@@ -62,6 +63,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
   const [description, setDescription] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [steps, setSteps] = useState<TemplateStep[]>([]);
+  const [graphError, setGraphError] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [track, setTrack] = useState<TemplateScope>('news');
   const [saving, setSaving] = useState(false);
@@ -82,6 +84,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
     setUrgent(template?.priority === 'URGENT');
     setSteps(template?.steps?.length ? template.steps : [newStep(stepTypes[0]?.id || 'edit')]);
     setError(null);
+    setGraphError('');
     // Filled once when the page opens; later edits belong to the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, template?.id]);
@@ -94,6 +97,25 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
       next.splice(index + by, 0, step);
       return next;
     });
+
+  const graphChoices = steps.map(step => ({ id: step.id, label: step.title || stepTypeName(stepTypes, step.type) }));
+  const executionTracks = WORKFLOW_TRACKS.filter(scope => apiService.cardActor({ kind: scope === 'news' ? 'NEWS' : 'PROGRAM' }, false).canManage);
+  const withDependencies = steps.map((step, index) => ({
+    ...step,
+    dependencies: step.dependencies ?? steps.slice(0, index).map(previous => ({ stepId: previous.id, threshold: 'DONE' as const })),
+  }));
+  const changeGraphStep = (id: string, changes: Partial<TemplateStep>) => {
+    const next = (changes.dependencies ? withDependencies : steps).map(step => step.id === id ? { ...step, ...changes } : step);
+    const problem = changes.dependencies ? stepExecutionRulesError(next) : null;
+    setGraphError(problem || '');
+    if (!problem) setSteps(next);
+  };
+  const connectSteps = (source: string, target: string) => {
+    const prerequisite = source.slice('step:'.length);
+    const step = withDependencies.find(item => `step:${item.id}` === target);
+    if (!step || !steps.some(item => item.id === prerequisite) || step.dependencies.some(dep => dep.stepId === prerequisite)) return;
+    changeGraphStep(step.id, { dependencies: [...step.dependencies, { stepId: prerequisite, threshold: 'DONE' }] });
+  };
 
   const manageStep = (node: WorkflowGraphNode) => {
     const id = node.id.slice('step:'.length);
@@ -207,6 +229,21 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
           graph={buildTemplateWorkflowGraph({ id: template?.id || 'draft', name: name || 'مسودة القالب', kind, priority: urgent ? 'URGENT' : 'NORMAL', steps }, stepTypes)}
           label="مخطط قالب سير العمل"
           onManage={manageStep}
+          onConnectSteps={saving ? undefined : connectSteps}
+          renderStepEditor={node => {
+            const step = withDependencies.find(item => `step:${item.id}` === node.id);
+            if (!step) return null;
+            return <fieldset aria-label="تحرير الخطوة في المخطط" disabled={saving} className="space-y-3">
+              <label className="block">
+                <span className={LABEL}>اسم الخطوة في المخطط</span>
+                <input className={INPUT} maxLength={200} value={step.title || ''} placeholder={node.label}
+                  onChange={event => changeGraphStep(step.id, { title: event.target.value })} />
+              </label>
+              <StepExecutionFields step={step} tracks={executionTracks} choices={graphChoices} expanded
+                onChange={changes => changeGraphStep(step.id, changes)} />
+            </fieldset>;
+          }}
+          controls={graphError ? <p role="alert" className="font-semibold text-rose-700">{graphError}</p> : undefined}
         />
         <fieldset className="space-y-2">
           <legend className="font-bold text-slate-800 text-sm">المهام بالترتيب</legend>
@@ -291,7 +328,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                     <label htmlFor={`tpl-check-${step.id}`} className={LABEL}>قائمة التحقق (بند في كل سطر)</label>
                     <textarea id={`tpl-check-${step.id}`} rows={2} value={(step.checklist || []).join('\n')} onChange={(e) => patch(step.id, { checklist: e.target.value.split('\n').map((l) => l.slice(0, 200)) })} className={INPUT} />
                   </div>
-                  <StepExecutionFields step={step} tracks={WORKFLOW_TRACKS.filter(track => apiService.cardActor({ kind: track === 'news' ? 'NEWS' : 'PROGRAM' }, false).canManage)} choices={steps.map(item => ({ id: item.id, label: item.title || stepTypes.find(type => type.id === item.type)?.name || item.type }))} onChange={changes => patch(step.id, changes)} />
+                  <StepExecutionFields step={step} tracks={executionTracks} choices={graphChoices} onChange={changes => patch(step.id, changes)} />
                 </div>
               </li>
             ))}

@@ -85,7 +85,7 @@ jobs:
       - name: Desktop and mobile planning and production layouts
         run: node tests/e2e/run-isolated.mjs tests/e2e/catalog-responsive.spec.ts tests/e2e/planning-responsive.spec.ts tests/e2e/production-mobile.spec.ts tests/e2e/ux.spec.ts
       - name: Workspace navigation and responsive route coverage
-        run: node tests/e2e/run-isolated.mjs tests/e2e/workspace-shell.spec.ts tests/e2e/website-transformation.spec.ts
+        run: node tests/e2e/run-isolated.mjs tests/e2e/workspace-shell.spec.ts tests/e2e/website-transformation.spec.ts tests/e2e/personal-workspace.spec.ts tests/e2e/shell-v4.spec.ts
       - name: Newsroom 4.4 editing, intake and studio workflows
         run: node tests/e2e/run-isolated.mjs tests/e2e/news-taxonomy.spec.ts tests/e2e/presenter-instructions.spec.ts tests/e2e/v44-workspaces.spec.ts
       - name: Preserve browser failure evidence

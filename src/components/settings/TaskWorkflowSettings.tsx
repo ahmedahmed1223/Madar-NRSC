@@ -70,8 +70,10 @@ export function TaskWorkflowSettings({ onOpenStepTypes, onOpenTemplates }: Props
         </h2>
         <p className="mt-1 text-xs text-slate-600">تسري قواعد المهام على انتقالات الحالة الجديدة في كل المحطات. يحتفظ السجل بتوقيت الانتقالات السابقة ونتائجها كما حُفظت.</p>
       </div>
-      <WorkflowFlowchart graph={buildTaskStatusGraph({ ...current, ...draft }, true)} label="مخطط سير عمل المهام" />
-      <form onSubmit={save} className="space-y-3" aria-busy={saving}>
+      <WorkflowFlowchart
+        graph={buildTaskStatusGraph({ ...current, ...draft }, true)}
+        label="مخطط سير عمل المهام"
+        controls={<form onSubmit={save} className="space-y-3" aria-busy={saving}>
         <fieldset disabled={saving} className="grid gap-2 lg:grid-cols-3">
           <legend className="sr-only">قواعد حالة المهام</legend>
           {RULES.map(({ key, label, hint }) => (
@@ -93,7 +95,8 @@ export function TaskWorkflowSettings({ onOpenStepTypes, onOpenTemplates }: Props
           <p role="status" className="text-xs text-slate-700">{saving ? 'بانتظار تأكيد الخادم' : message}</p>
         </div>
         {error && <p role="alert" className="text-xs font-bold text-rose-800">{error}</p>}
-      </form>
+      </form>}
+      />
       <div className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
         <div className="space-y-2">
           <h3 className="text-sm font-bold text-slate-900">أنواع خطوات التكليفات</h3>

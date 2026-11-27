@@ -3,17 +3,21 @@ import { GitBranch, List, Map as MapIcon, Pencil } from 'lucide-react';
 import type { StationNetwork } from '../../shared/stationNetwork';
 import type { Station } from '../../shared/stations';
 import { FlowchartCanvas } from '../flowchart/FlowchartCanvas';
+import { StationNetworkEditor } from './StationNetworkEditor';
 
 interface Props {
   network: StationNetwork;
   stations: readonly Station[];
   onEditStations: () => void;
+  canEdit?: boolean;
 }
 
-export function StationNetworkChart({ network, stations, onEditStations }: Props) {
+export function StationNetworkChart({ network, stations, onEditStations, canEdit }: Props) {
   const [mode, setMode] = useState<'map' | 'list'>(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches ? 'list' : 'map');
+  const [editingId, setEditingId] = useState<string>();
   const [selectedId, setSelectedId] = useState(network.nodes[0]?.id);
   const selected = network.nodes.find(node => node.id === selectedId) ?? network.nodes[0];
+  const editing = canEdit && editingId ? stations.find(station => station.id === editingId) : undefined;
   const ordered = [...network.nodes].sort((a, b) => Number(b.isMain) - Number(a.isMain));
   const scopeNames = selected ? stations.filter(station => selected.scopeIds.includes(station.id)).map(station => station.name) : [];
   const nodeSummary = (id: string) => {
@@ -43,7 +47,7 @@ export function StationNetworkChart({ network, stations, onEditStations }: Props
           meta: [`${node.memberCount} زملاء`, ...node.groupNames],
           tone: node.isMain ? 'current' : 'neutral',
           testId: `station-node-${node.id}`,
-          shape: 'station',
+          shape: node.isMain ? 'main-station' : 'station',
         }))}
         edges={network.edges.map(edge => ({ ...edge, kind: 'return', testId: `station-link-${edge.source}-${edge.target}` }))}
         selectedId={selected?.id}
@@ -74,8 +78,10 @@ export function StationNetworkChart({ network, stations, onEditStations }: Props
           <p className="text-xs leading-5 text-slate-600"><strong>المجموعات:</strong> {selected.groupNames.join('، ') || 'ليست ضمن مجموعة محطات'}.</p>
           <p className="text-xs leading-5 text-slate-600"><strong>المديرون العامون:</strong> {selected.managerNames.join('، ') || 'لا مدير عام محدد لهذه المحطة'}.</p>
         </div>
-        <button type="button" onClick={onEditStations} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><Pencil size={15} aria-hidden="true" />تعديل المحطات والمجموعات</button>
+        {canEdit && !editing && <button type="button" onClick={() => setEditingId(selected.id)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><Pencil size={15} aria-hidden="true" />تعديل المحطة في الخريطة</button>}
       </section>}
+      {editing && <StationNetworkEditor key={editing.id} station={editing} stations={stations} onClose={() => setEditingId(undefined)} />}
+      {!selected && canEdit && <button type="button" onClick={onEditStations} className="m-3 min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold text-blue-700">فتح إعدادات المحطات</button>}
     </section>
   );
 }

@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Building2, ExternalLink, GitBranch, Map as MapIcon, Network, Table2, Users } from 'lucide-react';
+import { useLiveData } from '../../hooks/useLiveData';
+import { confirmDialog } from '../../services/dialogs';
+import { RbacService } from '../../services/rbacService';
 import { apiService } from '../../services/api';
 import { navigateTo } from '../../services/uiEvents';
 import { countLabel } from '../../shared/arabicPlural';
 import { departmentIdOf, departmentsAtStation, departmentsOf, type Department } from '../../shared/departments';
 import { buildStationNetwork } from '../../shared/stationNetwork';
 import { stationGroupsOf, stationsOf } from '../../shared/stations';
+import { DepartmentsSettings } from './DepartmentsSettings';
 import { DepartmentChart } from './DepartmentChart';
 import { StationNetworkChart } from './StationNetworkChart';
 
@@ -33,6 +37,9 @@ function departmentRows(list: Department[]): { dept: Department; depth: number }
 }
 
 export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (section: 'stations' | 'departments') => void }) {
+  useLiveData(['settings', 'users']);
+  const canEdit = RbacService.hasPermission(apiService.getCurrentUser(), 'system.settings');
+  const [departmentDirty, setDepartmentDirty] = useState(false);
   const [view, setView] = useState<View>('network');
   const settings = apiService.getSettings();
   const stations = [...stationsOf(settings)].sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
@@ -47,6 +54,12 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
   const count = (departmentId: string, stationId: string | null) =>
     (stationId ? users.filter(user => user.stationId === stationId) : central).filter(user => departmentIdOf(user) === departmentId).length;
   const network = buildStationNetwork({ stations, stationGroups: groups, users });
+  const changeView = async (next: View) => {
+    if (next === view) return;
+    if (departmentDirty && !(await confirmDialog({ title: 'تعديلات غير محفوظة', message: 'ما زالت تعديلات الأقسام في المسودة.', confirmLabel: 'مغادرة المخطط', cancelLabel: 'متابعة التحرير' }))) return;
+    setDepartmentDirty(false);
+    setView(next);
+  };
   const views: { id: View; label: string; icon: typeof MapIcon }[] = [
     { id: 'network', label: 'خريطة المحطات', icon: MapIcon },
     { id: 'departments', label: 'مخطط الأقسام', icon: GitBranch },
@@ -72,7 +85,7 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
       <div role="group" aria-label="طرق عرض الهيكل التنظيمي" className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1">
         {views.map(item => {
           const Icon = item.icon;
-          return <button key={item.id} type="button" aria-pressed={view === item.id} onClick={() => setView(item.id)} className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold sm:flex-none ${view === item.id ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}><Icon size={16} aria-hidden="true" />{item.label}</button>;
+          return <button key={item.id} type="button" aria-pressed={view === item.id} onClick={() => void changeView(item.id)} className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold sm:flex-none ${view === item.id ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}><Icon size={16} aria-hidden="true" />{item.label}</button>;
         })}
       </div>
 
@@ -83,14 +96,14 @@ export function OrgStructureSettings({ onOpenSection }: { onOpenSection: (sectio
             <div className="mt-1 text-xs text-slate-700">{group.stationIds.map(id => stations.find(station => station.id === id)?.name).filter(Boolean).join('، ') || 'بلا محطات'}</div>
           </li>)}
         </ul>}
-        <StationNetworkChart network={network} stations={stations} onEditStations={() => onOpenSection('stations')} />
+        <StationNetworkChart network={network} stations={stations} canEdit={canEdit} onEditStations={() => onOpenSection('stations')} />
         <div className="rounded-xl border border-dashed border-slate-300 p-4">
           <h3 className="text-sm font-bold text-slate-800">الإدارة المركزية (بلا محطة)</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">{countLabel(central.length, COLLEAGUES)}. يتابع الزميل بلا محطة كل المحطات، إلا من حُددت له محطات بعينها.</p>
         </div>
       </>}
 
-      {view === 'departments' && <DepartmentChart departments={allDepartments} stations={stations} users={users} />}
+      {view === 'departments' && (canEdit ? <DepartmentsSettings onDirtyChange={setDepartmentDirty} /> : <DepartmentChart departments={allDepartments} stations={stations} users={users} />)}
 
       {view === 'matrix' && <>
         <div className="space-y-2">

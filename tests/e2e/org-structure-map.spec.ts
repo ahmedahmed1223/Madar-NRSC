@@ -26,7 +26,9 @@ test('administrator explores station cooperation and switches organizational vie
     await views.getByRole('button', { name: 'خريطة المحطات', exact: true }).click();
     const map = page.getByRole('region', { name: 'خريطة تعاون المحطات' });
     await expect(map).toBeVisible();
-    const mainBox = await map.getByRole('button', { name: /غزة/ }).boundingBox();
+    const mainNode = map.getByRole('button', { name: /غزة/ });
+    await expect(mainNode).toHaveAttribute('data-node-shape', 'main-station');
+    const mainBox = await mainNode.boundingBox();
     const branchBox = await map.getByRole('button', { name: /إسطنبول/ }).boundingBox();
     expect(mainBox!.x).toBeGreaterThan(branchBox!.x);
     const link = map.getByTestId('station-link-beirut-istanbul');
@@ -40,6 +42,13 @@ test('administrator explores station cooperation and switches organizational vie
     await expect(details).toContainText('منطقة الشمال');
     await expect(details).toContainText('تتابع وتكلّف');
     await expect(details).toContainText('إسطنبول');
+    await details.getByRole('button', { name: 'تعديل المحطة في الخريطة' }).click();
+    const editor = map.getByRole('form', { name: 'تحرير المحطة في الخريطة' });
+    await editor.getByLabel('اسم المحطة').fill('بيروت التحرير');
+    await editor.getByRole('button', { name: 'حفظ المحطة', exact: true }).click();
+    await expect(map.getByRole('button', { name: /بيروت التحرير/ })).toBeVisible();
+    const edited = await (await page.request.get('/api/v1/data')).json();
+    expect(edited.collections.settings[0].d.stations.find((station: { id: string }) => station.id === 'beirut').name).toBe('بيروت التحرير');
 
     await map.getByRole('button', { name: 'عرض قائمة المحطات', exact: true }).click();
     const list = page.getByRole('list', { name: 'قائمة المحطات وروابطها' });
@@ -48,7 +57,9 @@ test('administrator explores station cooperation and switches organizational vie
     await expect(page.getByRole('region', { name: 'تفاصيل محطة إسطنبول' })).toContainText('بيروت');
 
     await views.getByRole('button', { name: 'مخطط الأقسام', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'مخطط الأقسام' })).toBeVisible();
+    const departmentMap = page.getByRole('region', { name: 'مخطط الأقسام' });
+    await expect(departmentMap).toBeVisible();
+    await expect(departmentMap.getByRole('button', { name: /إضافة قسم/ }).first()).toBeVisible();
     await views.getByRole('button', { name: 'مصفوفة الأقسام والمحطات', exact: true }).click();
     await expect(page.getByRole('table')).toBeVisible();
 

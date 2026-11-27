@@ -7,10 +7,11 @@ interface StepChoice {
   label: string;
 }
 
-export function StepExecutionFields({ step, choices, onChange, tracks = [] }: {
+export function StepExecutionFields({ step, choices, onChange, tracks = [], expanded = false }: {
   step: StepExecutionRules & { id: string; type: string };
   choices: StepChoice[];
   tracks?: readonly WorkflowTrack[];
+  expanded?: boolean;
   onChange: (rules: Partial<StepExecutionRules>) => void;
 }) {
   const changeDependency = (id: string, threshold: StepDependency['threshold'] | '') => {
@@ -19,7 +20,7 @@ export function StepExecutionFields({ step, choices, onChange, tracks = [] }: {
     onChange({ dependencies });
   };
   return (
-    <details className="rounded-lg border border-slate-200 bg-white p-3 space-y-3 sm:col-span-2">
+    <details open={expanded || undefined} className="rounded-lg border border-slate-200 bg-white p-3 space-y-3 sm:col-span-2">
       <summary className="min-h-9 cursor-pointer font-semibold text-slate-800">شروط التنفيذ والاستلام</summary>
       <div className="grid gap-3 sm:grid-cols-2">
         <label>

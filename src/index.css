@@ -358,6 +358,20 @@
 body.form-page-open #app-main,
 body.form-page-open .pinned-notes-dock { display: none; }
 
+.madar-flowchart .react-flow__nodes {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.madar-flowchart .react-flow__edges {
+  z-index: 0;
+}
+.madar-flowchart .madar-flowchart-port {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--color-white);
+  background: var(--color-blue-600);
+}
 .madar-flowchart .react-flow__controls-button {
   width: 44px;
   height: 44px;
