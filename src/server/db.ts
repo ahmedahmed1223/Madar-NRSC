@@ -347,6 +347,52 @@ export class NewsroomDatabase {
     return rows.map(toEntityRow);
   }
 
+  private static readonly JSON_FIELD_PREDICATES: Record<'categoryId' | 'sourceId' | 'typeId', {
+    expr: string;
+    index: string;
+    indexedCollections: readonly CollectionName[];
+    predicate: string;
+  }> = {
+    categoryId: {
+      expr: "json_extract(data, '$.categoryId')",
+      index: 'idx_entities_category_id',
+      indexedCollections: ['news', 'stories'],
+      predicate: "collection IN ('news', 'stories')",
+    },
+    sourceId: {
+      expr: "json_extract(data, '$.sourceId')",
+      index: 'idx_entities_source_id',
+      indexedCollections: ['news', 'wires'],
+      predicate: "collection IN ('news', 'wires')",
+    },
+    typeId: {
+      expr: "json_extract(data, '$.typeId')",
+      index: 'idx_entities_program_type_id',
+      indexedCollections: ['programs'],
+      predicate: "collection = 'programs'",
+    },
+  };
+
+  /** Fetches live bookings for a single resource via idx_bookings_resource_window. */
+  listBookingsForResource(resourceId: string): EntityRow[] {
+    const rows = this.db.prepare(`SELECT * FROM entities INDEXED BY idx_bookings_resource_window
+      WHERE collection = 'bookings' AND deleted = 0 AND json_extract(data, '$.resourceId') = ?`).all(resourceId) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  /** Fetches live rows matching an allowlisted JSON foreign-key field without scanning the collection. */
+  listByJsonField(collection: CollectionName, field: 'categoryId' | 'sourceId' | 'typeId', value: string): EntityRow[] {
+    const spec = NewsroomDatabase.JSON_FIELD_PREDICATES[field];
+    if (!spec) throw new Error(`Unsupported indexed JSON field: ${String(field)}`);
+    const useIndex = spec.indexedCollections.includes(collection);
+    const rows = (useIndex
+      ? this.db.prepare(`SELECT * FROM entities INDEXED BY ${spec.index}
+          WHERE ${spec.predicate} AND collection = ? AND deleted = 0 AND ${spec.expr} = ?`).all(collection, value)
+      : this.db.prepare(`SELECT * FROM entities
+          WHERE collection = ? AND deleted = 0 AND ${spec.expr} = ?`).all(collection, value)) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
   listTrashPageAfter(collections: readonly CollectionName[], after: TrashPagePosition | null, limit: number) {
     if (collections.length === 0) return [];
     const date = "CAST(json_extract(data, '$.deletedAt') AS TEXT)";

@@ -265,4 +265,21 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         CHECK (remote_primary IN (0, 1));
     `,
   },
+  {
+    version: 12,
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_bookings_resource_window ON entities
+        (json_extract(data, '$.resourceId'), json_extract(data, '$.start'), json_extract(data, '$.end'))
+        WHERE collection = 'bookings' AND deleted = 0;
+      CREATE INDEX IF NOT EXISTS idx_entities_category_id ON entities
+        (collection, json_extract(data, '$.categoryId'))
+        WHERE collection IN ('news', 'stories') AND deleted = 0;
+      CREATE INDEX IF NOT EXISTS idx_entities_source_id ON entities
+        (collection, json_extract(data, '$.sourceId'))
+        WHERE collection IN ('news', 'wires') AND deleted = 0;
+      CREATE INDEX IF NOT EXISTS idx_entities_program_type_id ON entities
+        (json_extract(data, '$.typeId'))
+        WHERE collection = 'programs' AND deleted = 0;
+    `,
+  },
 ];

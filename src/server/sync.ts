@@ -1318,7 +1318,7 @@ export class SyncService {
           const resource = this.db.getRow('resources', String(after.resourceId))?.d;
           if (!resource || resource.deletedAt) throw new SyncReject('INVALID', 'المورد غير موجود');
           if (resource.isActive === false && (!before || before.resourceId !== after.resourceId)) throw new SyncReject('INVALID', `${resource.name} خارج الخدمة حالياً`);
-          const clash = bookingConflicts(after, this.listData('bookings') as Booking[])[0];
+          const clash = bookingConflicts(after, this.db.listBookingsForResource(String(after.resourceId)).map((r) => r.d) as Booking[])[0];
           if (clash) {
             throw new SyncReject('INVALID', `${resource.name} محجوز في هذا الوقت: «${clash.title}» (${localStamp(clash.start)}–${localStamp(clash.end, false)}) باسم ${clash.bookedByName || 'زميل'}`);
           }
@@ -1419,8 +1419,8 @@ export class SyncService {
         // rights on every story, and stories may be locked by their editors.
         if (collection === 'categories' && before && before.nameAr !== after.nameAr) {
           for (const target of ['news', 'stories'] as const) {
-            for (const ref of this.db.listCollection(target)) {
-              if (ref.d?.categoryId === id && ref.d.categoryName !== after.nameAr) {
+            for (const ref of this.db.listByJsonField(target, 'categoryId', id)) {
+              if (ref.d?.categoryName !== after.nameAr) {
                 this.db.writeRow(target, ref.id, { ...ref.d, categoryName: after.nameAr }, ref.p, null);
               }
             }
@@ -1429,16 +1429,16 @@ export class SyncService {
         // Source renames follow the same rule: news and agency wires carry the name for display.
         if (collection === 'sources' && before && before.name !== after.name && typeof after.name === 'string') {
           for (const target of ['news', 'wires'] as const) {
-            for (const ref of this.db.listCollection(target)) {
-              if (ref.d?.sourceId === id && ref.d.sourceName !== after.name) {
+            for (const ref of this.db.listByJsonField(target, 'sourceId', id)) {
+              if (ref.d?.sourceName !== after.name) {
                 this.db.writeRow(target, ref.id, { ...ref.d, sourceName: after.name }, ref.p, null);
               }
             }
           }
         }
         if (collection === 'programTypes' && before && before.nameAr !== after.nameAr && typeof after.nameAr === 'string') {
-          for (const ref of this.db.listCollection('programs')) {
-            if (ref.d?.typeId === id && ref.d.typeName !== after.nameAr) {
+          for (const ref of this.db.listByJsonField('programs', 'typeId', id)) {
+            if (ref.d?.typeName !== after.nameAr) {
               this.db.writeRow('programs', ref.id, { ...ref.d, typeName: after.nameAr }, ref.p, null);
             }
           }
