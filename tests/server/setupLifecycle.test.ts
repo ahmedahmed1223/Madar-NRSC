@@ -22,6 +22,7 @@ it('allows a token holder to claim an opted-in clean installation exactly once',
   await client.post(setupAdministrator).send({ ...data, token: INSTALL_TOKEN }).expect(403);
   await client.post(setupAdministrator).set(H).send({ ...data, token: 'wrong' }).expect(403);
   await client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, password: 'weak' }).expect(400);
+  await client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, temporaryPassword: 'true' }).expect(400);
   expect(db.countCredentials()).toBe(0);
   const results = await Promise.all([
     client.post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, role: 'ADMIN' }),
@@ -37,6 +38,18 @@ it('allows a token holder to claim an opted-in clean installation exactly once',
   expect(session.user.role).toBe('SUPER_ADMIN');
   expect(session.mustChangePassword).toBe(false);
   expect(session.setupReviewId).toEqual(expect.any(String));
+});
+
+it('requires replacement of a temporary password created through browser setup', async () => {
+  server = await createTestServer({ SEED_DEMO_DATA: 'false', INSTALL_SETUP_TOKEN: INSTALL_TOKEN });
+  const data = { fullName: 'مسؤول المؤسسة', email: 'first@example.com', password: 'TemporaryOwner2026' };
+  await request(server.app).post(setupAdministrator).set(H).send({ ...data, token: INSTALL_TOKEN, temporaryPassword: true }).expect(201);
+  const owner = await loginAgent(server.app, data.email, data.password);
+  expect((await owner.get('/api/v1/auth/me').expect(200)).body.mustChangePassword).toBe(true);
+  await owner.get('/api/v1/data').expect(403);
+  await owner.post('/api/v1/auth/change-password').set(H).send({ currentPassword: data.password, newPassword: 'PrivateOwner2026' }).expect(200);
+  await owner.get('/api/v1/data').expect(200);
+  await request(server.app).post('/api/v1/auth/login').set(H).send(data).expect(401);
 });
 
 it('offers setup on a clean install after the bootstrap password change and remembers a displayed review across restarts', async () => {

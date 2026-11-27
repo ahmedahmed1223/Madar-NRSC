@@ -51,7 +51,7 @@ const setupClosed = { status: 409, error: 'انتهت مرحلة إنشاء ال
 export async function createFirstAdministrator(
   db: NewsroomDatabase,
   config: AppConfig,
-  body: { token?: unknown; fullName?: unknown; email?: unknown; password?: unknown } | undefined,
+  body: { token?: unknown; fullName?: unknown; email?: unknown; password?: unknown; temporaryPassword?: unknown } | undefined,
   auditCreated: (user: User) => void,
 ): Promise<ClaimResult> {
   if (!config.installSetupToken || !browserSetupAvailable(db, config)) return setupClosed;
@@ -60,6 +60,8 @@ export async function createFirstAdministrator(
   const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : '';
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body?.password === 'string' ? body.password : '';
+  const temporary = body?.temporaryPassword;
+  if (temporary !== undefined && typeof temporary !== 'boolean') return { status: 400, error: 'خيار كلمة المرور المؤقتة غير صالح' };
   if (!fullName || fullName.length > 120 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { status: 400, error: 'أدخل اسم المسؤول وبريداً إلكترونياً صالحاً' };
   }
@@ -82,7 +84,7 @@ export async function createFirstAdministrator(
       createdAt: new Date().toISOString(),
     };
     db.writeRow('users', user.id, user, -1, null);
-    db.setPassword(user.id, email, hash, false);
+    db.setPassword(user.id, email, hash, temporary === true);
     closeBrowserSetup(db);
     auditCreated(user);
     return { status: 201 };
