@@ -72,14 +72,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, notice }) => {
 
   // The station's clock and date (its zone and conventions) before anyone signs in.
   useEffect(() => {
-    fetch('/api/v1/auth/station', { headers: { 'X-NRCS-Client': 'web' } })
+    const controller = new AbortController();
+    fetch('/api/v1/auth/station', { signal: controller.signal, headers: { 'X-NRCS-Client': 'web' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (!j?.data) return;
+        if (controller.signal.aborted || !j?.data) return;
         configureDateFormat(j.data);
         applyColorPalette(j.data.colorPalette);
       })
       .catch(() => undefined);
+    return () => controller.abort();
   }, []);
 
   const submit = async (mail: string, pass: string, totp?: string, keepSession = false) => {

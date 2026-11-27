@@ -10,7 +10,13 @@ interface DraftSession<T> {
 }
 
 /** A per-user, per-record recovery copy, never a replacement for a server save. */
-export function useFormDraft<T>(key: string, active: boolean, value: T, restore: (value: T) => void) {
+export function useFormDraft<T>(
+  key: string,
+  active: boolean,
+  value: T,
+  restore: (value: T) => void,
+  legacyOptionalFields: readonly (keyof T)[] = [],
+) {
   const session = useRef<DraftSession<T> | null>(null);
   const [recovered, setRecovered] = useState(false);
   const [error, setError] = useState(false);
@@ -36,9 +42,12 @@ export function useFormDraft<T>(key: string, active: boolean, value: T, restore:
           const draft = JSON.parse(raw);
           const valid = draft.version === 1 && draft.value != null &&
             typeof draft.value === typeof value &&
-            (typeof value !== 'object' || Object.keys(value as object).every(k =>
-              // An unset optional field is omitted from JSON and may have been added to an older draft.
-              (value as any)[k] === undefined || (k in draft.value && typeof draft.value[k] === typeof (value as any)[k])));
+            (typeof value !== 'object' || Object.keys(value as object).every(key => {
+              const expected = (value as Record<string, unknown>)[key];
+              if (expected === undefined) return true;
+              if (!(key in draft.value)) return legacyOptionalFields.includes(key as keyof T);
+              return typeof draft.value[key] === typeof expected;
+            }));
           if (valid && JSON.stringify(draft.value) !== serialized) {
             current.restoring = serialized;
             restore(draft.value);

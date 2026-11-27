@@ -332,7 +332,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setDefaultDuration(saved.defaultSegmentDurationSeconds); setNewsPriority(saved.defaultNewsPriority);
     setBreakingHours(saved.breakingDurationHours); setUseStationTime(saved.timeBasis);
   };
-  const draft = useFormDraft(`settings:${apiService.getCurrentUser().id}`, true, values, restoreGeneral);
+  const draft = useFormDraft(`settings:${apiService.getCurrentUser().id}`, true, values, restoreGeneral, ['colorPalette']);
   const resetGeneral = () => {
     restoreGeneral(baseline);
     setGeneralError(null); setIsSaved(false);

@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test';
 import { openNav, openSettingsSection, signIn } from './helpers';
 
-test('unsaved station settings recover after reload and can be discarded', async ({ browser }) => {
+test('a station settings draft from before palettes recovers and can be discarded', async ({ browser }) => {
   const { page, close } = await signIn(browser, 'admin@akhbar.tv');
   await openNav(page, 'الإعدادات');
   await page.getByRole('button', { name: /المؤسسة والفريق/ }).click();
   const before = await page.locator('#station-name-input').inputValue();
   await page.locator('#station-name-input').fill('مسودة إعدادات غير محفوظة');
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(item => item.startsWith('madar-form-draft:v1:settings:'));
+    if (!key) throw new Error('Expected a station settings recovery draft');
+    const draft = JSON.parse(localStorage.getItem(key)!);
+    delete draft.value.colorPalette;
+    localStorage.setItem(key, JSON.stringify(draft));
+  });
   page.removeAllListeners('dialog');
   page.on('dialog', dialog => void dialog.accept());
   await page.reload();
@@ -64,6 +71,14 @@ test('an administrator can save one of the organization palettes and keep night 
     await page.getByLabel('المظهر', { exact: true }).selectOption('dark');
     await expect(page.locator('html')).toHaveClass(/dark/);
     await expect(page.locator('html')).toHaveAttribute('data-color-palette', 'violet');
+    const nightAccent = await accent();
+    const defaultNightAccent = await page.locator('html').evaluate(root => {
+      root.setAttribute('data-color-palette', 'petrol');
+      const value = getComputedStyle(root).getPropertyValue('--color-blue-600').trim();
+      root.setAttribute('data-color-palette', 'violet');
+      return value;
+    });
+    expect(nightAccent).not.toBe(defaultNightAccent);
   } finally { await close(); }
 });
 
