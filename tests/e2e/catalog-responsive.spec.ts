@@ -66,8 +66,9 @@ test('guest contacts and editing remain available after filtering and resizing',
 });
 
 test('coverage diary shows the chosen day on a phone and the whole week on desktop', async ({ browser }, testInfo) => {
-  const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: phone });
+  const { page, close } = await signIn(browser, 'admin@akhbar.tv', { viewport: phone, timezoneId: 'UTC' });
   try {
+    await page.clock.setFixedTime(new Date('2026-11-27T22:30:00Z'));
     await page.goto('/diary');
     const week = page.getByRole('group', { name: 'أحداث الأسبوع' });
     const day = page.getByLabel('اليوم المعروض');
@@ -80,10 +81,16 @@ test('coverage diary shows the chosen day on a phone and the whole week on deskt
     await expect(form.getByLabel('اليوم', { exact: true })).toHaveValue(date!);
     await page.keyboard.press('Escape');
     await expect(form.getByLabel('اليوم', { exact: true })).toHaveCount(0);
+    // Create the event in the displayed week, independently of the date when demo data was seeded.
+    const title = 'مؤتمر اختبار أجندة التغطية';
+    await page.getByRole('button', { name: 'حدث جديد', exact: true }).click();
+    await form.getByLabel('العنوان', { exact: true }).fill(title);
+    await form.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await expect(form.getByLabel('اليوم', { exact: true })).toHaveCount(0);
     const search = page.getByRole('searchbox', { name: 'بحث في الأجندة' });
-    await search.fill('وزير الطاقة');
+    await search.fill(title);
     await expect(day).toHaveValue('ALL');
-    await expect(week.getByRole('button', { name: /وزير الطاقة/ })).toBeVisible();
+    await expect(week.getByRole('button', { name: title })).toBeVisible();
     await search.fill('تجربة بلا نتائج 82717');
     await expect(page.getByText('لا أحداث في هذا الأسبوع تطابق الفلاتر.')).toBeVisible();
     await expect(week.getByRole('region')).toHaveCount(0);
