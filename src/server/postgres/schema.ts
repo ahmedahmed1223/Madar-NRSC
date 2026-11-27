@@ -1,7 +1,7 @@
 import { SETTLED_NEWS_STATUSES } from '../../shared/collections';
 import type { PostgresDatabase } from './driver';
 
-export const POSTGRES_SCHEMA_VERSION = 2;
+export const POSTGRES_SCHEMA_VERSION = 3;
 
 // Keep raw payloads and timestamps reversible. SQLite BINARY and PostgreSQL C
 // both compare UTF-8 byte order, which also keeps transfer pagination stable.
@@ -197,6 +197,8 @@ const migrations = [
   baseline,
   `CREATE INDEX idx_news_scheduled ON entities(position, id)
     WHERE collection = 'news' AND deleted = 0 AND (data::json ->> 'status') = 'SCHEDULED';`,
+  `ALTER TABLE uploads ADD COLUMN remote_primary SMALLINT NOT NULL DEFAULT 0
+    CHECK (remote_primary IN (0, 1));`,
 ];
 
 export function initializePostgresSchema(db: PostgresDatabase): void {

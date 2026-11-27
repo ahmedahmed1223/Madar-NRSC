@@ -31,19 +31,13 @@ export class DropboxError extends Error {
 const CHUNK = 8 * 1024 * 1024;
 const SINGLE_UPLOAD_LIMIT = 16 * 1024 * 1024;
 
-export const DROPBOX_AUTHORIZE_URL = 'https://www.dropbox.com/oauth2/authorize';
+export { DROPBOX_AUTHORIZE_URL, dropboxAuthorizationUrl as authorizeUrl } from '../shared/dropboxAuthorization';
 
 export function dropboxHosts(env: NodeJS.ProcessEnv = process.env) {
   return {
     api: (env.DROPBOX_API_URL || 'https://api.dropboxapi.com').replace(/\/+$/, ''),
     content: (env.DROPBOX_CONTENT_URL || 'https://content.dropboxapi.com').replace(/\/+$/, ''),
   };
-}
-
-/** The page where an administrator approves access; it shows a code to paste back into «مدار». */
-export function authorizeUrl(appKey: string): string {
-  const q = new URLSearchParams({ client_id: appKey, response_type: 'code', token_access_type: 'offline' });
-  return `${DROPBOX_AUTHORIZE_URL}?${q}`;
 }
 
 /** Dropbox-API-Arg travels in a header, which must be ASCII: Arabic names are escaped as \uXXXX. */
@@ -75,12 +69,19 @@ function toEntry(m: any): DropboxEntry {
 export async function exchangeAuthorizationCode(appKey: string, appSecret: string, code: string, hosts = dropboxHosts()) {
   const res = await fetch(`${hosts.api}/oauth2/token`, {
     method: 'POST',
+    signal: AbortSignal.timeout(12_000),
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', code: code.trim(), client_id: appKey, client_secret: appSecret }),
   });
   const body: any = await res.json().catch(() => ({}));
-  if (!res.ok || !body.refresh_token) {
-    throw new DropboxError(res.status || 400, 'رفض Dropbox الرمز: تأكد من مفتاح التطبيق وسرّه ومن نسخ الرمز كاملاً وحديثاً', body.error_description || body.error);
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) throw new DropboxError(503, 'خدمة تفويض Dropbox غير متاحة الآن. أعد المحاولة لاحقاً.');
+    if (body.error === 'invalid_client' || res.status === 401) throw new DropboxError(400, 'لم يقبل Dropbox بيانات التطبيق. انسخ App key وApp secret من التطبيق نفسه ثم أعد المحاولة.');
+    if (body.error === 'invalid_grant') throw new DropboxError(400, 'رمز الموافقة غير صالح أو استُخدم سابقاً. افتح صفحة الموافقة للحصول على رمز جديد.');
+    throw new DropboxError(400, 'رفض Dropbox طلب الربط. راجع أذونات التطبيق ثم افتح صفحة الموافقة مجدداً.');
+  }
+  if (typeof body.refresh_token !== 'string' || !body.refresh_token) {
+    throw new DropboxError(400, 'لم يمنح Dropbox التفويض الدائم. افتح صفحة الموافقة من هنا وأدخل الرمز الجديد.');
   }
   return { refreshToken: String(body.refresh_token), accessToken: String(body.access_token), expiresIn: Number(body.expires_in || 14400) };
 }
@@ -169,8 +170,8 @@ export class DropboxClient {
     return res;
   }
 
-  async account(): Promise<{ name: string; email?: string }> {
-    const res = await this.raw(`${this.hosts.api}/2/users/get_current_account`, {});
+  async account(signal?: AbortSignal): Promise<{ name: string; email?: string }> {
+    const res = await this.raw(`${this.hosts.api}/2/users/get_current_account`, { signal });
     const body: any = await res.json();
     return { name: String(body?.name?.display_name || body?.email || 'Dropbox'), email: body?.email };
   }
@@ -241,8 +242,19 @@ export class DropboxClient {
   }
 
   async list(path: string, limit = 200, signal?: AbortSignal): Promise<DropboxEntry[]> {
-    const body = await this.call('files/list_folder', { path: path || '', limit: Math.min(limit, 2000), include_deleted: false }, signal);
-    return (body.entries || []).map(toEntry);
+    let body = await this.call('files/list_folder', { path: path || '', limit: Math.min(limit, 2000), include_deleted: false }, signal);
+    const entries: DropboxEntry[] = (body.entries || []).map(toEntry);
+    const usedCursors = new Set<string>();
+    while (body.has_more && entries.length < limit && typeof body.cursor === 'string' && !usedCursors.has(body.cursor)) {
+      usedCursors.add(body.cursor);
+      body = await this.call('files/list_folder/continue', { cursor: body.cursor }, signal);
+      entries.push(...(body.entries || []).map(toEntry));
+    }
+    return entries.slice(0, limit);
+  }
+
+  async metadata(path: string, signal?: AbortSignal): Promise<DropboxEntry> {
+    return toEntry(await this.call('files/get_metadata', { path }, signal));
   }
 
   async remove(path: string): Promise<void> {

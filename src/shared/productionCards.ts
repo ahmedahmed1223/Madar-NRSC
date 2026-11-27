@@ -7,6 +7,7 @@
  * The rules below are shared by the browser (to explain a refusal before sending) and the server
  * (which enforces them), so both always agree.
  */
+import { pendingStepDependencies, stepExecutionRulesError, stepStartError, type StepExecutionRules } from './cardExecution';
 import { stationName, stationScope, stationsOf, type Station } from './stations';
 import { allDepartments, departmentName, type Department } from './departments';
 import { workReminderError, workReminderInstant, type WorkReminderOptions } from './workReminders';
@@ -82,6 +83,7 @@ export const STEP_STATUSES = [
   { id: 'TODO', name: 'لم تبدأ' },
   { id: 'IN_PROGRESS', name: 'قيد التنفيذ' },
   { id: 'BLOCKED', name: 'متعطلة' },
+  { id: 'IN_REVIEW', name: 'بانتظار المراجعة' },
   { id: 'DONE', name: 'مكتملة' },
   { id: 'SKIPPED', name: 'غير مطلوبة' },
 ] as const;
@@ -95,7 +97,12 @@ export const CARD_STATUSES = [
 ] as const;
 export type CardStatus = (typeof CARD_STATUSES)[number]['id'];
 
-export interface CardStep {
+export interface CardStep extends StepExecutionRules {
+  receiptAssignedAt?: string;
+  receiptConfirmedAt?: string;
+  skippedReason?: string;
+  skippedById?: string;
+  skippedAt?: string;
   id: string;
   /** Id of a StepType (see the settings). */
   type: string;
@@ -103,6 +110,8 @@ export interface CardStep {
   title?: string;
   assigneeId?: string;
   assigneeName?: string;
+  reviewerId?: string;
+  reviewerName?: string;
   /** Station doing the step: the assignee's station, or the station asked to pick it up. */
   stationId?: string;
   /** With no assignee: the department asked to pick it up (inside the station when one is given). */
@@ -163,6 +172,9 @@ export interface CardLogEntry {
   kind: 'NOTE' | 'STEP';
   /** A NOTE marked as a decision by the card owner or a supervisor: everyone on the card hears it. */
   decision?: boolean;
+  delivery?: 'PARTIAL' | 'FINAL';
+  mediaIds?: string[];
+  deliveryLinks?: CardLink[];
   stepId?: string;
   /** Snapshots of an actual state transition, stamped by the server. */
   fromStatus?: StepStatus;
@@ -194,6 +206,7 @@ export interface ProductionCard {
   brief?: string;
   priority: 'NORMAL' | 'URGENT';
   status: CardStatus;
+  cancellationReason?: string;
   /** Who decides when the card is stuck. */
   ownerId?: string;
   ownerName?: string;
@@ -215,6 +228,7 @@ export interface ProductionCard {
   /** Workflow template the assignment was created from (for reports by template). */
   templateId?: string;
   templateName?: string;
+  templateVersion?: number;
   steps: CardStep[];
   log?: CardLogEntry[];
   createdById?: string;
@@ -232,6 +246,16 @@ export interface ProductionCard {
 export const isStepOpen = (step: CardStep) => step.status !== 'DONE' && step.status !== 'SKIPPED';
 const required = (card: ProductionCard) => (card.steps || []).filter((s) => s.status !== 'SKIPPED');
 
+export const hasConfiguredWorkflow = (card: ProductionCard) => card.templateVersion != null || card.steps.some(step =>
+  step.reviewerId || step.dependencies !== undefined || step.optional !== undefined || step.receiptMinutes !== undefined || step.executionTrack !== undefined);
+
+export function cardCloseError(card: ProductionCard, before?: ProductionCard | null): string | null {
+  if (!hasConfiguredWorkflow(card) && (!before || !hasConfiguredWorkflow(before))) return null;
+  return card.steps.some(step => step.optional !== true && step.status !== 'DONE')
+    ? 'أكمِل كل المهام الإلزامية واقبل مخرجاتها المرسلة للمراجعة قبل الإغلاق'
+    : null;
+}
+
 /** The step the card is waiting on: the first one not finished. */
 export const currentStep = (card: ProductionCard): CardStep | undefined => (card.steps || []).find(isStepOpen);
 
@@ -245,13 +269,15 @@ export function isStepOwnLate(card: ProductionCard, step: CardStep, now = Date.n
   if (!isStepLate(step, now)) return false;
   if (step.status !== 'TODO') return true;
   const index = (card.steps || []).findIndex((s) => s.id === step.id);
-  const earlier = (card.steps || []).slice(0, Math.max(0, index)).filter(isStepOpen);
+  const earlier = step.dependencies ? pendingStepDependencies(card, step) : (card.steps || []).slice(0, Math.max(0, index)).filter(isStepOpen);
   return !earlier.some((s) => s.status === 'BLOCKED' || isStepLate(s, now));
 }
 
 /** Earlier required steps still open when this one is finished (finishing then needs a confirmation). */
 export const openStepsBefore = (card: ProductionCard, stepId: string): CardStep[] => {
   const index = (card.steps || []).findIndex((s) => s.id === stepId);
+  const step = card.steps[index];
+  if (step?.dependencies) return pendingStepDependencies(card, step);
   return index <= 0 ? [] : card.steps.slice(0, index).filter(isStepOpen);
 };
 
@@ -346,6 +372,7 @@ export function cardContributions(card: ProductionCard, types: StepType[]): { st
 // ---------------------------------------------------------------------------
 
 export interface CardActor {
+  canSkipOptionalStep?: boolean;
   id: string;
   stationId?: string;
   /** A general manager's stations and station groups (see stationScope). */
@@ -407,6 +434,16 @@ export function stepFitsActor(type: string, actor: Pick<CardActor, 'canManage' |
 /** Step types whose holder reviews what came before and may send it back for rework. */
 export const REVIEW_STEP_TYPES = ['quality', 'approve'];
 
+export function canReviewCardStep(card: ProductionCard, step: CardStep, actorId: string): boolean {
+  return card.status === 'OPEN' && !!step.reviewerId && step.reviewerId === actorId &&
+    (step.status === 'IN_REVIEW' || step.status === 'DONE');
+}
+
+export function isConfiguredReviewReturn(before: CardStep | undefined, after: CardStep): boolean {
+  return !!before?.reviewerId && (before.status === 'IN_REVIEW' || before.status === 'DONE') &&
+    (after.status === 'IN_PROGRESS' || after.status === 'TODO');
+}
+
 /** Whether the actor may send earlier steps of this card back: the owner, a supervisor, or whoever holds an open review step. */
 export function canSendBack(card: ProductionCard, actor: CardActor, reviewStepId?: string): boolean {
   if (card.status !== 'OPEN') return false;
@@ -417,7 +454,7 @@ export function canSendBack(card: ProductionCard, actor: CardActor, reviewStepId
 /** Done steps before the reviewer's step that can be sent back (all done steps for the owner or a supervisor). */
 export function sendBackTargets(card: ProductionCard, fromStepId?: string): CardStep[] {
   const index = fromStepId ? (card.steps || []).findIndex((s) => s.id === fromStepId) : card.steps.length;
-  return (card.steps || []).slice(0, index < 0 ? card.steps.length : index).filter((s) => s.status === 'DONE');
+  return (card.steps || []).slice(0, index < 0 ? card.steps.length : index).filter((s) => s.status === 'DONE' && !s.reviewerId);
 }
 
 /**
@@ -431,7 +468,7 @@ export function sendBackCard(card: ProductionCard, targetId: string, reason: str
     ...card,
     steps: card.steps.map((s, i) => {
       if (i === target) return { ...s, status: s.assigneeId ? 'IN_PROGRESS' : 'TODO', returnedReason: reason.trim() };
-      if (i > target && (until < 0 || i < until) && s.status === 'DONE') return { ...s, status: 'TODO' };
+      if (i > target && (until < 0 || i < until) && s.status === 'DONE' && !s.reviewerId) return { ...s, status: 'TODO' };
       return s;
     }),
   };
@@ -476,6 +513,8 @@ const same = (a: unknown, b: unknown) => stable(a) === stable(b);
 const isIso = (v: unknown) => typeof v === 'string' && v.length <= 40 && Number.isFinite(new Date(v).getTime());
 const optText = (v: unknown, max: number) => v === undefined || v === null || (typeof v === 'string' && v.length <= max);
 const optMinutes = (v: unknown) => v === undefined || v === null || (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 100000);
+const isCardLink = (link: CardLink) => !!link && typeof link.label === 'string' && link.label.length <= 160 &&
+  typeof link.url === 'string' && link.url.length <= 2000 && /^https?:\/\/\S+$/i.test(link.url);
 
 export const MAX_CARD_STEPS = 30;
 export const MAX_CHECKLIST = 20;
@@ -487,6 +526,7 @@ export function cardError(card: ProductionCard): string | null {
   if (!CARD_KINDS.some((k) => k.id === card.kind)) return 'نوع المادة غير معروف';
   if (card.priority !== 'NORMAL' && card.priority !== 'URGENT') return 'أولوية التكليف غير معروفة';
   if (!CARD_STATUSES.some((s) => s.id === card.status)) return 'حالة التكليف غير معروفة';
+  if (!optText(card.cancellationReason, 1000)) return 'سبب الإلغاء بحد أقصى 1000 حرف';
   if (!optText(card.brief, 5000)) return 'وصف المطلوب بحد أقصى 5000 حرف';
   if (!optText(card.script, 60000)) return 'النص بحد أقصى 60000 حرف';
   for (const key of ['dueAt', 'airAt'] as const) if (card[key] && !isIso(card[key])) return 'موعد التسليم أو البث غير صالح';
@@ -496,9 +536,7 @@ export function cardError(card: ProductionCard): string | null {
   }
   if (card.links !== undefined) {
     if (!Array.isArray(card.links) || card.links.length > 40) return 'الحد الأقصى 40 رابطاً';
-    for (const link of card.links) {
-      if (!link || typeof link.label !== 'string' || link.label.length > 160 || typeof link.url !== 'string' || link.url.length > 2000 || !/^https?:\/\/\S+$/i.test(link.url)) return 'كل رابط يحتاج عنواناً يبدأ بـ http أو https';
-    }
+    if (card.links.some(link => !isCardLink(link))) return 'كل رابط يحتاج عنواناً يبدأ بـ http أو https';
   }
   if (card.mediaIds !== undefined && (!Array.isArray(card.mediaIds) || card.mediaIds.length > 100 || card.mediaIds.some((id) => typeof id !== 'string' || !ID.test(id)))) return 'مواد المكتبة المرفقة غير صالحة';
   if (!Array.isArray(card.steps) || card.steps.length > MAX_CARD_STEPS) return `الحد الأقصى ${MAX_CARD_STEPS} مهمة في التكليف`;
@@ -510,11 +548,15 @@ export function cardError(card: ProductionCard): string | null {
     stepIds.add(step.id);
     if (typeof step.type !== 'string' || !TYPE_ID.test(step.type)) return 'نوع المهمة غير صالح';
     if (!STEP_STATUSES.some((s) => s.id === step.status)) return 'حالة المهمة غير معروفة';
+    if (step.reviewerId != null && (typeof step.reviewerId !== 'string' || !ID.test(step.reviewerId))) return 'مراجع المهمة غير صالح';
+    if (step.status === 'IN_REVIEW' && !step.reviewerId) return 'عيّن مراجعًا قبل إرسال المخرجات للمراجعة';
     if (![1, 2, 3].includes(step.complexity)) return 'درجة التعقيد غير معروفة';
     if (!optText(step.title, 200) || !optText(step.note, 3000) || !optText(step.blockedReason, 1000)) return 'نص المهمة أطول من المسموح';
     if (!optMinutes(step.estimateMinutes) || !optMinutes(step.spentMinutes)) return 'الوقت بالدقائق رقم صحيح موجب';
     if (step.dueAt && !isIso(step.dueAt)) return 'موعد تسليم المهمة غير صالح';
     if (step.status === 'BLOCKED' && !(step.blockedReason || '').trim()) return 'اكتب سبب التعطل';
+    if (!optText(step.skippedReason, 1000)) return 'سبب التجاوز بحد أقصى 1000 حرف';
+    if (step.receiptConfirmedAt && !isIso(step.receiptConfirmedAt)) return 'تاريخ تأكيد الاستلام غير صالح';
     if (!optText(step.returnedReason, 1000)) return 'سبب الإعادة بحد أقصى 1000 حرف';
     // Department ids only: administrators may add departments, so the list is not fixed here.
     if (step.departmentId !== undefined && step.departmentId !== null && (typeof step.departmentId !== 'string' || !TYPE_ID.test(step.departmentId))) return 'قسم المهمة غير معروف';
@@ -530,18 +572,23 @@ export function cardError(card: ProductionCard): string | null {
       }
     }
   }
+  const rulesError = stepExecutionRulesError(card.steps);
+  if (rulesError) return rulesError;
   if (card.log !== undefined) {
     if (!Array.isArray(card.log) || card.log.length > 500) return 'سجل التكليف ممتلئ';
     for (const entry of card.log) {
       if (!entry || typeof entry.id !== 'string' || !ID.test(entry.id) || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 3000) return 'ملاحظة التوثيق مطلوبة وبحد أقصى 3000 حرف';
+      if (entry.delivery !== undefined && (!['PARTIAL', 'FINAL'].includes(entry.delivery) || !entry.stepId || !ID.test(entry.stepId) ||
+        (entry.mediaIds !== undefined && (!Array.isArray(entry.mediaIds) || entry.mediaIds.length > 100 || entry.mediaIds.some(id => typeof id !== 'string' || !ID.test(id)))) ||
+        (entry.deliveryLinks !== undefined && (!Array.isArray(entry.deliveryLinks) || entry.deliveryLinks.length > 40 || entry.deliveryLinks.some(link => !isCardLink(link)))))) return 'التسليم غير صالح';
       if (entry.decision !== undefined && entry.decision !== null && typeof entry.decision !== 'boolean') return 'نوع الملاحظة غير صالح';
     }
   }
   return null;
 }
 
-const CARD_LOCKED = ['title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target', 'templateId', 'templateName', 'reminderOptions'] as const;
-const STEP_LOCKED = ['type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId', 'departmentId'] as const;
+const CARD_LOCKED = ['cancellationReason', 'title', 'kind', 'brief', 'priority', 'status', 'ownerId', 'dueAt', 'airAt', 'target', 'templateId', 'templateName', 'templateVersion', 'reminderOptions'] as const;
+const STEP_LOCKED = ['executionTrack', 'dependencies', 'optional', 'receiptMinutes', 'type', 'title', 'dueAt', 'complexity', 'estimateMinutes', 'stationId', 'departmentId'] as const;
 
 /**
  * Whether the actor may take an unassigned step: it is open to everyone or addressed to their
@@ -556,18 +603,61 @@ export const canClaimStep = (step: CardStep, actor: CardActor) =>
 
 /** Fields a reviewer or the owner changes on someone else's done step when sending it back. */
 const RETURN_KEYS = new Set(['status', 'returnedReason', 'returnedById', 'returnedByName', 'returnedAt']);
+const REVIEW_RETURN_KEYS = new Set([...RETURN_KEYS, 'dueAt']);
 const changedKeys = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !same((a as any)[k], (b as any)[k]));
 
 /** Returns an Arabic error when the actor may not make this change, otherwise null. */
 export function cardChangeError(before: ProductionCard | null, after: ProductionCard, actor: CardActor, ctx: CardContext): string | null {
   const shape = cardError(after);
   if (shape) return shape;
+  if (before && (before.templateId !== after.templateId || before.templateVersion !== after.templateVersion)) return 'يبقى إصدار القالب محفوظًا للتكليف الجاري';
+  if (after.status === 'CLOSED' && before?.status !== 'CLOSED') {
+    const closeError = (before && cardCloseError(before)) || cardCloseError(after, before);
+    if (closeError) return closeError;
+  }
+  const oldLog = before?.log || [];
+  const newLog = after.log || [];
+  const appended = newLog.slice(oldLog.length);
+  const logIds = new Set(oldLog.map(entry => entry.id));
+  for (const entry of appended) {
+    if (logIds.has(entry.id)) return 'معرّف التوثيق مكرر';
+    logIds.add(entry.id);
+  }
+  const reviewDecisions = new Set<string>();
 
   // People and stations are checked only where this write names them: a colleague who has since
   // left, or a station removed later, must not freeze the cards they were on.
   if (after.ownerId && after.ownerId !== before?.ownerId && !ctx.users.has(after.ownerId)) return 'صاحب القرار غير موجود أو موقوف';
   for (const step of after.steps) {
     const prev = before?.steps.find((s) => s.id === step.id);
+    if (step.reviewerId && step.reviewerId !== prev?.reviewerId && !ctx.users.has(step.reviewerId)) return 'مراجع المهمة غير موجود أو موقوف';
+    const reviewReturn = isConfiguredReviewReturn(prev, step);
+    if (before && prev && reviewReturn) {
+      if (!canReviewCardStep(before, prev, actor.id) || !changedKeys(prev, step).every(key => REVIEW_RETURN_KEYS.has(key))) return 'إعادة المخرجات للمراجع المحدد';
+      if (!step.returnedReason?.trim() || !step.dueAt || Date.parse(step.dueAt) === Date.parse(prev.dueAt || '')) return 'اكتب سبب الإعادة وحدد موعدًا جديدًا';
+      reviewDecisions.add(step.id);
+    } else if (step.status === 'DONE' && (prev?.reviewerId || step.reviewerId) && (prev?.status !== 'DONE' || prev.reviewerId !== step.reviewerId)) {
+      if (!before || !prev || prev.status !== 'IN_REVIEW' || !canReviewCardStep(before, prev, actor.id) ||
+        changedKeys(prev, step).some(key => key !== 'status')) return 'قبول المخرجات بعد تسليمها للمراجع المحدد فقط';
+      reviewDecisions.add(step.id);
+    } else if (step.status === 'IN_REVIEW' && prev?.status !== 'IN_REVIEW') {
+      if (!prev || !isStepOpen(prev) || prev.assigneeId !== actor.id || before?.status !== 'OPEN' ||
+        prev.assigneeId !== step.assigneeId || prev.reviewerId !== step.reviewerId ||
+        appended.filter(entry => entry.delivery === 'FINAL' && entry.stepId === step.id).length !== 1) return 'إرسال المخرجات للمراجعة للمكلّف بعد تسجيل التسليم النهائي';
+    } else if (prev?.status === 'IN_REVIEW' && (step.status !== 'IN_REVIEW' || !same(step.note, prev.note)) &&
+      !(step.status === 'SKIPPED' && step.optional === true)) return 'تنتظر المخرجات قرار المراجع';
+    if (prev?.reviewerId && prev.status === 'DONE' && step.status === 'DONE' && !same(prev.note, step.note)) return 'أعد الخطوة للتعديل قبل تغيير مخرجاتها المقبولة';
+    if (step.receiptConfirmedAt && step.receiptConfirmedAt !== prev?.receiptConfirmedAt &&
+      (!prev?.receiptMinutes || prev.assigneeId !== actor.id || step.assigneeId !== actor.id || prev.receiptConfirmedAt || !isStepOpen(prev))) return 'تأكيد الاستلام للمكلّف بهذه المهمة';
+    if (prev && !reviewReturn && step.status !== prev.status && (step.status === 'IN_PROGRESS' || step.status === 'IN_REVIEW' || step.status === 'DONE')) {
+      const blocker = stepStartError(before || after, step);
+      if (blocker) return blocker;
+    }
+    if (step.status === 'SKIPPED' && prev?.status !== 'SKIPPED') {
+      if (step.optional === false || (step.type === 'approve' && step.optional !== undefined)) return 'لا يمكن تجاوز مهمة إلزامية';
+      if (step.optional && !step.skippedReason?.trim()) return 'اكتب سبب تجاوز المهمة';
+      if (step.optional && !actor.canManage && !actor.canSkipOptionalStep) return 'تجاوز المهمة الاختيارية لصاحب الصلاحية';
+    }
     if (step.assigneeId && step.assigneeId !== prev?.assigneeId && !ctx.users.has(step.assigneeId)) return 'المكلف غير موجود أو موقوف';
     if (step.waitingOnId && step.waitingOnId !== prev?.waitingOnId && !ctx.users.has(step.waitingOnId)) return 'الزميل المطلوب منه الحل غير موجود أو موقوف';
     if (step.stationId && step.stationId !== prev?.stationId && !ctx.stations.some((s) => s.id === step.stationId)) return 'محطة المهمة غير موجودة';
@@ -578,10 +668,19 @@ export function cardChangeError(before: ProductionCard | null, after: Production
   }
 
   // Earlier log entries are a record: nobody rewrites them.
-  const oldLog = before?.log || [];
-  const newLog = after.log || [];
-  if (newLog.length < oldLog.length || oldLog.some((entry, i) => newLog[i]?.id !== entry.id || newLog[i]?.text !== entry.text)) return 'سجل التوثيق للإضافة فقط ولا يُعدَّل';
+  if (newLog.length < oldLog.length || oldLog.some((entry, i) => entry.delivery ? !same(entry, newLog[i]) :
+    newLog[i]?.id !== entry.id || newLog[i]?.text !== entry.text)) return 'سجل التوثيق للإضافة فقط ولا يُعدَّل';
   const isOwner = !!before && before.ownerId === actor.id;
+  for (const delivery of appended.filter(entry => entry.delivery)) {
+    const step = before?.steps.find(item => item.id === delivery.stepId);
+    const next = after.steps.find(item => item.id === delivery.stepId);
+    if (!step || !next || step.assigneeId !== actor.id || before?.status !== 'OPEN' || !isStepOpen(step) ||
+      step.status === 'IN_REVIEW' || (delivery.delivery === 'FINAL' && next.reviewerId && next.status !== 'IN_REVIEW')) return 'تسليم المخرجات للمكلّف بهذه المهمة';
+    const blocker = stepStartError(before, step);
+    if (blocker) return blocker;
+    if (delivery.mediaIds?.some(id => !after.mediaIds?.includes(id))) return 'أرفق مواد التسليم بالتكليف أولًا';
+    if (delivery.deliveryLinks?.some(link => !after.links?.some(attached => same(attached, link)))) return 'أضف روابط التسليم إلى التكليف أولًا';
+  }
   if (newLog.slice(oldLog.length).some((e) => e.decision) && !actor.canManage && !isOwner) return 'تسجيل القرار لصاحب التكليف أو مسؤولي التكليف';
 
   const scope = stationScope(ctx.stations, actor);
@@ -594,16 +693,18 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     if (!before && after.status !== 'OPEN') return 'التكليف الجديد يبدأ جارياً';
     // A branch closes, cancels and reopens only the cards it governs.
     if (before && before.status !== after.status && !canGovernCard(before, actor, ctx.stations)) return GOVERN_DENIED;
+    if (after.status === 'CANCELLED' && before?.status !== 'CANCELLED' && !after.cancellationReason?.trim()) return 'اكتب سبب الإلغاء';
     // Supervisors distribute work inside the stations they follow.
     for (const step of after.steps) {
       const prev = before?.steps.find((s) => s.id === step.id);
+      if (step.reviewerId && step.reviewerId !== prev?.reviewerId && outOfScope(step.reviewerId)) return 'لا يمكنك اختيار مراجع من محطة غير مرتبطة بمحطتك';
       if (!step.assigneeId || step.assigneeId === prev?.assigneeId) continue;
       if (outOfScope(step.assigneeId)) return 'لا يمكنك تكليف زميل من محطة غير مرتبطة بمحطتك';
     }
     return null;
   }
 
-  if (!actor.canWork) return 'صلاحياتك لا تسمح بالعمل على التكليفات';
+  if (!actor.canWork && !reviewDecisions.size) return 'صلاحياتك لا تسمح بالعمل على التكليفات';
   if (!before) return 'إنشاء التكليفات وتوزيع مهامها لمسؤولي التكليف';
   if (before.status !== 'OPEN') return 'التكليف مغلق؛ يعيد فتحه مسؤول التكليف';
   if (CARD_LOCKED.some((key) => !same(before[key], after[key]))) return 'تعديل بيانات التكليف ومواعيده لمسؤولي التكليف';
@@ -616,6 +717,11 @@ export function cardChangeError(before: ProductionCard | null, after: Production
     const prev = before.steps[i];
     const next = after.steps[i];
     if (same(prev, next)) continue;
+    if (reviewDecisions.has(prev.id)) continue;
+    if (!actor.canWork) return 'صلاحياتك لا تسمح بالعمل على التكليفات';
+    if (prev.reviewerId !== next.reviewerId) return 'اختيار المراجع لمسؤولي التكليف';
+    if (actor.canSkipOptionalStep && prev.optional && isStepOpen(prev) && next.status === 'SKIPPED' &&
+      changedKeys(prev, next).every(key => key === 'status' || key === 'skippedReason')) continue;
     if (STEP_LOCKED.some((key) => !same(prev[key], next[key]))) return 'تعديل تفاصيل المهمة لمسؤولي التكليف';
     // The assignee ticks the checklist; its items are the supervisor's.
     if (!same((prev.checklist || []).map((c) => c.text), (next.checklist || []).map((c) => c.text))) return 'بنود قائمة التحقق لمسؤولي التكليف';
@@ -651,7 +757,7 @@ export function cardChangeError(before: ProductionCard | null, after: Production
 // Writes based on an older version (made offline, or while a colleague saved)
 // ---------------------------------------------------------------------------
 
-const MERGED_CARD_FIELDS = ['title', 'kind', 'brief', 'priority', 'ownerId', 'dueAt', 'airAt', 'target', 'script', 'scriptApproved', 'links', 'mediaIds', 'reminderOptions'] as const;
+const MERGED_CARD_FIELDS = ['cancellationReason', 'title', 'kind', 'brief', 'priority', 'ownerId', 'dueAt', 'airAt', 'target', 'script', 'scriptApproved', 'links', 'mediaIds', 'reminderOptions'] as const;
 
 /** Takes the sender's change to one value unless the stored value changed differently meanwhile. */
 function mergeValue<T>(base: T, mine: T, current: T): { ok: boolean; value: T } {

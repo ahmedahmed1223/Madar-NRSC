@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
-import { constants, createReadStream } from 'node:fs';
+import { constants, createWriteStream } from 'node:fs';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -8,12 +10,18 @@ import Database from 'better-sqlite3';
 import type { NewsroomDatabase } from './db';
 import type { VerifiedExternalBackup } from '../shared/databaseDiagnostics';
 import { logger } from './logger';
+import * as storage from './storage';
+import {
+  backupHash as digest, mountedBackupDirectory as externalDirectory, cleanupPrimaryBackupStaging, latestVerifiedPrimaryBackup,
+  primaryBackupCarriers, primaryBackupTarget, publishPrimaryBackup, withPrimaryBackupStaging, type BackupTransportConfig, type BackupBundleFile,
+} from './primaryBackupStorage';
 
 const run = promisify(execFile);
 const bundleName = /^newsroom_backup_[0-9TZ-]+(?:_[a-z]+)?\.sqlite\.bundle$/;
 const EXTERNAL_EVIDENCE = 'backup_last_verified_external';
-type ExternalTargets = { backupDirectory?: string; backupRemote?: string };
-type BundleFile = { path: string; bytes: number; sha256: string };
+type ExternalTargets = BackupTransportConfig;
+type BundleFile = BackupBundleFile;
+type BackupConfig = ExternalTargets & { backupRetention: number };
 const ABANDONED_STAGING_MS = 24 * 60 * 60 * 1000;
 
 function externalTargets({ backupDirectory, backupRemote }: ExternalTargets) {
@@ -27,7 +35,8 @@ function externalTargets({ backupDirectory, backupRemote }: ExternalTargets) {
 }
 
 /** Evidence applies only to a complete bundle delivered to every current external target. */
-export function lastVerifiedExternalBackup(db: Pick<NewsroomDatabase, 'getMeta'>, config: ExternalTargets): VerifiedExternalBackup | null {
+export function lastVerifiedExternalBackup(db: Pick<NewsroomDatabase, 'getMeta' | 'getRow' | 'dataDir' | 'dbId'>, config: ExternalTargets): VerifiedExternalBackup | null {
+  if (primaryBackupTarget(db) !== 'local') return latestVerifiedPrimaryBackup(db, config);
   const { targets, fingerprint } = externalTargets(config);
   if (!targets.length) return null;
   try {
@@ -39,27 +48,8 @@ export function lastVerifiedExternalBackup(db: Pick<NewsroomDatabase, 'getMeta'>
   }
 }
 
-function outside(relative: string) {
-  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
-}
-
-async function digest(file: string) {
-  const hash = crypto.createHash('sha256');
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest('hex');
-}
-
 function backupOrigin(db: Pick<NewsroomDatabase, 'dbId'>) {
   return crypto.createHash('sha256').update(db.dbId).digest('hex');
-}
-
-async function externalDirectory(dataDir: string, configured: string, create: boolean) {
-  const directory = path.resolve(configured);
-  if (!outside(path.relative(dataDir, directory))) throw new Error('External backup directory must be outside DATA_DIR');
-  if (create) await fs.mkdir(directory, { recursive: true });
-  const resolved = await fs.realpath(directory);
-  if (!outside(path.relative(await fs.realpath(dataDir), resolved))) throw new Error('External backup directory must be outside DATA_DIR');
-  return resolved;
 }
 
 async function cleanPending(root: string, suffix: string, olderThan = Infinity) {
@@ -72,6 +62,7 @@ async function cleanPending(root: string, suffix: string, olderThan = Infinity) 
 }
 
 export async function cleanupBackupStaging(db: Pick<NewsroomDatabase, 'backupsDir' | 'dataDir' | 'dbId'>, config: ExternalTargets) {
+  await cleanupPrimaryBackupStaging(db, config);
   if ((await fs.lstat(db.backupsDir)).isDirectory()) await cleanPending(db.backupsDir, '.pending');
   if (!config.backupDirectory) return;
   try {
@@ -91,18 +82,38 @@ async function withStaging<T>(staging: string, write: () => Promise<T>) {
   }
 }
 
-async function buildBundle(db: NewsroomDatabase, fileName: string, staging: string, origin: string) {
-  await fs.mkdir(path.join(staging, 'uploads'));
-  await fs.copyFile(path.join(db.backupsDir, fileName), path.join(staging, 'newsroom.sqlite'));
+async function stageRemoteUpload(db: NewsroomDatabase, id: string, target: string, expectedBytes: number) {
+  const record = db.getUpload(id);
+  const source = record && await storage.openStoredUpload(db, { dataDir: db.dataDir }, record);
+  if (source?.kind === 'file') {
+    await fs.copyFile(source.path, target, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+    return;
+  }
+  if (source?.kind !== 'stream' || source.response.status !== 200 || !source.response.body) throw new Error('Referenced remote upload unavailable');
+  let bytes = 0;
+  const sizeLimit = new Transform({
+    transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > expectedBytes) callback(new Error('Remote upload exceeds the snapshot size'));
+      else callback(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(source.response.body as import('node:stream/web').ReadableStream), sizeLimit,
+    createWriteStream(target, { mode: 0o600, flags: 'wx' }));
+}
+
+async function buildBundle(db: NewsroomDatabase, source: string, staging: string, origin: string, includeRemote = false) {
+  await fs.mkdir(path.join(staging, 'uploads'), { mode: 0o700 });
+  await fs.copyFile(source, path.join(staging, 'newsroom.sqlite'));
   const snapshot = new Database(path.join(staging, 'newsroom.sqlite'), { readonly: true, fileMustExist: true });
-  let uploads: { stored_name: string; size_bytes: number }[];
+  let uploads: { id: string; stored_name: string; size_bytes: number; local_evicted?: number }[];
   // Files kept only in Dropbox, Google Drive or the shared folder (nothing on this server's disk).
   let elsewhere = 0;
   try {
     if (snapshot.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Backup database failed integrity check');
     const evictable = (snapshot.prepare('PRAGMA table_info(uploads)').all() as { name: string }[]).some((c) => c.name === 'local_evicted');
-    const all = snapshot.prepare(`SELECT stored_name, size_bytes${evictable ? ', local_evicted' : ''} FROM uploads`).all() as { stored_name: string; size_bytes: number; local_evicted?: number }[];
-    uploads = all.filter((u) => u.stored_name && !u.local_evicted);
+    const all = snapshot.prepare(`SELECT id, stored_name, size_bytes${evictable ? ', local_evicted' : ''} FROM uploads`).all() as typeof uploads;
+    uploads = all.filter(u => u.stored_name && (includeRemote || !u.local_evicted));
     elsewhere = all.length - uploads.length;
   } finally { snapshot.close(); }
   const files: BundleFile[] = [];
@@ -111,7 +122,13 @@ async function buildBundle(db: NewsroomDatabase, fileName: string, staging: stri
     const relative = `uploads/${upload.stored_name}`;
     const target = path.join(staging, relative);
     // An independent copy that shares disk blocks only on filesystems with copy-on-write support.
-    await fs.copyFile(path.join(db.dataDir, relative), target, constants.COPYFILE_FICLONE);
+    if (upload.local_evicted) await stageRemoteUpload(db, upload.id, target, upload.size_bytes);
+    else {
+      const sourceFile = path.join(db.dataDir, relative);
+      const stat = await fs.lstat(sourceFile);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Invalid source upload file');
+      await fs.copyFile(sourceFile, target, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+    }
     if ((await fs.stat(target)).size !== upload.size_bytes) throw new Error(`Incomplete upload: ${upload.stored_name}`);
     files.push({ path: relative, bytes: upload.size_bytes, sha256: await digest(target) });
   }
@@ -159,7 +176,7 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
   const staging = path.join(db.backupsDir, `${name}.pending`);
   const bundle = path.join(db.backupsDir, name);
   const { files, uploads, filesKeptElsewhere } = await withStaging(staging, async () => {
-    const result = await buildBundle(db, fileName, staging, origin);
+    const result = await buildBundle(db, path.join(db.backupsDir, fileName), staging, origin);
     await fs.rename(staging, bundle);
     return result;
   });
@@ -186,9 +203,25 @@ export async function deliverBackup(db: NewsroomDatabase, fileName: string,
  * then the bundle with every referenced upload and a SHA-256 manifest, copied to BACKUP_DIRECTORY
  * and BACKUP_REMOTE when configured. The delivery outcome is recorded for the backup status.
  */
-export async function createFullBackup(db: NewsroomDatabase, config: { backupRetention: number; backupDirectory?: string; backupRemote?: string }, kind?: 'auto') {
-  const file = await db.createBackup(kind, config.backupRetention);
+export async function createFullBackup(db: NewsroomDatabase, config: BackupConfig, kind?: 'auto' | 'prerestore') {
   try {
+    const target = primaryBackupTarget(db);
+    if (target !== 'local') {
+      const destination = (await primaryBackupCarriers(db, config))[target];
+      if (!destination) throw new Error('Selected primary backup storage is unavailable');
+      const result = await withPrimaryBackupStaging(db.dataDir, async staging => {
+        const file = await db.createBackup(kind, config.backupRetention, staging);
+        const directory = path.join(staging, 'bundle');
+        await fs.mkdir(directory, { mode: 0o700 });
+        const { files, uploads, filesKeptElsewhere } = await buildBundle(db, path.join(staging, file.fileName), directory, backupOrigin(db), true);
+        if (filesKeptElsewhere) throw new Error('The full backup contains unmanaged upload paths');
+        const bundle = await publishPrimaryBackup(db, { kind: target, root: destination }, file, directory, files, config.backupRetention);
+        return { file, bundle, uploads, filesKeptElsewhere, target };
+      });
+      db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'ok' }));
+      return result;
+    }
+    const file = await db.createBackup(kind, config.backupRetention);
     const result = await deliverBackup(db, file.fileName, { directory: config.backupDirectory, remote: config.backupRemote, retention: config.backupRetention });
     const at = new Date().toISOString();
     const { targets, fingerprint } = externalTargets(config);
@@ -196,7 +229,7 @@ export async function createFullBackup(db: NewsroomDatabase, config: { backupRet
       db.setMeta(EXTERNAL_EVIDENCE, JSON.stringify({ at, fileName: file.fileName, fingerprint }));
     }
     db.setMeta('backup_last_delivery', JSON.stringify({ at, status: 'ok' }));
-    return { file, ...result };
+    return { file, ...result, target: 'local' as const };
   } catch (error) {
     db.setMeta('backup_last_delivery', JSON.stringify({ at: new Date().toISOString(), status: 'failed' }));
     throw error;

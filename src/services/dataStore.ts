@@ -635,6 +635,25 @@ export class DataStore {
 
   // --- Synchronous access (used by ApiService) ------------------------------
 
+  confirmedRow(collection: CollectionName, id: string): EntityRow | null {
+    const meta = this.meta.get(collection)?.get(id);
+    if (!meta?.v || this.hasPendingWrite(collection, id)) return null;
+    return { c: collection, id, v: meta.v, p: meta.p, d: JSON.parse(meta.json) };
+  }
+
+  /** Queues an edit against the confirmed revision opened by the form. */
+  queueVersionedRow(row: EntityRow) {
+    const { c, id, v, d } = row;
+    if (!this.ready) throw new Error('البيانات لم تُحمّل بعد من الخادم');
+    const current = this.meta.get(c)?.get(id);
+    if (!current || !Number.isSafeInteger(v) || v < 1) throw new Error('تعذر تحديد النسخة التي بُني عليها التعديل');
+    if (this.hasPendingWrite(c, id)) throw new Error('انتظر تأكيد الحفظ السابق لهذه القصة');
+    if (!this.allowsLocalRecord(c, id, d)) throw new Error(MODULE_UNAVAILABLE);
+    this.replaceLocal(c, { ...row, p: current.p });
+    this.markDirty(c, id, 'upsert');
+    this.afterLocalChange(c);
+  }
+
   /** Deep copy, so callers may mutate freely before calling set(). */
   get<T>(storageKey: string, fallback: T): T {
     const c = collectionForStorageKey(storageKey);

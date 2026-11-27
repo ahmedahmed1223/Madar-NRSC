@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import type { NewsroomDatabase } from './db';
 import type { BackupRehearsal } from '../shared/databaseDiagnostics';
 import { APP_VERSION } from '../shared/releaseVersion';
+import { fetchPrimaryBackupSnapshot, readPrimaryBackup, withPrimaryBackupStaging } from './primaryBackupStorage';
 
 export class DatabaseOperationBusy extends Error {}
 export class DatabaseOperationLock {
@@ -59,14 +60,28 @@ export async function cleanupRehearsals(tempRoot: string): Promise<void> {
   }
 }
 
+export async function withBackupSource<T>(db: NewsroomDatabase, fileName: string, work: (source: string) => Promise<T>): Promise<T> {
+  const primary = readPrimaryBackup(db.dataDir, fileName);
+  if (!primary) return work(db.backupFilePath(fileName));
+  return withPrimaryBackupStaging(db.dataDir, async directory => {
+    const copy = path.join(directory, 'snapshot.sqlite');
+    await fetchPrimaryBackupSnapshot(db.dataDir, primary, copy);
+    return work(copy);
+  });
+}
+
 export async function withStableBackup<T>(db: NewsroomDatabase, fileName: string, tempRoot: string,
   work: (source: string, sha256: string) => Promise<T>): Promise<T> {
-  const source = db.backupFilePath(fileName);
+  const primary = readPrimaryBackup(db.dataDir, fileName);
   ensureRoot(tempRoot);
   const directory = await fs.promises.mkdtemp(path.join(tempRoot, 'rehearsal-'));
   try {
     const copy = path.join(directory, 'snapshot.sqlite');
-    await fs.promises.copyFile(source, copy, fs.constants.COPYFILE_EXCL);
+    if (primary) {
+      await fetchPrimaryBackupSnapshot(db.dataDir, primary, copy);
+      return await work(copy, primary.sha256);
+    }
+    await fs.promises.copyFile(db.backupFilePath(fileName), copy, fs.constants.COPYFILE_EXCL);
     const hash = crypto.createHash('sha256');
     for await (const chunk of fs.createReadStream(copy)) hash.update(chunk);
     return await work(copy, hash.digest('hex'));

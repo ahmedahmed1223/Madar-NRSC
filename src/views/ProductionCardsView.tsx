@@ -71,7 +71,7 @@ const isWithinPeriod = (period: CardWorkPeriod, today: string, dates: (string | 
  */
 export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ currentUser, users, focusId, onFocus, onOpenNews, onOpenEpisode, openNewRequest, onOpenNewHandled }) => {
   const assignedOnly = assignedWorkOnly(permission => RbacService.hasPermission(currentUser, permission));
-  const canManage = RbacService.hasPermission(currentUser, 'cards.manage');
+  const canManage = apiService.cardActor(undefined, false).canManage;
   const canCreate = canManage && RbacService.acceptsNewAssignments(currentUser);
   const actor = apiService.cardActor();
   const [cards, setCards] = useState<ProductionCard[]>(() => apiService.getCards());
@@ -140,8 +140,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       }
     }
     // Work sent back for rework comes first, then blockers and delays, then the rest; offers last.
-    const rank = (r: (typeof rows)[number]) => (r.step.returnedReason && !r.claimable ? 0 : r.step.status === 'BLOCKED' ? 1 : isStepOwnLate(r.card, r.step, now) ? 2 : r.claimable ? 4 : 3);
-    return rows.sort((a, b) => rank(a) - rank(b) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'));
+    const rank = (r: (typeof rows)[number]) => r.claimable ? 2 : r.step.returnedReason || r.step.status === 'BLOCKED' || isStepOwnLate(r.card, r.step, now) ? 0 : 1;
+    const deadline = ({ step, card }: (typeof rows)[number]) => Math.min(...[step.dueAt, card.dueAt, card.airAt]
+      .map(value => Date.parse(value || '')).filter(Number.isFinite), Infinity);
+    return rows.sort((a, b) => rank(a) - rank(b) || deadline(a) - deadline(b) || Number(b.card.priority === 'URGENT') - Number(a.card.priority === 'URGENT'));
     // actor is rebuilt on every render from the same user and permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCards, currentUser.id, currentUser.stationId, now, period, today, assignedOnly]);

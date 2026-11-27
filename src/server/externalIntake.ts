@@ -11,7 +11,7 @@ import { guestTechnicalEmail } from './guestTechInvitations';
 import { moduleAllowed } from './moduleAccess';
 import { createRateLimiter } from './rateLimit';
 import { changeBus } from './sync';
-import { queueCopiesForUpload } from './storage';
+import { mediaUploadPersistence, queueCopiesForUpload } from './storage';
 import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, UploadError } from './uploads';
 import { activeIntakeIssuer as activeUser, intakeGuestTarget, issueContributorDropLink, issueIntakeTicket as issue, readIntakeTicket as readTicket } from './externalIntakeTickets';
 
@@ -86,21 +86,33 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
   });
 
   router.post('/upload', async (req, res) => {
-    const found = readTicket(db, req.get('X-Madar-Intake'));
+    const token = req.get('X-Madar-Intake');
+    const found = readTicket(db, token);
     if (!found || found.ticket.kind !== 'upload' || uploading.has(found.key)) {
       req.resume();
       return denied(res);
     }
     const permitted = () => mayRedeemDropLink(db, found.ticket.issuer);
     if (!permitted()) { req.resume(); return denied(res); }
+    const mayCommit = (lock = false) => readTicket(db, token, lock) && permitted();
     uploading.add(found.key);
     let upload: UploadRecord | undefined;
     try {
-      upload = await receiveUpload(req, db, config.dataDir, maxUpload, found.ticket.issuer, { allowed: uploadTypes });
+      const destination = mediaUploadPersistence(db, config);
+      upload = await receiveUpload(req, db, config.dataDir, maxUpload, found.ticket.issuer, {
+        allowed: uploadTypes,
+        persistence: destination && {
+          ...destination,
+          commit(record, sourcePath) {
+            if (!mayCommit()) throw new UploadError(410, invalid);
+            return destination.commit(record, sourcePath);
+          },
+        },
+      });
       const savedUpload = upload;
       const id = newId('media');
       const recorded = db.transaction(() => {
-        if (!readTicket(db, req.get('X-Madar-Intake'), true) || !permitted()) return false;
+        if (!mayCommit(true)) return false;
         const now = new Date().toISOString();
         const mediaType = savedUpload.mimeType.startsWith('audio/') ? 'AUDIO' : 'VIDEO';
         db.writeRow('media', id, {

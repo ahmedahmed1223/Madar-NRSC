@@ -9,7 +9,9 @@ import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { isDepartmentId } from '../shared/departments';
 import { handoverDraftError, handoverPlainText, shiftHandoverPath, type HandoverDraftInput, type HandoverReference, type HandoverRow, type ShiftHandover } from '../shared/shiftHandovers';
 import { canRead } from './policy';
-import { requireModule } from './moduleAccess';
+import { moduleAllowed, requireModule } from './moduleAccess';
+import { handoverWork } from '../shared/handoverWork';
+import { stepTypesOf } from '../shared/productionCards';
 
 class HandoverError extends Error {
   constructor(public status: number, message: string, public current?: HandoverRow) { super(message); }
@@ -18,6 +20,7 @@ const deny = () => { throw new HandoverError(403, 'صلاحياتك لا تسم�
 const notFound = () => { throw new HandoverError(404, 'التسليم غير متاح'); };
 
 export function handoverRosterMembers(db: NewsroomDatabase, handover: HandoverDraftInput, source = false): string[] {
+  if (!source && handover.recipientUserId) return [handover.recipientUserId];
   const date = source ? handover.sourceDate : handover.recipientDate;
   const shift = source ? handover.sourceShift : handover.recipientShift;
   return [...new Set(db.listCollection('roster').map(row => row.d).filter(entry => !entry.deletedAt && entry.departmentId === handover.departmentId && entry.date === date && entry.shift === shift).map(entry => entry.userId as string))];
@@ -35,7 +38,7 @@ export function handoverTarget(db: NewsroomDatabase, auth: AuthContext, referenc
   const permission = reference.collection === 'news' ? auth.can('news.view')
     : reference.collection === 'bulletins' || reference.collection === 'bulletinStories' ? auth.can('rundown.view') || auth.can('bulletins.edit') || auth.can('bulletins.manage')
     : reference.collection === 'episodes' ? auth.can('programs.view') || auth.can('episodes.view')
-    : auth.can('tasks.view');
+    : reference.collection === 'productionCards' ? auth.can('cards.view') : auth.can('tasks.view');
   return target && !target.deletedAt && permission && canRead(auth, reference.collection, target, (c, id) => db.getRow(c, id)?.d) ? target : null;
 }
 export function projectHandover(db: NewsroomDatabase, auth: AuthContext, row: EntityRow): HandoverRow {
@@ -44,7 +47,8 @@ export function projectHandover(db: NewsroomDatabase, auth: AuthContext, row: En
   const recipients = record.state === 'PUBLISHED' ? handoverRosterMembers(db, row.d).map(id => db.getRow('users', id)?.d).filter(u => u && u.isActive && !u.deletedAt).map(u => ({ userId: u.id, userName: u.fullName, received: receipts.some(r => r.userId === u.id) })) : [];
   return { ...row, d: { ...record, references: references.map(ref => {
     const target = handoverTarget(db, auth, ref);
-    return target ? { ...ref, available: true as const, title: String(target.title || target.slug || target.name || 'مرجع') } : { available: false as const };
+    return target ? { ...ref, available: true as const, title: String(target.title || target.slug || target.name || 'مرجع'),
+      ...(ref.collection === 'productionCards' ? { work: handoverWork(target, stepTypesOf(db.getRow('settings', 'singleton')?.d)) } : {}) } : { available: false as const };
   }) }, receipts, recipients,
     canAcknowledge: record.state === 'PUBLISHED' && record.authorId !== auth.user.id && handoverRosterMembers(db, row.d).includes(auth.user.id),
     canPublish: record.state === 'DRAFT' && record.authorId === auth.user.id && auth.can('handover.publish') && (canSource(db, auth, row.d) || !!record.supersedesId && auth.can('handover.manage')),
@@ -70,6 +74,16 @@ function checkDraftAuthority(db: NewsroomDatabase, auth: AuthContext, draft: Han
     if (!auth.can('handover.manage') && previous.d.authorId !== auth.user.id) deny();
     if (!auth.can('handover.manage') && !canSource(db, auth, draft)) deny();
   } else if (!canSource(db, auth, draft)) deny();
+}
+
+function checkManualRecipient(db: NewsroomDatabase, auth: AuthContext, draft: HandoverDraftInput) {
+  if (!draft.recipientUserId) return;
+  const user = db.getRow('users', draft.recipientUserId)?.d;
+  if (user?.isActive && !user.deletedAt && user.id !== auth.user.id && canRead(auth, 'users', user)) {
+    const recipient = buildAuthContext(db, user, 'handover');
+    if (recipient.can('handover.view') && moduleAllowed(recipient, 'planning')) return;
+  }
+  throw new HandoverError(400, 'اختر زميلاً نشطاً يملك صلاحية استلام تسليم الوردية');
 }
 
 export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => void): Router {
@@ -105,6 +119,7 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     if (error) throw new HandoverError(400, error);
     const draft = req.body as HandoverDraftInput;
     checkDraftAuthority(db, auth, draft);
+    checkManualRecipient(db, auth, draft);
     if (db.getRow('shiftHandovers', draft.id, true)) throw new HandoverError(409, 'معرّف مستخدم؛ راجع نتيجة الحفظ السابق');
     if (draft.references.some(ref => !handoverTarget(db, auth, ref))) throw new HandoverError(400, 'أحد المراجع غير متاح؛ راجع اختيارك');
     const now = new Date().toISOString();
@@ -120,8 +135,9 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     const draft = req.body?.draft;
     if (Object.keys(req.body || {}).some(k => !['draft', 'baseV'].includes(k)) || handoverDraftError(draft) || draft.id !== row.id || draft.supersedesId !== row.d.supersedesId) throw new HandoverError(400, 'حقول المسودة غير صالحة');
     checkDraftAuthority(db, auth, draft);
+    checkManualRecipient(db, auth, draft);
     if (draft.references.some((ref: HandoverReference) => !handoverTarget(db, auth, ref))) throw new HandoverError(400, 'أحد المراجع غير متاح؛ راجع اختيارك');
-    return { row: projectHandover(db, auth, db.writeRow('shiftHandovers', row.id, { ...row.d, ...draft, title: draft.title.trim(), updatedAt: new Date().toISOString() }, row.p, auth.user.id)) };
+    return { row: projectHandover(db, auth, db.writeRow('shiftHandovers', row.id, { ...row.d, ...draft, recipientUserId: draft.recipientUserId, title: draft.title.trim(), updatedAt: new Date().toISOString() }, row.p, auth.user.id)) };
   }, true));
   router.delete('/:id', endpoint((auth, req) => {
     const row = accessibleHandover(db, auth, req.params.id);
@@ -138,6 +154,7 @@ export function shiftHandoverRouter(db: NewsroomDatabase, emitRevision: () => vo
     checkDraftAuthority(db, auth, row.d);
     checkVersion(db, auth, row, req.body?.baseV);
     if (row.d.state !== 'DRAFT') throw new HandoverError(409, 'هذا التسليم منشور بالفعل');
+    checkManualRecipient(db, auth, row.d);
     const now = new Date().toISOString();
     const published = db.writeRow('shiftHandovers', row.id, { ...row.d, state: 'PUBLISHED', publishedAt: now, updatedAt: now }, row.p, auth.user.id);
     alertHandoverRecipients(db, published.d, 'publication', Date.now());
@@ -173,7 +190,7 @@ function alertHandoverRecipients(db: NewsroomDatabase, record: ShiftHandover, ki
     const user = db.getRow('users', id)?.d;
     if (!user || !user.isActive || user.deletedAt || id === record.authorId || acknowledged.has(id)) continue;
     const auth = buildAuthContext(db, user, 'notification');
-    if (!handoverVisible(db, auth, record)) continue;
+    if (!moduleAllowed(auth, 'planning') || !handoverVisible(db, auth, record)) continue;
     const notificationId = `handover-${createHash('sha256').update(JSON.stringify([record.id, id, kind])).digest('hex')}`;
     if (db.getRow('notifications', notificationId, true)) continue;
     writeNotification(db, { userId: id, title: kind === 'publication' ? 'تسليم وردية جديد' : 'تذكير باستلام الوردية', message: 'يوجد تسليم منشور لورديتك ينتظر الاستلام الصريح.', category: 'assignment', linkUrl: shiftHandoverPath(record.id) }, { id: notificationId, createdAt: new Date(now).toISOString() });

@@ -134,3 +134,37 @@ it('recipient roster grants cross-department published reads and removal revokes
   server.db.deleteRow('roster', 'cross-recipient', null);
   expect((await crew.get('/api/v1/shift-handovers/published')).status).toBe(404);
 });
+
+it('supports a named recipient without a roster and projects current card work only while authorized', async () => {
+  const crew = await loginAgent(server.app, 'crew@akhbar.tv');
+  const userId = (await crew.get('/api/v1/auth/me')).body.user.id;
+  const user = server.db.getRow('users', userId)!;
+  const cardId = 'handover-linked-card';
+  server.db.writeRow('productionCards', cardId, {
+    id: cardId, status: 'OPEN', title: 'لقاء ميداني', dueAt: '2035-12-12T16:00:00Z',
+    steps: [{ id: 'shot', type: 'edit', status: 'BLOCKED', dueAt: '2035-12-12T14:00:00Z', blockedReason: 'انتظار تصريح التصوير' }],
+    log: [{ id: 'info', kind: 'NOTE', at: '2035-12-12T13:00:00Z', text: 'وصل المراسل إلى الموقع' }],
+  }, 0, null);
+  const id = 'named-handover';
+  const input = draft(id, { recipientUserId: userId, references: [{ collection: 'productionCards', id: cardId, note: 'للمتابعة' }] });
+  expect((await post(author, '', draft('self-handover', { recipientUserId: authorId }))).status).toBe(400);
+  const made = await post(author, '', input);
+  expect(made.status).toBe(200);
+  expect((await crew.get(`/api/v1/shift-handovers/${id}`)).status).toBe(404);
+  expect((await post(author, `/${id}/publish`, { baseV: made.body.row.v })).status).toBe(200);
+  try {
+    server.db.writeRow('users', userId, { ...user.d, customPermissions: ['cards.view', 'handover.view', 'news.view'] }, user.p, null);
+    const seen = await crew.get(`/api/v1/shift-handovers/${id}`);
+    expect(seen.status).toBe(200);
+    expect(seen.body.row.canAcknowledge).toBe(true);
+    expect(seen.body.row.d.references[0].work).toMatchObject({ openSteps: 1, nearestDueAt: '2035-12-12T14:00:00Z', latestUpdate: 'وصل المراسل إلى الموقع' });
+    expect(seen.body.row.d.references[0].work.decision).toContain('انتظار تصريح التصوير');
+    expect((await post(crew, `/${id}/acknowledge`, {})).status).toBe(200);
+    server.db.writeRow('users', userId, { ...user.d, customPermissions: ['!cards.view'] }, user.p, null);
+    const masked = await crew.get(`/api/v1/shift-handovers/${id}`);
+    expect(masked.body.row.d.references).toEqual([{ available: false }]);
+    expect(JSON.stringify(masked.body)).not.toContain(cardId);
+  } finally {
+    server.db.writeRow('users', userId, user.d, user.p, null);
+  }
+});

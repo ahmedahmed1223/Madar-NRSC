@@ -258,4 +258,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         WHERE collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') = 'SCHEDULED';
     `,
   },
+  {
+    version: 11,
+    sql: `
+      ALTER TABLE uploads ADD COLUMN remote_primary INTEGER NOT NULL DEFAULT 0
+        CHECK (remote_primary IN (0, 1));
+    `,
+  },
 ];

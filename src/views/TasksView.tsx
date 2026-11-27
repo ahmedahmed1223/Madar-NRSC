@@ -75,7 +75,10 @@ const priorityVariant = (p?: string) => (p === 'URGENT' || p === 'CRITICAL' ? 'd
 const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 0, HIGH: 1, NORMAL: 2, MEDIUM: 2, LOW: 3 };
 const BLOCKED_REASON_LIMIT = 500;
 const INITIAL_STATUS_OPTIONS = TASK_STATUS_OPTIONS.filter(option => option.value === 'TODO' || option.value === 'IN_PROGRESS');
-const dueTime = (t: { dueDate?: string }) => (t.dueDate ? Date.parse(t.dueDate) || Infinity : Infinity);
+const dueTime = (t: { dueDate?: string }) => {
+  const deadline = Date.parse(t.dueDate || '');
+  return Number.isFinite(deadline) ? deadline : Infinity;
+};
 
 const cmp = (x: number, y: number) => (x === y ? 0 : x < y ? -1 : 1);
 
@@ -409,7 +412,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
     blocked: filteredTasks.filter(task => task.status === 'BLOCKED').length,
     urgent: filteredTasks.filter(task => task.priority === 'URGENT' || task.priority === 'CRITICAL').length,
   };
-  const taskListPage = useIncremental(filteredTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
+  const followUpRank = (task: EditorialTask) => {
+    if (task.status === 'COMPLETED' || task.status === 'CANCELLED') return 2;
+    const needsReview = task.status === 'IN_REVIEW' && canManage(task);
+    return needsReview || task.status === 'BLOCKED' || overdueDays(task, now) > 0 ? 0 : 1;
+  };
+  const listTasks = [...filteredTasks].sort((a, b) => {
+    const aRank = followUpRank(a);
+    const bRank = followUpRank(b);
+    return aRank - bRank || (aRank === 2 ? compareForBoard(a, b, true) : cmp(dueTime(a), dueTime(b)) || compareForBoard(a, b, false));
+  });
+  const taskListPage = useIncremental(listTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
   const selectedDeadline = dueDate ? Date.parse(fromLocalInputValue(dueDate)) : NaN;
   const pastDueOpenTask = Number.isFinite(selectedDeadline) && selectedDeadline < now
     && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(status));

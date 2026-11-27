@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import express from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestServer, listen, loginAgent } from '../helpers';
-import { addressInRanges, parseCidr, safeFileName, validateStorage } from '../../src/shared/storage';
+import { addressInRanges, parseCidr, safeFileName, storageOf, validateStorage } from '../../src/shared/storage';
 import { headerJson, dropboxPath } from '../../src/server/dropbox';
 import { runStorageSync } from '../../src/server/storage';
 import { runRetention } from '../../src/server/retention';
@@ -28,10 +28,16 @@ function fakeCloud() {
 
   app.post('/oauth2/token', express.urlencoded({ extended: false }), (req, res) => {
     if (req.body.grant_type === 'authorization_code') {
+      if (req.body.client_secret === 'incorrect-secret') return res.status(401).json({ error: 'invalid_client', error_description: 'private tenant detail' });
+      if (req.body.code === 'no-offline-token') return res.json({ access_token: 'short-lived' });
+      if (req.body.code === 'unavailable') return res.status(503).json({});
+      if (req.body.code === 'network-interrupted') return req.socket.destroy();
       if (req.body.code !== 'good-code') return res.status(400).json({ error: 'invalid_grant' });
       return res.json({ access_token: 'at', refresh_token: 'rt', expires_in: 14400 });
     }
-    if (req.body.refresh_token !== 'rt' && req.body.refresh_token !== 'g-rt') return res.status(400).json({ error: 'invalid_grant' });
+    if (req.body.client_secret === 'incorrect-secret') return res.status(401).json({ error: 'invalid_client' });
+    if (req.body.refresh_token === 'provider-down') return res.status(503).end();
+    if (!['rt', 'g-rt', 'existing-private-refresh-token'].includes(req.body.refresh_token)) return res.status(400).json({ error: 'invalid_grant' });
     if (req.body.scope === 'files.content.write' && req.body.client_id === 'read-only') {
       return res.status(400).json({ error: 'invalid_scope', error_description: 'private provider detail' });
     }
@@ -82,7 +88,18 @@ function fakeCloud() {
   app.post('/2/files/list_folder', express.json(), (req, res) => {
     const dir = String(req.body.path).toLowerCase();
     if (dir === '/missing') return res.status(409).json({ error_summary: 'path/not_found/...' });
+    if (dir === '/مدار-المكتبة/النشرات') return res.json({ entries: [], has_more: true, cursor: dir });
     res.json({ entries: [...dropbox.keys()].filter((p) => path.posix.dirname(p).toLowerCase() === dir).map(entry) });
+  });
+
+  app.post('/2/files/list_folder/continue', express.json(), (req, res) => {
+    const entries = [...dropbox.keys()].filter(p => path.posix.dirname(p).toLowerCase() === req.body.cursor).map(entry);
+    res.json({ entries, has_more: false });
+  });
+  app.post('/2/files/get_metadata', express.json(), (req, res) => {
+    const key = [...dropbox.keys()].find(p => p.toLowerCase() === String(req.body.path).toLowerCase());
+    if (!key) return res.status(409).json({ error_summary: 'path/not_found/...' });
+    res.json(entry(key));
   });
 
   // Google Drive
@@ -190,6 +207,9 @@ describe('storage helpers', () => {
   });
 
   it('validates storage settings', () => {
+    expect(storageOf(undefined)).toMatchObject({ primaryMedia: 'local', primaryBackups: 'local' });
+    expect(validateStorage({ primaryMedia: 'nas', primaryBackups: 'dropbox' })).toBeNull();
+    expect(validateStorage({ primaryBackups: 'unsupported' })).toMatch(/وجهة التخزين/);
     expect(validateStorage({ share: { enabled: true, displayPath: '\\\\srv\\news', localNetworks: ['nope'], copyByDefault: true } })).toMatch(/نطاق/);
     expect(validateStorage({ dropbox: { enabled: true, rootPath: '/a/../b' } })).toMatch(/Dropbox/);
     expect(validateStorage({ keepLocalCopy: false, gdrive: { enabled: true, rootName: 'مدار', rootFolderId: '' } })).toBeNull();
@@ -230,6 +250,10 @@ describe('media trash', () => {
     expect(result.status).toBe(206);
     expect(result.headers['content-range']).toBe(`bytes 0-10/${bytes.length}`);
     expect((await editor.get(locations)).body.data.local).toBe(true);
+    const inventory = () => editor.post('/api/v1/storage/copies').set(H).send({ ids: [uploadId, 'unavailable-upload'], inventory: true });
+    const restoredInventory = (await inventory()).body.locations;
+    expect(restoredInventory[uploadId]).toMatchObject({ local: true });
+    expect(restoredInventory).not.toHaveProperty('unavailable-upload');
 
     const active = server.db.getRow('media', id)!;
     const deletedAgain = await editor.post('/api/v1/data/sync').set(H).send({ ops: [{ c: 'media', id, op: 'upsert', baseV: active.v, d: { ...active.d, deletedAt: new Date().toISOString() } }] });
@@ -309,10 +333,48 @@ describe('Dropbox', () => {
     expect((await editor.get(location('location-unowned-legacy'))).status).toBe(404);
   });
 
-  it('connects with a code, copies attached uploads, frees the server copy and still serves the file', async () => {
+  it('explains Dropbox code, app credential, offline grant and connectivity failures before saving', async () => {
     const admin = await loginAgent(server.app, 'admin@akhbar.tv');
     const bad = await admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'abcde12345', appSecret: 's', code: 'wrong' });
     expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/رمز جديد/);
+    const connect = (appSecret: string, code: string) => admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'abcde12345', appSecret, code });
+    const wrongSecret = await connect('incorrect-secret', 'good-code').expect(400);
+    expect(wrongSecret.body.error).toMatch(/App secret/);
+    expect(JSON.stringify(wrongSecret.body)).not.toContain('private tenant detail');
+    expect((await connect('s', 'no-offline-token').expect(400)).body.error).toMatch(/التفويض الدائم/);
+    expect((await connect('s', 'unavailable').expect(503)).body.error).toMatch(/لاحقاً/);
+    expect((await connect('s', 'network-interrupted').expect(503)).body.error).toMatch(/اتصال الخادم/);
+    expect((await admin.get('/api/v1/storage/status')).body.data.dropbox.connected).toBe(false);
+  });
+
+  it('only saves a verified existing refresh token, preserves a working connection and never returns its secrets', async () => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const editor = await loginAgent(server.app, 'editor@akhbar.tv');
+    const url = '/api/v1/storage/dropbox/connect';
+    const keys = { appKey: 'abcde12345', appSecret: 'workstation-secret' };
+    const refreshToken = 'existing-private-refresh-token';
+    await editor.post(url).set(H).send({ ...keys, refreshToken }).expect(403);
+    await admin.post(url).set(H).send({ ...keys, refreshToken, code: 'good-code' }).expect(400);
+    const bad = await admin.post(url).set(H).send({ ...keys, refreshToken: 'revoked' }).expect(400);
+    expect(bad.body.error).toMatch(/Refresh token/);
+    const wrongClient = await admin.post(url).set(H).send({ ...keys, appSecret: 'incorrect-secret', refreshToken }).expect(400);
+    expect(wrongClient.body.error).toMatch(/App secret/);
+    expect((await admin.get('/api/v1/storage/status')).body.data.dropbox.connected).toBe(false);
+    const saved = await admin.post(url).set(H).send({ ...keys, refreshToken }).expect(200);
+    expect(saved.body.data.dropbox.connected).toBe(true);
+    const original = server.db.getMeta('storage.dropbox.credentials');
+    await admin.post(url).set(H).send({ ...keys, refreshToken: 'provider-down' }).expect(503);
+    expect(server.db.getMeta('storage.dropbox.credentials')).toBe(original);
+    for (const response of [saved, await admin.get('/api/v1/storage/status'), await admin.get('/api/v1/data')]) {
+      expect(response.text).not.toContain(refreshToken);
+      expect(response.text).not.toContain(keys.appSecret);
+    }
+    await admin.post('/api/v1/storage/dropbox/disconnect').set(H).send({}).expect(200);
+  });
+
+  it('connects with a code, copies attached uploads, frees the server copy and still serves the file', async () => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
     const ok = await admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'abcde12345', appSecret: 's', code: 'good-code' });
     expect(ok.status).toBe(200);
     expect(ok.body.data.dropbox).toMatchObject({ connected: true, account: 'غرفة الأخبار' });
@@ -378,6 +440,38 @@ describe('Dropbox', () => {
   });
 });
 
+it('browses nested Dropbox folders, hides sibling roots, and respects server-only selection', async () => {
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const previous = (await admin.get('/api/v1/data')).body.collections.settings[0].d.storage;
+  const root = '/مدار-المكتبة';
+  const nested = root + '/النشرات';
+  const within = nested + '/نشرة-الصباح.mp4';
+  const outside = root + '-خارجي/نشرة-الصباح.mp4';
+  await admin.post('/api/v1/storage/dropbox/connect').set(H)
+    .send({ appKey: 'abcde12345', appSecret: 's', code: 'good-code' }).expect(200);
+  await saveSettings(admin, s => ({ ...s, storage: { ...s.storage, keepLocalCopy: true, dropbox: { enabled: false, rootPath: root } } }));
+  cloud.dropbox.set(within, Buffer.from('news clip'));
+  cloud.dropbox.set(outside, Buffer.from('outside configured Dropbox folder'));
+  try {
+    const list = await admin.get('/api/v1/storage/dropbox/list').query({ at: nested }).expect(200);
+    expect(list.body.data).toMatchObject({ at: nested, items: [expect.objectContaining({ ref: within })] });
+    await admin.get('/api/v1/storage/dropbox/list').query({ at: root + '-خارجي' }).expect(403);
+    const search = await admin.get('/api/v1/storage/dropbox/search').query({ q: 'نشرة-الصباح' }).expect(200);
+    expect(search.body.data.map((value: { ref: string }) => value.ref)).toEqual([within]);
+    await admin.post('/api/v1/storage/dropbox/import').set(H).send({ ref: within }).expect(201);
+    await admin.post('/api/v1/storage/dropbox/import').set(H).send({ ref: outside }).expect(403);
+    await admin.post('/api/v1/storage/dropbox/import').set(H).send({ ref: nested + '/مفقود.mp4' }).expect(404);
+    await saveSettings(admin, s => ({ ...s, storage: { ...s.storage, dropbox: { enabled: true, rootPath: root } } }));
+    const uploadId = await uploadToLibrary(admin, 'نسخة-الخادم.mp4', Buffer.from('server only'), { 'X-Storage-Cloud-Targets': 'none' });
+    const metadata = await admin.post('/api/v1/storage/copies').set(H).send({ ids: [uploadId], inventory: true }).expect(200);
+    expect(metadata.body.locations[uploadId]).toEqual({ local: true, copies: [] });
+  } finally {
+    cloud.dropbox.delete(within);
+    cloud.dropbox.delete(outside);
+    await saveSettings(admin, s => ({ ...s, storage: previous }));
+  }
+});
+
 describe('Google Drive', () => {
   it('uploads in resumable chunks into dated folders and serves the file back', async () => {
     server.db.setMeta('storage.gdrive.credentials', JSON.stringify({ creds: { clientId: 'x.apps.googleusercontent.com', clientSecret: 's', refreshToken: 'g-rt' }, account: 'أرشيف المحطة' }));
@@ -400,6 +494,56 @@ describe('Google Drive', () => {
     expect(server.db.getUpload(id)!.localEvicted).toBe(false);
     const found = await editor.get('/api/v1/storage/gdrive/search').query({ q: 'مقابلة' });
     expect(found.body.data[0]).toMatchObject({ name: 'مقابلة.mp4' });
+  });
+});
+
+describe('primary cloud media storage', () => {
+  it.each(['dropbox', 'gdrive'] as const)('commits to %s before acknowledging and reads the remote bytes', async (provider) => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    const oldSettings = (await admin.get('/api/v1/data')).body.collections.settings[0].d.storage;
+    const key = `storage.${provider}.credentials`;
+    const oldCredentials = server.db.getMeta(key);
+    const credentials = provider === 'dropbox'
+      ? { appKey: 'primary-dropbox', appSecret: 's', refreshToken: 'rt' }
+      : { clientId: 'primary-drive', clientSecret: 's', refreshToken: 'g-rt' };
+    const bytes = Buffer.from(`only held by ${provider}`);
+    try {
+      server.db.setMeta(key, JSON.stringify({ creds: credentials }));
+      await saveSettings(admin, (settings) => ({ ...settings, storage: {
+        primaryMedia: provider,
+        keepLocalCopy: true,
+        dropbox: { enabled: provider === 'dropbox', rootPath: '/primary-media' },
+        gdrive: { enabled: provider === 'gdrive', rootName: 'Primary media', rootFolderId: '' },
+      } }));
+      const id = await uploadToLibrary(admin, 'primary-clip.mp4', bytes);
+      const record = server.db.getUpload(id)!;
+      expect(record.localEvicted).toBe(true);
+      expect(fs.existsSync(path.join(uploadsDir(server.dir), record.storedName))).toBe(false);
+      const copies = server.db.copiesOf(id);
+      expect(copies).toEqual([expect.objectContaining({ target: provider, state: 'DONE', remotePath: expect.any(String) })]);
+      const remotePath = copies[0].remotePath!;
+      const stored = provider === 'dropbox' ? cloud.dropbox.get(remotePath) : cloud.drive.get(remotePath)?.data;
+      expect(stored).toEqual(bytes);
+      const served = await admin.get(`/api/v1/media/files/${id}`).expect(200);
+      expect(Buffer.from(served.body)).toEqual(bytes);
+
+      const localFiles = () => fs.existsSync(uploadsDir(server.dir)) ? fs.readdirSync(uploadsDir(server.dir)) : [];
+      const localFilesBefore = localFiles();
+      const uploadSummaryBefore = server.db.uploadsSummary();
+      const staging = path.join(server.dir, 'media-storage-staging');
+      const collectionBefore = (await admin.get('/api/v1/data')).body.collections.media;
+      server.db.setMeta(key, JSON.stringify({ creds: { ...credentials, refreshToken: 'provider-down' } }));
+      await admin.post('/api/v1/media/upload').set(H)
+        .set('Content-Type', 'video/mp4').set('X-File-Name', 'unavailable-primary.mp4')
+        .set('X-Storage-Cloud-Targets', 'none').send(bytes).expect(503);
+      expect(localFiles()).toEqual(localFilesBefore);
+      expect(server.db.uploadsSummary()).toEqual(uploadSummaryBefore);
+      expect(fs.readdirSync(staging)).toEqual([]);
+      expect((await admin.get('/api/v1/data')).body.collections.media).toEqual(collectionBefore);
+    } finally {
+      server.db.setMeta(key, oldCredentials ?? '');
+      await saveSettings(admin, (settings) => ({ ...settings, storage: oldSettings }));
+    }
   });
 });
 

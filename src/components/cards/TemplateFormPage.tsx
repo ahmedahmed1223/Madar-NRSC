@@ -1,3 +1,9 @@
+import { apiFetch } from '../../services/http';
+import { dataStore } from '../../services/dataStore';
+import { mayManageTemplate, publishedWorkflow, templateScope, type PublishedWorkflow, type TemplateScope } from '../../shared/workflowPublication';
+import { WorkflowDiagram } from './WorkflowDiagram';
+import { WORKFLOW_TRACKS } from '../../shared/workflowTracks';
+import { StepExecutionFields } from './StepExecutionFields';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { FormPage } from '../common/FormPage';
@@ -55,11 +61,20 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
   const [urgent, setUrgent] = useState(false);
   const [steps, setSteps] = useState<TemplateStep[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [track, setTrack] = useState<TemplateScope>('news');
+  const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<PublishedWorkflow[]>();
+  const scopeLabels = { news: 'الأخبار', programmes: 'البرامج', shared: 'مشترك' } as const;
+  const actor = apiService.getCurrentUser();
+  const legacyManage = RbacService.hasPermission(actor, 'cards.manage');
+  const allowedTracks = (Object.keys(scopeLabels) as TemplateScope[]).filter(scope => mayManageTemplate(actor, { track: scope } as WorkflowTemplate, legacyManage));
   const editing = !!template && apiService.getWorkflowTemplates().some((t) => t.id === template.id);
 
   useEffect(() => {
     if (!isOpen) return;
     setName(template?.name || '');
+    setHistory(undefined);
+    setTrack(template ? templateScope(template) : allowedTracks[0] ?? 'news');
     setKind(template?.kind || 'REPORT');
     setDescription(template?.description || '');
     setUrgent(template?.priority === 'URGENT');
@@ -86,29 +101,74 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
     return [];
   };
 
-  const submit = (e: React.FormEvent) => {
+  const loadHistory = async () => {
+    if (!template) return;
+    try {
+      const result = await apiFetch<{ data: PublishedWorkflow[] }>(`/api/v1/workflow-templates/${encodeURIComponent(template.id)}/publications`);
+      setHistory(result.data);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'تعذر فتح سجل إصدارات القالب');
+    }
+  };
+
+  const loadVersionIntoDraft = (version: PublishedWorkflow) => {
+    setName(version.name);
+    setKind(version.kind);
+    setDescription(version.description || '');
+    setUrgent(version.priority === 'URGENT');
+    setSteps(version.steps);
+    setError(null);
+  };
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    const publish = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'publish';
+    setSaving(true);
     setError(null);
     try {
       const saved = apiService.saveWorkflowTemplate({
         ...(editing ? template! : { id: template?.id || newId('wft') }),
         name: name.trim(),
         kind,
+        track,
+        drafting: true,
+        publishRequested: publish,
         description: description.trim() || undefined,
         priority: urgent ? 'URGENT' : 'NORMAL',
         steps: steps.map((s) => ({ ...s, title: s.title?.trim() || undefined, checklist: s.checklist?.map((c) => c.trim()).filter(Boolean).slice(0, MAX_CHECKLIST) })),
       } as WorkflowTemplate);
-      notify({ type: 'success', message: editing ? 'حُفظ القالب' : 'أُنشئ القالب؛ يمكنك الآن إنشاء تكليفات منه' });
+      const result = await dataStore.awaitWrite('workflowTemplates', saved.id);
+      if (!result.ok) throw new Error(result.message || 'لم يؤكد الخادم حفظ القالب');
+      notify({ type: 'success', message: publish ? 'نُشر إصدار القالب' : 'حُفظت مسودة القالب' });
       onSaved(saved);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'تعذر حفظ القالب');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <FormPage isOpen={isOpen} onClose={onClose} title={editing ? 'تعديل قالب سير العمل' : 'قالب سير عمل جديد'} subtitle="سلسلة مهام تُنشأ منها التكليفات" maxWidth="4xl">
       <form onSubmit={submit} className="space-y-5 text-xs">
+        <div className="grid gap-2 sm:max-w-sm">
+          <label htmlFor="tpl-track" className={LABEL}>مسار القالب</label>
+          <select id="tpl-track" className={INPUT} value={track} disabled={editing || saving} onChange={e => setTrack(e.target.value as TemplateScope)}>
+            {allowedTracks.map(scope => <option key={scope} value={scope}>{scopeLabels[scope]}</option>)}
+          </select>
+          {template && publishedWorkflow(template) && <p className="text-slate-600">الإصدار المنشور {publishedWorkflow(template)?.version}</p>}
+        </div>
+        {editing && <section aria-label="سجل إصدارات القالب" className="space-y-2">
+          <button type="button" className="min-h-11 rounded-lg border border-slate-300 px-3 font-semibold" onClick={() => void loadHistory()}>سجل الإصدارات</button>
+          {history && <ul className="space-y-1">{history.map(version => <li key={version.version} className="flex flex-wrap items-center gap-2">
+            <span>الإصدار {version.version} · {version.name}</span>
+            <button type="button" className="min-h-11 rounded-lg px-3 font-bold text-blue-800" onClick={() => loadVersionIntoDraft(version)}>تحميل الإصدار {version.version} إلى المسودة</button>
+          </li>)}</ul>}
+        </section>}
+        <WorkflowDiagram nodes={steps.map(step => ({ ...step, label: step.title || stepTypes.find(type => type.id === step.type)?.name || step.type }))}
+          onMove={(id, target) => { const from = steps.findIndex(step => step.id === id); if (from >= 0) move(from, target - from); }} />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
             <label htmlFor="tpl-name" className={LABEL}>اسم القالب *</label>
@@ -148,7 +208,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                   </select>
                   <button type="button" disabled={index === 0} onClick={() => move(index, -1)} aria-label="تقديم المهمة" className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40"><ArrowUp className="w-4 h-4" /></button>
                   <button type="button" disabled={index === steps.length - 1} onClick={() => move(index, 1)} aria-label="تأخير المهمة" className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40"><ArrowDown className="w-4 h-4" /></button>
-                  <button type="button" disabled={steps.length === 1} onClick={() => setSteps((list) => list.filter((s) => s.id !== step.id))} aria-label="حذف المهمة" className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-lg border border-rose-200 text-rose-700 disabled:opacity-40"><Trash2 className="w-4 h-4" /></button>
+                  <button type="button" disabled={steps.length === 1} onClick={() => setSteps((list) => list.filter(s => s.id !== step.id).map(s => ({ ...s, dependencies: s.dependencies?.filter(dep => dep.stepId !== step.id) })))} aria-label="حذف المهمة" className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-lg border border-rose-200 text-rose-700 disabled:opacity-40"><Trash2 className="w-4 h-4" /></button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   <div>
@@ -160,6 +220,14 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                       {RULE_KINDS.map((r) => (
                         <option key={r.id} value={r.id}>{r.name}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`tpl-reviewer-${step.id}`} className={LABEL}>مراجع الخطوة</label>
+                    <select id={`tpl-reviewer-${step.id}`} value={step.reviewerId || ''} onChange={event => patch(step.id, { reviewerId: event.target.value || undefined })} className={INPUT}>
+                      <option value="">بلا مراجعة مستقلة</option>
+                      {step.reviewerId && !people.some(person => person.id === step.reviewerId) && <option value={step.reviewerId}>المراجع غير متاح حاليًا</option>}
+                      {people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
                     </select>
                   </div>
                   {step.rule.kind !== 'ASK' && (
@@ -174,7 +242,13 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                     </div>
                   )}
                   <div>
-                    <label htmlFor={`tpl-due-${step.id}`} className={LABEL}>قبل موعد التسليم (دقيقة)</label>
+                    <label htmlFor={`tpl-due-basis-${step.id}`} className={LABEL}>مرجع الموعد</label>
+                    <select id={`tpl-due-basis-${step.id}`} value={step.dueBasis || 'DELIVERY'} className={INPUT} onChange={e => patch(step.id, { dueBasis: e.target.value as TemplateStep['dueBasis'] })}>
+                      <option value="DELIVERY">موعد التسليم</option>
+                      <option value="AIR">موعد البث</option>
+                      <option value="CREATION">إنشاء التكليف</option>
+                    </select>
+                    <label htmlFor={`tpl-due-${step.id}`} className={LABEL}>{step.dueBasis === 'CREATION' ? 'بعد الإنشاء (دقيقة)' : 'قبل الموعد (دقيقة)'}</label>
                     <input id={`tpl-due-${step.id}`} type="number" min={-43200} max={43200} inputMode="numeric" value={step.dueOffsetMinutes ?? ''} onChange={(e) => patch(step.id, { dueOffsetMinutes: e.target.value === '' ? undefined : Math.round(Number(e.target.value)) })} placeholder="بلا موعد" className={INPUT} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -201,6 +275,7 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
                     <label htmlFor={`tpl-check-${step.id}`} className={LABEL}>قائمة التحقق (بند في كل سطر)</label>
                     <textarea id={`tpl-check-${step.id}`} rows={2} value={(step.checklist || []).join('\n')} onChange={(e) => patch(step.id, { checklist: e.target.value.split('\n').map((l) => l.slice(0, 200)) })} className={INPUT} />
                   </div>
+                  <StepExecutionFields step={step} tracks={WORKFLOW_TRACKS.filter(track => apiService.cardActor({ kind: track === 'news' ? 'NEWS' : 'PROGRAM' }, false).canManage)} choices={steps.map(item => ({ id: item.id, label: item.title || stepTypes.find(type => type.id === item.type)?.name || item.type }))} onChange={changes => patch(step.id, changes)} />
                 </div>
               </li>
             ))}
@@ -216,7 +291,8 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
         {error && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-700 font-bold">{error}</p>}
         <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
           <button type="button" onClick={onClose} className="min-h-11 px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl">إلغاء</button>
-          <button type="submit" className="min-h-11 px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl">{editing ? 'حفظ القالب' : 'إنشاء القالب'}</button>
+          <button type="submit" value="draft" disabled={saving} className="min-h-11 px-4 font-bold border border-slate-300 rounded-xl disabled:opacity-60">حفظ المسودة</button>
+          <button type="submit" value="publish" disabled={saving} className="min-h-11 px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-60">نشر إصدار القالب</button>
         </div>
       </form>
     </FormPage>

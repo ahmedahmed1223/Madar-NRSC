@@ -31,10 +31,15 @@ import type { CollectionPagePosition, NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { mediaUploadIsTrashed, removeUnreferencedMediaUpload, uploadIdFromMedia } from './uploads';
 import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
+import { supportTrack } from '../shared/trackSupport';
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
 import { stampTaskWorkflow } from '../shared/taskWorkflow';
 import { captureBroadcastPlan } from './broadcastArchive';
+import { stampBulletinMediaReview } from './bulletinMediaReview';
+import { reconcileBulletinStory } from './bulletinStoryVersions';
+import { cueBulletinExclusion } from './bulletinLiveExclusions';
+import { notifyBulletinSourceCorrections } from './bulletinSourceCorrectionNotices';
 import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
 import { assignedWorkOnly } from '../shared/assignedWork';
@@ -57,6 +62,10 @@ import { newAutoTranscriptionJob } from './autoMediaTranscription';
 import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsOf, stationsArchiveOf, stationsOf } from '../shared/stations';
 import { applyDepartmentSettings, departmentHead } from '../shared/departments';
 import { roleAuditEntries, settingsAuditEntries, userAuditEntries, type AuditEntryDraft } from '../shared/auditTrail';
+import { mergeCardOutputs } from './cardConsolidation';
+import { stampWorkflowPublication } from '../shared/workflowPublication';
+import { cardWorkflowAccess, cardWorkflowTrack, workflowAccess } from '../shared/workflowAccess';
+import { WORKFLOW_TRACKS } from '../shared/workflowTracks';
 import { cardNotices, stampCard, type CardNoticeContext } from './cards';
 import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
 import { prepareDigitalPackage } from '../shared/digitalPublishing';
@@ -183,6 +192,7 @@ function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
     currentSegmentId: after.currentSegmentId,
     operatorId: auth.user.id,
     operatorName: auth.user.fullName,
+    ...(before?.correctionRequests?.length ? { correctionRequests: before.correctionRequests } : {}),
   };
   const starting = !before || (before.status === 'ENDED' && after.status === 'LIVE');
   if (starting) {
@@ -344,11 +354,22 @@ export class SyncService {
   private lookup = (c: CollectionName, id: string) => this.db.getRow(c, id)?.d;
 
   private accessRevision(auth: AuthContext): string {
-    const assigned = assignedWorkOnly(auth.can) ? this.db.assignedWorkIds(auth.user.id) : [];
+    const legacy = { view: auth.can('cards.view'), manage: auth.can('cards.manage'), work: auth.can('cards.work') };
+    const rights = WORKFLOW_TRACKS.map(track => workflowAccess(auth.user, track, legacy));
+    const restrictedWorker = rights.some(track => !track.view) && rights.some(track => track.canWork);
+    const limited = assignedWorkOnly(auth.can);
+    const ownedIds = limited || restrictedWorker ? this.db.assignedWorkIds(auth.user.id) : [];
+    const assigned = limited ? ownedIds : [];
+    // A named step can reveal just one card from the opposite track. Drop it on re-assignment.
+    const sharedCards = restrictedWorker ? ownedIds.filter(key => {
+      if (!key.startsWith('productionCards:')) return false;
+      const card = this.lookup('productionCards', key.slice('productionCards:'.length));
+      return card && !workflowAccess(auth.user, cardWorkflowTrack(card), legacy).view && cardWorkflowAccess(auth.user, card, legacy).view;
+    }) : [];
     const team = auth.departmentTaskMembers?.();
     const teamTasks = team ? departmentTaskIds(this.db, auth.user.id, team) : null;
     const access = JSON.stringify([[...auth.permissions].sort(), [...auth.productionAssignments?.() || []].sort(), assigned, teamTasks, moduleAvailability(auth), auth.user.stationId, auth.user.departmentId,
-      this.lookup('settings', SINGLETON_ID)?.moduleAccess,
+      WORKFLOW_TRACKS.map(track => auth.user.workflowRoles?.[track]), rights, sharedCards, this.lookup('settings', SINGLETON_ID)?.moduleAccess,
       !moduleAllowed(auth, 'media') && auth.can('media.view') ? [...linkedMediaIds(this.db, auth)].sort() : null]);
     return createHash('sha256').update(access).digest('base64url');
   }
@@ -640,6 +661,10 @@ export class SyncService {
     if (!before && after.addressedToId) {
       recipients.add(after.addressedToId);
       title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}تكليف ${type?.name || ''} باسمك`;
+    } else if (before && supportTrack(after.type) && before.addressedToId !== after.addressedToId && after.addressedToId) {
+      recipients.add(after.addressedToId);
+      recipients.add(after.requesterId);
+      title = `أُعيد توجيه طلب المساندة إلى ${after.addressedToName}`;
     } else if (!before) {
       const onDuty = onDutyAt(this.listData('roster') as RosterEntry[], Date.now(), after.departmentId).map((e) => e.userId);
       const members = this.listData('users')
@@ -882,6 +907,9 @@ export class SyncService {
       reset: false as const,
       changes: rows.flatMap((r): EntityRow[] => {
         if (this.visible(auth, r)) return [this.readableRow(auth, r)];
+        if (r.c === 'requests' && supportTrack(r.d?.type) && r.d.history?.some((entry: { redirectedFromId?: string }) => entry.redirectedFromId === auth.user.id)) {
+          return [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }];
+        }
         // Someone removed from a group stops seeing it: their browser is told the row is gone
         // (only its random id travels), instead of keeping a group they can no longer write to.
         return r.c === 'conversations' && !assignedWorkOnly(auth.can) ? [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }] : [];
@@ -907,6 +935,23 @@ export class SyncService {
     if (ops.some((op) => op?.c === 'settings')) this.applySettings();
     if (results.some((r) => r.ok)) changeBus.emit('rev', this.db.currentRev());
     return results;
+  }
+
+  consolidateCards(auth: AuthContext, id: string, choice: Parameters<typeof mergeCardOutputs>[3], ip?: string) {
+    this.applySettings();
+    mergeCardOutputs(this.db, auth, id, choice, op => this.applyOne(auth, op, ip));
+    changeBus.emit('rev', this.db.currentRev());
+  }
+
+  createAccount(auth: AuthContext, id: string, profile: Record<string, unknown>, attachCredentials: () => void, ip?: string): SyncOpResult {
+    this.applySettings();
+    const result = this.db.transaction(() => {
+      const created = this.applyOne(auth, { c: 'users', op: 'upsert', id, d: profile }, ip);
+      if (created.ok) attachCredentials();
+      return created;
+    });
+    if (result.ok) changeBus.emit('rev', this.db.currentRev());
+    return result;
   }
 
   restoreTrash(auth: AuthContext, collection: TrashCollection, id: string, baseV: number, ip?: string): SyncOpResult {
@@ -974,8 +1019,13 @@ export class SyncService {
         if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current)) {
           return { ok: false, code: 'FORBIDDEN', message: 'هذه المادة الإنتاجية غير متاحة لك' } as SyncOpResult;
         }
-        // Story locks: nobody else may change or delete a story while its editor holds the lock.
-        if (LOCKABLE_COLLECTIONS.has(collection) && current) {
+        const bulletinBase = collection === 'bulletinStories' && current && op.op === 'upsert' && isPlainObject(op.d) &&
+          typeof op.baseV === 'number' && Number.isSafeInteger(op.baseV)
+          ? current.v === op.baseV ? current.d : this.db.getHistoryVersion(collection, id, op.baseV) : null;
+        const bulletinEdit = bulletinBase && current ? reconcileBulletinStory(bulletinBase, current.d, op.d) : null;
+        const rankOnly = !!bulletinEdit?.rankOnly && (op.p === undefined || current?.p === op.p);
+        // A move in the running order is independent of the current copy editor's lock.
+        if (LOCKABLE_COLLECTIONS.has(collection) && current && !rankOnly) {
           const lock = this.db.getRow('editLocks', lockIdFor(collection, id))?.d;
           if (isLockActive(lock) && lock.userId !== auth.user.id) {
             return {
@@ -1022,7 +1072,8 @@ export class SyncService {
           const base = this.db.getHistoryVersion(collection, id, op.baseV);
           incoming = base ? mergeCardChanges(base, op.d as any, current.d) : null;
         }
-        if (current && op.baseV !== undefined && op.baseV !== current.v && !(MERGE_COLLECTIONS.has(collection) && incoming)) {
+        if (collection === 'bulletinStories' && current && current.v !== op.baseV) incoming = bulletinEdit?.data;
+        if (current && op.baseV !== undefined && op.baseV !== current.v && !((MERGE_COLLECTIONS.has(collection) || collection === 'bulletinStories') && incoming)) {
           return {
             ok: false,
             code: 'CONFLICT',
@@ -1038,6 +1089,11 @@ export class SyncService {
         let after: any = { ...incoming };
         if (COLLECTIONS[collection].kind === 'list') after.id = id;
         after = stamp(collection, after, auth, ip);
+        if (collection === 'users' && before) {
+          for (const field of ['workflowRoles', 'workflowDelegations'] as const) {
+            if (!Object.hasOwn(after, field) && Object.hasOwn(before, field)) after[field] = before[field];
+          }
+        }
         if (collection === 'media' && before && after.deletedAt) after.deletedAt = new Date().toISOString();
         const target = collection === 'productionCards' ? after.target : null;
         if (target && (target.kind === 'episode' || target.kind === 'bulletin') &&
@@ -1077,8 +1133,18 @@ export class SyncService {
             createdBy: before?.createdBy || auth.user.id, createdAt: before?.createdAt || now, updatedBy: auth.user.id, updatedAt: now };
         }
         if (collection === 'requests' && !after.deletedAt) {
+          const destination = after.addressedToId;
           after = stampRequest(before, after, auth);
-          if (!before && after.addressedToId) {
+          if (supportTrack(after.type) && (!before || destination !== before.addressedToId)) {
+            const member = typeof destination === 'string' ? this.db.getRow('users', destination)?.d : undefined;
+            const recipient = member && buildAuthContext(this.db, member, 'support-recipient');
+            if (!recipient || !moduleAllowed(recipient, 'requests') || !(recipient.can('requests.view') || recipient.can('requests.manage') || recipient.can('requests.create'))) {
+              throw new SyncReject('INVALID', 'المستلم لا يستطيع الوصول إلى طلبات المساندة');
+            }
+            after = { ...after, addressedToId: member.id, addressedToName: member.fullName };
+            if (before) after.history = [...after.history, { status: after.status, byId: auth.user.id, byName: auth.user.fullName, at: after.updatedAt,
+              redirectedFromId: before.addressedToId, note: `أُعيد التوجيه إلى ${member.fullName}` }];
+          } else if (!before && after.addressedToId) {
             // A named colleague must be a real, active member of the receiving department.
             const member = this.db.getRow('users', String(after.addressedToId))?.d;
             if (!member || member.isActive === false || departmentIdOf(member) !== after.departmentId) {
@@ -1096,7 +1162,7 @@ export class SyncService {
         }
         if (collection === 'bulletinStories' && !after.deletedAt) {
           const bulletin = this.db.getRow('bulletins', String(after.bulletinId))?.d;
-          after = stampBulletinStory(before, after, auth, bulletin);
+          after = stampBulletinMediaReview(this.db, before, stampBulletinStory(before, after, auth, bulletin));
         }
         if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'notifications') after = { ...after, senderId: before ? before.senderId : auth.user.id };
@@ -1190,7 +1256,7 @@ export class SyncService {
         if (collection === 'chatReads') after = { id, userId: auth.user.id, seen: after.seen, updatedAt: new Date().toISOString() };
         if (collection === 'workflowTemplates' && !after.deletedAt) {
           const now = new Date().toISOString();
-          after = { ...after, name: String(after.name).trim(), builtIn: before?.builtIn === true || undefined, createdById: before?.createdById ?? auth.user.id, createdByName: before?.createdByName ?? auth.user.fullName, createdAt: before?.createdAt ?? now, updatedAt: now };
+          after = stampWorkflowPublication(before, { ...after, name: String(after.name).trim(), builtIn: before?.builtIn === true || undefined, createdById: before?.createdById ?? auth.user.id, createdByName: before?.createdByName ?? auth.user.fullName, createdAt: before?.createdAt ?? now, updatedAt: now }, auth.user, now);
         }
         if (collection === 'productionCards' && !after.deletedAt) {
           // Stamped after the policy so the rules compare exactly what the browser sent.
@@ -1230,7 +1296,7 @@ export class SyncService {
         if (current && collection === 'settings' && JSON.stringify(before.moduleAccess) !== JSON.stringify(after.moduleAccess)) {
           this.db.recordHistory(collection, id, current.v, { moduleAccess: before.moduleAccess }, auth.user.id, auth.user.fullName, MERGE_HISTORY_KEEP);
         }
-        if (current && HISTORY_COLLECTIONS.has(collection)) {
+        if (current && (HISTORY_COLLECTIONS.has(collection) || collection === 'bulletinStories')) {
           this.db.recordHistory(collection, id, current.v, current.d, auth.user.id, auth.user.fullName);
         }
         if (current && MERGE_COLLECTIONS.has(collection)) {
@@ -1277,7 +1343,7 @@ export class SyncService {
         if (collection === 'news' || collection === 'requests' || collection === 'productionCards') {
           publishMessageWorkAttachments(this.db, collection, id, before, row.d, auth);
         }
-        if ((collection === 'tasks' || collection === 'productionCards') && (before?.reminderOptions || after.reminderOptions)) {
+        if (collection === 'productionCards' || (collection === 'tasks' && (before?.reminderOptions || after.reminderOptions))) {
           updateWorkReminders(this.db, collection, id, after.deletedAt ? null : row.d);
         }
         if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
@@ -1300,7 +1366,14 @@ export class SyncService {
           }
         if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
         if (collection === 'messages' && !before) this.notifyMessage(after);
-        if (collection === 'bulletinStories' && !after.deletedAt) this.notifyBulletinStory(before, after, auth);
+        if (collection === 'bulletinStories' && !after.deletedAt) {
+          this.notifyBulletinStory(before, after, auth);
+          cueBulletinExclusion(this.db, before, after, auth.user);
+        }
+        if (collection === 'bulletinStories' && (!before || ['rank', 'floated', 'killed', 'newsId', 'deletedAt'].some(field => before[field] !== after[field]))) {
+          const state = this.lookup('onAir', after.bulletinId);
+          if (state?.status === 'LIVE') notifyBulletinSourceCorrections(this.db, state);
+        }
         this.auditLifecycle(collection, before, after, auth, ip);
         this.auditAdministration(collection, before, after, auth, ip);
         if (collection === 'news' && !after.deletedAt) {
@@ -1321,6 +1394,9 @@ export class SyncService {
             this.db.writeRow('episodes', ep.id, { ...ep.d, status, updatedAt: new Date().toISOString() }, ep.p, null);
           }
           const bul = this.db.getRow('bulletins', String(after.episodeId));
+          if (bul && after.status === 'LIVE' && (!before || ['status', 'currentSegmentId', 'operatorId'].some(field => before[field] !== after[field]))) {
+            notifyBulletinSourceCorrections(this.db, row.d);
+          }
           const bulStatus = after.status === 'LIVE' ? 'ON_AIR' : 'DONE';
           if (bul && bul.d.status !== bulStatus) {
             this.db.writeRow('bulletins', bul.id, { ...bul.d, status: bulStatus, updatedAt: new Date().toISOString() }, bul.p, null);

@@ -54,6 +54,7 @@ it('rehearses and restores schema 5 while classifying old uploads', async () => 
       DROP INDEX idx_news_archive_updated;
       DROP INDEX idx_news_scheduled;
       DROP INDEX idx_message_channel_timestamp;
+      ALTER TABLE uploads DROP COLUMN remote_primary;
       ALTER TABLE uploads DROP COLUMN scope;
       DELETE FROM schema_migrations WHERE version >= 6;
     `);
@@ -68,6 +69,7 @@ it('rehearses and restores schema 5 while classifying old uploads', async () => 
   expect(fs.readFileSync(source)).toEqual(original);
   await server.db.restoreBackup(snapshot.fileName, 20, rehearsal.body.data.sha256);
   expect(server.db.getUpload(id)?.scope).toBe('chat');
+  expect(server.db.getUpload(id)?.remotePrimary).toBeUndefined();
   expect(searchArchive(server.db, '2099-01-01T00:00:00.000Z', 'التجريبي', 10, 0).items.map(row => row.id)).toContain('legacy-index');
   expect(server.db.dueWorkReminders('2099-01-01T00:00:00.000Z')).toEqual([]);
   expect(server.db.isHealthy()).toBe(true);

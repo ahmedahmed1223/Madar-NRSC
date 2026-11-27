@@ -120,7 +120,7 @@ const COLLECTION_MODULES: Partial<Record<CollectionName, ModuleId>> = {
   productionCards: 'assignments', workflowTemplates: 'assignments',
   news: 'news', newsCorrections: 'news', stories: 'news', breaking: 'news', wires: 'news', savedNewsFilters: 'news',
   bulletins: 'bulletins', bulletinStories: 'bulletins', bulletinFormats: 'bulletins',
-  tasks: 'tasks', requests: 'requests', personalTasks: 'personalTasks', media: 'media',
+  tasks: 'tasks', requests: 'requests', personalTasks: 'personalTasks', media: 'media', mediaFolders: 'media',
   messages: 'messaging', chatPins: 'messaging', conversations: 'messaging', chatReads: 'messaging',
   diary: 'planning', bookings: 'planning', resources: 'planning', roster: 'planning',
   shiftHandovers: 'planning', handoverReceipts: 'planning',

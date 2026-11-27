@@ -35,6 +35,19 @@ test('production PWA is installable and displays an Arabic web push notification
     await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
     await expect.poll(async () => (await session.send('Page.getInstallabilityErrors')).installabilityErrors).toEqual([]);
     await expect.poll(() => page.evaluate(() => Notification.permission)).toBe('granted');
+    await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.ready).active?.state)).toBe('activated');
+
+    // Verify the persistent profile can show a notification before delivering the synthetic push.
+    const probeTag = 'madar-notification-readiness';
+    await page.evaluate(async (tag) => {
+      const worker = await navigator.serviceWorker.ready;
+      await worker.showNotification('فحص جاهزية الإشعارات', { tag });
+    }, probeTag);
+    await expect.poll(() => page.evaluate(async tag => (await (await navigator.serviceWorker.ready).getNotifications({ tag })).length, probeTag)).toBe(1);
+    await page.evaluate(async (tag) => {
+      const worker = await navigator.serviceWorker.ready;
+      for (const entry of await worker.getNotifications({ tag })) entry.close();
+    }, probeTag);
 
     const notification = {
       title: 'تكليف عاجل',

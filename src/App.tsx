@@ -87,6 +87,8 @@ import { isKnownScreen, notificationAddress, parsePath, routeToPath, sameScreenA
 import { browserAddress, writeBrowserHistory } from './services/browserHistory';
 import { navigateTo, routeChanged, setupCommand, type SetupCommand } from './services/uiEvents';
 import { TourHost } from './components/help/TourHost';
+import { PinnedNotesDock } from './components/notes/PinnedNotesDock';
+import { SectionTrashLink } from './components/layout/SectionTrashLink';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { configureDateFormat, onDateFormat } from './shared/dateFormat';
 import { applyColorPalette } from './services/theme';
@@ -948,6 +950,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               </div>
             )}
             {screenAllowed && (<>
+            <SectionTrashLink screen={activeNav} user={currentUser} onOpen={openLink} />
             {activeNav === 'dashboard' && (
               <DashboardView
                 newsList={newsList}
@@ -1217,7 +1220,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
-            {activeNav === 'trash' && <TrashView />}
+            {activeNav === 'trash' && <TrashView key={focusId || 'all'} focusId={focusId} onFocus={setFocusId} />}
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (
@@ -1347,6 +1350,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       </div>
 
       <TourHost currentUser={currentUser} />
+      {activeNav !== 'personal-notes' && RbacService.canOpenScreen(currentUser, 'personal-notes') && <PinnedNotesDock key={currentUser.id} />}
       {setupOpen && RbacService.hasPermission(currentUser, 'system.settings') && (
         <SetupWizard isOpen startAtOrganization={setupOpen !== 'open'} reviewId={typeof setupOpen === 'object' ? setupOpen.reviewId : undefined} onClose={() => setSetupOpen(null)} currentUser={currentUser} />
       )}

@@ -61,7 +61,13 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
           await confirmation.fill('Different2026');
           await expect(page.getByText('تأكيد كلمة المرور غير مطابق.')).toBeVisible();
           await newPassword.fill(password);
-          await confirmation.fill(password);
+          await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: http.baseUrl });
+          await page.evaluate(value => navigator.clipboard.writeText(value), password);
+          await confirmation.press('Control+a');
+          await confirmation.press('Control+v');
+          await expect(confirmation).toHaveValue(password);
+          await expect(confirmation).toBeFocused();
+          await page.evaluate(() => navigator.clipboard.writeText(''));
           await expect(page.getByText('تأكيد كلمة المرور مطابق.')).toBeVisible();
           await page.getByRole('button', { name: 'إظهار كلمة المرور' }).click();
           await expect(newPassword).toHaveAttribute('type', 'text');
@@ -98,10 +104,18 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
         await expect(engine).toBeHidden();
         await wizard.getByText('خيارات قاعدة البيانات', { exact: true }).click();
         await expect(engine).toBeVisible();
+        await wizard.getByRole('button', { name: /الفريق/ }).click();
+        await wizard.locator('#setup-member-name').fill('محرر المناوبة');
+        await wizard.locator('#setup-member-email').fill('shift-editor@example.com');
+        await wizard.locator('#setup-member-password').fill('ShiftEditor2026');
+        await wizard.getByRole('button', { name: 'حفظ الزميل والمتابعة' }).click();
+        await expect(wizard.getByText('حُفظ حساب الزميل وسُجّلت خطوة الفريق.')).toBeVisible();
         await wizard.getByRole('button', { name: /الانتهاء/ }).click();
         await wizard.getByRole('button', { name: 'إنهاء الإعداد', exact: true }).click();
         await wizard.getByRole('button', { name: 'فتح مساحة العمل', exact: true }).click();
         await expect(wizard).toHaveCount(0);
+        await page.goto('/users');
+        await expect(page.getByText('محرر المناوبة', { exact: true }).first()).toBeVisible();
       }
       const freshPage = await browser.newPage({ baseURL: http.baseUrl });
       try {
@@ -112,7 +126,13 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
         await expect(freshPage.getByRole('button', { name: 'بدء إعداد النظام' })).toHaveCount(0);
         await expect(freshPage.getByRole('group', { name: 'بيانات الدخول الأولى' })).toHaveCount(0);
         await expect(freshPage.getByRole('button', { name: 'توليد كلمة مرور مؤقتة' })).toHaveCount(0);
-        if (mode === 'browser') await expect(freshPage.locator('html')).toHaveAttribute('data-color-palette', 'olive');
+        if (mode === 'browser') {
+          await expect(freshPage.locator('html')).toHaveAttribute('data-color-palette', 'olive');
+          await freshPage.getByLabel('البريد الإلكتروني').fill('shift-editor@example.com');
+          await freshPage.getByLabel('كلمة المرور', { exact: true }).fill('ShiftEditor2026');
+          await freshPage.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+          await expect(freshPage.getByRole('heading', { name: 'تغيير كلمة المرور' })).toBeVisible();
+        }
       } finally {
         await freshPage.close();
       }

@@ -160,44 +160,30 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
   const labelDepartment = createDepartmentLabeler();
   const [member, setMember] = useState(blankMember);
   const [added, setAdded] = useState<{ name: string; email: string; password: string }[]>([]);
-  const addMember = () =>
-    run(
-      async () => {
-        if (!member.fullName.trim() || !/^\S+@\S+\.\S+$/.test(member.email.trim())) throw new Error('الاسم والبريد الإلكتروني الصحيح مطلوبان');
-        // Same rule as the server, checked before anything is created: a refused password never leaves an account behind.
-        const weak = validatePasswordStrength(member.password);
-        if (weak) throw new Error(`كلمة المرور الأولى: ${weak}`);
-        const email = member.email.trim().toLowerCase();
-        if (apiService.getUsers().some((u) => !u.deletedAt && u.email.toLowerCase() === email)) throw new Error('البريد الإلكتروني مستخدم لحساب آخر');
-        const role = roles.find((r) => r.id === member.roleId);
-        const saved = apiService.saveUser({
-          fullName: member.fullName.trim(),
-          email,
-          role: (role?.isSystemRole ? role.roleCode : 'VIEWER') as UserRole,
-          customRoleId: role && !role.isSystemRole ? role.id : undefined,
-          jobTitle: member.jobTitle.trim() || role?.nameAr || 'محرر',
-          departmentId: member.departmentId,
-          department: departmentName(member.departmentId),
-          stationId: member.stationId || undefined,
-          isActive: true,
-        });
-        // The account must exist on the server before it gets a password.
-        const accepted = await dataStore.awaitWrite('users', saved.id);
-        if (!accepted.ok) throw new Error(accepted.message || 'تعذر حفظ الحساب على الخادم، حاول مرة أخرى');
-        try {
-          await authClient.setUserPassword(saved.id, member.password);
-        } catch (err) {
-          // No account without a password: withdraw it, so correcting and retrying works.
-          apiService.deleteUser(saved.id);
-          await dataStore.awaitWrite('users', saved.id).catch(() => undefined);
-          throw err;
-        }
-        setAdded((list) => [...list, { name: saved.fullName, email: saved.email, password: member.password }]);
-        setMember(blankMember());
-      },
-      'أُضيف الحساب؛ سلّم بيانات الدخول بشكل آمن، وتُغيَّر كلمة المرور الأولى عند أول دخول.',
-      false
-    );
+  const hasPendingMember = Boolean(member.fullName.trim() || member.email.trim());
+  const saveMember = async () => {
+    if (!member.fullName.trim() || !/^\S+@\S+\.\S+$/.test(member.email.trim())) throw new Error('الاسم والبريد الإلكتروني الصحيح مطلوبان');
+    const weak = validatePasswordStrength(member.password);
+    if (weak) throw new Error(`كلمة المرور الأولى: ${weak}`);
+    const role = roles.find((r) => r.id === member.roleId);
+    const saved = await apiService.createUserWithPassword({
+      fullName: member.fullName.trim(),
+      email: member.email.trim().toLowerCase(),
+      role: (role?.isSystemRole ? role.roleCode : 'VIEWER') as UserRole,
+      customRoleId: role && !role.isSystemRole ? role.id : undefined,
+      jobTitle: member.jobTitle.trim() || role?.nameAr || 'محرر',
+      departmentId: member.departmentId,
+      department: departmentName(member.departmentId),
+      stationId: member.stationId || undefined,
+    }, member.password);
+    setAdded(list => [...list, { name: saved.fullName, email: saved.email, password: member.password }]);
+    setMember(blankMember());
+  };
+  const addMember = () => run(saveMember, 'أُضيف الحساب؛ سلّم بيانات الدخول بشكل آمن، وتُغيَّر كلمة المرور الأولى عند أول دخول.', false);
+  const continueTeam = () => run(async () => {
+    if (hasPendingMember) await saveMember();
+    await confirmStep('team');
+  }, hasPendingMember ? 'حُفظ حساب الزميل وسُجّلت خطوة الفريق.' : 'سُجّلت خطوة الفريق.');
 
   const done = setupDoneCount(progress);
   const total = SETUP_STEPS.length - 1;
@@ -469,7 +455,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, startAtOrganiz
                 </div>
               )}
               <p className="text-sm text-slate-600">حسابات فعالة الآن: <b className="tabular-nums">{facts.teamMembers}</b>.</p>
-              <StepActions busy={busy} onBack={() => go(-1)} primary="متابعة" onPrimary={() => void run(() => confirmStep('team'), 'سُجّلت خطوة الفريق.')} />
+              <StepActions busy={busy} onBack={() => go(-1)} primary={hasPendingMember ? 'حفظ الزميل والمتابعة' : 'متابعة'} onPrimary={() => void continueTeam()} />
             </div>
           )}
 

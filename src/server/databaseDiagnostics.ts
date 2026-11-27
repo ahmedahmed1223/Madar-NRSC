@@ -3,6 +3,7 @@ import type { BackupStatus } from '../shared/databaseDiagnostics';
 import { backupIncidents } from './backupIncidents';
 import { lastVerifiedExternalBackup } from './backupDelivery';
 import { readRehearsalEvidence } from './databaseRecovery';
+import { listAllBackupFiles, type BackupTransportConfig } from './primaryBackupStorage';
 
 function attempt(value: string | undefined | null): BackupStatus['lastAttempt'] {
   try {
@@ -36,8 +37,8 @@ export function nextBackupDelayMs(
   return Math.max(Math.min(intervalMs, 60 * 1000), intervalMs - elapsed);
 }
 
-export function backupStatus(db: NewsroomDatabase, intervalHours: number, destinations: { backupDirectory?: string; backupRemote?: string } = {}): BackupStatus {
-  const files = db.listBackups();
+export function backupStatus(db: NewsroomDatabase, intervalHours: number, destinations: BackupTransportConfig = {}): BackupStatus {
+  const files = listAllBackupFiles(db);
   const lastSnapshotAt = files[0]?.createdAt || null;
   const lastAttempt = attempt(db.getMeta('backup_last_attempt'));
   const lastDelivery = attempt(db.getMeta('backup_last_delivery'));

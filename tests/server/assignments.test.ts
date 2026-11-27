@@ -221,7 +221,7 @@ describe('material, deletion and station governance', () => {
     expect((await sync(editor, [upsert('as-main', { ...r.d, deletedAt: new Date().toISOString() }, r.v)])).body.results[0]).toMatchObject({ ok: false, code: 'FORBIDDEN' });
     expect((await sync(editor, [upsert('as-main', { ...r.d, brief: 'ملاحظة من بيروت' }, r.v)])).body.results[0].ok).toBe(true);
     const latest = row('as-main');
-    expect((await sync(producer, [upsert('as-main', { ...latest.d, status: 'CANCELLED' }, latest.v)])).body.results[0].ok).toBe(true);
+    expect((await sync(producer, [upsert('as-main', { ...latest.d, status: 'CANCELLED', cancellationReason: 'تغيّر جدول البث' }, latest.v)])).body.results[0].ok).toBe(true);
   });
 });
 

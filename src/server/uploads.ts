@@ -32,6 +32,11 @@ export class UploadError extends Error {
   }
 }
 
+export interface StagedUploadPersistence {
+  stagingDirectory: string;
+  commit(record: UploadRecord, sourcePath: string): Promise<UploadRecord>;
+}
+
 export function uploadsDir(dataDir: string) {
   return path.join(dataDir, 'uploads');
 }
@@ -60,7 +65,7 @@ function rejectUpload(req: Request, error: UploadError): Promise<never> {
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
  */
-export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, options: { allowed?: Record<string, string>; scope?: 'chat' } = {}): Promise<UploadRecord> {
+export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, options: { allowed?: Record<string, string>; scope?: 'chat'; persistence?: StagedUploadPersistence } = {}): Promise<UploadRecord> {
   const allowed = options.allowed ?? ALLOWED_UPLOAD_TYPES;
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = Object.prototype.hasOwnProperty.call(allowed, mimeType) ? allowed[mimeType] : undefined;
@@ -81,7 +86,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
   }
   originalName = path.basename(originalName).replace(/[\u0000-\u001f]/g, '').slice(0, 200) || 'file';
 
-  const dir = uploadsDir(dataDir);
+  const dir = options.persistence?.stagingDirectory ?? uploadsDir(dataDir);
   fs.mkdirSync(dir, { recursive: true });
   const id = newId('upl');
   const storedName = `${id}.${ext}`;
@@ -97,8 +102,8 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
       if (failed) return;
       failed = true;
       req.unpipe(out);
+      out.once('close', () => fs.rm(tempPath, { force: true }, () => undefined));
       out.destroy();
-      fs.rm(tempPath, { force: true }, () => undefined);
       // Drain the rest of the body so the client receives the error response.
       void rejectUpload(req, err).catch(reject);
     };
@@ -113,29 +118,40 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
       logger.error('upload write failed', { error: String(err) });
       fail(new UploadError(500, 'تعذر حفظ الملف'));
     });
-    out.on('finish', () => {
+    out.on('close', async () => {
       if (failed) return;
       if (size === 0) {
         fs.rm(tempPath, { force: true }, () => undefined);
         return reject(new UploadError(400, 'الملف فارغ'));
       }
+      const record: UploadRecord = {
+        id,
+        storedName,
+        originalName,
+        mimeType,
+        sizeBytes: size,
+        uploadedBy: userId,
+        scope: options.scope ?? 'media',
+        createdAt: new Date().toISOString(),
+      };
       try {
+        if (options.persistence) {
+          let saved: UploadRecord;
+          try {
+            saved = await options.persistence.commit(record, tempPath);
+          } finally {
+            await fs.promises.rm(tempPath, { force: true }).catch((err) => {
+              logger.warn('could not clean media staging file', { id, error: String(err) });
+            });
+          }
+          return resolve(saved);
+        }
         fs.renameSync(tempPath, finalPath);
-        const record: UploadRecord = {
-          id,
-          storedName,
-          originalName,
-          mimeType,
-          sizeBytes: size,
-          uploadedBy: userId,
-          scope: options.scope ?? 'media',
-          createdAt: new Date().toISOString(),
-        };
         db.insertUpload(record);
         resolve(record);
       } catch (err) {
         fs.rm(tempPath, { force: true }, () => undefined);
-        reject(new UploadError(500, 'تعذر حفظ الملف'));
+        reject(err instanceof UploadError ? err : new UploadError(500, 'تعذر حفظ الملف'));
       }
     });
     req.pipe(out);

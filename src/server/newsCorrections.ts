@@ -3,6 +3,7 @@ import type { NewsroomDatabase } from './db';
 import { buildAuthContext, type AuthContext } from './auth';
 import { canRead } from './policy';
 import { writeNotification } from './notifications';
+import { notifyBulletinSourceCorrections } from './bulletinSourceCorrectionNotices';
 import type { CreateCorrectionInput, NewsCorrection } from '../shared/newsCorrections';
 
 export class NewsCorrectionError extends Error {
@@ -60,6 +61,7 @@ export function createNewsCorrection(db: NewsroomDatabase, auth: AuthContext, in
       consider(bulletin.editorId, 'bulletins', bulletin); consider(story.writerId, 'bulletins', bulletin);
     }
     for (const userId of recipients) writeNotification(db, { userId, title: 'تصحيح مرتبط بمادة تحريرية', message: record.summary, linkUrl: `/news/${encodeURIComponent(row.id)}`, category: 'news' }, { id: `${id}-${userId}`, createdAt: record.createdAt });
+    for (const { d: state } of db.listCollection('onAir')) notifyBulletinSourceCorrections(db, state, record);
     return record;
   });
 }

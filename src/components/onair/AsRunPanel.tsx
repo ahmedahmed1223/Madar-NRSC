@@ -14,6 +14,7 @@ import { COLLECTIONS } from '../../shared/collections';
 import { segmentGuests } from '../../shared/episodePlan';
 import { downloadBroadcastArchive } from '../../services/broadcastArchiveExport';
 import { notify } from '../../services/notify';
+import { AsRunFollowUp } from './AsRunFollowUp';
 
 const addDays = addDaysIso;
 const clock = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
@@ -21,7 +22,7 @@ const signed = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : n < 
 const tone = (n: number | null) => (n === null || Math.abs(n) < 30 ? 'text-slate-600' : n > 0 ? 'text-rose-700' : 'text-amber-700');
 
 /** What actually aired on a day, segment by segment, against the plan. */
-export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
+export const AsRunPanel: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'offlineAirSessions', 'newsCorrections'], 5000);
   const [day, setDay] = useState(localDateString());
   const [exporting, setExporting] = useState<string | null>(null);
@@ -71,7 +72,9 @@ export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
           لم يُسجَّل بث في {arabicDate(day)}. يُسجَّل كل ما يُشغَّل من «وضع الهواء» تلقائياً.
         </div>
       ) : (
-        shows.map((s) => (
+        shows.map((s) => {
+          const archived = states.find(state => state.episodeId === s.id && state.startedAt === s.startedAt && state.status === 'ENDED');
+          return (
           <section key={`${s.id}-${s.startedAt}`} aria-label={`${s.programName} — ${s.title}`} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
             <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
               <span className="font-mono font-bold text-slate-800" dir="ltr">{clock(s.startedAt)}</span>
@@ -114,8 +117,10 @@ export const AsRunPanel: React.FC<{ currentUser: User }> = () => {
                 </tbody>
               </table>
             </div>
+            {archived && <AsRunFollowUp state={archived} user={currentUser} formatTime={clock} />}
           </section>
-        ))
+          );
+        })
       )}
     </div>
   );

@@ -90,6 +90,7 @@ export const formatClock = (seconds: number) => {
 export interface Cue {
   id: string;
   episodeId?: string;
+  purpose?: 'PROMPTER_CORRECTION';
   /** Empty = everyone. */
   targetDepartmentIds: string[];
   targetUserId?: string;
@@ -138,7 +139,7 @@ export function isPresenterAccount(user: CueRecipient): boolean {
 }
 
 export function isPresenterInstructionRecipient(cue: Cue, user: CueRecipient): boolean {
-  if (!cue.expiresAt || cue.fromId === user.id) return false;
+  if (!cue.expiresAt || cue.purpose === 'PROMPTER_CORRECTION' || cue.fromId === user.id) return false;
   if (cue.targetUserId) return cue.targetUserId === user.id;
   return cue.targetDepartmentIds.includes('presenters') && isPresenterAccount(user);
 }

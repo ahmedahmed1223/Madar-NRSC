@@ -6,6 +6,7 @@ import { allowsModule, moduleAllowsNewWork, moduleSubject, type ModuleId } from 
 import type { NewsroomDatabase } from './db';
 import type { AppConfig } from './config';
 import { MIN_PASSWORD_LENGTH, temporaryPassword, validatePasswordStrength } from '../shared/passwords';
+import { cardWorkflowAccess } from '../shared/workflowAccess';
 import { cardProductionAssignment, type ProductionCard } from '../shared/productionCards';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
@@ -145,8 +146,10 @@ export function buildAuthContext(db: NewsroomDatabase, user: User, sessionId: st
     productionAssignments: () => {
       if (assignments) return assignments;
       assignments = new Set();
-      if (!moduleAllowed('assignments') || can('rundown.view') || !can('cards.view') || assignedWorkOnly(can)) return assignments;
+      if (!moduleAllowed('assignments') || can('rundown.view') || assignedWorkOnly(can)) return assignments;
+      const legacy = { view: can('cards.view'), manage: can('cards.manage'), work: can('cards.work') };
       for (const { d } of db.listCollection('productionCards')) {
+        if (!cardWorkflowAccess(user, d as ProductionCard, legacy).view) continue;
         const target = cardProductionAssignment(d as ProductionCard, user.id);
         if (target && moduleAllowed(target.startsWith('episode:') ? 'programmes' : 'bulletins')) assignments.add(target);
       }

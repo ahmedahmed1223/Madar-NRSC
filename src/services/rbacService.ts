@@ -6,6 +6,8 @@ import {
   evaluatePermission,
   findUserRole,
 } from '../shared/rbac';
+import { workflowAccess } from '../shared/workflowAccess';
+import { WORKFLOW_TRACKS } from '../shared/workflowTracks';
 import { canOpenScreen } from '../shared/screens';
 import { departmentsLedBy, departmentsOf } from '../shared/departments';
 import { assignedWorkOnly } from '../shared/assignedWork';
@@ -13,7 +15,7 @@ import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
 import { allowsModule, moduleForCollection, moduleSubject, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
-import { TRASH_COLLECTIONS, TRASH_SECTIONS } from '../shared/trash';
+import { TRASH_COLLECTIONS, TRASH_SECTIONS, type TrashCollection } from '../shared/trash';
 
 export * from '../shared/rbac';
 
@@ -112,22 +114,27 @@ export class RbacService {
     return !module || this.canUseModule(user, module);
   }
 
+  static availableTrashCollections(user: User): TrashCollection[] {
+    const can = (permission: string) => this.hasPermission(user, permission);
+    const workOnly = assignedWorkOnly(can);
+    const role = findUserRole(user, this.getRoleDefinitions());
+    return TRASH_COLLECTIONS.filter(collection => {
+      const module = moduleForCollection(collection);
+      const { screen, permissions } = TRASH_SECTIONS[collection];
+      return (!workOnly || collection === 'productionCards') && (!module || this.canUseModule(user, module)) &&
+        permissions.some(can) && canOpenScreen(screen, role, can, user.role === 'SUPER_ADMIN');
+    });
+  }
+
   /** Whether the user's role opens a screen (the sidebar, the search and the address bar all ask here). */
   static canOpenScreen(user: User | undefined | null, nav: string, includeDepartmentWork = true): boolean {
     if (!user || !this.isScreenModuleAvailable(user, nav)) return false;
     const roles = this.getRoleDefinitions();
-    if (nav === 'trash') {
-      const can = (permission: string) => this.hasPermission(user, permission);
-      const workOnly = assignedWorkOnly(can);
-      return TRASH_COLLECTIONS.some(collection => {
-        const module = moduleForCollection(collection);
-        const { screen, permissions } = TRASH_SECTIONS[collection];
-        return (!workOnly || collection === 'productionCards') && (!module || this.canUseModule(user, module)) &&
-          permissions.some(can) && canOpenScreen(screen, findUserRole(user, roles), can, user.role === 'SUPER_ADMIN');
-      });
-    }
+    if (nav === 'trash') return this.availableTrashCollections(user).length > 0;
     if ((nav === 'workload' || nav === 'tasks') && includeDepartmentWork && this.leadsDepartment(user)) return true;
-    return canOpenScreen(nav, findUserRole(user, roles), (permission) => this.hasPermission(user, permission), user.role === 'SUPER_ADMIN');
+    const can = (permission: string) => this.hasPermission(user, permission);
+    const workflow = nav === 'cards' && WORKFLOW_TRACKS.some(track => workflowAccess(user, track, { view: can('cards.view'), work: can('cards.work'), manage: can('cards.manage') }).view);
+    return canOpenScreen(nav, findUserRole(user, roles), permission => permission === 'cards.view' && nav === 'cards' ? workflow : can(permission), user.role === 'SUPER_ADMIN');
   }
 
   static leadsDepartment(user: User): boolean {

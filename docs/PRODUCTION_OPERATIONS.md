@@ -46,8 +46,7 @@ Missing files fail the backup instead of producing a success message.
   bind that volume to another disk so losing the data volume does not lose the backups.
 - `BACKUP_REMOTE`: `remote:path` configured in rclone (S3-compatible storage, Azure Blob, Google Cloud Storage, or another supported backend).
 - Both can be enabled together. Empty values keep complete bundles locally only.
-- rclone must be installed on the host/container and its configuration made available to the service account.
-  The stock image does not include rclone. Keep credentials outside Git; use provider encryption and restricted access.
+- The project image includes rclone. Install it separately for direct host installations and make the configuration available to the service account outside Git.
 - Local bundles and verified complete bundles in `BACKUP_DIRECTORY` follow `BACKUP_RETENTION`.
   Directory retention starts with bundles carrying this database's origin marker. Keep or retire older and
   incomplete bundles separately. Configure retention and versioning at the provider for `BACKUP_REMOTE`.
@@ -63,6 +62,59 @@ Missing files fail the backup instead of producing a success message.
   and is written to the audit log (`DB_BACKUP_DOWNLOAD`, `DB_EXPORT`). These files hold every password hash.
 - «تصدير بيانات العمل الحالية (JSON)» in the settings is not a backup: it holds only what the browser
   downloaded (no accounts, no uploads, no archived news older than `NEWS_ACTIVE_DAYS`).
+
+### Primary backup storage
+
+The system administrator selects the primary backup destination in the storage settings.
+The two cloud destinations use the service account's rclone configuration. Use a restricted
+backup-only folder separate from the media browsing tree, especially when the same account
+hosts both. On NAS, give the service and backup administrators access to `.madar-backups`
+through the mount's permissions.
+
+| Primary choice | Server configuration |
+| --- | --- |
+| Local | Keeps the standard archive in `DATA_DIR/backups`. Optional secondary copies use `BACKUP_DIRECTORY` and `BACKUP_REMOTE`. |
+| Dropbox | Set `BACKUP_DROPBOX_REMOTE` to a configured Dropbox `remote:path`. |
+| Google Drive | Set `BACKUP_GDRIVE_REMOTE` to a configured Drive `remote:path`. |
+| NAS | Set `BACKUP_NAS_DIRECTORY` to an existing writable mount outside `DATA_DIR`. A mounted `SHARE_DIRECTORY` also works. `BACKUP_DIRECTORY=/backups` configures legacy replication to the Compose backup volume. |
+
+The backend identifies a legacy `BACKUP_REMOTE` by its rclone provider before offering it for a cloud primary. [rclone remote discovery](https://rclone.org/commands/rclone_listremotes/)
+
+The scheduled and manual backup operations use the primary choice. Keep space for temporary
+materialization in `DATA_DIR/backup-staging`. A verified transfer publishes the archive to the
+primary destination and removes the local staging data. `DATA_DIR/backup-catalog` holds the
+small locators used by the database administration screen. With a cloud or NAS primary,
+an unavailable destination or a failed checksum ends the backup attempt and raises the normal
+backup incident. `BACKUP_RETENTION` rotates the verified generations indexed at that destination.
+
+A primary bundle includes managed uploads available on local disk or through their original
+configured carrier. The backup checks each staged upload's size and records its SHA-256 digest.
+A managed upload that cannot be read prevents successful delivery. Library records that link
+directly to external resources remain references in the database.
+
+#### Recover a primary bundle on a fresh host
+
+1. Use the original carrier configuration and target path. On NAS, list the mount's `.madar-backups` directory.
+   For cloud storage, run `rclone lsd remote:path` and use the newest verified generation that
+   meets the recovery point. The app stores each generation in a `newsroom_backup_…sqlite.bundle-…`
+   folder containing `manifest.json`, `newsroom.sqlite`, and `uploads/`.
+2. In an isolated recovery workspace, copy the selected directory from NAS or run
+   `rclone copy remote:path/<bundle-directory> /absolute/recovery/workspace`. Retain the original
+   `STORED_SECRETS_KEY` when the installation encrypts stored credentials.
+3. Verify the exact byte size and SHA-256 of every file against `manifest.json` before changing the
+   recovery workspace. The manifest is shipped with the backup, so the local catalog is optional.
+4. For SQLite, place the checked `newsroom.sqlite` and required `uploads/` in an empty, stopped
+   test installation's `DATA_DIR`. For a PostgreSQL target, place a temporary copy of the checked
+   portable SQLite image under a valid `newsroom_backup_<timestamp>.sqlite` name in the isolated
+   instance's `DATA_DIR/backups`, then use **إدارة قاعدة البيانات → استعادة** to import it into
+   the active PostgreSQL database. Remove the temporary source once the rehearsal is complete.
+5. The in-app database restore applies the database image and retains media storage locations.
+   When disaster recovery needs files rehydrated locally because the media carrier is gone,
+   copy those checked `uploads/` files to the isolated host and clear their upload registry
+   `local_evicted` flag and, where present, `remote_primary` flag. Make this change on the restored
+   database only for files present in the checked bundle, then select the intended primary media
+   location before resuming work. Check a restored attachment and record the observed recovery
+   point and duration.
 
 ### Replit workflow
 
@@ -267,4 +319,4 @@ existing installation.
 - **Health.** `/api/health` shows `dbId`/`instance` to signed-in users only; use `/api/ready` for probes.
 - **Audit trail.** Only the server writes audit entries (accounts, roles, permission exceptions,
   suspensions, stations, departments, settings, backups and downloads); browsers cannot add rows.
-- **rclone.** The stock image has no rclone; `BACKUP_REMOTE` needs an image that adds it.
+- **rclone.** Set `RCLONE_CONFIG` to the configuration available to the `node` user. The project image includes the binary.

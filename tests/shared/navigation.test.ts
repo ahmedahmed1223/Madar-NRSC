@@ -5,9 +5,9 @@ import { QUICK_SCREENS } from '../../src/shared/commandPalette';
 
 describe('navigation rail', () => {
   it('puts «عملي» first for everyone and administration last for staff', () => {
-    expect(sectionOrderFor({ role: 'REPORTER' })).toEqual(['work', 'newsroom', 'programs', 'resources', 'air', 'admin', 'help']);
-    expect(sectionOrderFor({ role: 'DIRECTOR' })).toEqual(['work', 'air', 'programs', 'newsroom', 'resources', 'admin', 'help']);
-    expect(sectionOrderFor({ role: 'MONTAGE' })).toEqual(['work', 'resources', 'newsroom', 'programs', 'air', 'admin', 'help']);
+    expect(sectionOrderFor({ role: 'REPORTER' })).toEqual(['work', 'newsroom', 'programs', 'resources', 'air', 'admin', 'archive', 'system', 'help']);
+    expect(sectionOrderFor({ role: 'DIRECTOR' })).toEqual(['work', 'air', 'programs', 'newsroom', 'resources', 'admin', 'archive', 'system', 'help']);
+    expect(sectionOrderFor({ role: 'MONTAGE' })).toEqual(['work', 'resources', 'newsroom', 'programs', 'air', 'admin', 'archive', 'system', 'help']);
     expect(sectionOrderFor({ role: 'PREPARER' })[1]).toBe('programs');
   });
 
@@ -22,8 +22,8 @@ describe('navigation rail', () => {
   });
 
   it('folds everything after the two main domains at first', () => {
-    expect(defaultFolded(sectionOrderFor({ role: 'REPORTER' }))).toEqual(['resources', 'air', 'admin', 'help']);
-    expect(defaultFolded(sectionOrderFor({ role: 'ADMIN' }))).toEqual(['programs', 'resources', 'air', 'help']);
+    expect(defaultFolded(sectionOrderFor({ role: 'REPORTER' }))).toEqual(['resources', 'air', 'admin', 'archive', 'system', 'help']);
+    expect(defaultFolded(sectionOrderFor({ role: 'ADMIN' }))).toEqual(['programs', 'resources', 'air', 'archive', 'system', 'help']);
   });
 
   it('places every screen in exactly one section, and knows where inner pages belong', () => {
@@ -33,7 +33,11 @@ describe('navigation rail', () => {
     for (const nav of placed) expect(QUICK_SCREENS.some((s) => s.nav === nav), nav).toBe(true);
     expect(sectionOfScreen('news-editor')).toBe('newsroom');
     expect(sectionOfScreen('episode-workspace')).toBe('programs');
-    expect(sectionOfScreen('database')).toBe('admin');
+    expect(sectionOfScreen('database')).toBe('system');
+    expect(sectionOfScreen('settings')).toBe('system');
+    expect(sectionOfScreen('users')).toBe('system');
+    expect(sectionOfScreen('trash')).toBe('archive');
+    expect(sectionOrderFor({ role: 'ADMIN' }).slice(-3)).toEqual(['archive', 'system', 'help']);
     expect(sectionOfScreen('dashboard')).toBeUndefined();
   });
 });

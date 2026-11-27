@@ -5,6 +5,7 @@
 import { bookingStatusOf, guestKey, isBooked, segmentGuests, segmentQuestions, TALK_SEGMENT_TYPES } from './episodePlan';
 import type { DepartmentId } from './departments';
 import { guestFollowUpWarnings } from './guestFollowUp';
+import { supportTrack } from './trackSupport';
 
 // ---------------------------------------------------------------------------
 // Video workflow
@@ -40,6 +41,8 @@ export const REQUEST_TYPES = [
   { id: 'QUALITY', name: 'مراجعة جودة', departmentId: 'quality' },
   { id: 'MONITORING', name: 'رصد ومتابعة', departmentId: 'monitoring' },
   { id: 'REPORT', name: 'إعداد تقرير', departmentId: 'reports' },
+  { id: 'SUPPORT_NEWS', name: 'مساندة إعداد الأخبار', departmentId: 'newsroom' },
+  { id: 'SUPPORT_PROGRAMMES', name: 'مساندة إعداد البرامج', departmentId: 'production' },
 ] as const satisfies readonly { id: string; name: string; departmentId: DepartmentId }[];
 
 export type RequestType = (typeof REQUEST_TYPES)[number]['id'];
@@ -67,6 +70,8 @@ export interface RequestLink {
 }
 
 export interface DeptRequest {
+  /** Originating assignment. Viewing it still requires its own permissions. */
+  supportCardId?: string;
   messageOrigin?: import('./messageActions').MessageActionOrigin;
   id: string;
   type: RequestType;
@@ -96,7 +101,7 @@ export interface DeptRequest {
   proposedById?: string;
   createdAt: string;
   updatedAt: string;
-  history?: { status: RequestStatus; byId: string; byName: string; at: string; note?: string }[];
+  history?: { status: RequestStatus; byId: string; byName: string; at: string; note?: string; redirectedFromId?: string }[];
   deletedAt?: string | null;
 }
 
@@ -105,6 +110,8 @@ interface Actor {
   departmentId: string;
   /** Holds requests.manage (desk chiefs and management). */
   canManage: boolean;
+  handlesSupport?: boolean;
+  routesSupport?: boolean;
 }
 
 const CONTENT_FIELDS = ['title', 'details', 'priority', 'dueAt', 'lines', 'link', 'sourceMediaIds'] as const;
@@ -117,17 +124,27 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export function requestChangeError(before: DeptRequest | null, after: DeptRequest, actor: Actor): string | null {
   const type = requestTypeOf(after.type);
   if (!type) return 'نوع الطلب غير معروف';
+  const track = supportTrack(after.type);
+  if (track && (!after.supportCardId || !after.addressedToId)) return 'اختر التكليف الأصلي ومدير إعداد المسار المطلوب';
+  if (!track && after.supportCardId) return 'ربط التكليف مخصص لطلب مساندة المسار';
   if (after.departmentId !== type.departmentId) return 'القسم لا يطابق نوع الطلب';
   if (typeof after.title !== 'string' || !after.title.trim()) return 'عنوان الطلب مطلوب';
   if (!REQUEST_STATUSES.some((s) => s.id === after.status)) return 'حالة الطلب غير معروفة';
-  if (after.sourceMediaIds !== undefined && (after.type !== 'MONTAGE' || !Array.isArray(after.sourceMediaIds) ||
+  if (after.sourceMediaIds !== undefined && ((!track && after.type !== 'MONTAGE') || !Array.isArray(after.sourceMediaIds) ||
       after.sourceMediaIds.length > 25 || new Set(after.sourceMediaIds).size !== after.sourceMediaIds.length ||
       after.sourceMediaIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(id)))) return 'ملفات المصدر للطلب غير صالحة';
 
   if (!before) return after.status === 'OPEN' && !after.proposedDueAt ? null : 'الطلب الجديد يبدأ بحالة «جديد» ويمكن اقتراح موعد بديل بعد إرساله';
 
   const isRequester = before.requesterId === actor.id;
-  const isHandler = actor.departmentId === before.departmentId || actor.canManage;
+  const isHandler = track ? actor.handlesSupport === true : actor.departmentId === before.departmentId || actor.canManage;
+  if (track) {
+    if (!isHandler && !isRequester) return 'إدارة طلب المساندة لطالبه أو للمستلم المخوّل';
+    if (after.supportCardId !== before.supportCardId) return 'لا يمكن تغيير التكليف الأصلي';
+    if (after.addressedToId !== before.addressedToId && (!actor.routesSupport || !isHandler || before.status !== 'OPEN' || after.status !== 'OPEN')) return 'إعادة التوجيه لمدير المسار قبل استلام الطلب';
+    if (after.status === 'DONE' && before.status === 'OPEN') return 'استلم طلب المساندة أولاً';
+    if (!same(after.resolution, before.resolution) && !isHandler) return 'نتيجة المساندة يسجلها المنفّذ';
+  }
   if (before.type !== after.type || before.requesterId !== after.requesterId) return 'لا يمكن تغيير نوع الطلب أو صاحبه';
 
   if (!same(before.proposedDueAt, after.proposedDueAt)) {

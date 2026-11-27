@@ -33,11 +33,17 @@ export const storageClient = {
     if (!uploadIds.length) return {};
     return (await apiFetch<{ data: Record<string, StorageCopy[]> }>('/api/v1/storage/copies', { method: 'POST', json: { ids: uploadIds } })).data;
   },
+  async inventory(uploadIds: string[], signal?: AbortSignal): Promise<Record<string, StorageLocations>> {
+    if (!uploadIds.length) return {};
+    return (await apiFetch<{ locations: Record<string, StorageLocations> }>('/api/v1/storage/copies', {
+      method: 'POST', json: { ids: uploadIds, inventory: true }, signal,
+    })).locations;
+  },
   async search(source: ExternalSource, q: string): Promise<ExternalFile[]> {
     return (await apiFetch<{ data: ExternalFile[] }>(`/api/v1/storage/${source}/search?q=${encodeURIComponent(q)}`)).data;
   },
-  async list(source: CloudProviderId, at = ''): Promise<{ at: string; items: ExternalFile[] }> {
-    return (await apiFetch<{ data: { at: string; items: ExternalFile[] } }>(`/api/v1/storage/${source}/list?at=${encodeURIComponent(at)}`)).data;
+  async list(source: CloudProviderId, at = ''): Promise<{ at: string; items: ExternalFile[]; hasMore?: boolean }> {
+    return (await apiFetch<{ data: { at: string; items: ExternalFile[]; hasMore?: boolean } }>(`/api/v1/storage/${source}/list?at=${encodeURIComponent(at)}`)).data;
   },
   async importFile(source: ExternalSource, ref: string): Promise<ImportedFile> {
     return (await apiFetch<{ data: ImportedFile }>(`/api/v1/storage/${source}/import`, { method: 'POST', json: { ref } })).data;
@@ -49,8 +55,9 @@ export const storageClient = {
   async dropboxAuthorizeUrl(appKey: string): Promise<string> {
     return (await apiFetch<{ data: { url: string } }>('/api/v1/storage/dropbox/authorize-url', { method: 'POST', json: { appKey } })).data.url;
   },
-  async connectDropbox(appKey: string, appSecret: string, code: string): Promise<StorageStatus> {
-    return (await apiFetch<{ data: StorageStatus }>('/api/v1/storage/dropbox/connect', { method: 'POST', json: { appKey, appSecret, code } })).data;
+  async connectDropbox(appKey: string, appSecret: string, credential: string | { refreshToken: string }): Promise<StorageStatus> {
+    const authorization = typeof credential === 'string' ? { code: credential } : credential;
+    return (await apiFetch<{ data: StorageStatus }>('/api/v1/storage/dropbox/connect', { method: 'POST', json: { appKey, appSecret, ...authorization }, signal: AbortSignal.timeout(22_000) })).data;
   },
   async disconnect(provider: CloudProviderId): Promise<StorageStatus> {
     return (await apiFetch<{ data: StorageStatus }>(`/api/v1/storage/${provider}/disconnect`, { method: 'POST', json: {} })).data;

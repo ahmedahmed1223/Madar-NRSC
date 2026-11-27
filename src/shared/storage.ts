@@ -13,6 +13,11 @@
 
 export type CloudProviderId = 'dropbox' | 'gdrive';
 export type CopyTarget = CloudProviderId | 'share';
+export type PrimaryStorageTarget = 'local' | CloudProviderId | 'nas';
+
+export const PRIMARY_STORAGE_NAMES: Record<PrimaryStorageTarget, string> = {
+  local: 'خادم مدار', dropbox: 'Dropbox', gdrive: 'Google Drive', nas: 'وحدة NAS المتصلة بالخادم',
+};
 
 export const CLOUD_NAMES: Record<CloudProviderId, string> = { dropbox: 'Dropbox', gdrive: 'Google Drive' };
 export const TARGET_NAMES: Record<CopyTarget, string> = { ...CLOUD_NAMES, share: 'المجلد المشترك' };
@@ -42,6 +47,8 @@ export interface ShareStorageSettings {
 }
 
 export interface StorageSettings {
+  primaryMedia?: PrimaryStorageTarget;
+  primaryBackups?: PrimaryStorageTarget;
   /** Keep the server's copy once the cloud holds the file (off frees the server's disk). */
   keepLocalCopy?: boolean;
   dropbox?: DropboxStorageSettings;
@@ -50,6 +57,8 @@ export interface StorageSettings {
 }
 
 export interface ResolvedStorageSettings {
+  primaryMedia: PrimaryStorageTarget;
+  primaryBackups: PrimaryStorageTarget;
   keepLocalCopy: boolean;
   dropbox: DropboxStorageSettings;
   gdrive: DriveStorageSettings;
@@ -59,6 +68,8 @@ export interface ResolvedStorageSettings {
 export const DEFAULT_LOCAL_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1/128', 'fc00::/7'];
 
 export const DEFAULT_STORAGE: ResolvedStorageSettings = {
+  primaryMedia: 'local',
+  primaryBackups: 'local',
   keepLocalCopy: true,
   dropbox: { enabled: false, rootPath: '/مدار' },
   gdrive: { enabled: false, rootName: 'مدار', rootFolderId: '' },
@@ -68,6 +79,8 @@ export const DEFAULT_STORAGE: ResolvedStorageSettings = {
 export function storageOf(settings: { storage?: StorageSettings } | null | undefined): ResolvedStorageSettings {
   const s = settings?.storage || {};
   return {
+    primaryMedia: s.primaryMedia ?? DEFAULT_STORAGE.primaryMedia,
+    primaryBackups: s.primaryBackups ?? DEFAULT_STORAGE.primaryBackups,
     keepLocalCopy: s.keepLocalCopy ?? DEFAULT_STORAGE.keepLocalCopy,
     dropbox: { ...DEFAULT_STORAGE.dropbox, ...(s.dropbox || {}) },
     gdrive: { ...DEFAULT_STORAGE.gdrive, ...(s.gdrive || {}) },
@@ -88,6 +101,8 @@ export interface CloudStatus {
 }
 
 export interface StorageStatus {
+  primaryMedia?: PrimaryStorageTarget;
+  primaryBackups?: PrimaryStorageTarget;
   dropbox: CloudStatus;
   gdrive: CloudStatus;
   share: {
@@ -136,6 +151,9 @@ export function validateStorage(value: unknown): string | null {
   if (value === undefined) return null;
   if (!value || typeof value !== 'object') return 'إعدادات التخزين غير صالحة';
   const v = value as StorageSettings;
+  for (const target of [v.primaryMedia, v.primaryBackups]) {
+    if (target !== undefined && (typeof target !== 'string' || !Object.hasOwn(PRIMARY_STORAGE_NAMES, target))) return 'وجهة التخزين الأساسي غير صالحة';
+  }
   if (v.keepLocalCopy !== undefined && typeof v.keepLocalCopy !== 'boolean') return 'إعدادات التخزين غير صالحة';
   if (v.dropbox) {
     if (typeof v.dropbox.enabled !== 'boolean') return 'إعدادات Dropbox غير صالحة';

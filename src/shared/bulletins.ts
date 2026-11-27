@@ -1,5 +1,6 @@
 import { arabicDate } from './dates';
 import { anchorScriptWords } from './presenterTiming';
+import type { BulletinMediaReview } from './bulletinMediaReview';
 
 /**
  * News bulletins, modelled on how newsroom systems (Octopus, iNEWS) run a newscast:
@@ -104,6 +105,7 @@ export interface BulletinStory {
   script: string;
   clipMediaId?: string;
   clipSeconds?: number;
+  mediaReview?: BulletinMediaReview;
   /** Duration for live links, phone-ins, weather and breaks. */
   manualSeconds?: number;
   graphics?: StoryGraphic[];
@@ -491,7 +493,14 @@ export function headlinesFrom(stories: BulletinStory[], count = 4): string {
 }
 
 /** A bulletin as a playable show for on-air mode, the studio screen and the prompter. */
-export function bulletinAsShow(b: Bulletin, stories: BulletinStory[]) {
+export function bulletinAsShow(b: Bulletin, stories: BulletinStory[], activeStoryId?: string) {
+  const ordered = airStories(stories);
+  // The live slot finishes under the director's control, even when removed from future takes.
+  const active = activeStoryId && stories.find(story => story.id === activeStoryId && !story.deletedAt && (story.floated || story.killed));
+  if (active) {
+    ordered.push(active);
+    ordered.sort(byRank);
+  }
   return {
     id: b.id,
     kind: 'bulletin' as const,
@@ -505,11 +514,11 @@ export function bulletinAsShow(b: Bulletin, stories: BulletinStory[]) {
     studioName: b.studioName,
     producerId: b.editorId,
     createdAt: b.createdAt,
-    guests: airStories(stories).flatMap(story => story.remoteGuest?.confirmed ? [{
+    guests: ordered.flatMap(story => story.remoteGuest?.confirmed ? [{
       guestId: story.remoteGuest.guestId, bookingStatus: 'CONFIRMED', connectionType: 'ZOOM_SKYPE', bookingChangedAt: story.remoteGuest.confirmedAt,
     }] : []),
     questions: [],
-    rundown: airStories(stories).map((s, i) => ({
+    rundown: ordered.map((s, i) => ({
       id: s.id,
       episodeId: b.id,
       orderIndex: i + 1,

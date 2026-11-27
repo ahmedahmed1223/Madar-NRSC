@@ -8,6 +8,8 @@
  * department for someone there to pick up) and produces an ordinary production card. The rules here
  * are shared by the browser (to preview) and the server (to validate templates).
  */
+import { type PublishedWorkflow, type TemplateScope, templateScope } from './workflowPublication';
+import { stepExecutionRulesError, type StepExecutionRules } from './cardExecution';
 import { newId } from './ids';
 import {
   CARD_KINDS,
@@ -34,20 +36,26 @@ export const RULE_KINDS: { id: AssigneeRule['kind']; name: string }[] = [
   { id: 'STATION', name: 'محطة (يستلمها أحد زملائها)' },
 ];
 
-export interface TemplateStep {
+export interface TemplateStep extends StepExecutionRules {
   id: string;
   /** Id of a StepType from the settings. */
   type: string;
   title?: string;
   rule: AssigneeRule;
+  reviewerId?: string;
   /** Due this many minutes before the assignment's deadline (0: at the deadline); absent: no step deadline. */
   dueOffsetMinutes?: number;
+  dueBasis?: 'CREATION' | 'AIR' | 'DELIVERY';
   complexity: 1 | 2 | 3;
   estimateMinutes?: number;
   checklist?: string[];
 }
 
 export interface WorkflowTemplate {
+  track?: TemplateScope;
+  drafting?: boolean;
+  publishRequested?: boolean;
+  published?: PublishedWorkflow;
   id: string;
   name: string;
   kind: CardKind;
@@ -91,6 +99,9 @@ function ruleError(rule: AssigneeRule | undefined): string | null {
 /** Shape of a template, whoever writes it. */
 export function templateError(t: WorkflowTemplate): string | null {
   if (!t || typeof t !== 'object') return 'قالب غير صالح';
+  if (t.track !== undefined && !['news', 'programmes', 'shared'].includes(t.track)) return 'مسار القالب غير صالح';
+  if (t.drafting !== undefined && typeof t.drafting !== 'boolean') return 'حالة مسودة القالب غير صالحة';
+  if (t.publishRequested !== undefined && typeof t.publishRequested !== 'boolean') return 'طلب نشر القالب غير صالح';
   if (typeof t.name !== 'string' || !t.name.trim() || t.name.length > 120) return 'اسم القالب مطلوب وبحد أقصى 120 حرفاً';
   if (!CARD_KINDS.some((k) => k.id === t.kind)) return 'نوع المادة غير معروف';
   if (t.priority !== 'NORMAL' && t.priority !== 'URGENT') return 'أولوية القالب غير معروفة';
@@ -105,7 +116,9 @@ export function templateError(t: WorkflowTemplate): string | null {
     if (!optText(step.title, 200)) return 'تفصيل المهمة بحد أقصى 200 حرف';
     const rule = ruleError(step.rule);
     if (rule) return rule;
+    if (step.reviewerId != null && (typeof step.reviewerId !== 'string' || !ID.test(step.reviewerId))) return 'اختر مراجعًا صالحًا للمهمة';
     if (![1, 2, 3].includes(step.complexity)) return 'درجة التعقيد غير معروفة';
+    if (step.dueBasis !== undefined && !['CREATION', 'AIR', 'DELIVERY'].includes(step.dueBasis)) return 'مرجع موعد المهمة غير صالح';
     if (step.dueOffsetMinutes !== undefined && step.dueOffsetMinutes !== null && (!Number.isInteger(step.dueOffsetMinutes) || Math.abs(step.dueOffsetMinutes) > MAX_OFFSET)) return 'موعد المهمة قبل التسليم بالدقائق (حتى 30 يوماً)';
     if (step.estimateMinutes !== undefined && step.estimateMinutes !== null && (!Number.isInteger(step.estimateMinutes) || step.estimateMinutes < 0 || step.estimateMinutes > 100000)) return 'الوقت المقدر بالدقائق رقم صحيح موجب';
     if (step.checklist !== undefined && step.checklist !== null) {
@@ -113,12 +126,13 @@ export function templateError(t: WorkflowTemplate): string | null {
       if (step.checklist.some((item) => typeof item !== 'string' || !item.trim() || item.length > 200)) return 'بند قائمة التحقق مطلوب وبحد أقصى 200 حرف';
     }
   }
-  return null;
+  return stepExecutionRulesError(t.steps);
 }
 
 /** Who may change templates: supervisors who create assignments. */
 export function templateChangeError(before: WorkflowTemplate | null, after: WorkflowTemplate, canManage: boolean): string | null {
-  if (!canManage) return 'قوالب سير العمل لمسؤولي التكليف';
+  if (!canManage) return 'قوالب سير العمل لمسؤولي التكليف في المسار';
+  if (before && templateScope(before) !== templateScope(after)) return 'لا يمكن تغيير مسار قالب محفوظ';
   if (after?.deletedAt) return null;
   if (!before && after.builtIn) return 'القوالب الجاهزة تأتي مع المنصة';
   return templateError(after);
@@ -206,20 +220,28 @@ export function defaultPick(step: TemplateStep, people: Candidate[], stationId?:
 /** Turns a template and the manager's choices into a new assignment (a production card, not yet saved). */
 export function cardFromTemplate(template: WorkflowTemplate, input: AssignmentInput, people: Candidate[], options: { newStepId?: () => string; cardId?: string } = {}): ProductionCard {
   const stepId = options.newStepId || (() => newId('stp'));
-  const deadline = input.dueAt || input.airAt;
-  const base = deadline ? new Date(deadline).getTime() : NaN;
+  const created = Date.now();
+  const ids = new Map(template.steps.map(step => [step.id, stepId()]));
   const steps: CardStep[] = template.steps.map((t) => {
     const pick = input.picks?.[t.id] ?? defaultPick(t, people, input.stationId);
     const step: CardStep = {
-      id: stepId(),
+      id: ids.get(t.id)!,
       type: t.type,
+      reviewerId: t.reviewerId,
+      receiptMinutes: t.receiptMinutes,
+      executionTrack: t.executionTrack,
+      optional: t.optional,
+      dependencies: t.dependencies?.map(dep => ({ ...dep, stepId: ids.get(dep.stepId)! })),
       title: t.title?.trim() || undefined,
       status: 'TODO',
       complexity: t.complexity,
       estimateMinutes: t.estimateMinutes || undefined,
       checklist: t.checklist?.length ? t.checklist.map((text) => ({ text })) : undefined,
     };
-    if (Number.isFinite(base) && typeof t.dueOffsetMinutes === 'number') step.dueAt = new Date(base - t.dueOffsetMinutes * 60_000).toISOString();
+    const deadline = t.dueBasis === 'AIR' ? input.airAt : input.dueAt || input.airAt;
+    const base = t.dueBasis === 'CREATION' ? created : Date.parse(deadline || '');
+    const offset = t.dueBasis === 'CREATION' ? 1 : -1;
+    if (Number.isFinite(base) && typeof t.dueOffsetMinutes === 'number') step.dueAt = new Date(base + offset * t.dueOffsetMinutes * 60_000).toISOString();
     if (pick.startsWith('s:')) step.stationId = pick.slice(2);
     else if (pick.startsWith('d:')) {
       step.departmentId = pick.slice(2);
@@ -241,6 +263,7 @@ export function cardFromTemplate(template: WorkflowTemplate, input: AssignmentIn
     log: [],
     templateId: template.id,
     templateName: template.name,
+    templateVersion: template.published?.version ?? 1,
   };
 }
 
@@ -263,6 +286,7 @@ export function templateFromCard(card: ProductionCard, name: string, options: { 
         type: s.type,
         title: s.title,
         rule,
+        reviewerId: s.reviewerId,
         dueOffsetMinutes: offset !== undefined && Math.abs(offset) <= MAX_OFFSET ? offset : undefined,
         complexity: s.complexity,
         estimateMinutes: s.estimateMinutes,

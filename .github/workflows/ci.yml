@@ -40,11 +40,11 @@ jobs:
         env:
           POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
         run: npm test
-      - name: Recycle bin, retention and upload links on PostgreSQL
+      - name: Recycle bin, retention and media uploads on PostgreSQL
         env:
           TEST_DATABASE_ENGINE: postgresql
           POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
-        run: npm test -- tests/server/trash.test.ts tests/server/retention.test.ts tests/server/externalIntake.test.ts
+        run: npm test -- tests/server/trash.test.ts tests/server/retention.test.ts tests/server/externalIntake.test.ts tests/server/primaryMediaStorage.test.ts
       - name: Build
         run: npm run build
       - name: Install browsers for workflow tests

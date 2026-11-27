@@ -94,7 +94,7 @@ function AccountNotes({ userId }: { userId: string }) {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1>ملاحظاتي</h1>
-          <p className="mt-2 text-sm text-slate-600">ملاحظات خاصة بحسابك.</p>
+          <p className="mt-2 text-sm text-slate-600">ملاحظات خاصة بحسابك. تظهر المثبتة في «الملصقات» أثناء التنقل.</p>
         </div>
         <button type="button" onClick={() => begin()} className={`${action} bg-blue-600 text-white hover:bg-blue-700`}><Plus className="size-4" aria-hidden="true" /> ملاحظة جديدة</button>
       </header>
@@ -158,7 +158,7 @@ function AccountNotes({ userId }: { userId: string }) {
             <textarea className={input} rows={7} value={draft.body} maxLength={PERSONAL_NOTE_BODY_LIMIT} onChange={event => setDraft({ ...draft, body: event.target.value })} />
           </label>
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="checkbox" checked={draft.pinned} onChange={event => setDraft({ ...draft, pinned: event.target.checked })} /> تثبيت في أعلى القائمة
+            <input type="checkbox" checked={draft.pinned} onChange={event => setDraft({ ...draft, pinned: event.target.checked })} /> تثبيت في القائمة وإظهارها في الملصقات
           </label>
           <button type="submit" disabled={busy || pending(draft.id) || !draft.title.trim()} className={`${action} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50`}>
             <FileText className="size-4" aria-hidden="true" /> {busy || pending(draft.id) ? 'بانتظار التأكيد' : 'حفظ الملاحظة'}

@@ -6,7 +6,7 @@
  */
 import { departmentIdOf } from './departments';
 
-export type NavSectionId = 'work' | 'newsroom' | 'programs' | 'air' | 'resources' | 'admin' | 'help';
+export type NavSectionId = 'work' | 'newsroom' | 'programs' | 'air' | 'resources' | 'admin' | 'archive' | 'system' | 'help';
 
 export interface NavSection {
   id: NavSectionId;
@@ -21,7 +21,9 @@ export const NAV_SECTIONS: Record<NavSectionId, NavSection> = {
   programs: { id: 'programs', label: 'البرامج', items: ['episodes', 'programs', 'calendar', 'guests'] },
   air: { id: 'air', label: 'الهواء والاستديو', items: ['on-air', 'studio-screen', 'wallboard'] },
   resources: { id: 'resources', label: 'الوسائط والموارد', items: ['media', 'bookings', 'roster'] },
-  admin: { id: 'admin', label: 'المتابعة والإدارة', items: ['workload', 'reports', 'audit', 'trash', 'users', 'settings'] },
+  admin: { id: 'admin', label: 'المتابعة الإدارية', items: ['workload', 'reports', 'audit'] },
+  archive: { id: 'archive', label: 'الاستعادة', items: ['trash'] },
+  system: { id: 'system', label: 'إدارة النظام', items: ['settings', 'users'] },
   help: { id: 'help', label: 'المساعدة', items: ['help', 'guide', 'whats-new'] },
 };
 
@@ -84,7 +86,7 @@ export function sectionOrderFor(user: NavUser | null | undefined): NavSectionId[
   const role = user?.role || '';
   const domain = ROLE_DOMAIN[role] || DEPARTMENT_DOMAIN[departmentIdOf(user || null)] || 'newsroom';
   const domains = DOMAIN_ORDER[domain];
-  return MANAGER_ROLES.has(role) ? ['work', 'admin', ...domains, 'help'] : ['work', ...domains, 'admin', 'help'];
+  return MANAGER_ROLES.has(role) ? ['work', 'admin', ...domains, 'archive', 'system', 'help'] : ['work', ...domains, 'admin', 'archive', 'system', 'help'];
 }
 
 /** The section that holds a screen (pages inside a screen follow it). */

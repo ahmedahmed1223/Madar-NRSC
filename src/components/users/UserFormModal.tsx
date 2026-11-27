@@ -15,7 +15,9 @@ import { canOpenScreen, SCREEN_GROUPS, screenLabel } from '../../shared/screens'
 import { apiService } from '../../services/api';
 import { stationsOf } from '../../shared/stations';
 import { PermissionOverridesSection } from './PermissionOverridesSection';
+import { WorkflowAccessFields } from './WorkflowAccessFields';
 import { sameOverrides } from '../../services/permissionOverrides';
+import { workflowScopeError, type WorkflowDelegations, type WorkflowRoles } from '../../shared/workflowTracks';
 import { User as UserIcon, Mail, Phone, Shield, Briefcase, Building, MapPin, KeyRound, Check, Copy, RefreshCw } from 'lucide-react';
 import { PasswordFeedback, PasswordVisibilityButton } from '../auth/PasswordFields';
 import { copyTextToClipboard } from '../../services/clipboard';
@@ -80,6 +82,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [clipboardMessage, setClipboardMessage] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [customPermissions, setCustomPermissions] = useState<string[]>([]);
+  const [workflowRoles, setWorkflowRoles] = useState<WorkflowRoles | null>(null);
+  const [workflowDelegations, setWorkflowDelegations] = useState<WorkflowDelegations>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -117,6 +121,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setIsActive(true);
     }
     setCustomPermissions(userToEdit?.customPermissions || []);
+    setWorkflowRoles(userToEdit?.workflowRoles ?? null);
+    setWorkflowDelegations(userToEdit?.workflowDelegations || {});
     setInitialPassword('');
     setPasswordConfirmation('');
     setShowPasswords(false);
@@ -150,9 +156,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   }
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (saving) return;
+    const form = e.currentTarget;
+    const values = new FormData(form);
+    const submittedPassword = String(values.get('initialPassword') ?? '');
+    const submittedConfirmation = String(values.get('passwordConfirmation') ?? '');
     const newErrors: Record<string, string> = {};
 
     if (!fullName.trim()) newErrors.fullName = 'الاسم الكامل بالعربية مطلوب';
@@ -162,6 +172,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       newErrors.email = 'صيغة البريد الإلكتروني غير صحيحة';
     }
     if (!jobTitle.trim()) newErrors.jobTitle = 'المسمى الوظيفي مطلوب';
+    if (canManageOverrides) {
+      const workflowError = workflowScopeError(workflowRoles, workflowDelegations);
+      if (workflowError) newErrors.workflowScope = workflowError;
+    }
     if (canEditMembership && !departmentOptions.some(d => d.id === departmentId)) newErrors.departmentId = 'اختر قسماً متاحاً في المحطة المحددة';
     if (isOwnAccount && canEditStation && userToEdit && stationId !== (userToEdit.stationId || '')) {
       const denied = ownStationChangeError(userToEdit, stationId || undefined, settings, selectedRole?.id, previewPermission);
@@ -170,14 +184,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         newErrors.stationId = 'قسمك الحالي خارج هذه المحطة. اطلب من مسؤول مخوّل نقل الحساب والقسم معاً.';
       }
     }
-    if (!userToEdit || initialPassword) {
-      const weak = validatePasswordStrength(initialPassword);
+    if (!userToEdit || submittedPassword) {
+      const weak = validatePasswordStrength(submittedPassword);
       if (weak) newErrors.initialPassword = `كلمة المرور: ${weak}`;
-      if (passwordConfirmation !== initialPassword) newErrors.passwordConfirmation = 'تأكيد كلمة المرور غير مطابق';
+      if (submittedConfirmation !== submittedPassword) newErrors.passwordConfirmation = 'تأكيد كلمة المرور غير مطابق';
     }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      const control = form.elements.namedItem(Object.keys(newErrors)[0]);
+      if (control instanceof HTMLInputElement) control.focus();
       return;
     }
 
@@ -200,11 +216,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       avatarUrl,
       ...(!isOwnAccount ? { isActive } : {}),
       ...(overridesChanged ? { customPermissions } : {}),
+      ...(canManageOverrides && JSON.stringify(workflowRoles) !== JSON.stringify(userToEdit?.workflowRoles ?? null) ? { workflowRoles } : {}),
+      ...(canManageOverrides && JSON.stringify(workflowDelegations) !== JSON.stringify(userToEdit?.workflowDelegations || {}) ? { workflowDelegations } : {}),
       // A general manager's stations and groups are privileged: only sent by someone allowed to change them.
       ...(canManageOverrides && (isGeneralManager || userToEdit?.managedStationIds?.length || userToEdit?.managedGroupIds?.length)
         ? { managedStationIds: isGeneralManager ? managedStationIds : [], managedGroupIds: isGeneralManager ? managedGroupIds : [] }
         : {}),
-    }, initialPassword || undefined);
+    }, submittedPassword || undefined);
     } catch {
       saved = false;
     } finally {
@@ -294,6 +312,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   type={showPasswords ? 'text' : 'password'}
                   autoComplete="new-password"
                   value={initialPassword}
+                  name="initialPassword"
+                  maxLength={200}
+                  aria-invalid={Boolean(errors.initialPassword)}
                   onChange={(e) => {
                     setInitialPassword(e.target.value);
                     setClipboardMessage('');
@@ -308,7 +329,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               </div>
               {(!userToEdit || initialPassword) && <label className="block mt-2 text-xs font-bold text-slate-700">
                 تأكيد كلمة المرور
-                <input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" value={passwordConfirmation}
+                <input name="passwordConfirmation" type={showPasswords ? 'text' : 'password'} autoComplete="new-password" maxLength={200} value={passwordConfirmation}
+                  aria-invalid={Boolean(errors.passwordConfirmation)} aria-describedby={errors.passwordConfirmation ? 'account-confirmation-error' : undefined}
                   onChange={event => { setPasswordConfirmation(event.target.value); if (errors.passwordConfirmation) setErrors(prev => ({ ...prev, passwordConfirmation: '' })); }}
                   className={`mt-1 w-full text-xs px-3 py-2.5 bg-white border rounded-xl focus:outline-none text-left ${errors.passwordConfirmation ? 'border-red-500 bg-red-50/20' : 'border-slate-200 focus:border-blue-500'}`} dir="ltr" />
               </label>}
@@ -337,7 +359,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               {clipboardMessage && <p role="status" className="text-2xs text-slate-600">{clipboardMessage}</p>}
               <p className="text-2xs text-slate-500 mt-1">10 أحرف على الأقل بحروف وأرقام؛ تُطلب من المستخدم عند أول دخول وتُنهى جلساته السابقة عند التغيير.</p>
               {errors.initialPassword && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.initialPassword}</p>}
-              {errors.passwordConfirmation && <p className="text-2xs text-red-600 mt-1 font-bold">{errors.passwordConfirmation}</p>}
+              {errors.passwordConfirmation && <p id="account-confirmation-error" role="alert" className="text-2xs text-red-600 mt-1 font-bold">{errors.passwordConfirmation}</p>}
             </div>
           )}
 
@@ -575,6 +597,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             </span>
           </label>
         </div>
+
+        {canManageOverrides && (
+          <WorkflowAccessFields
+            roles={workflowRoles}
+            delegations={workflowDelegations}
+            onRolesChange={setWorkflowRoles}
+            onDelegationsChange={setWorkflowDelegations}
+            error={errors.workflowScope}
+          />
+        )}
 
         {canManageOverrides && (
           <PermissionOverridesSection
