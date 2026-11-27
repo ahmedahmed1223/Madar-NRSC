@@ -60,17 +60,23 @@ export const authClient = {
     if (session?.setupReviewId === id) session = { ...session, setupReviewId: undefined };
   },
 
-  async logout(beforeRequest?: () => void): Promise<'cancelled' | 'completed' | 'cleanup-failed'> {
+  async logout(onConfirmed?: () => void): Promise<'cancelled' | 'completed' | 'cleanup-failed'> {
     const userId = session?.user.id;
-    if (userId && typeof indexedDB !== 'undefined') {
-      const saved = (await listPacketMetadata()).filter(row => row.userId === userId);
-      if (saved.length && !await confirmDialog({ title: 'نسخ الهواء المحلية', message: 'سيحذف تسجيل الخروج نسخ الهواء المشفرة والتشغيل المحلي على هذا الجهاز. صدّر النسخ من شاشة الهواء قبل المتابعة للاحتفاظ بالسجلات غير المستوردة.', confirmLabel: 'حذف النسخ وتسجيل الخروج', cancelLabel: 'البقاء', danger: true })) return 'cancelled';
+    const localUser = userId && typeof indexedDB !== 'undefined' ? userId : null;
+    const saved = localUser ? await listPacketMetadata().catch(() => null) : [];
+    if (saved?.some(row => row.userId === localUser)) {
+      const confirmed = await confirmDialog({ title: 'نسخ الهواء المحلية', message: 'سيحذف تسجيل الخروج نسخ الهواء المشفرة والتشغيل المحلي على هذا الجهاز. صدّر النسخ من شاشة الهواء قبل المتابعة للاحتفاظ بالسجلات غير المستوردة.', confirmLabel: 'حذف النسخ وتسجيل الخروج', cancelLabel: 'البقاء', danger: true });
+      if (!confirmed) return 'cancelled';
     }
-    beforeRequest?.();
-    await apiFetch('/api/v1/auth/logout', { method: 'POST', signal: AbortSignal.timeout(15_000) });
+    const result = await apiFetch<{ success?: boolean } | null>('/api/v1/auth/logout', {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+    });
+    if (result?.success !== true) throw new Error('لم يؤكد الخادم تسجيل الخروج');
+    onConfirmed?.();
     this.setSession(null);
-    if (userId && typeof indexedDB !== 'undefined') {
-      try { await purgeUser(userId); } catch { return 'cleanup-failed'; }
+    if (saved === null) return 'cleanup-failed';
+    if (localUser) {
+      try { await purgeUser(localUser); } catch { return 'cleanup-failed'; }
     }
     return 'completed';
   },

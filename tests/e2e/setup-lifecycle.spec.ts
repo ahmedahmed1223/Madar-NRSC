@@ -48,8 +48,10 @@ for (const mode of ['browser', 'sign-in'] as const) {
         await expect(page.getByText(/كلمة المرور الأولى التي عيّنها مشغّل الخادم/)).toBeVisible();
         await page.getByLabel('البريد الإلكتروني').fill(email);
         await page.getByLabel('كلمة المرور', { exact: true }).fill(temporary);
+        await page.getByRole('checkbox', { name: 'تذكّرني على هذا الجهاز', exact: true }).check();
         await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
         await expect(page.getByRole('heading', { name: 'تغيير كلمة المرور' })).toBeVisible();
+        expect((await context.cookies()).find(cookie => cookie.name === 'nrcs_sid')?.expires).toBe(-1);
         await page.getByLabel('كلمة المرور الحالية').fill(temporary);
         await page.getByLabel('كلمة المرور الجديدة', { exact: true }).fill(password);
         await page.getByLabel('تأكيد كلمة المرور الجديدة').fill(password);

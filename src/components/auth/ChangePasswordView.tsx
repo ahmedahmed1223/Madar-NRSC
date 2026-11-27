@@ -103,13 +103,13 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ forced, 
             <>
               {logoutError && <p role="alert" className="text-sm text-red-700">{logoutError}</p>}
               <button
-              type="button"
-              onClick={onLogout}
-              disabled={loggingOut || isSubmitting}
-              className="w-full min-h-11 flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-60"
-            >
-              <LogOut className="w-4 h-4" aria-hidden="true" />
-              <span>{loggingOut ? 'جارٍ تسجيل الخروج…' : 'تسجيل الخروج'}</span>
+                type="button"
+                onClick={onLogout}
+                disabled={loggingOut || isSubmitting}
+                className="w-full min-h-11 flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-60"
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                <span>{loggingOut ? 'جارٍ تسجيل الخروج…' : 'تسجيل الخروج'}</span>
               </button>
             </>
           )}

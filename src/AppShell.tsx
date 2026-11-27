@@ -126,14 +126,9 @@ export default function AppShell() {
         outcome = await authClient.logout(() => dataStore.stop());
         if (outcome === 'cancelled') return;
       } catch {
-        const session = authClient.getSession();
-        if (session) {
-          try { await enter(session); } catch { /* the original logout error remains visible */ }
-        }
         setLogoutError('تعذر إكمال تسجيل الخروج. تحقق من الاتصال ثم أعد المحاولة.');
         return;
       }
-      dataStore.stop();
       setIsChangingPassword(false);
       setNotice(outcome === 'cleanup-failed'
         ? 'تم تسجيل الخروج. تعذّر حذف نسخ الهواء المشفّرة من هذا الجهاز.'
@@ -143,7 +138,7 @@ export default function AppShell() {
       logoutPending.current = false;
       setLoggingOut(false);
     }
-  }, [enter]);
+  }, []);
 
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
     await authClient.changePassword(currentPassword, newPassword);

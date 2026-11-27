@@ -66,11 +66,13 @@ test('logout failure stays visible and the operator can retry', async ({ page })
     await page.route('**/api/v1/auth/logout', route => route.fulfill({
       status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporarily unavailable' }),
     }));
+    await page.route('**/api/v1/data', route => route.abort('internetdisconnected'));
     await page.getByRole('button', { name: /^الحساب / }).click();
     await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
     const feedback = page.getByRole('alert').filter({ hasText: 'تعذر إكمال تسجيل الخروج' });
     await expect(feedback).toBeVisible();
     await page.unroute('**/api/v1/auth/logout');
+    await page.unroute('**/api/v1/data');
     await feedback.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
     await expect(page.locator('#login-email')).toBeVisible();
     await expect(feedback).toHaveCount(0);
@@ -88,8 +90,35 @@ test('remembering this device creates an opt-in cookie that logout removes', asy
   const session = (await page.context().cookies()).find(cookie => cookie.name === 'nrcs_sid');
   expect(session?.httpOnly).toBe(true);
   expect(session?.expires).toBeGreaterThan(Date.now() / 1000 + 86_400);
+  await page.route('**/api/v1/auth/logout', route => route.fulfill({
+    status: 200, contentType: 'text/html', body: '<html>Proxy response</html>',
+  }));
   await page.getByRole('button', { name: /^الحساب / }).click();
   await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
+  const feedback = page.getByRole('alert').filter({ hasText: 'تعذر إكمال تسجيل الخروج' });
+  await expect(feedback).toBeVisible();
+  expect((await page.context().cookies()).some(cookie => cookie.name === 'nrcs_sid')).toBe(true);
+  await page.unroute('**/api/v1/auth/logout');
+  await feedback.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
   await expect(remember).not.toBeChecked();
+  expect((await page.context().cookies()).some(cookie => cookie.name === 'nrcs_sid')).toBe(false);
+});
+
+test('logout still revokes the session when local air storage is inaccessible', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#login-email').fill('editor@akhbar.tv');
+  await page.locator('#login-password').fill(DEMO_PASSWORD);
+  await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+  await enterWorkspace(page);
+  await page.evaluate(() => {
+    const open = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (name, version) {
+      if (name === 'madar-offline-air-v1') throw new DOMException('Blocked offline storage', 'SecurityError');
+      return open.call(this, name, version);
+    };
+  });
+  await page.getByRole('button', { name: /^الحساب / }).click();
+  await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'تعذّر حذف نسخ الهواء المشفّرة' })).toBeVisible();
   expect((await page.context().cookies()).some(cookie => cookie.name === 'nrcs_sid')).toBe(false);
 });
