@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 60
     services:
       postgres:
-        image: postgres:18
+        image: postgres:19.0-trixie
         env:
           POSTGRES_DB: madar_candidate
           POSTGRES_USER: madar_candidate
@@ -52,7 +52,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: '26.13.1'
           cache: npm
       - name: Verify the exact commit passed main CI
         env:
@@ -87,6 +87,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -o pipefail
           docker save "madar-nrcs:$RELEASE_VERSION" | gzip > madar-container.tar.gz
           sha256sum madar-container.tar.gz > madar-container.tar.gz.sha256
       - uses: actions/upload-artifact@v7

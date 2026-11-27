@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build: compile the SPA and bundle the server --------------------------
-FROM node:24-trixie-slim AS build
+FROM node:26.13.1-trixie-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
@@ -10,8 +10,9 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 # ---- Runtime: only production dependencies and built assets ----------------
-FROM node:24-trixie-slim AS runtime
+FROM node:26.13.1-trixie-slim AS runtime
 ENV NODE_ENV=production \
+    DATABASE_ENGINE=postgresql \
     PORT=3000 \
     DATA_DIR=/data
 WORKDIR /app
@@ -25,6 +26,8 @@ COPY --from=build /app/bridge ./bridge
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data /backups && chown -R node:node /data /backups
 USER node
+LABEL org.opencontainers.image.title="Madar NRCS" \
+      org.opencontainers.image.source="https://github.com/ahmedahmed1223/Madar-NRSC"
 VOLUME ["/data", "/backups"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

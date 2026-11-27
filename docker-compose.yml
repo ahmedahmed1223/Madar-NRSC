@@ -1,9 +1,12 @@
 services:
   nrcs:
     build: .
-    image: madar-nrcs:latest
+    image: ${MADAR_IMAGE:-madar-nrcs:latest}
     restart: unless-stopped
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -11,8 +14,8 @@ services:
     # set TRUST_PROXY=loopback. Publishing "3000:3000" on all interfaces without a proxy serves
     # plain HTTP to the network, where secure cookies (COOKIE_SECURE=true) cannot work.
     ports:
-      - "127.0.0.1:3000:3000"
-    env_file: .env
+      - "127.0.0.1:${MADAR_BIND_PORT:-3000}:3000"
+    env_file: ${MADAR_ENV_FILE:-.env}
     environment:
       NODE_ENV: production
       DATA_DIR: /data
