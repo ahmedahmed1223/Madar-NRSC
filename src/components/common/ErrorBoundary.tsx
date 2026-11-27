@@ -31,17 +31,10 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[NRCS Production Guard] Uncaught runtime exception:', error, errorInfo);
     selfHealingService.logRuntimeError(error, 'ReactErrorBoundary');
-    // Run background self-repair to fix any corrupt states
-    try {
-      selfHealingService.runFullDiagnosticsAndRepair(false);
-    } catch {}
     this.setState({ errorInfo });
   }
 
   private handleSoftReset = () => {
-    try {
-      selfHealingService.runFullDiagnosticsAndRepair(true);
-    } catch {}
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
