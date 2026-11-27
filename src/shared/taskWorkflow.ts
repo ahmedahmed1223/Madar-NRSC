@@ -97,7 +97,8 @@ export function stampTaskWorkflow(before: EditorialTask | null, after: Editorial
   const statusHistory = !before || previous !== next || (next === 'BLOCKED' && reason !== before.blockedReason)
     ? [...(before?.statusHistory || []).slice(-99), { status: next, at: now, byId: actorId, ...(reason ? { reason } : {}) }]
     : before.statusHistory;
-  return { ...after, status: next, execution, blockedReason: reason, statusHistory };
+  const status = after.status === 'DONE' ? 'COMPLETED' : after.status;
+  return { ...after, status, execution, blockedReason: reason, statusHistory };
 }
 
 export function taskTiming(task: Pick<EditorialTask, 'execution'>, now = Date.now()) {

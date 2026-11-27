@@ -1169,7 +1169,7 @@ export class SyncService {
           if (collection === 'tasks') {
             const assigneeId = taskAssigneeId(after);
             const member = assigneeId ? this.db.getRow('users', String(assigneeId))?.d : null;
-            const status = normalizeTaskStatus(after.status);
+            const status = after.status === 'DONE' ? 'COMPLETED' : after.status;
             const finished = status === 'COMPLETED';
             const now = new Date().toISOString();
             const { assignedToId: _legacyId, assignedToName: _legacyName, ...canonicalTask } = after;
