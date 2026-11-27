@@ -26,7 +26,7 @@ export function WorkflowDiagram({ nodes, onMove }: { nodes: WorkflowNode[]; onMo
   const labelById = new Map(nodes.map(node => [node.id, node.label]));
   return (
     <section aria-label="مخطط سير العمل" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <h3 className="text-sm font-bold text-slate-900">مخطط سير العمل</h3>
+      <h3 className="text-sm font-bold text-slate-900">{onMove ? 'إعادة ترتيب الخطوات' : 'مخطط سير العمل'}</h3>
       <div tabIndex={0} role="region" aria-label="مراحل سير العمل" className="mt-3 overflow-x-auto">
         <ol className="flex min-w-max items-center gap-3 p-1">
           {groups(nodes).map((level, stage) => (

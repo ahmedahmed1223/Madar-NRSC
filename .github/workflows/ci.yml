@@ -77,6 +77,7 @@ jobs:
         run: >-
           node tests/e2e/run-isolated.mjs tests/e2e/department-chart.spec.ts tests/e2e/assignment-routing.spec.ts
           tests/e2e/production-print.spec.ts tests/e2e/workspace-polish.spec.ts
+          tests/e2e/org-structure-map.spec.ts tests/e2e/workflow-flowchart.spec.ts tests/e2e/workflow-publication.spec.ts
       - name: Recycle bin and storage diagnostics
         run: node tests/e2e/run-isolated.mjs trash.spec.ts storage-diagnostics.spec.ts
       - name: Bulletin assembly and programme templates

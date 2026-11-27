@@ -17,6 +17,8 @@ import { DEPARTMENTS } from '../../shared/departments';
 import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { stationsOf } from '../../shared/stations';
 import { INPUT, LABEL, cardCandidates } from './cardUi';
+import { buildTemplateWorkflowGraph, type WorkflowGraphNode } from '../../shared/workflowGraph';
+import { WorkflowFlowchart } from '../workflow/WorkflowFlowchart';
 
 interface TemplateFormPageProps {
   isOpen: boolean;
@@ -92,6 +94,15 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
       next.splice(index + by, 0, step);
       return next;
     });
+
+  const manageStep = (node: WorkflowGraphNode) => {
+    const id = node.id.slice('step:'.length);
+    requestAnimationFrame(() => {
+      const item = document.getElementById(`template-step-${id}`);
+      item?.scrollIntoView({ block: 'center' });
+      item?.querySelector<HTMLSelectElement>('select')?.focus();
+    });
+  };
 
   const options = (kindId: AssigneeRule['kind']) => {
     if (kindId === 'PERSON') return people.map((p) => ({ id: p.id, name: p.name }));
@@ -192,12 +203,17 @@ export const TemplateFormPage: React.FC<TemplateFormPageProps> = ({ isOpen, onCl
           عاجل افتراضياً
         </label>
 
+        <WorkflowFlowchart
+          graph={buildTemplateWorkflowGraph({ id: template?.id || 'draft', name: name || 'مسودة القالب', kind, priority: urgent ? 'URGENT' : 'NORMAL', steps }, stepTypes)}
+          label="مخطط قالب سير العمل"
+          onManage={manageStep}
+        />
         <fieldset className="space-y-2">
           <legend className="font-bold text-slate-800 text-sm">المهام بالترتيب</legend>
           <p className="text-2xs text-slate-500">لكل مهمة من ينفّذها: زميل محدد، أو دور، أو قسم، أو محطة، أو يحدده المكلِّف عند الإنشاء. موعد المهمة يُحسب قبل موعد تسليم التكليف.</p>
           <ol className="space-y-2">
             {steps.map((step, index) => (
-              <li key={step.id} className="border border-slate-200 rounded-2xl bg-white p-3 space-y-2">
+              <li key={step.id} id={`template-step-${step.id}`} className="border border-slate-200 rounded-2xl bg-white p-3 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="w-6 h-6 shrink-0 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center tabular-nums">{index + 1}</span>
                   <select aria-label={`نوع المهمة ${index + 1}`} value={step.type} onChange={(e) => patch(step.id, { type: e.target.value })} className={`${INPUT} font-bold`}>

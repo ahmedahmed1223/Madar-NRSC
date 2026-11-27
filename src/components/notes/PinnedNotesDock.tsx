@@ -31,8 +31,8 @@ export function PinnedNotesDock() {
   };
 
   return (
-    <aside aria-label="ملصقاتي" className="pinned-notes-dock fixed bottom-16 end-3 z-20 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col items-end gap-2 lg:bottom-4 lg:end-4">
-      {expanded && <section id={panelId} aria-label="الملاحظات المثبتة" className="w-full overflow-hidden rounded-xl border border-amber-300 bg-white text-slate-900 shadow-lg">
+    <aside aria-label="ملصقاتي" className="pinned-notes-dock pointer-events-none fixed bottom-16 end-3 z-20 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col items-end gap-2 lg:bottom-4 lg:end-4">
+      {expanded && <section id={panelId} aria-label="الملاحظات المثبتة" className="pointer-events-auto w-full overflow-hidden rounded-xl border border-amber-300 bg-white text-slate-900 shadow-lg">
         <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3">
           <h2 className="text-sm font-bold">ملصقاتي</h2>
           <button type="button" className="min-h-11 text-sm font-bold text-blue-800 hover:underline" onClick={() => { setExpanded(false); navigateTo.emit('/personal-notes'); }}>فتح ملاحظاتي</button>
@@ -53,7 +53,7 @@ export function PinnedNotesDock() {
         </ul>
       </section>}
       <button type="button" aria-expanded={expanded} aria-controls={expanded ? panelId : undefined} onClick={() => setExpanded(!expanded)}
-        className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-amber-950 shadow-sm hover:bg-amber-100">
+        className="pointer-events-auto inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-amber-950 shadow-sm hover:bg-amber-100">
         <Pin className="size-4 shrink-0" aria-hidden="true" />
         <span>الملصقات</span>
         <span className="min-w-5 rounded-full bg-amber-200 px-1 text-center text-xs">{pinned.length}</span>
