@@ -23,7 +23,7 @@ import type { AuthContext } from './auth';
 import { videosError } from '../shared/newsVideos';
 import { settingsError } from '../shared/settings';
 import { allowsModule, moduleForRecord, moduleSubject, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
-import { moduleAllowed, moduleAllowsRecord } from './moduleAccess';
+import { inferredStationPolicyChangeError, moduleAllowed, moduleAllowsRecord } from './moduleAccess';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
 import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
@@ -36,6 +36,7 @@ import { taskTransitionError } from '../shared/taskWorkflow';
 import { assignedWorkOnly, cardAssignedTo, taskAssignedTo } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
 import { workReminderError, workReminderInstant } from '../shared/workReminders';
+import { canEditOwnStation, ownStationChangeError } from '../shared/ownStationChange';
 import { permissionChangeError, permissionListError, restrictionRemovalError } from './permissionChanges';
 
 export type WriteKind = 'create' | 'update' | 'delete';
@@ -214,12 +215,18 @@ const usersPolicy: Policy = (input) => {
     if (privileged && !auth.can('users.manage_roles_permissions')) return 'منح دور إداري أو مخصص أو صلاحيات مخصصة يتطلب صلاحية إدارة الأدوار';
     return permissionChangeError(input);
   }
-  const privilegedChange = PRIVILEGED_USER_FIELDS.some((f) => changed(before, after, f));
-  if (privilegedChange) {
-    if (targetId === self) return 'لا يمكنك تعديل دورك أو صلاحياتك أو حالة حسابك بنفسك';
-    if (changed(before, after, 'isActive') && !auth.can('users.suspend_delete')) return DENIED;
-    const roleFields = PRIVILEGED_USER_FIELDS.filter((f) => f !== 'isActive');
-    if (roleFields.some((f) => changed(before, after, f)) && !auth.can('users.manage_roles_permissions')) return DENIED;
+  const privilegedChanges = PRIVILEGED_USER_FIELDS.filter((field) => changed(before, after, field));
+  if (targetId === self && privilegedChanges.length) {
+    if (privilegedChanges.length !== 1 || privilegedChanges[0] !== 'stationId') return 'لا يمكنك تعديل دورك أو صلاحياتك أو حالة حسابك بنفسك';
+    if (!canEditOwnStation(auth.user.role, auth.can)) return 'تغيير محطة حسابك يتطلب مسؤولاً مخوّلاً';
+    const settings = list?.('settings')?.[0];
+    const error = ownStationChangeError(before, after.stationId, settings, findUserRole(auth.user, auth.roles)?.id, auth.can);
+    if (error) return error;
+    const recordError = inferredStationPolicyChangeError(before, after, settings, list);
+    if (recordError) return recordError;
+  } else if (privilegedChanges.length) {
+    if (privilegedChanges.includes('isActive') && !auth.can('users.suspend_delete')) return DENIED;
+    if (privilegedChanges.some((field) => field !== 'isActive') && !auth.can('users.manage_roles_permissions')) return DENIED;
   }
   if (targetId === self) return permissionChangeError(input); // own profile fields
   return auth.can('users.edit_profile') ? permissionChangeError(input) : DENIED;

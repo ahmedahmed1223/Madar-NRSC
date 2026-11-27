@@ -23,6 +23,7 @@ import { RoleEditModal } from '../components/users/RoleEditModal';
 import { PermissionsWorkspace } from '../components/users/PermissionsWorkspace';
 import { confirmSaved } from '../services/confirmSave';
 import { countLabel } from '../shared/arabicPlural';
+import { canEditOwnStation } from '../shared/ownStationChange';
 import { downloadCsv } from '../services/csvExport';
 import {
   Users as UsersIcon,
@@ -889,6 +890,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch,
         userToEdit={userToEdit}
         roles={isSuper ? roles : roles.filter((r) => r.roleCode !== 'SUPER_ADMIN')}
         canManageOverrides={canManageRoles && userToEdit?.id !== currentUser.id}
+        isOwnAccount={userToEdit?.id === currentUser.id}
+        canEditStation={!userToEdit || (userToEdit.id === currentUser.id ? canEditOwnStation(currentUser.role, can) : canManageRoles)}
         canSetPassword={canCreate}
         canReadModulePolicy={can('system.settings')}
       />
