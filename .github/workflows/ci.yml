@@ -87,7 +87,7 @@ jobs:
       - name: Workspace navigation and responsive route coverage
         run: node tests/e2e/run-isolated.mjs tests/e2e/workspace-shell.spec.ts tests/e2e/website-transformation.spec.ts tests/e2e/personal-workspace.spec.ts tests/e2e/shell-v4.spec.ts
       - name: Newsroom 4.4 editing, intake and studio workflows
-        run: node tests/e2e/run-isolated.mjs tests/e2e/news-taxonomy.spec.ts tests/e2e/news-corrections.spec.ts tests/e2e/presenter-instructions.spec.ts tests/e2e/v44-workspaces.spec.ts
+        run: node tests/e2e/run-isolated.mjs tests/e2e/news-taxonomy.spec.ts tests/e2e/news-corrections.spec.ts tests/e2e/planning.spec.ts tests/e2e/presenter-instructions.spec.ts tests/e2e/v44-workspaces.spec.ts
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

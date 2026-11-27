@@ -14,8 +14,8 @@ export async function openSettingsSection(page: Page, label: string) {
 }
 
 /** Signs in as a demo colleague in a fresh browser context; page errors fail the test. */
-export async function signIn(browser: Browser, email: string, opts: { viewport?: { width: number; height: number }; bypassCSP?: boolean; serviceWorkers?: 'allow' | 'block' } = {}) {
-  const context = await browser.newContext({ viewport: opts.viewport, bypassCSP: opts.bypassCSP, serviceWorkers: opts.serviceWorkers });
+export async function signIn(browser: Browser, email: string, opts: { viewport?: { width: number; height: number }; bypassCSP?: boolean; timezoneId?: string; serviceWorkers?: 'allow' | 'block' } = {}) {
+  const context = await browser.newContext({ viewport: opts.viewport, bypassCSP: opts.bypassCSP, timezoneId: opts.timezoneId, serviceWorkers: opts.serviceWorkers });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

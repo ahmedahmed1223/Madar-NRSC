@@ -13,6 +13,7 @@ import { confirmSaved } from '../services/confirmSave';
 import { FormPage } from '../components/common/FormPage';
 import { BookingForm } from '../components/planning/BookingForm';
 import { arabicDate, localDateString } from '../shared/dates';
+import { stationWorkDay } from '../shared/myWork';
 import { matchesQuery } from '../shared/search';
 import { Booking, COVERAGE_DECISIONS, coverageOf, DiaryEntry, DIARY_KINDS, diaryKindName, shiftDay, sortDiary, weekDays } from '../shared/planning';
 
@@ -36,18 +37,18 @@ interface DiaryViewProps {
 
 /** News planning diary: what is coming up, whether we cover it, and who goes. */
 export const DiaryView: React.FC<DiaryViewProps> = ({ currentUser, users, categories, stories, newsList, focusId, onCreateNews, onOpenNews }) => {
-  useLiveData(['diary', 'bookings', 'resources']);
+  useLiveData(['diary', 'bookings', 'resources', 'settings']);
   const canManage = RbacService.hasPermission(currentUser, 'diary.manage');
   const entries = apiService.getDiary();
   const focused = focusId ? entries.find((e) => e.id === focusId) : undefined;
-  const [anchor, setAnchor] = useState(() => focused?.date || localDateString());
+  const today = stationWorkDay(new Date(), apiService.getSettings().defaultTimezone);
+  const [anchor, setAnchor] = useState(() => focused?.date || today);
   const [mobileDay, setMobileDay] = useState<string | null>(focused?.date || null);
   const [query, setQuery] = useState('');
   const [coverage, setCoverage] = useState('ALL');
   const [onlyMine, setOnlyMine] = useState(false);
   const [editing, setEditing] = useState<Partial<DiaryEntry> | null>(focused || null);
   const [booking, setBooking] = useState<Partial<Booking> | null>(null);
-  const today = localDateString();
   const days = useMemo(() => weekDays(anchor), [anchor]);
   const currentDay = mobileDay === 'ALL' || (mobileDay && days.includes(mobileDay))
     ? mobileDay
