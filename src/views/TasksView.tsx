@@ -21,14 +21,14 @@ import { assignmentScope } from '../shared/assignmentScope';
 import type { WorkReminderOptions } from '../shared/workReminders';
 import { WorkReminderFields } from '../components/common/WorkReminderFields';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
-import { normalizeTaskStatus, taskDurationLabel, taskTiming } from '../shared/taskWorkflow';
+import { isTaskClosed, normalizeTaskStatus, taskDurationLabel, taskTiming } from '../shared/taskWorkflow';
 import { dataStore } from '../services/dataStore';
 import { useLiveData } from '../hooks/useLiveData';
 import { useQueueFilter } from '../hooks/useQueueFilter';
 
 /** Whole days a task is past its due time (0 when not overdue or already done). */
 function overdueDays(t: EditorialTask, now = Date.now()): number {
-  if (!t.dueDate || ['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(t.status))) return 0;
+  if (!t.dueDate || isTaskClosed(t.status)) return 0;
   const late = now - new Date(t.dueDate).getTime();
   return late > 0 ? Math.max(1, Math.floor(late / 86_400_000)) : 0;
 }
@@ -264,11 +264,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
       priority,
       dueDate: deadline,
       reminderOptions,
-      assignedToName: assignee.fullName,
       assigneeName: assignee.fullName,
       status,
       ...(status === 'BLOCKED' && (reason || editingTask?.blockedReason) ? { blockedReason: reason } : {}),
-      assignedToId: assignee.id,
       assigneeId: assignee.id,
       assigneeAvatar: assignee.avatarUrl,
       ...(editingTask ? {} : { createdById: currentUser.id, createdByName: currentUser.fullName }),
@@ -407,13 +405,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const taskCounts = {
     visible: filteredTasks.length,
-    open: filteredTasks.filter(task => !['COMPLETED', 'CANCELLED'].includes(task.status)).length,
+    open: filteredTasks.filter(task => !isTaskClosed(task.status)).length,
     overdue: filteredTasks.filter(task => overdueDays(task, now) > 0).length,
     blocked: filteredTasks.filter(task => task.status === 'BLOCKED').length,
     urgent: filteredTasks.filter(task => task.priority === 'URGENT' || task.priority === 'CRITICAL').length,
   };
   const followUpRank = (task: EditorialTask) => {
-    if (task.status === 'COMPLETED' || task.status === 'CANCELLED') return 2;
+    if (isTaskClosed(task.status)) return 2;
     const needsReview = task.status === 'IN_REVIEW' && canManage(task);
     return needsReview || task.status === 'BLOCKED' || overdueDays(task, now) > 0 ? 0 : 1;
   };
@@ -425,10 +423,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const taskListPage = useIncremental(listTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
   const selectedDeadline = dueDate ? Date.parse(fromLocalInputValue(dueDate)) : NaN;
   const pastDueOpenTask = Number.isFinite(selectedDeadline) && selectedDeadline < now
-    && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(status));
+    && !isTaskClosed(status);
 
   const columns = TASK_BOARD_COLUMNS;
-  const isFinished = (s: TaskStatus) => s === 'COMPLETED' || s === 'CANCELLED';
+  const isFinished = (s: TaskStatus) => isTaskClosed(s);
   const focusRing = (id: string) => (focusId === id ? 'ring-2 ring-blue-500 ring-offset-2' : '');
 
   const pending = (task: EditorialTask) => movingTasks.has(task.id) || dataStore.hasPendingWrite('tasks', task.id);

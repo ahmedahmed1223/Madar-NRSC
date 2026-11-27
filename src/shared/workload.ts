@@ -10,7 +10,8 @@
  */
 import { cardContributions, cardState, isStepOpen, stepPoints, stepTypeName, type ProductionCard, type StepType } from './productionCards';
 import type { Station } from './stations';
-import { taskTiming } from './taskWorkflow';
+import { taskAssigneeId } from './assignedWork';
+import { isTaskClosed, normalizeTaskStatus, taskTiming } from './taskWorkflow';
 
 export type WorkSource = 'CARD_STEP' | 'TASK' | 'REQUEST' | 'NEWS' | 'REVIEW';
 
@@ -107,10 +108,11 @@ export function collectWork(input: WorkInputs): WorkItem[] {
   }
 
   for (const task of input.tasks) {
-    if (task.deletedAt || task.status === 'CANCELLED') continue;
-    const userId = task.assigneeId || task.assignedToId;
+    const status = normalizeTaskStatus(task.status);
+    if (task.deletedAt || status === 'CANCELLED') continue;
+    const userId = taskAssigneeId(task);
     if (!userId) continue;
-    const done = task.status === 'DONE' || task.status === 'COMPLETED';
+    const done = isTaskClosed(status);
     items.push({
       key: `task:${task.id}`,
       source: 'TASK',

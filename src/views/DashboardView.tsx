@@ -24,6 +24,7 @@ import { sectionOrderFor } from '../shared/navigation';
 import { setupCommand } from '../services/uiEvents';
 import { AdminExceptionSummary, ApprovedMaterialSummary } from '../components/dashboard/DailyDashboardSummaries';
 import { canShowAdminExceptions, canShowApprovedMaterial, isApprovedMaterial } from '../shared/dailyDashboardSummaries';
+import { isTaskClosed } from '../shared/taskWorkflow';
 interface DashboardViewProps {
   newsList: NewsItem[];
   breakingNews?: BreakingNews[];
@@ -92,7 +93,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const todayEpisodes = (episodes || []).filter(
     (e) => e.status === 'ON_AIR' || ((e.broadcastDate || '').slice(0, 10) === todayKey && !['CANCELLED', 'ARCHIVED', 'BROADCASTED'].includes(e.status))
   );
-  const openTasks = (tasks || []).filter((t) => !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status));
+  const openTasks = (tasks || []).filter((t) => !isTaskClosed(t.status));
   const overdueTasks = openTasks.filter((t) => t.dueDate && Date.parse(t.dueDate) < referenceTime).length;
   const stationDate = new Intl.DateTimeFormat('en-CA', { timeZone: validZone(stationZone), year: 'numeric', month: '2-digit', day: '2-digit' });
   const dayOf = (iso?: string) => (iso && Number.isFinite(Date.parse(iso)) ? stationDate.format(new Date(iso)) : '');
@@ -546,7 +547,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-center justify-between gap-2 text-2xs text-slate-500">
                     <span className="min-w-0 truncate">المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
                     <span className="text-2xs shrink-0">
-                      {task.dueDate && Date.parse(task.dueDate) < Date.now() && !['DONE', 'COMPLETED', 'CANCELLED'].includes(task.status) ? (
+                      {task.dueDate && Date.parse(task.dueDate) < Date.now() && !isTaskClosed(task.status) ? (
                         <span className="text-rose-700 font-bold">
                           متأخرة {countLabel(Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000)), { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
                         </span>

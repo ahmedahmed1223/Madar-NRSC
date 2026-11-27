@@ -34,7 +34,7 @@ import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/product
 import { supportTrack } from '../shared/trackSupport';
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
-import { stampTaskWorkflow } from '../shared/taskWorkflow';
+import { normalizeTaskStatus, stampTaskWorkflow } from '../shared/taskWorkflow';
 import { captureBroadcastPlan } from './broadcastArchive';
 import { stampBulletinMediaReview } from './bulletinMediaReview';
 import { reconcileBulletinStory } from './bulletinStoryVersions';
@@ -42,7 +42,7 @@ import { cueBulletinExclusion } from './bulletinLiveExclusions';
 import { notifyBulletinSourceCorrections } from './bulletinSourceCorrectionNotices';
 import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
-import { assignedWorkOnly } from '../shared/assignedWork';
+import { assignedWorkOnly, taskAssigneeId } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
 import { departmentIdOf, departmentsOf, findDepartmentId } from '../shared/departments';
 import { onDutyAt, RosterEntry } from '../shared/roster';
@@ -1167,12 +1167,23 @@ export class SyncService {
         if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'notifications') after = { ...after, senderId: before ? before.senderId : auth.user.id };
           if (collection === 'tasks') {
-            const member = this.db.getRow('users', String(after.assigneeId || after.assignedToId))?.d;
-            const finished = after.status === 'DONE' || after.status === 'COMPLETED';
+            const assigneeId = taskAssigneeId(after);
+            const member = assigneeId ? this.db.getRow('users', String(assigneeId))?.d : null;
+            const status = normalizeTaskStatus(after.status);
+            const finished = status === 'COMPLETED';
             const now = new Date().toISOString();
+            const { assignedToId: _legacyId, assignedToName: _legacyName, ...canonicalTask } = after;
             // Completion time is the server's, so output can be measured per period.
-            after = stampTaskWorkflow(before, { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || now,
-              assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || now : undefined }, auth.user.id, now);
+            after = stampTaskWorkflow(before, {
+              ...canonicalTask,
+              status,
+              assigneeId,
+              assigneeName: member?.fullName || after.assigneeName || after.assignedToName,
+              creatorId: before?.creatorId || auth.user.id,
+              creatorName: before?.creatorName || auth.user.fullName,
+              createdAt: before?.createdAt || now,
+              completedAt: finished ? before?.completedAt || now : undefined,
+            }, auth.user.id, now);
           }
           if (collection === 'reviewThreads') {
             const now = new Date().toISOString();
@@ -1355,10 +1366,11 @@ export class SyncService {
         }
         if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) this.settleCardNotifications(id);
           if (collection === 'tasks' && !after.deletedAt) {
-            const assignee = after.assigneeId || after.assignedToId;
-            const assigned = assignee && assignee !== (before?.assigneeId || before?.assignedToId);
+            const assignee = taskAssigneeId(after);
+            const assigned = assignee && assignee !== taskAssigneeId(before);
             const deadline = before && after.dueDate !== before.dueDate;
-            const status = before && after.status !== before.status && ['BLOCKED', 'IN_REVIEW', 'DONE', 'COMPLETED'].includes(after.status);
+            const nextStatus = normalizeTaskStatus(after.status);
+            const status = before && nextStatus !== normalizeTaskStatus(before.status) && ['BLOCKED', 'IN_REVIEW', 'COMPLETED'].includes(nextStatus);
             const recipients = new Set<string>();
             if ((assigned || deadline) && assignee) recipients.add(assignee);
             if (status && after.creatorId) recipients.add(after.creatorId);

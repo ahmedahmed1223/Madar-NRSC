@@ -141,6 +141,8 @@ import {
   contentDenial,
 } from '../shared/newsWorkflow';
 
+import { taskAssigneeId } from '../shared/assignedWork';
+import { normalizeTaskStatus } from '../shared/taskWorkflow';
 import { selfHealingService } from './selfHealingService';
 
 // Storage keys of the server-synchronised collections (see src/shared/collections.ts).
@@ -1031,8 +1033,8 @@ export class ApiService {
     const all = this.getTasks();
     const currentUser = user || this.getCurrentUser();
     const existingTask = task.id ? all.find((t) => t.id === task.id) : undefined;
-    const existingAssignee = existingTask?.assigneeId || existingTask?.assignedToId;
-    const nextAssignee = task.assigneeId || task.assignedToId || existingAssignee || currentUser.id;
+    const existingAssignee = taskAssigneeId(existingTask);
+    const nextAssignee = taskAssigneeId(task) || existingAssignee || currentUser.id;
     const users = this.getUsers();
     const recipient = users.find(member => member.id === nextAssignee);
     const settings = this.getSettings();
@@ -1052,11 +1054,20 @@ export class ApiService {
       if (error) throw new Error(error);
     }
     const now = new Date().toISOString();
+    const { assignedToId: _legacyId, assignedToName: _legacyName, ...cleanTask } = task;
+    const nextAssigneeName = recipient?.fullName || task.assigneeName || task.assignedToName || existingTask?.assigneeName || existingTask?.assignedToName || currentUser.fullName;
 
     if (task.id) {
       const idx = all.findIndex((t) => t.id === task.id);
       if (idx !== -1) {
-        all[idx] = { ...all[idx], ...task, assigneeId: nextAssignee, assignedToId: nextAssignee };
+        const { assignedToId: _oldLegacyId, assignedToName: _oldLegacyName, ...existingClean } = all[idx];
+        all[idx] = {
+          ...existingClean,
+          ...cleanTask,
+          status: normalizeTaskStatus(cleanTask.status ?? existingClean.status),
+          assigneeId: nextAssignee,
+          assigneeName: nextAssigneeName,
+        };
         setStored(STORAGE_KEYS.TASKS, all);
         this.logActivity('تحديث مهمة', 'TASK', task.id, all[idx].title, `تحديث حالة المهمة إلى: ${all[idx].status}`);
         return all[idx];
@@ -1068,13 +1079,12 @@ export class ApiService {
       title: task.title || 'مهمة جديدة',
       description: task.description || '',
       assigneeId: nextAssignee,
-      assignedToId: nextAssignee,
-      assigneeName: recipient?.fullName || task.assigneeName || currentUser.fullName,
+      assigneeName: nextAssigneeName,
       assigneeAvatar: task.assigneeAvatar,
       creatorId: currentUser.id,
       creatorName: currentUser.fullName,
       priority: task.priority || 'MEDIUM',
-      status: task.status || 'TODO',
+      status: normalizeTaskStatus(task.status),
       startDate: task.startDate || now,
       dueDate: task.dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       reminderOptions: task.reminderOptions,

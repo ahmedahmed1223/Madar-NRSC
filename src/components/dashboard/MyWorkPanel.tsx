@@ -22,6 +22,8 @@ import { isManagerRole, reviewableNews } from '../../shared/managerToday';
 import { stationName, stationsOf } from '../../shared/stations';
 import type { PersonalTask } from '../../shared/personalTasks';
 import type { PersonalNote } from '../../shared/personalWorkspace';
+import { taskAssigneeId } from '../../shared/assignedWork';
+import { isTaskClosed } from '../../shared/taskWorkflow';
 
 interface MyWorkPanelProps {
   currentUser: User;
@@ -36,7 +38,7 @@ interface MyWorkPanelProps {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
-const OPEN_TASK = (t: EditorialTask) => !['DONE', 'COMPLETED', 'CANCELLED'].includes(t.status);
+const OPEN_TASK = (t: EditorialTask) => !isTaskClosed(t.status);
 
 interface Row {
   id: string;
@@ -166,7 +168,7 @@ const MyWorkPanelContent: React.FC<MyWorkPanelProps> = ({ currentUser, newsList,
     .map((r) => ({ id: r.id, title: r.title, meta: `${departmentName(r.departmentId)} · ${requestStatusName(r.status)}`, onClick: () => onNavigate(`/requests/${encodeURIComponent(r.id)}`) }));
 
   const myTasks: Row[] = tasks
-    .filter((t) => (t.assigneeId || t.assignedToId) === me && OPEN_TASK(t))
+    .filter((t) => taskAssigneeId(t) === me && OPEN_TASK(t))
     .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))
     .map((t) => {
       const overdue = t.dueDate && new Date(t.dueDate).getTime() < now;

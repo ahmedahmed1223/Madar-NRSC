@@ -5,8 +5,9 @@ import { RbacService } from '../../services/rbacService';
 import { useLiveData } from '../../hooks/useLiveData';
 import { appLocale, formatDay, zoneOptions } from '../../shared/dateFormat';
 import { departmentName } from '../../shared/departments';
-import { normalizeTaskStatus, statusLabel } from '../../shared/labels';
+import { statusLabel } from '../../shared/labels';
 import { isRequestClosed, requestStatusName } from '../../shared/production';
+import { isTaskClosed } from '../../shared/taskWorkflow';
 import type { User } from '../../types';
 
 interface Props {
@@ -36,7 +37,7 @@ export function ProductionFollowUp({ entityId, kind, storyIds, user }: Props) {
       id: task.id, collection: 'tasks' as const, title: task.title,
       owner: task.assigneeName || task.assignedToName || 'بلا مسؤول محدد',
       due: task.dueDate, status: statusLabel(task.status, 'task'),
-      closed: ['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(task.status)),
+      closed: isTaskClosed(task.status),
     })),
     ...requests.map(request => ({
       id: request.id, collection: 'requests' as const, title: request.title,
