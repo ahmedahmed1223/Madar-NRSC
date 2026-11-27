@@ -22,6 +22,7 @@ import { MessageOriginLabel } from '../components/messages/MessageOriginLabel';
 import { apiService } from '../services/api';
 import { countLabel } from '../shared/arabicPlural';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
 import {
   Save,
@@ -272,16 +273,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   // Closing or reloading the tab with unsaved text asks first (the local recovery copy stays as a safety net).
-  useEffect(() => {
-    if (!isDirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      persistDraftRef.current();
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [isDirty]);
+  useUnsavedChangesGuard(isDirty, { onBeforeUnload: () => persistDraftRef.current() });
 
   const clearDraft = () => {
     try {

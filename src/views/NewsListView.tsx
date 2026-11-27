@@ -618,7 +618,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       {/* Bulk Action Bar (when selected) */}
       {bulkResult && (
         <section aria-label="نتيجة الإجراء الجماعي" className="border-y border-slate-200 py-3 space-y-2">
-          <p role="status" className="text-sm font-semibold text-slate-800">نجح: {bulkResult.done}، تعذر: {bulkResult.failures.length}</p>
+          <p role="status" className="text-sm font-semibold text-slate-800 tabular-nums">نجح: {bulkResult.done}، تعذر: {bulkResult.failures.length}</p>
           <ul className="space-y-1 text-sm text-rose-800">{bulkResult.failures.map(f => <li key={f.id} className="break-words">{f.title}: {f.reason}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             {bulkResult.failures.length > 0 && <button type="button" disabled={bulkSubmitting} onClick={() => void runBulkAction(bulkResult.action, bulkResult.failures.map(f => f.id))} className="min-h-11 px-3 border border-slate-300 rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50"><RotateCcw className="w-4 h-4" />إعادة محاولة الفاشل فقط</button>}
@@ -629,7 +629,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       {selectedIds.length > 0 && activeTab !== 'TRASH' && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
-            <span role="status" aria-live="polite" className="font-bold">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${countLabel(selectedIds.length, AR.news)}`}</span>
+            <span role="status" aria-live="polite" className="font-bold tabular-nums">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${countLabel(selectedIds.length, AR.news)}`}</span>
             <button type="button" disabled={bulkSubmitting} onClick={() => setSelectedIds([])} aria-label="إلغاء تحديد الأخبار"
               title="إلغاء التحديد" className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-slate-700 disabled:opacity-50"><X className="w-4 h-4" /></button>
           </div>
@@ -1035,7 +1035,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
         )}
         {pageCount > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs">
-            <span className="text-slate-500">
+            <span className="text-slate-500 tabular-nums">
               {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, listRows.length)} من {listRows.length}
             </span>
             <div className="flex items-center gap-1">
@@ -1047,7 +1047,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
               >
                 السابق
               </button>
-              <span className="px-2 font-mono">
+              <span className="px-2 font-mono tabular-nums">
                 {currentPage + 1} من {pageCount}
               </span>
               <button

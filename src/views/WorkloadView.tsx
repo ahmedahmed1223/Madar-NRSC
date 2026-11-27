@@ -652,10 +652,10 @@ const WorkloadReport: React.FC<WorkloadViewProps> = ({ currentUser, users, onOpe
                           >
                             <ChevronDown aria-hidden="true" className={`w-4 h-4 text-slate-500 transition-transform no-print ${expanded ? '' : 'rotate-90'}`} />
                             {team.name}{' '}
-                            <span className="font-normal text-slate-500">({countLabel(team.people, AR.person)})</span>
+                            <span className="font-normal text-slate-500 tabular-nums">({countLabel(team.people, AR.person)})</span>
                           </button>
                         </th>
-                        <td className="p-3 whitespace-nowrap text-sky-800 font-bold">{team.free ? countWithNumber(team.free, FREE) : ''}</td>
+                        <td className="p-3 whitespace-nowrap text-sky-800 font-bold tabular-nums">{team.free ? countWithNumber(team.free, FREE) : ''}</td>
                         <td className={`${TD} font-bold`}><Count value={team.overdue} tone="text-amber-700" label="متأخرة" onOpen={() => drillTo(`${team.name} — متأخرة`, pick(filteredItems.filter((i) => team.members.some((m) => m.id === i.userId)), 'late'))} /></td>
                         <td className={`${TD} font-bold`}><Count value={team.blocked} tone="text-rose-700" label="متعطلة" onOpen={() => drillTo(`${team.name} — متعطلة`, pick(filteredItems.filter((i) => team.members.some((m) => m.id === i.userId)), 'blocked'))} /></td>
                         <td className={`${TD} font-bold`}>{team.open}</td>

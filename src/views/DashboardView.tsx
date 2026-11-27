@@ -221,7 +221,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section data-tour="setup-wizard" aria-label="الإعداد السريع" className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50">
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-slate-900">أكمل إعداد «مدار» لفريقك</h2>
-            <p className="text-xs text-slate-700 mt-0.5">{setup.done} من {setup.total} خطوات مكتملة</p>
+            <p className="text-xs text-slate-700 mt-0.5 tabular-nums">{setup.done} من {setup.total} خطوات مكتملة</p>
           </div>
           <div className="h-1.5 sm:w-32 rounded-full bg-white overflow-hidden" aria-hidden="true">
             <div className="h-full bg-blue-600" style={{ width: `${(setup.done / setup.total) * 100}%` }} />
@@ -478,7 +478,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <span>•</span>
                           <span>بواسطة: <strong className="text-slate-700">{news.authorName}</strong></span>
                           <span>•</span>
-                          <span>آخر تحديث {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="tabular-nums">آخر تحديث {new Date(news.updatedAt).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' })}</span>
                         </span>
                       </span>
 
@@ -546,7 +546,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div className="flex items-center justify-between gap-2 text-2xs text-slate-500">
                     <span className="min-w-0 truncate">المسند إليه: {task.assigneeName || task.assignedToName || '—'}</span>
-                    <span className="text-2xs shrink-0">
+                    <span className="text-2xs shrink-0 tabular-nums">
                       {task.dueDate && Date.parse(task.dueDate) < Date.now() && !isTaskClosed(task.status) ? (
                         <span className="text-rose-700 font-bold">
                           متأخرة {countLabel(Math.max(1, Math.floor((Date.now() - Date.parse(task.dueDate)) / 86_400_000)), { zero: '', one: 'يوماً واحداً', two: 'يومين', few: 'أيام', many: 'يوماً' })}
@@ -589,7 +589,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {guest.jobTitle} - {guest.organization}
                     </span>
                   </div>
-                  <span className="text-2xs text-slate-500 shrink-0">
+                  <span className="text-2xs text-slate-500 shrink-0 tabular-nums">
                     {guest.totalAppearances ? `${guest.totalAppearances} ظهور` : 'جديد'}
                   </span>
                 </div>

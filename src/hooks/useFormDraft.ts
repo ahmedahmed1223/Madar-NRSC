@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { confirmDialog } from '../services/dialogs';
+import { useUnsavedChangesGuard } from './useUnsavedChangesGuard';
 
 interface DraftSession<T> {
   key: string;
@@ -76,15 +77,7 @@ export function useFormDraft<T>(
     }
   }, [active, storageKey, serialized]);
 
-  useLayoutEffect(() => {
-    if (!active || !dirty || !error) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [active, dirty, error]);
+  useUnsavedChangesGuard(active && dirty && error);
 
   const clearDraft = () => {
     const current = session.current;

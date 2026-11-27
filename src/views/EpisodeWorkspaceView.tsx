@@ -31,6 +31,7 @@ import { episodeGuestList, segmentGuests } from '../shared/episodePlan';
 import { Episode, RundownSegment, Guest, NewsItem, User, EpisodeStatus } from '../types';
 import { useEditLock } from '../hooks/useNewsEditLock';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import { DraftStatus } from '../components/common/DraftStatus';
 import { RundownTable } from '../components/rundown/RundownTable';
 import { Breadcrumbs } from '../components/layout/Breadcrumbs';
@@ -82,6 +83,7 @@ export const EpisodeWorkspaceView: React.FC<EpisodeWorkspaceViewProps> = ({
   const [introScript, setIntroScript] = useState(episode.introScript || '');
   const loadedScriptRef = useRef(episode.introScript || '');
   const scriptDraft = useFormDraft(`episode-script:${currentUser.id}:${episode.id}`, mayEditEpisode, introScript, setIntroScript);
+  useUnsavedChangesGuard(mayEditEpisode && scriptDraft.dirty && !scriptDraft.error);
   const [undoScript, setUndoScript] = useState<string | null>(null);
   const changeScript = (next: string) => {
     setUndoScript(introScript);

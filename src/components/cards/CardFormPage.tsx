@@ -1,6 +1,6 @@
 import { WORKFLOW_TRACKS } from '../../shared/workflowTracks';
 import { StepExecutionFields } from './StepExecutionFields';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { FormPage } from '../common/FormPage';
 import { apiService } from '../../services/api';
@@ -17,6 +17,7 @@ import type { User } from '../../types';
 import { INPUT, LABEL } from './cardUi';
 import { useConfirmedCardSave } from './useConfirmedCardSave';
 import { MessageOriginLabel } from '../messages/MessageOriginLabel';
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 
 interface CardFormPageProps {
   isOpen: boolean;
@@ -56,27 +57,75 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
   const [steps, setSteps] = useState<CardStep[]>([]);
   const [links, setLinks] = useState<CardLink[]>([]);
   const [target, setTarget] = useState<CardTarget | undefined>();
+  const baselineRef = useRef<string | null>(null);
   const { save, saving, error, reset, pending } = useConfirmedCardSave();
 
   const newStep = (type: string): CardStep => ({ id: newId('stp'), type, status: 'TODO', complexity: 1 });
 
   useEffect(() => {
-    if (!isOpen) return;
-    setTitle(card?.title || draft?.title || '');
-    setKind(card?.kind || 'NEWS');
-    setTarget(card?.target);
-    setBrief(card?.brief || draft?.brief || '');
-    setUrgent(card?.priority === 'URGENT');
-    setOwnerId(card?.ownerId || currentUser.id);
-    setDueAt(localInput(card?.dueAt));
-    setReminderOptions(card?.reminderOptions);
-    setAirAt(localInput(card?.airAt));
-    setSteps(card?.steps || CARD_STEP_PRESETS[1].types.filter((t) => stepTypes.some((x) => x.id === t)).map(newStep));
-    setLinks(card?.links || []);
+    if (!isOpen) {
+      baselineRef.current = null;
+      return;
+    }
+    const nextTitle = card?.title || draft?.title || '';
+    const nextKind = card?.kind || 'NEWS';
+    const nextTarget = card?.target;
+    const nextBrief = card?.brief || draft?.brief || '';
+    const nextUrgent = card?.priority === 'URGENT';
+    const nextOwnerId = card?.ownerId || currentUser.id;
+    const nextDueAt = localInput(card?.dueAt);
+    const nextReminderOptions = card?.reminderOptions;
+    const nextAirAt = localInput(card?.airAt);
+    const nextSteps = card?.steps || CARD_STEP_PRESETS[1].types.filter((t) => stepTypes.some((x) => x.id === t)).map(newStep);
+    const nextLinks = card?.links || [];
+    setTitle(nextTitle);
+    setKind(nextKind);
+    setTarget(nextTarget);
+    setBrief(nextBrief);
+    setUrgent(nextUrgent);
+    setOwnerId(nextOwnerId);
+    setDueAt(nextDueAt);
+    setReminderOptions(nextReminderOptions);
+    setAirAt(nextAirAt);
+    setSteps(nextSteps);
+    setLinks(nextLinks);
+    baselineRef.current = JSON.stringify({
+      title: nextTitle,
+      kind: nextKind,
+      target: nextTarget,
+      brief: nextBrief,
+      urgent: nextUrgent,
+      ownerId: nextOwnerId,
+      dueAt: nextDueAt,
+      reminderOptions: nextReminderOptions,
+      airAt: nextAirAt,
+      steps: nextSteps,
+      links: nextLinks,
+    });
     reset();
     // The form is filled once when it opens; later edits belong to the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, card?.id]);
+
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        title,
+        kind,
+        target,
+        brief,
+        urgent,
+        ownerId,
+        dueAt,
+        reminderOptions,
+        airAt,
+        steps,
+        links,
+      }),
+    [title, kind, target, brief, urgent, ownerId, dueAt, reminderOptions, airAt, steps, links]
+  );
+  const isDirty = isOpen && baselineRef.current !== null && currentSnapshot !== baselineRef.current;
+  useUnsavedChangesGuard(isDirty);
 
   // Supervisors distribute work inside the stations they follow.
   const eligibility = useMemo(() => assignmentScope(currentUser, settings), [currentUser, settings]);
