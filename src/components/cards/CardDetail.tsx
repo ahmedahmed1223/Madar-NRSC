@@ -40,6 +40,8 @@ import { assignmentScope } from '../../shared/assignmentScope';
 import { minutesLabel } from '../../shared/workload';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { CARD_STATE_STYLE, INPUT, LABEL, STEP_STATUS_STYLE, candidateLabel, cardCandidates, when } from './cardUi';
+import { buildCardWorkflowGraph, type WorkflowGraphNode } from '../../shared/workflowGraph';
+import { WorkflowFlowchart } from '../workflow/WorkflowFlowchart';
 
 interface CardDetailProps {
   card: ProductionCard;
@@ -166,6 +168,15 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     if (kind === 'back') setBackTo(sendBackTargets(card, step.id).at(-1)?.id || '');
     if (kind === 'reassign') setReassignTo('');
     setPanel({ stepId: step.id, kind });
+  };
+
+  const manageStep = (node: WorkflowGraphNode) => {
+    const id = node.id.slice('step:'.length);
+    requestAnimationFrame(() => {
+      const item = document.getElementById(`card-step-${id}`);
+      item?.scrollIntoView({ block: 'center' });
+      item?.focus();
+    });
   };
 
   /** What happens next once this step is done, said only after the server confirmed it. */
@@ -371,6 +382,8 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
           <p className="text-xs text-slate-700">العمل المسجل يجمع جلسات الفريق. الزمن منذ أول بدء يشمل التوقفات حتى اكتمال المهام. الانتظار المرصود يجمع الانتظار قبل البدء وفترات التعطل الموثقة، ويُحسب الوقت المتداخل مرة واحدة.</p>
         </section>
 
+        <WorkflowFlowchart graph={buildCardWorkflowGraph(card, stepTypes, now)} label="مخطط تنفيذ التكليف" onManage={manageStep} />
+
         <section>
           <h2 className="font-bold text-slate-800 text-sm mb-2">المهام والتسليم</h2>
           {card.steps.length === 0 && <p className="text-slate-500">لم تُضف مهام لهذا التكليف بعد.</p>}
@@ -390,7 +403,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
               const start = mine ? 'bg-blue-600 text-white' : 'border border-blue-200 text-blue-700';
               const finishStyle = mine ? 'bg-emerald-700 text-white' : 'border border-emerald-300 text-emerald-800';
               return (
-                <li key={step.id} className={`border rounded-2xl p-3 space-y-2 ${mine && open && step.status !== 'DONE' ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
+                <li key={step.id} id={`card-step-${step.id}`} data-testid={`card-step-${step.id}`} tabIndex={-1} className={`border rounded-2xl p-3 space-y-2 focus-visible:outline-2 focus-visible:outline-blue-600 ${mine && open && step.status !== 'DONE' ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="w-6 h-6 shrink-0 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center tabular-nums">{index + 1}</span>
                     <h3 className="font-bold text-slate-900 text-sm">{stepTypeName(stepTypes, step.type)}</h3>

@@ -5,6 +5,8 @@ import { apiService } from '../../services/api';
 import { confirmSaved } from '../../services/confirmSave';
 import { SINGLETON_ID } from '../../shared/collections';
 import type { TaskWorkflowRules } from '../../shared/taskWorkflow';
+import { buildTaskStatusGraph } from '../../shared/workflowGraph';
+import { WorkflowFlowchart } from '../workflow/WorkflowFlowchart';
 
 const RULES = [
   { key: 'requireReview', label: 'اشتراط المراجعة قبل إكمال المهمة', hint: 'تنتقل المهمة إلى المراجعة، ثم يقرّ مسؤولو المهام الإكمال بعد المراجعة.' },
@@ -68,6 +70,7 @@ export function TaskWorkflowSettings({ onOpenStepTypes, onOpenTemplates }: Props
         </h2>
         <p className="mt-1 text-xs text-slate-600">تسري قواعد المهام على انتقالات الحالة الجديدة في كل المحطات. يحتفظ السجل بتوقيت الانتقالات السابقة ونتائجها كما حُفظت.</p>
       </div>
+      <WorkflowFlowchart graph={buildTaskStatusGraph({ ...current, ...draft }, true)} label="مخطط سير عمل المهام" />
       <form onSubmit={save} className="space-y-3" aria-busy={saving}>
         <fieldset disabled={saving} className="grid gap-2 lg:grid-cols-3">
           <legend className="sr-only">قواعد حالة المهام</legend>

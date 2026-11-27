@@ -140,8 +140,10 @@ export const ProductionCardsView: React.FC<ProductionCardsViewProps> = ({ curren
       }
     }
     // Work sent back for rework comes first, then blockers and delays, then the rest; offers last.
-    const rank = (r: (typeof rows)[number]) => (r.step.returnedReason && !r.claimable ? 0 : r.step.status === 'BLOCKED' ? 1 : isStepOwnLate(r.card, r.step, now) ? 2 : r.claimable ? 4 : 3);
-    return rows.sort((a, b) => rank(a) - rank(b) || (a.step.dueAt || '9').localeCompare(b.step.dueAt || '9'));
+    const rank = (r: (typeof rows)[number]) => r.claimable ? 2 : r.step.returnedReason || r.step.status === 'BLOCKED' || isStepOwnLate(r.card, r.step, now) ? 0 : 1;
+    const deadline = ({ step, card }: (typeof rows)[number]) => Math.min(...[step.dueAt, card.dueAt, card.airAt]
+      .map(value => Date.parse(value || '')).filter(Number.isFinite), Infinity);
+    return rows.sort((a, b) => rank(a) - rank(b) || deadline(a) - deadline(b) || Number(b.card.priority === 'URGENT') - Number(a.card.priority === 'URGENT'));
     // actor is rebuilt on every render from the same user and permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCards, currentUser.id, currentUser.stationId, now, period, today, assignedOnly]);
