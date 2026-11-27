@@ -8,6 +8,7 @@ test('administrator builds a hierarchy, distinguishes local desks and moves a br
   try {
     await openNav(page, 'الإعدادات');
     await openSettingsSection(page, 'الهيكل التنظيمي');
+    await page.getByRole('group', { name: 'طرق عرض الهيكل التنظيمي' }).getByRole('button', { name: 'مخطط الأقسام', exact: true }).click();
     await expect(page.getByRole('region', { name: 'مخطط الأقسام' }).getByText('غرفة التحرير', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'تحرير مخطط الأقسام' }).click();
     const form = page.getByRole('form', { name: 'الأقسام الإدارية' });

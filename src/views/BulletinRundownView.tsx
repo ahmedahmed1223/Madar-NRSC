@@ -228,7 +228,9 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
     if (pendingStories.current.has(s.id)) return false;
     pendingStories.current.add(s.id);
     try {
-      apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, ...patch });
+      const base = dataStore.confirmedRow('bulletinStories', s.id);
+      if (!base) throw new Error('انتظر تأكيد الحفظ السابق لهذه القصة');
+      apiService.saveBulletinStory({ id: s.id, bulletinId: s.bulletinId, ...patch }, base);
       const outcome = await dataStore.awaitWrite('bulletinStories', s.id);
       if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ القصة بعد');
       return true;
@@ -401,7 +403,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   };
 
   const users = apiService.getUsers().filter((u) => u.isActive !== false);
-  const show = bulletinAsShow(bulletin, all);
+  const show = bulletinAsShow(bulletin, all, liveId || undefined);
   const delta = timingDelta(timing.overUnder, 10);
 
   return (
@@ -672,7 +674,7 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
                   id={s.id}
                   container="bulletin"
                   label={s.slug}
-                  disabled={!!lock}
+                  disabled={!canEdit}
                   key={s.id}
                   className={`border-t border-slate-100 ${isLive ? 'bg-red-50' : s.killed ? 'bg-slate-50 line-through text-slate-500' : s.floated ? 'bg-slate-50/70 text-slate-500' : 'hover:bg-blue-50/30'}`}
                 >

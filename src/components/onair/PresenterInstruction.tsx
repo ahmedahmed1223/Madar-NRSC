@@ -65,7 +65,7 @@ export function PresenterInstructionSound({ user }: { user: User }) {
 export function PresenterInstruction({ user, showId, mirror = false, studio = false }: { user: User; showId?: string; mirror?: boolean; studio?: boolean }) {
   useLiveData(['cues'], 1000);
   const cue = apiService.getCues()
-    .filter(c => c.expiresAt && showId && c.episodeId === showId && isCueActive(c) && !c.acks.some(a => a.userId === user.id))
+    .filter(c => c.expiresAt && c.purpose !== 'PROMPTER_CORRECTION' && showId && c.episodeId === showId && isCueActive(c) && !c.acks.some(a => a.userId === user.id))
     .filter(c => isCueForUser(c, user) || (studio && c.fromId === user.id && c.targetDepartmentIds.includes('studio')))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const shouldPlay = !!cue && isPresenterInstructionRecipient(cue, user);

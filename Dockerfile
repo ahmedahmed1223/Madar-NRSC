@@ -22,8 +22,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server
 # «جسر مدار», downloaded from the storage settings and run on a computer inside the station's network.
 COPY --from=build /app/bridge ./bridge
-# tzdata: TZ=Asia/Riyadh (or any zone) works for logs and scheduled jobs.
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/* \
+# tzdata supports scheduled jobs in the station time zone. rclone carries verified external backups.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates rclone tzdata && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data /backups && chown -R node:node /data /backups
 USER node
 LABEL org.opencontainers.image.title="Madar NRCS" \

@@ -9,8 +9,10 @@ import { confirmSaved } from '../services/confirmSave';
 import { notify } from '../services/notify';
 import React, { useEffect, useRef, useState } from 'react';
 import { ACCEPTED_UPLOAD_TYPES, UploadedFile, discardMediaUpload, mediaTypeForMime, readMediaDuration, uploadMediaFile } from '../services/mediaUpload';
-import { storageClient, type ExternalSource } from '../services/storageClient';
+import { storageClient, type ExternalSource, type ImportedFile } from '../services/storageClient';
 import { ExternalFilePicker, availableSources } from '../components/media/ExternalFilePicker';
+import { MediaFolderBar, useMediaFolders } from '../components/media/MediaFolderBar';
+import { MediaSourceFilter, MediaUploadDestination, mediaUploadId, useMediaStorageFilter, type UploadDestination } from '../components/media/MediaStorageControls';
 import { MediaEditorialPanel } from '../components/media/MediaEditorialPanel';
 import { MediaQuoteDialog } from '../components/media/MediaQuoteDialog';
 import { ExternalLinkPanel } from '../components/common/ExternalLinkPanel';
@@ -107,6 +109,10 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     (RbacService.hasPermission(currentUser, 'media.delete') || (canUpload && [a.ownerId, a.uploadedById].includes(currentUser.id)));
   const [selectedType, setSelectedType] = useState<MediaFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const sourceFilter = useMediaStorageFilter(mediaAssets);
+  const folders = useMediaFolders(currentUser, mediaAssets, canUpload, searchQuery);
+  const [destination, setDestination] = useState<UploadDestination>('default');
+  const [dropboxOpen, setDropboxOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
   const [quote, setQuote] = useState<{ asset: MediaAsset; segment: MediaTranscriptSegment }>();
@@ -144,19 +150,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   }, []);
   const externalSources = availableSources(storage);
   const shareOffered = !!storage?.share.enabled && storage.share.mode !== 'none' && storage.isLocal;
-  const clouds = storage ? (['dropbox', 'gdrive'] as const).filter((c) => storage[c].enabled && storage[c].connected).map((c) => TARGET_NAMES[c]) : [];
   const previewUrl = previewAsset?.fileUrl || previewAsset?.url || '';
-  let previewUploadId: string | undefined;
-  if (previewUrl) {
-    try {
-      const address = new URL(previewUrl, window.location.origin);
-      if (address.origin === window.location.origin) {
-        previewUploadId = /^\/api\/v1\/media\/files\/([A-Za-z0-9_-]+)$/.exec(address.pathname)?.[1];
-      }
-    } catch {
-      // Some legacy rows have an invalid URL and no managed file to inspect.
-    }
-  }
+  const previewUploadId = previewAsset ? mediaUploadId(previewAsset) : undefined;
   const previewLocations = locations?.id === previewUploadId ? locations : null;
   useEffect(() => {
     if (!previewUploadId) return;
@@ -234,11 +229,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     }
   };
 
-  const handleOpenUpload = () => {
+  const handleOpenUpload = (imported?: ImportedFile) => {
     setTitle('');
     setMediaType('IMAGE');
     setFileUrl('');
     setDurationSeconds(0);
+    setDestination('default');
     setKeepInShare(apiService.getSettings().storage?.share?.copyByDefault ?? true);
     setShowExternal(false);
     setTagsInput('');
@@ -248,6 +244,12 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     setUploadError(null);
     setRetryFile(null);
     setIsUploadModalOpen(true);
+    if (imported) {
+      setUploaded({ ...imported, source: 'dropbox' });
+      setTitle(imported.originalName.replace(/\.[^.]+$/, ''));
+      setFileUrl(imported.url);
+      setMediaType(mediaTypeForMime(imported.mimeType));
+    }
   };
 
   const closeUpload = () => {
@@ -270,7 +272,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
     setUploadProgress(0);
     const selection = ++uploadSelection.current;
     setDurationSeconds(0);
-    const task = uploadMediaFile(file, setUploadProgress, { keepInSharedFolder: shareOffered && keepInShare });
+    const task = uploadMediaFile(file, setUploadProgress, { keepInSharedFolder: destination !== 'local' && shareOffered && keepInShare,
+      cloudTargets: destination === 'default' ? undefined : destination === 'local' ? [] : [destination] });
     activeUpload.current = task;
     try {
       // The real length of a clip, read while it uploads.
@@ -330,6 +333,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       fileSizeBytes: uploaded?.sizeBytes,
       durationSeconds: (mediaType === 'VIDEO' || mediaType === 'AUDIO') && Number(durationSeconds) > 0 ? Number(durationSeconds) : undefined,
       uploadedById: currentUser.id,
+      folderId: folders.folder?.id ?? null,
       uploadedByName: currentUser.fullName,
       description: description.trim(),
       tags: tags.length > 0 ? tags : ['عام'],
@@ -351,16 +355,16 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
   };
 
   const filteredAssets = (mediaAssets || []).filter((a) => {
-    if (selectedType !== 'ALL' && mediaFilterType(a) !== selectedType) return false;
+    if (!folders.accepts(a) || !sourceFilter.accepts(a) || (selectedType !== 'ALL' && mediaFilterType(a) !== selectedType)) return false;
     if (searchQuery.trim()) {
       return matchesQuery(searchQuery, a.title, a.fileName, (a as any).originalName, a.description, a.tags || []);
     }
     return true;
   });
-  const assetPage = useIncremental(filteredAssets, 48, `${searchQuery}|${selectedType}`);
+  const assetPage = useIncremental(filteredAssets, 48, `${searchQuery}|${selectedType}|${sourceFilter.source}|${folders.folder?.id ?? ''}|${folders.searchEverywhere}`);
   const typeCounts = { ALL: mediaAssets.length, IMAGE: 0, VIDEO: 0, AUDIO: 0, DOCUMENT: 0 };
   for (const asset of mediaAssets) typeCounts[mediaFilterType(asset)]++;
-  const resetFilters = () => { setSearchQuery(''); setSelectedType('ALL'); };
+  const resetFilters = () => { setSearchQuery(''); setSelectedType('ALL'); sourceFilter.setSource('all'); };
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {
@@ -391,15 +395,18 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         {canUpload && (
         <button
           type="button"
-          onClick={handleOpenUpload}
+          onClick={() => handleOpenUpload()}
           className="flex items-center gap-2 min-h-11 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold self-start sm:self-auto"
         >
           <UploadCloud className="w-4 h-4" />
           رفع مادة وسائط جديدة
         </button>
         )}
+        {externalSources.includes('dropbox') && <button type="button" onClick={() => setDropboxOpen(true)} className="min-h-11 rounded-xl border border-blue-200 px-4 text-sm font-bold text-blue-800 hover:bg-blue-50">تصفّح Dropbox</button>}
         {canUpload && <ExternalLinkPanel kind="upload" />}
       </div>
+
+      <MediaFolderBar model={folders} clearSearch={() => setSearchQuery('')} />
 
       {/* Filter Bar */}
       <div role="group" aria-label="تصفية مكتبة الوسائط" className="bg-white p-3 rounded-xl border border-slate-200 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
@@ -436,6 +443,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        {!!searchQuery.trim() && <label className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={folders.searchEverywhere} onChange={event => folders.setSearchEverywhere(event.target.checked)} /> البحث في كل المجلدات</label>}
+        <MediaSourceFilter value={sourceFilter.source} onChange={sourceFilter.setSource} />
+        {sourceFilter.loading && <p role="status" className="text-sm text-slate-600">جارٍ التحقق من أماكن التخزين…</p>}
+        {sourceFilter.error && <div className="flex items-center gap-2 text-sm"><p role="alert" className="text-rose-800">{sourceFilter.error}</p><button type="button" onClick={sourceFilter.retry} className="min-h-11 rounded-lg px-2 font-bold text-blue-800">إعادة المحاولة</button></div>}
+      </div>
+
       {/* Assets Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {assetPage.visible.map((asset) => (
@@ -443,6 +457,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             key={asset.id}
             className="min-w-0 bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-blue-300 transition-colors"
           >
+            {folders.selecting && folders.mayMove(asset) && <label className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-3 text-sm font-semibold"><input type="checkbox" checked={folders.selected.has(asset.id)} onChange={() => folders.toggle(asset.id)} aria-label={`تحديد ${asset.title || asset.fileName}`} />تحديد</label>}
             {/* Visual Thumbnail */}
             <div className="theme-fixed relative aspect-video bg-slate-900 flex items-center justify-center overflow-hidden">
               {asset.mediaType === 'IMAGE' ? (
@@ -550,7 +565,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
           </article>
         ))}
 
-        {filteredAssets.length === 0 && (
+        {filteredAssets.length === 0 && !sourceFilter.loading && !sourceFilter.error && (
           <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <HardDrive className="w-10 h-10 mb-3 text-slate-400" aria-hidden="true" />
             <p role="status" className="font-semibold text-sm">{mediaAssets.length === 0 ? 'المكتبة فارغة.' : 'لا مواد تطابق البحث أو النوع المختار.'}</p>
@@ -562,6 +577,13 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
       </div>
       <ShowMore remaining={assetPage.remaining} onMore={assetPage.showMore} onAll={assetPage.showAll} noun="مادة" />
 
+      <Modal isOpen={dropboxOpen} onClose={() => setDropboxOpen(false)} title="تصفّح Dropbox">
+        <ExternalFilePicker sources={['dropbox']} onPicked={canUpload ? file => {
+          setDropboxOpen(false);
+          handleOpenUpload(file);
+        } : undefined} />
+      </Modal>
+
       {/* Upload Modal */}
       <FormPage
         isOpen={isUploadModalOpen}
@@ -571,6 +593,8 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
         maxWidth="lg"
       >
         <form onSubmit={handleSaveUpload} className="space-y-4">
+          {!uploaded?.source && <MediaUploadDestination value={destination} onChange={setDestination} status={storage}
+            disabled={uploadProgress !== null || !!uploaded || !!retryFile} share={keepInShare} onShare={setKeepInShare} />}
           {/* File upload */}
           <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
             <label htmlFor="media-file-input" className="text-2xs font-bold text-blue-800 flex items-center gap-1">
@@ -600,13 +624,6 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
             )}
             {uploadError && <p role="alert" className="text-sm text-rose-800 font-semibold">{uploadError}</p>}
             {uploadError && retryFile && <button type="button" className="min-h-11 px-3 bg-white border border-blue-300 rounded-lg text-sm font-bold text-blue-700 hover:bg-blue-50" onClick={() => void handleFileSelected(retryFile)}>إعادة محاولة رفع الملف</button>}
-            {shareOffered && !uploaded?.source && (
-              <label className="flex items-center gap-2 min-h-11 text-xs text-slate-800">
-                <input type="checkbox" className="w-4 h-4" checked={keepInShare} disabled={uploadProgress !== null || !!uploaded || !!retryFile} onChange={(e) => setKeepInShare(e.target.checked)} />
-                احفظ نسخة في المجلد المشترك{storage?.share.displayPath ? <span dir="ltr" className="text-slate-500">({storage.share.displayPath})</span> : null}
-              </label>
-            )}
-            {clouds.length > 0 && !uploaded?.source && <p className="text-2xs text-slate-600">يُنسخ الملف المرفوع تلقائياً إلى {clouds.join(' و')} بعد حفظ المادة.</p>}
             {externalSources.length > 0 && !uploaded && (
               <button type="button" onClick={() => setShowExternal((v) => !v)} aria-expanded={showExternal} className="min-h-10 text-xs font-bold text-blue-700 underline">
                 {showExternal ? 'إخفاء' : `أو أضف ملفاً موجوداً في ${externalSources.map((x) => TARGET_NAMES[x]).join(' أو ')}`}

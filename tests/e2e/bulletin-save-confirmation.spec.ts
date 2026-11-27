@@ -12,14 +12,16 @@ test('rejected story save keeps script open', async ({ browser }) => {
   await page.getByRole('button', { name: `فتح ${story.d.slug}`, exact: true }).click();
   const form = page.getByTestId('story-editor');
   await form.locator('textarea').first().fill('نص معدل يبقى عند رفض الحفظ');
+  const latest = { ...story, v: story.v + 1, d: { ...story.d, script: 'نص الزميل المحفوظ على الخادم' } };
   await page.route('**/api/v1/data/sync', async route => {
     const ops = route.request().postDataJSON().ops;
     if (!ops.some((op: any) => op.c === 'bulletinStories')) return route.continue();
-    await route.fulfill({ json: { rev: data.rev, results: ops.map((op: any) => ({ c: op.c, id: op.id, ok: false, code: 'CONFLICT', message: 'رفض قصة للاختبار', current: story })) } });
+    await route.fulfill({ json: { rev: data.rev, results: ops.map((op: any) => ({ c: op.c, id: op.id, ok: false, code: 'CONFLICT', message: 'رفض قصة للاختبار', current: latest })) } });
   });
   await form.getByRole('button', { name: 'حفظ', exact: true }).click();
   await expect(form.locator('textarea').first()).toHaveValue('نص معدل يبقى عند رفض الحفظ');
   await expect(form.getByRole('alert')).toContainText('رفض قصة للاختبار');
+  await expect(form.getByRole('region', { name: 'أحدث نسخة محفوظة' })).toContainText('نص الزميل المحفوظ على الخادم');
   await page.unroute('**/api/v1/data/sync');
   await form.getByRole('button', { name: 'إغلاق', exact: true }).click();
   await close();

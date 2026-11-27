@@ -1,6 +1,7 @@
 import { airStories, nextApprovalStep, plainText, scheduledBulletinId, storyTiming, storyTypeOf, type Bulletin, type BulletinFormat, type BulletinStory } from './bulletins';
 import type { MediaFile, NewsItem } from '../types';
 import { mediaRightsIssue, plannedMediaAirAt, type MediaBroadcastSession } from './mediaEditorial';
+import { bulletinMediaReviewIssue } from './bulletinMediaReview';
 
 export interface ReadinessIssue {
   storyId: string;
@@ -24,6 +25,8 @@ export function evaluateBulletinReadiness(bulletin: Bulletin, stories: BulletinS
     if (duration <= 0) add('DURATION', 'مدة القصة غير محددة');
     if (type.clip && (!s.clipMediaId || !media.some(m => m.id === s.clipMediaId && !(m as MediaFile & { deletedAt?: string }).deletedAt && m.mediaType === 'VIDEO') || !(s.clipSeconds! > 0))) add('VIDEO', 'فيديو القصة أو مدته غير مكتمل');
     const clip = s.clipMediaId ? media.find(item => item.id === s.clipMediaId) : undefined;
+    const reviewIssue = type.clip && bulletinMediaReviewIssue(s.mediaReview, s.clipMediaId, clip);
+    if (reviewIssue) add('MEDIA_REVIEW', reviewIssue);
     const rightsIssue = mediaRightsIssue(clip, now, storyAirAt, session);
     if (rightsIssue) add('MEDIA_RIGHTS', rightsIssue);
     // Legacy approvals without a configured chain remain supported; explicit chains require every signature.

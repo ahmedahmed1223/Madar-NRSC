@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type Request } from 'express';
 import { newId } from '../shared/ids';
-import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, UploadError, uploadsDir } from './uploads';
+import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, type StagedUploadPersistence, UploadError, uploadsDir } from './uploads';
 import type { NewsroomDatabase, UploadRecord } from './db';
 import { logger } from './logger';
 
@@ -25,7 +25,13 @@ function uploaded(record: UploadRecord) {
   return { id: record.id, url: `${MEDIA_FILE_URL_PREFIX}${record.id}`, mimeType: record.mimeType, sizeBytes: record.sizeBytes, originalName: record.originalName };
 }
 
-export function createResumableUploadRouter(db: NewsroomDatabase, dataDir: string, maxBytes: number, onCompleted?: (record: UploadRecord, request: Request) => void): express.Router {
+export function createResumableUploadRouter(
+  db: NewsroomDatabase,
+  dataDir: string,
+  maxBytes: number,
+  onCompleted?: (record: UploadRecord, request: Request) => void,
+  persistence?: () => StagedUploadPersistence | undefined,
+): express.Router {
   const router = express.Router();
   const directory = path.join(dataDir, 'resumable-media');
   const stagePath = (id: string) => path.join(directory, `${id}.json`);
@@ -134,13 +140,12 @@ export function createResumableUploadRouter(db: NewsroomDatabase, dataDir: strin
     res.json({ data: { offset } });
   });
 
-  router.post('/:id/complete', (req, res) => {
+  router.post('/:id/complete', async (req, res) => {
     const existing = ownedCompletedUpload(req);
     if (existing) { res.json({ data: uploaded(existing) }); return; }
     const stage = ownedStage(req);
     if (inFlight.has(stage.id) || stage.offset !== stage.size) throw new UploadError(409, 'لم يكتمل رفع الملف بعد');
     const storedName = `${stage.id}.${ALLOWED_UPLOAD_TYPES[stage.mimeType]}`;
-    fs.mkdirSync(uploadsDir(dataDir), { recursive: true });
     const target = path.join(uploadsDir(dataDir), storedName);
     const part = bytesPath(stage.id);
     const staged = fs.existsSync(part);
@@ -148,18 +153,38 @@ export function createResumableUploadRouter(db: NewsroomDatabase, dataDir: strin
     const awaitingRegistration = staged ? part : target;
     if (!fs.existsSync(awaitingRegistration) || fs.statSync(awaitingRegistration).size !== stage.size) throw new UploadError(409, 'لم يكتمل رفع الملف بعد');
     const record: UploadRecord = { id: stage.id, storedName, originalName: stage.originalName, mimeType: stage.mimeType, sizeBytes: stage.size, uploadedBy: stage.owner, scope: 'media', createdAt: new Date().toISOString() };
-    if (staged) fs.renameSync(part, target);
+    const destination = persistence?.();
+    let completed: UploadRecord;
+    inFlight.set(stage.id, req);
     try {
-      db.insertUpload(record);
-    } catch (error) {
-      if (staged) fs.renameSync(target, part);
-      throw error;
+      if (destination) {
+        // Keep the staged bytes on failure so the client can retry completion.
+        writeStage({ ...stage, touchedAt: Date.now() });
+        completed = await destination.commit(record, awaitingRegistration);
+        if (!staged) {
+          await fs.promises.rm(target, { force: true }).catch((error) => {
+            logger.warn('upload recovery cleanup failed', { id: record.id, error: String(error) });
+          });
+        }
+      } else {
+        fs.mkdirSync(uploadsDir(dataDir), { recursive: true });
+        if (staged) fs.renameSync(part, target);
+        try {
+          db.insertUpload(record);
+          completed = record;
+        } catch (error) {
+          if (staged) fs.renameSync(target, part);
+          throw error;
+        }
+      }
+      try { removeStage(stage.id); }
+      catch (error) { logger.warn('upload staging cleanup failed', { id: record.id, error: String(error) }); }
+      try { onCompleted?.(completed, req); }
+      catch (error) { logger.warn('upload post-commit operation failed', { id: record.id, error: String(error) }); }
+      res.json({ data: uploaded(completed) });
+    } finally {
+      inFlight.delete(stage.id);
     }
-    try { removeStage(stage.id); }
-    catch (error) { logger.warn('upload staging cleanup failed', { id: record.id, error: String(error) }); }
-    try { onCompleted?.(record, req); }
-    catch (error) { logger.warn('upload post-commit operation failed', { id: record.id, error: String(error) }); }
-    res.json({ data: uploaded(record) });
   });
 
   router.delete('/:id', (req, res) => {

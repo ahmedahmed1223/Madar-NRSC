@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { User } from '../../types';
 import { apiFetch } from '../../services/http';
+import { dataStore } from '../../services/dataStore';
+import type { EntityRow } from '../../shared/collections';
 import { RbacService } from '../../services/rbacService';
 import { validatePasswordStrength } from '../../shared/passwords';
 import { PasswordFeedback, PasswordVisibilityButton } from '../auth/PasswordFields';
@@ -34,7 +36,8 @@ export function AdministratorSetup({ currentUser, busy, onBack, onContinue, onSk
     setSaving(true);
     setError('');
     try {
-      await apiFetch('/api/v1/admin/setup/administrator', { method: 'POST', json: { fullName: form.get('fullName'), email, role: form.get('role'), password } });
+      const { row } = await apiFetch<{ row: EntityRow }>('/api/v1/admin/setup/administrator', { method: 'POST', json: { fullName: form.get('fullName'), email, role: form.get('role'), password }, signal: AbortSignal.timeout(20_000) });
+      dataStore.mergeSearchRows([row]);
       setCreated(email);
       setCreating(false);
     } catch (err) {

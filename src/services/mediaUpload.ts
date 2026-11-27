@@ -1,3 +1,4 @@
+import type { CloudProviderId } from '../shared/storage';
 import type { MediaType } from '../types';
 import { apiFetch, ApiError } from './http';
 
@@ -23,7 +24,7 @@ export async function discardMediaUpload(file: File): Promise<void> {
 
 interface UploadCursor { id: string; offset: number; chunkBytes: number; completed?: UploadedFile }
 
-async function resumeMediaFile(file: File, signal: AbortSignal, onProgress?: (percent: number) => void): Promise<UploadedFile> {
+async function resumeMediaFile(file: File, signal: AbortSignal, onProgress?: (percent: number) => void, headers?: Record<string, string>): Promise<UploadedFile> {
   let cursor: UploadCursor | undefined;
   const known = resumeIds.get(file);
   if (known) {
@@ -63,7 +64,7 @@ async function resumeMediaFile(file: File, signal: AbortSignal, onProgress?: (pe
     offset = end;
     onProgress?.(Math.min(99, Math.floor(offset * 100 / file.size)));
   }
-  const { data } = await apiFetch<{ data: UploadedFile }>(`${target}/complete`, { method: 'POST', signal });
+  const { data } = await apiFetch<{ data: UploadedFile }>(`${target}/complete`, { method: 'POST', signal, headers });
   resumeIds.delete(file);
   onProgress?.(100);
   return data;
@@ -95,10 +96,13 @@ export function mediaTypeForMime(mime: string): MediaType {
 }
 
 /** Streams a file to the media library (XHR so the UI can show upload progress). */
-export function uploadMediaFile(file: File, onProgress?: (percent: number) => void, opts: { keepInSharedFolder?: boolean } = {}): { promise: Promise<UploadedFile>; abort: () => void } {
-  if (!opts.keepInSharedFolder && file.size >= RESUMABLE_MIN_BYTES && !!globalThis.crypto?.subtle && ACCEPTED_UPLOAD_TYPES.includes(file.type)) {
+export function uploadMediaFile(file: File, onProgress?: (percent: number) => void, opts: { keepInSharedFolder?: boolean; cloudTargets?: CloudProviderId[] } = {}): { promise: Promise<UploadedFile>; abort: () => void } {
+  const headers: Record<string, string> = {};
+  if (opts.keepInSharedFolder) headers['X-Storage-Share'] = '1';
+  if (opts.cloudTargets) headers['X-Storage-Cloud-Targets'] = opts.cloudTargets.join(',') || 'none';
+  if (file.size >= RESUMABLE_MIN_BYTES && !!globalThis.crypto?.subtle && ACCEPTED_UPLOAD_TYPES.includes(file.type)) {
     const controller = new AbortController();
-    const promise = resumeMediaFile(file, controller.signal, onProgress).catch(error => {
+    const promise = resumeMediaFile(file, controller.signal, onProgress, headers).catch(error => {
       if (controller.signal.aborted) throw new Error('تم إيقاف الرفع. يمكنك إعادة المحاولة من آخر جزء أكده الخادم.');
       if (error instanceof TypeError) throw new Error('انقطع الاتصال أثناء الرفع. أعد المحاولة للمتابعة من آخر جزء مؤكّد.');
       throw error;
@@ -106,7 +110,7 @@ export function uploadMediaFile(file: File, onProgress?: (percent: number) => vo
     return { promise, abort: () => controller.abort() };
   }
   // The server honours the shared-folder copy only for colleagues on the station's network.
-  return uploadFile<UploadedFile>('/api/v1/media/upload', file, onProgress, opts.keepInSharedFolder ? { 'X-Storage-Share': '1' } : undefined);
+  return uploadFile<UploadedFile>('/api/v1/media/upload', file, onProgress, headers);
 }
 
 /** Real length of an audio/video file in whole seconds, read in the browser (null when unknown). */

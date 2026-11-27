@@ -30,7 +30,7 @@ test('the rail follows each role, folds its sections and remembers the fold', as
 
   const director = await signIn(browser, 'director@akhbar.tv');
   const directorSections = director.page.locator('aside nav[aria-label="التنقل"] [role="group"]');
-  await expect(directorSections.nth(1)).toHaveAttribute('aria-label', 'المتابعة والإدارة');
+  await expect(directorSections.nth(1)).toHaveAttribute('aria-label', 'المتابعة الإدارية');
   await director.close();
 });
 

@@ -25,7 +25,7 @@ export interface RouteState {
 }
 
 /** Screens whose list highlights an item given in the address. */
-const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'cards', 'tasks', 'personal-tasks', 'media', 'guide']);
+const FOCUS_SCREENS = new Set(['diary', 'bookings', 'wires', 'cards', 'tasks', 'personal-tasks', 'media', 'guide', 'trash']);
 
 const clean = (id: string) => encodeURIComponent(id);
 const validId = (value?: string | null): value is string => !!value && ENTITY_ID_PATTERN.test(value);

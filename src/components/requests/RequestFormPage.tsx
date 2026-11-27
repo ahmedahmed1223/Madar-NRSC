@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { FormPage } from '../common/FormPage';
 import { apiService } from '../../services/api';
 import { departmentName } from '../../shared/departments';
+import { supportTrack } from '../../shared/trackSupport';
+import { cardWorkflowTrack } from '../../shared/workflowAccess';
+import { supportDestinations } from './supportDestinations';
 import { DeptRequest, REQUEST_TYPES, RequestLink, RequestType, requestTypeOf } from '../../shared/production';
 import { toLocalInputValue, fromLocalInputValue } from '../../shared/dates';
 import { confirmSaved } from '../../services/confirmSave';
@@ -11,6 +14,7 @@ import { RbacService } from '../../services/rbacService';
 import { MessageOriginLabel } from '../messages/MessageOriginLabel';
 
 export interface RequestDraft {
+  supportCardId?: string;
   id?: string;
   type?: RequestType;
   title?: string;
@@ -33,6 +37,8 @@ interface RequestFormPageProps {
 /** Sends a request to another department (montage, graphics, studio, ...). */
 export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClose, draft, onCreated, editing }) => {
   const [type, setType] = useState<RequestType>('MONTAGE');
+  const [supportCardId, setSupportCardId] = useState('');
+  const [supportManagerId, setSupportManagerId] = useState('');
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
   const [urgent, setUrgent] = useState(false);
@@ -45,6 +51,8 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (!isOpen) return;
+    setSupportCardId(editing?.supportCardId || draft?.supportCardId || '');
+    setSupportManagerId(editing?.addressedToId || '');
     if (editing) {
       setType(editing.type);
       setTitle(editing.title || '');
@@ -96,25 +104,27 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
       }
       return;
     }
-    if (draft?.messageOrigin) setSaving(true);
+    const requiresConfirmation = !!draft?.messageOrigin || !!supportTrack(type);
+    if (requiresConfirmation) setSaving(true);
     try {
       const req = apiService.createRequest({
         id: draft?.id,
         type,
+        ...(supportTrack(type) ? { supportCardId, addressedToId: supportManagerId } : {}),
         title,
         details,
         priority: urgent ? 'URGENT' : 'NORMAL',
         link: draft?.link,
         lines: type === 'GRAPHICS' ? lines.split('\n') : undefined,
-        sourceMediaIds: type === 'MONTAGE' && sourceMediaIds.length ? sourceMediaIds : undefined,
+        sourceMediaIds: (type === 'MONTAGE' || supportTrack(type)) && sourceMediaIds.length ? sourceMediaIds : undefined,
         messageOrigin: draft?.messageOrigin,
         dueAt: dueAt ? fromLocalInputValue(dueAt) : undefined,
       });
-      if (draft?.messageOrigin && !(await confirmSaved('requests', req.id))) {
+      if (requiresConfirmation && !(await confirmSaved('requests', req.id))) {
         setError('لم يؤكد الخادم حفظ الطلب بعد.');
         return;
       }
-      onCreated?.(`أُرسل الطلب إلى ${departmentName(req.departmentId)}`);
+      onCreated?.(supportTrack(type) ? 'أُرسل طلب المساندة إلى مدير الإعداد' : `أُرسل الطلب إلى ${departmentName(req.departmentId)}`);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'تعذر إرسال الطلب');
@@ -125,7 +135,14 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
 
   const target = requestTypeOf(type);
   const me = apiService.getCurrentUser();
+  const track = supportTrack(type);
+  const supportCards = isOpen && track && !editing ? apiService.getCards().filter(card => card.status === 'OPEN' &&
+    (card.ownerId === me.id || card.createdById === me.id) && cardWorkflowTrack(card) !== track) : [];
+  const managers = isOpen && track && !editing ? supportDestinations(me, track, true, me.id) : [];
   const canViewMedia = RbacService.hasPermission(me, 'media.view') || RbacService.hasPermission(me, 'media.upload');
+  const cardMedia = track && !editing ? supportCards.find(card => card.id === supportCardId)?.mediaIds : undefined;
+  const supportSources = cardMedia?.length && canViewMedia ? apiService.getMedia().filter(asset => !asset.deletedAt &&
+    !asset.privateMessageMedia && cardMedia.includes(asset.id)) : [];
   const library = isOpen && type === 'MONTAGE' && canViewMedia ? apiService.getMedia() : [];
 
   return (
@@ -143,15 +160,36 @@ export const RequestFormPage: React.FC<RequestFormPageProps> = ({ isOpen, onClos
                 aria-checked={type === t.id}
                 aria-disabled={!!editing && type !== t.id}
                 disabled={!!editing && type !== t.id}
-                onClick={() => setType(t.id)}
+                onClick={() => { if (type !== t.id) { setType(t.id); setSupportManagerId(''); setSupportCardId(''); setSourceMediaIds([]); } }}
                 className={`px-2 py-2 rounded-xl border font-bold disabled:opacity-40 disabled:cursor-not-allowed ${type === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
               >
                 {t.name}
               </button>
             ))}
           </div>
-          {target && <p className="mt-1.5 text-2xs text-slate-500">{editing ? 'لا يتغير نوع الطلب بعد إرساله. ' : ''}يصل الطلب إلى مناوبي قسم «{departmentName(target.departmentId)}».</p>}
+          {target && !track && <p className="mt-1.5 text-2xs text-slate-500">{editing ? 'لا يتغير نوع الطلب بعد إرساله. ' : ''}يصل الطلب إلى مناوبي قسم «{departmentName(target.departmentId)}».</p>}
         </div>
+        {track && !editing && <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 font-semibold">التكليف الأصلي
+            <select required className="min-h-11 w-full rounded-xl border px-2" value={supportCardId} onChange={e => { setSupportCardId(e.target.value); setSourceMediaIds([]); }}>
+              <option value="">{supportCards.length ? 'اختر تكليفاً' : 'لا توجد تكليفات مفتوحة باسمك في المسار الآخر'}</option>
+              {supportCards.map(card => <option key={card.id} value={card.id}>{card.title}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 font-semibold">مدير إعداد المسار المستلم
+            <select required className="min-h-11 w-full rounded-xl border px-2" value={supportManagerId} onChange={e => setSupportManagerId(e.target.value)}>
+              <option value="">{managers.length ? 'اختر مدير الإعداد' : 'لا يوجد مدير متاح لهذا المسار ضمن محطاتك'}</option>
+              {managers.map(user => <option key={user.id} value={user.id}>{user.fullName}</option>)}
+            </select>
+          </label>
+          {supportSources.length > 0 && <fieldset className="sm:col-span-2"><legend className="font-semibold">مواد التكليف المطلوبة للمساندة</legend>
+            {supportSources.map(asset => <label key={asset.id} className="flex min-h-10 items-center gap-2">
+              <input type="checkbox" checked={sourceMediaIds.includes(asset.id)} disabled={sourceMediaIds.length >= 25 && !sourceMediaIds.includes(asset.id)}
+                onChange={e => setSourceMediaIds(ids => e.target.checked ? [...ids, asset.id] : ids.filter(id => id !== asset.id))} />
+              {asset.title || asset.fileName}
+            </label>)}
+          </fieldset>}
+        </div>}
 
         <div>
           <label htmlFor="request-title" className="block font-bold text-slate-700 mb-1">العنوان *</label>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GitBranch, List, Plus, Save } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
@@ -30,7 +30,7 @@ function departmentUsage(): Map<string, number> {
  * (who hears about requests sent to it) and exist at some stations only. A department in use is
  * archived rather than deleted, and ids never change, so history keeps its names.
  */
-export function DepartmentsSettings() {
+export function DepartmentsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const [chart, setChart] = useState(true);
   const [selectedId, setSelectedId] = useState<string>();
   const [list, setList] = useState<Department[]>(() => departmentsOf(apiService.getSettings()));
@@ -55,6 +55,7 @@ export function DepartmentsSettings() {
     select(id);
   };
   const dirty = JSON.stringify(list) !== baseline;
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const stations = stationsOf(apiService.getSettings());
   const people = apiService.getUsers().filter((u) => !u.deletedAt && u.isActive !== false).sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
   const usage = useMemo(departmentUsage, []);

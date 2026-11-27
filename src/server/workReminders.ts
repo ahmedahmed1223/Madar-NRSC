@@ -1,3 +1,4 @@
+import { stepReceiptDeadline, stepReceiptPending } from '../shared/cardExecution';
 import { isStepOpen, stepTypeName, stepTypesOf, type ProductionCard } from '../shared/productionCards';
 import { normalizeTaskStatus } from '../shared/taskWorkflow';
 import { workReminderEnabled, workReminderInstant } from '../shared/workReminders';
@@ -40,6 +41,16 @@ export function updateWorkReminders(db: NewsroomDatabase, collection: WorkRemind
       for (const step of card.steps) add(`step:${step.id}`, step.assigneeId, step.dueAt, open && isStepOpen(step));
     }
   }
+  if (collection === 'productionCards' && value) {
+    const card = value as ProductionCard;
+    const supervisor = card.ownerId || card.createdById;
+    if (card.status === 'OPEN' && supervisor) {
+      for (const step of card.steps) {
+        const due = stepReceiptDeadline(step);
+        if (Number.isFinite(due)) jobs.push({ slot: `receipt:${step.id}`, kind: 'overdue', userId: supervisor, fireAt: new Date(due).toISOString(), enabled: 1 });
+      }
+    }
+  }
   db.replaceWorkReminders(collection, id, jobs);
 }
 
@@ -51,14 +62,16 @@ export function sendDueWorkReminders(db: NewsroomDatabase, now = new Date()): nu
     for (const job of jobs) {
       const item = db.getRow(job.collection, job.entityId)?.d;
       if (item && !item.deletedAt && moduleAllowedForUser(db, job.collection === 'productionCards' ? 'assignments' : 'tasks', job.userId)) {
-        const stepId = job.slot.startsWith('step:') ? job.slot.slice(5) : undefined;
+        const receipt = job.slot.startsWith('receipt:');
+        const stepId = receipt ? job.slot.slice(8) : job.slot.startsWith('step:') ? job.slot.slice(5) : undefined;
         const step = stepId ? (item as ProductionCard).steps.find(candidate => candidate.id === stepId) : undefined;
         const name = step ? `${item.title} — ${step.title || stepTypeName(types, step.type)}` : item.title;
-        writeNotification(db, {
+        if (!receipt || (step && stepReceiptPending(step) && item.status === 'OPEN')) writeNotification(db, {
           userId: job.userId,
           category: 'assignment-reminder',
           type: 'TASK',
-          title: job.kind === 'overdue' ? 'تأخر موعد التسليم' : 'تذكير بموعد التسليم',
+          title: receipt ? 'انتهت مهلة تأكيد استلام التكليف' : job.kind === 'overdue' ? 'تأخر موعد التسليم' : 'تذكير بموعد التسليم',
+          urgent: receipt || undefined,
           message: name,
           linkUrl: `/${job.collection === 'tasks' ? 'tasks' : 'cards'}/${encodeURIComponent(job.entityId)}`,
         });

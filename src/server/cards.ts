@@ -5,6 +5,7 @@
 import { newId } from '../shared/ids';
 import {
   currentStep,
+  isConfiguredReviewReturn,
   isStepOpen,
   stepFitsActor,
   stepStatusName,
@@ -31,7 +32,7 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
   const by = { byId: actor.id, byName: actor.fullName, stationId: actor.stationId, at: now };
   const log: CardLogEntry[] = [...(before?.log || [])];
   for (const entry of (after.log || []).slice(log.length)) {
-    log.push({ id: entry.id, kind: 'NOTE', stepId: typeof entry.stepId === 'string' ? entry.stepId : undefined, text: entry.text.trim(), ...(entry.decision === true ? { decision: true } : {}), ...by });
+    log.push({ id: entry.id, kind: 'NOTE', stepId: typeof entry.stepId === 'string' ? entry.stepId : undefined, text: entry.text.trim(), ...(entry.decision === true ? { decision: true } : {}), ...(entry.delivery ? { delivery: entry.delivery, mediaIds: entry.mediaIds, deliveryLinks: entry.deliveryLinks } : {}), ...by });
   }
   const record = (step: CardStep, text: string, transition?: Pick<CardLogEntry, 'fromStatus' | 'toStatus'>) =>
     log.push({ id: newId('log'), kind: 'STEP', stepId: step.id, text, ...transition, ...by });
@@ -40,10 +41,12 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
   const steps = after.steps.map((step): CardStep => {
     const prev = previous.get(step.id);
     const member = step.assigneeId ? users.get(step.assigneeId) : undefined;
+    const reviewer = step.reviewerId ? users.get(step.reviewerId) : undefined;
     const name = stepTypeName(stepTypes, step.type);
     const open = step.status !== 'DONE' && step.status !== 'SKIPPED';
     // Sent back for rework: a done step reopened with a reason. Who and when come from the server.
-    const freshReturn = !!prev && prev.status === 'DONE' && open && !!step.returnedReason?.trim();
+    const reviewedReturn = isConfiguredReviewReturn(prev, step);
+    const freshReturn = !!prev && !!step.returnedReason?.trim() && (reviewedReturn || (prev.status === 'DONE' && open));
     const keepReturn = open && !freshReturn && !!prev?.returnedReason;
     // Work sessions: the stored ones stay as they were, new ones are stamped and added to the total.
     const oldTime = prev?.timeLog || [];
@@ -51,11 +54,21 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
     const timeLog = [...oldTime, ...added];
     const spentMinutes = added.length ? (prev?.spentMinutes || 0) + timeLogMinutes(added) : step.spentMinutes;
     const waiting = step.status === 'BLOCKED' && step.waitingOnId ? users.get(step.waitingOnId) : undefined;
+    const receiptEnabled = !!step.receiptMinutes && !!step.assigneeId;
+    const sameRecipient = step.assigneeId === prev?.assigneeId;
+    const freshReceipt = receiptEnabled && sameRecipient && !prev?.receiptConfirmedAt && !!step.receiptConfirmedAt && step.assigneeId === actor.id;
+    const freshSkip = step.status === 'SKIPPED' && prev?.status !== 'SKIPPED';
     const next: CardStep = {
       ...step,
       title: step.title?.trim() || undefined,
+      receiptAssignedAt: receiptEnabled ? (sameRecipient && prev?.receiptMinutes ? prev.receiptAssignedAt || now : now) : undefined,
+      receiptConfirmedAt: receiptEnabled && sameRecipient ? (freshReceipt ? now : prev?.receiptConfirmedAt) : undefined,
+      skippedReason: step.status === 'SKIPPED' ? (freshSkip ? step.skippedReason?.trim() : prev?.skippedReason) : undefined,
+      skippedAt: step.status === 'SKIPPED' ? (freshSkip ? now : prev?.skippedAt) : undefined,
+      skippedById: step.status === 'SKIPPED' ? (freshSkip ? actor.id : prev?.skippedById) : undefined,
       note: step.note?.trim() || undefined,
       assigneeName: member?.fullName,
+      reviewerName: reviewer?.fullName,
       stationId: member?.stationId || step.stationId || undefined,
       blockedReason: step.status === 'BLOCKED' ? step.blockedReason?.trim() : undefined,
       waitingOnId: waiting?.id,
@@ -84,10 +97,14 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
     } else if (!step.assigneeId && prev?.assigneeId) {
       record(next, `«${name}» لم تعد مسندة إلى ${prev.assigneeName || 'زميل'}${next.stationId ? '؛ متاحة لمحطتها' : ''}`);
     }
+    if (freshReceipt) record(next, `تأكد استلام «${name}»`);
+    if (step.reviewerId !== prev?.reviewerId) record(next, reviewer ? `أُسندت مراجعة «${name}» إلى ${reviewer.fullName}` : `أُلغي إسناد مراجعة «${name}»`);
     if (freshReturn) {
-      record(next, `أُعيدت «${name}» للعمل — ${next.returnedReason}`, { fromStatus: prev?.status, toStatus: step.status });
+      record(next, `أُعيدت «${name}» للعمل — ${next.returnedReason}${reviewedReturn ? ` · الموعد الجديد ${step.dueAt}` : ''}`, { fromStatus: prev?.status, toStatus: step.status });
+    } else if (prev?.status === 'IN_REVIEW' && step.status === 'DONE') {
+      record(next, `قُبلت مخرجات «${name}»`, { fromStatus: prev.status, toStatus: step.status });
     } else if (!prev || prev.status !== step.status) {
-      const detail = step.status === 'BLOCKED' ? `${next.blockedReason}${waiting ? ` (بانتظار ${waiting.fullName})` : ''}` : step.status === 'DONE' ? next.note : '';
+      const detail = step.status === 'BLOCKED' ? `${next.blockedReason}${waiting ? ` (بانتظار ${waiting.fullName})` : ''}` : step.status === 'DONE' ? next.note : step.status === 'SKIPPED' ? next.skippedReason : '';
       record(next, `«${name}»: ${stepStatusName(step.status)}${detail ? ` — ${detail}` : ''}`, { fromStatus: prev?.status, toStatus: step.status });
     }
     if (added.length) record(next, `سُجّل وقت على «${name}»: ${timeLogMinutes(added)} د (المجموع ${spentMinutes} د)`);
@@ -107,14 +124,16 @@ export function stampCard(before: ProductionCard | null, after: ProductionCard, 
   const freshApproval = approved && (!before?.scriptApproved || (canManage && scriptChanged));
   if (freshApproval) log.push({ id: newId('log'), kind: 'STEP', text: 'اعتُمد النص', ...by });
   else if (before?.scriptApproved && !approved) log.push({ id: newId('log'), kind: 'STEP', text: scriptChanged ? 'عُدّل النص المعتمد وسُحب اعتماده' : 'سُحب اعتماد النص', ...by });
-  if (before && before.status !== after.status) log.push({ id: newId('log'), kind: 'STEP', text: after.status === 'CLOSED' ? 'أُغلق التكليف بعد الإنجاز' : after.status === 'CANCELLED' ? 'أُلغي التكليف' : 'أُعيد فتح التكليف', ...by });
+  if (before && before.status !== after.status) log.push({ id: newId('log'), kind: 'STEP', text: after.status === 'CLOSED' ? 'أُغلق التكليف بعد الإنجاز' : after.status === 'CANCELLED' ? `أُلغي التكليف — ${after.cancellationReason?.trim() || ''}` : 'أُعيد فتح التكليف', ...by });
+  // Keep every recorded delivery while pruning the oldest operational entries when full.
+  let excess = Math.max(0, log.length - MAX_LOG);
 
   return {
     ...after,
     title: after.title.trim(),
     brief: after.brief?.trim() || undefined,
     steps,
-    log: log.slice(-MAX_LOG),
+    log: log.filter(entry => entry.delivery || excess-- <= 0),
     ownerId: owner?.id,
     ownerName: owner?.fullName,
     ownerStationId: owner?.stationId,
@@ -228,7 +247,10 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
       followers(step).forEach((id) => tell(id, `تعطّل في محطة تتابعها: ${name}`));
     }
 
-    const freshReturn = prev?.status === 'DONE' && isStepOpen(step) && !!step.returnedReason;
+    if (step.status === 'IN_REVIEW' && (prev?.status !== 'IN_REVIEW' || prev.reviewerId !== step.reviewerId)) {
+      push(step.reviewerId, 'تسليم بانتظار مراجعتك', `${after.title} — ${name}`, true);
+    }
+    const freshReturn = !!step.returnedReason && (isConfiguredReviewReturn(prev, step) || (prev?.status === 'DONE' && isStepOpen(step)));
     if (freshReturn) {
       const message = `${after.title} — أعادها ${actorName}: ${step.returnedReason}`;
       pushStep(step, `أُعيدت إليك «${name}» للتعديل`, message, true);
@@ -236,6 +258,7 @@ export function cardNotices(before: ProductionCard | null, after: ProductionCard
     }
 
     if (step.status === 'DONE' && prev?.status !== 'DONE') {
+      if (prev?.status === 'IN_REVIEW') push(step.assigneeId, 'قُبلت مخرجات مهمتك', `${after.title} — ${name}`);
       const handoff = `${after.title} — أنهى ${actorName} «${name}»${step.note ? `: ${step.note}` : ''}`;
       const next = after.steps.slice(index + 1).find(isStepOpen);
       if (!firstOpen) push(decider, 'تكليف جاهز', handoff);

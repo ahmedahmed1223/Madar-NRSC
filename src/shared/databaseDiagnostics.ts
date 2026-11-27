@@ -1,4 +1,8 @@
+import type { PrimaryStorageTarget } from './storage';
+
 export interface RecentServerError { id: string; at: string; message: string }
+
+
 export interface RecentServerErrors { since: string; entries: RecentServerError[]; journalHealth?: 'ok' | 'degraded' | 'memory' }
 export interface BackupStatus {
   incidents?: BackupIncident[];
@@ -10,6 +14,9 @@ export interface BackupStatus {
   intervalHours: number;
   overdue: boolean;
   count: number;
+  primaryTarget?: PrimaryStorageTarget;
+  primaryConfigured?: boolean;
+  primaryDestinations?: { dropbox: boolean; gdrive: boolean; nas: boolean };
 }
 export interface VerifiedExternalBackup { at: string; fileName: string; targets: ('directory' | 'remote')[] }
 export interface BackupIncident { id: 'snapshot-failure' | 'delivery-failure' | 'overdue'; active: boolean; openedAt: string; recoveredAt?: string }

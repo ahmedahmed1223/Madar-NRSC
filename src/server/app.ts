@@ -15,7 +15,7 @@ import type { NewsroomDatabase } from './db';
 import { logger, getRecentErrors, errorJournalHealth } from './logger';
 import { withRequestCorrelation, currentCorrelationId } from './requestCorrelation';
 import { backupStatus } from './databaseDiagnostics';
-import { databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
+import { withBackupSource, databaseOperationLock, DatabaseOperationBusy, rehearseBackup } from './databaseRecovery';
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
 import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
@@ -28,6 +28,10 @@ import { generateBulletinMosXml, generateEpisodeMosXml } from './mos';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { firstMediaRightsBlocker, plannedMediaAirAt, segmentMediaIds } from '../shared/mediaEditorial';
 import type { Bulletin, BulletinStory } from '../shared/bulletins';
+import { BulletinMediaReviewError, decideBulletinMediaReview } from './bulletinMediaReview';
+import { reportPrompterCorrection } from './prompterCorrections';
+import { addBroadcastCorrectionRequest } from './broadcastCorrectionRequests';
+import { bulletinStoryVersionAccess, restoreBulletinStoryDraft } from './bulletinStoryVersions';
 import { COPILOT_MODES, type CopilotMode, canUseCopilot, getAiStatus, runCopilot } from './ai';
 import { moduleAllowed, requireModule } from './moduleAccess';
 import { downloadableMediaUpload } from './linkedMedia';
@@ -43,7 +47,7 @@ import { databaseEngineStatus, readDatabaseEngineState, scheduleDatabaseEngine }
 import { createResumableUploadRouter } from './resumableUploads';
 import { mediaTranscriptionRouter } from './mediaTranscription';
 import { messageActionsRouter } from './messageActions';
-import { queueCopiesForUpload, registerStorageRoutes, sendStoredFile } from './storage';
+import { mediaUploadPersistence, queueCopiesForUpload, registerStorageRoutes, sendStoredFile } from './storage';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -76,6 +80,7 @@ import { newId } from '../shared/ids';
 import { HISTORY_COLLECTIONS, PAGED_BOOTSTRAP_COLLECTIONS, SINGLETON_ID, isCollectionName } from '../shared/collections';
 import { adminOverview } from './adminOverview';
 import { createFullBackup, lastVerifiedExternalBackup } from './backupDelivery';
+import { listAllBackupFiles, primaryBackupReadiness, primaryBackupTarget, readPrimaryBackup } from './primaryBackupStorage';
 import { removeStation, StationRemovalError, stationUsage } from './stationRemoval';
 import { applyDepartmentSettings } from '../shared/departments';
 import { rememberStationSettings, stationsOf } from '../shared/stations';
@@ -88,6 +93,8 @@ import { createAppUpdates } from './appUpdates';
 import { isNewerVersion, type AppUpdateStatus } from '../shared/appUpdates';
 import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } from '../shared/chat';
 import type { CollectionName, SyncOp } from '../shared/collections';
+import { mayManageTemplate, publishedWorkflow, type PublishedWorkflow } from '../shared/workflowPublication';
+import { CardMergeError, cardMergeCandidates } from './cardConsolidation';
 import { isTrashCollection } from '../shared/trash';
 import { decodeTrashCursor, readTrashPage } from './trash';
 import { initializeTrashRetention, readTrashRetention } from './retention';
@@ -516,6 +523,32 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     })
   );
 
+  app.post('/api/v1/users', requirePermission('users.create'), wrap(async (req, res) => {
+    const input = req.body?.user;
+    const password = req.body?.password;
+    const weak = validatePasswordStrength(password);
+    if (weak) throw new HttpError(400, weak);
+    const fullName = typeof input?.fullName === 'string' ? input.fullName.trim() : '';
+    const email = typeof input?.email === 'string' ? input.email.trim().toLowerCase() : '';
+    if (!fullName || fullName.length > 120 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'أدخل اسماً وبريداً إلكترونياً صالحاً');
+    const hash = await hashPassword(password);
+    if (db.findUserIdByEmail(email) || db.getCredentialsByEmail(email)) throw new HttpError(409, 'البريد الإلكتروني مستخدم لحساب آخر');
+    const id = newId('usr');
+    const profile: Record<string, unknown> = {
+      id, fullName, email, role: input.role || 'JOURNALIST', avatarUrl: '/avatar.svg', createdAt: new Date().toISOString(), isActive: true,
+    };
+    for (const key of ['fullNameEn', 'phone', 'customRoleId', 'workflowRoles', 'workflowDelegations', 'jobTitle', 'departmentId', 'department', 'stationId', 'managedStationIds', 'managedGroupIds', 'staffId', 'bio', 'customPermissions', 'isActive']) {
+      if (Object.hasOwn(input, key)) profile[key] = input[key];
+    }
+    const result = sync.createAccount(req.auth!, id, profile, () => {
+      if (db.getCredentialsByEmail(email)) throw new HttpError(409, 'البريد الإلكتروني مستخدم لحساب آخر');
+      db.setPassword(id, email, hash, true);
+      markTemporaryPassword(db, id, config.tempPasswordHours);
+    }, req.ip);
+    if (result.ok === false) throw new HttpError(result.code === 'FORBIDDEN' ? 403 : result.code === 'CONFLICT' ? 409 : 400, result.message || 'تعذر إنشاء الحساب');
+    res.status(201).json({ success: true, row: result.row });
+  }));
+
   app.post(
     '/api/v1/users/:id/password',
     requirePermission('users.create'),
@@ -625,7 +658,9 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   app.use('/api/v1/media', mediaTranscriptionRouter(db, config, () => changeBus.emit('rev', db.currentRev())));
 
   app.use('/api/v1/media/resumable', requirePermission('media.upload'), requireModule('media'),
-    createResumableUploadRouter(db, config.dataDir, config.mediaMaxUploadBytes, (record, req) => queueCopiesForUpload(db, record, req)));
+    createResumableUploadRouter(db, config.dataDir, config.mediaMaxUploadBytes,
+      (record, req) => queueCopiesForUpload(db, record, req),
+      () => mediaUploadPersistence(db, config)));
 
   app.post(
     '/api/v1/media/upload',
@@ -633,7 +668,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     requireModule('media'),
     wrap(async (req, res) => {
       try {
-        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id);
+        const record = await receiveUpload(req, db, config.dataDir, config.mediaMaxUploadBytes, req.auth!.user.id,
+          { persistence: mediaUploadPersistence(db, config) });
         // Copied to the connected cloud (and the shared folder, when asked for on the local network).
         queueCopiesForUpload(db, record, req);
         res.status(201).json({
@@ -907,10 +943,47 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
 
   // --- Revision history -----------------------------------------------------
 
+  app.get('/api/v1/cards/:id/consolidate', requireAuth, requireModule('assignments'), (req, res) => {
+    if (typeof req.params.id !== 'string') throw new HttpError(400, 'معرّف التكليف غير صالح');
+    try {
+      res.json({ success: true, data: cardMergeCandidates(db, req.auth!, req.params.id) });
+    } catch (error) {
+      if (error instanceof CardMergeError) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  });
+
+  app.post('/api/v1/cards/:id/consolidate', requireAuth, requireModule('assignments'), (req, res) => {
+    const { duplicateId, version, duplicateVersion, reason } = req.body || {};
+    if (typeof req.params.id !== 'string' || typeof duplicateId !== 'string' || duplicateId.length > 128 ||
+      !Number.isSafeInteger(version) || !Number.isSafeInteger(duplicateVersion) || typeof reason !== 'string' ||
+      !reason.trim() || reason.length > 600) throw new HttpError(400, 'اختر التكليف المكرر واكتب سبب الدمج');
+    try {
+      sync.consolidateCards(req.auth!, req.params.id, { duplicateId, version, duplicateVersion, reason: reason.trim() }, req.ip);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof CardMergeError) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  });
+
+  app.get('/api/v1/workflow-templates/:id/publications', requireAuth, requireModule('assignments'), (req, res) => {
+    const id = req.params.id;
+    const current = typeof id === 'string' ? db.getRow('workflowTemplates', id) : null;
+    const auth = req.auth!;
+    if (!current || current.d.deletedAt || !mayManageTemplate(auth.user, current.d, auth.can('cards.manage'))) throw new HttpError(404, 'القالب غير موجود');
+    const versions = new Map<number, PublishedWorkflow>();
+    for (const record of [current.d, ...db.listHistory('workflowTemplates', current.id).map(entry => entry.data)]) {
+      const published = publishedWorkflow(record);
+      if (published && !versions.has(published.version)) versions.set(published.version, published);
+    }
+    res.json({ success: true, data: [...versions.values()].sort((a, b) => b.version - a.version) });
+  });
+
   app.get('/api/v1/history/:collection/:id', requirePermission('news.view'), requireModule('news'), (req: ApiRequest, res) => {
     denyAssignedOnlyScope(req.auth!);
     const collection = req.params.collection as CollectionName;
-    if (!HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
+    if (collection === 'workflowTemplates' || !HISTORY_COLLECTIONS.has(collection)) throw new HttpError(404, 'لا يوجد سجل نسخ لهذا النوع');
     res.setHeader('Cache-Control', 'no-store');
     const record = db.getRow(collection, req.params.id)?.d;
     if (record && !canRead(req.auth!, collection, record)) throw new HttpError(403, MODULE_UNAVAILABLE);
@@ -936,6 +1009,53 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="episode_${encodeURIComponent(episode.id)}_mos.xml"`);
     res.send(generateEpisodeMosXml(episode));
+  });
+
+  app.get('/api/v1/bulletins/:id/stories/:storyId/history', requireAuth, requireModule('bulletins'), (req: ApiRequest, res) => {
+    const access = bulletinStoryVersionAccess(db, req.auth!, req.params.id, req.params.storyId);
+    if (!access) throw new HttpError(404, 'قصة النشرة غير متاحة');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: { ...access, versions: db.listHistory('bulletinStories', access.current.id) } });
+  });
+
+  app.post('/api/v1/bulletins/:id/stories/:storyId/history/restore', requireAuth, requireModule('bulletins'), (req: ApiRequest, res) => {
+    const access = bulletinStoryVersionAccess(db, req.auth!, req.params.id, req.params.storyId);
+    if (!access) throw new HttpError(404, 'قصة النشرة غير متاحة');
+    if (!access.canRestore) throw new HttpError(403, 'استعادة المسودة لمحرر النشرة أو المفوّض');
+    const { baseV, version } = req.body ?? {};
+    if (!Number.isSafeInteger(baseV) || !Number.isSafeInteger(version) || baseV < 1 || version < 1) throw new HttpError(400, 'اختر نسخة صالحة للاستعادة');
+    if (baseV !== access.current.v) throw new HttpError(409, 'تغيرت القصة؛ افتح سجل النسخ مجدداً قبل الاستعادة');
+    const historical = db.getHistoryVersion('bulletinStories', access.current.id, version);
+    if (!historical || historical.deletedAt) throw new HttpError(404, 'النسخة السابقة غير متاحة');
+    const [result] = sync.apply(req.auth!, [{ c: 'bulletinStories', id: access.current.id, op: 'upsert', baseV,
+      d: restoreBulletinStoryDraft(access.current.d, historical) }], req.ip);
+    if (result.ok === false) throw new HttpError(result.code === 'CONFLICT' ? 409 : result.code === 'FORBIDDEN' ? 403 : 400, result.message || 'تعذرت استعادة المسودة');
+    res.json({ success: true, data: result.row });
+  });
+
+  app.post('/api/v1/bulletins/:id/stories/:storyId/media-review', requireAuth, requireModule('bulletins'), (req: ApiRequest, res) => {
+    try {
+      const before = db.currentRev();
+      const data = decideBulletinMediaReview(db, req.auth!, req.params.id, req.params.storyId, req.body);
+      if (db.currentRev() !== before) changeBus.emit('rev', db.currentRev());
+      res.json({ success: true, data });
+    } catch (error) {
+      if (error instanceof BulletinMediaReviewError) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  });
+
+  app.post('/api/v1/onair/:id/prompter-correction', requireAuth, (req: ApiRequest, res) => {
+    const result = reportPrompterCorrection(db, req.auth!, String(req.params.id), req.body?.segmentId, req.body?.revision);
+    if ('status' in result) return res.status(result.status).json({ error: result.message });
+    res.json({ success: true, id: result.id });
+  });
+
+  app.post('/api/v1/onair/:id/correction-requests', requireAuth, (req: ApiRequest, res) => {
+    const result = addBroadcastCorrectionRequest(db, req.auth!, String(req.params.id), req.body || {});
+    if (result.error) throw new HttpError(result.status, result.error);
+    if (result.status === 201) changeBus.emit('rev', db.currentRev());
+    res.status(result.status).json({ success: true, data: result.data });
   });
 
   app.get('/api/v1/bulletins/:id/mos', requireAuth, (req: ApiRequest, res) => {
@@ -1209,6 +1329,13 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // --- Database administration ---------------------------------------------
 
   const dbAdmin = requirePermission('system.database_manage');
+  const safetyDatabaseSnapshot = () => primaryBackupTarget(db) === 'local'
+    ? db.createBackup('prerestore', config.backupRetention)
+    : createFullBackup(db, config, 'prerestore');
+  const requireBackupFile = (fileName: string) => {
+    if (!readPrimaryBackup(db.dataDir, fileName)) db.backupFilePath(fileName);
+  };
+  const adminBackupStatus = async () => ({ ...backupStatus(db, config.backupIntervalHours, config), ...await primaryBackupReadiness(db, config) });
   const checkBackupIncidents = async () => {
     try {
       await reconcileBackupIncidents(db, backupStatus(db, config.backupIntervalHours, config));
@@ -1266,7 +1393,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     }
     if (action === 'download') {
       if (typeof req.body?.fileName !== 'string') throw new HttpError(400, 'اسم النسخة مطلوب');
-      try { db.backupFilePath(req.body.fileName); } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
+      try { requireBackupFile(req.body.fileName); } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
       target = req.body.fileName;
     }
     currentDatabaseActor(req);
@@ -1294,17 +1421,17 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, data: getRecentErrors() });
   });
-  app.get('/api/v1/db/backup-status', dbAdmin, (_req, res) => {
+  app.get('/api/v1/db/backup-status', dbAdmin, wrap(async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ success: true, data: backupStatus(db, config.backupIntervalHours, config) });
-  });
-  app.get('/api/v1/db/diagnostics', dbAdmin, (_req, res) => {
+    res.json({ success: true, data: await adminBackupStatus() });
+  }));
+  app.get('/api/v1/db/diagnostics', dbAdmin, wrap(async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ success: true, data: { version: APP_VERSION, generatedAt: new Date().toISOString(),
       journalHealth: errorJournalHealth(),
       uptimeSeconds: Math.floor(process.uptime()), ready: !draining && db.isHealthy(),
-      backup: backupStatus(db, config.backupIntervalHours, config), errors: getRecentErrors() } });
-  });
+      backup: await adminBackupStatus(), errors: getRecentErrors() } });
+  }));
   app.post('/api/v1/db/backups/verify', dbAdmin, wrap(async (req, res) => {
     try {
       if (typeof req.body?.fileName !== 'string') throw new Error();
@@ -1321,18 +1448,23 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     if (!confirmations.consume(token, { actorId: auth.user.id, sessionId: auth.sessionId, action, target })) throw new HttpError(401, 'انتهى التأكيد؛ أعد تأكيد هويتك', 'CONFIRMATION_INVALID');
     return auth;
   };
-  app.post('/api/v1/db/backups/download', dbAdmin, (req, res) => {
-    let source: string;
+  app.post('/api/v1/db/backups/download', dbAdmin, wrap(async (req, res) => {
     const fileName = typeof req.body?.fileName === 'string' ? req.body.fileName : '';
-    try {
-      if (!fileName) throw new Error();
-      source = db.backupFilePath(fileName);
-    } catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
+    try { requireBackupFile(fileName); }
+    catch { throw new HttpError(400, 'اسم النسخة غير صالح أو ملفها غير موجود'); }
     const auth = requireDownloadConfirmation(req, 'download', fileName);
-    audit(auth.user, 'DB_BACKUP_DOWNLOAD', 'DATABASE', fileName, 'SECURITY', `تنزيل ملف النسخة الاحتياطية ${fileName}`, req.ip);
-    res.setHeader('Cache-Control', 'no-store');
-    res.download(source, path.basename(source), { dotfiles: 'allow' });
-  });
+    try {
+      await withBackupSource(db, fileName, async source => {
+        currentDatabaseActor(req);
+        audit(auth.user, 'DB_BACKUP_DOWNLOAD', 'DATABASE', fileName, 'SECURITY', `تنزيل ملف النسخة الاحتياطية ${fileName}`, req.ip);
+        res.setHeader('Cache-Control', 'no-store');
+        await new Promise<void>((resolve, reject) => res.download(source, fileName, { dotfiles: 'allow' }, error => error ? reject(error) : resolve()));
+      });
+    } catch (error) {
+      if (res.headersSent || error instanceof HttpError) throw error;
+      throw new HttpError(400, 'تعذر قراءة نسخة قاعدة البيانات من وجهة التخزين');
+    }
+  }));
 
   app.get('/api/v1/db/stats', dbAdmin, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -1393,7 +1525,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (!config.allowDbReset) throw new HttpError(403, 'إعادة تهيئة قاعدة البيانات معطلة في بيئة الإنتاج (ALLOW_DB_RESET)', 'DISABLED');
       try { await databaseWork(async () => {
       authorizeDestructive(req, 'reset');
-      await db.createBackup('prerestore', config.backupRetention);
+      await safetyDatabaseSnapshot();
       currentDatabaseActor(req); requireAirEnded(req);
       db.deleteCollections(DEMO_COLLECTIONS.map(([c]) => c) as CollectionName[]);
       db.setMeta('demo_seeded', '0');
@@ -1433,7 +1565,8 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       markTemporaryPassword(db, id, config.tempPasswordHours);
       audit(actor, 'USER_CREATED', 'USER', id, 'SECURITY', `إنشاء حساب مسؤول من معالج الإعداد (${role})`, req.ip);
     });
-    res.status(201).json({ success: true });
+    changeBus.emit('rev', db.currentRev());
+    res.status(201).json({ success: true, row: db.getRow('users', id) });
   }));
 
   app.post('/api/v1/admin/setup/review-shown', requirePermission('system.settings'), (req, res) => {
@@ -1466,7 +1599,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       if (req.body?.confirm !== 'حذف') throw new HttpError(400, 'اكتب كلمة «حذف» للتأكيد');
       if (req.body?.includeUsers === true && !req.auth!.can('users.suspend_delete')) throw new HttpError(403, 'يتطلب حذف الحسابات التجريبية صلاحية حذف المستخدمين');
       const removed = await databaseWork(async () => {
-        await db.createBackup('prerestore', config.backupRetention);
+        await safetyDatabaseSnapshot();
         return removeDemoData(db, { includeUsers: req.body?.includeUsers === true, actingUserId: req.auth!.user.id });
       });
       const total = Object.values(removed).reduce((a, b) => a + b, 0);
@@ -1477,7 +1610,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   );
 
   app.get('/api/v1/db/backups', dbAdmin, (_req, res) => {
-    res.json({ success: true, data: db.listBackups() });
+    res.json({ success: true, data: listAllBackupFiles(db) });
   });
 
   app.post(
@@ -1497,7 +1630,10 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
       await checkBackupIncidents();
       const backup = full.file;
       audit(req.auth!.user, 'DB_BACKUP', 'DATABASE', backup.fileName, 'INFO', `نسخة احتياطية كاملة ${backup.fileName}: القاعدة و${full.uploads} ملفاً مع ملخص SHA-256${config.backupDirectory ? '، ونسخة في المجلد الخارجي' : ''}${config.backupRemote ? '، ونسخة سحابية' : ''}`, req.ip);
-      res.json({ success: true, message: 'تم إنشاء نسخة احتياطية كاملة بنجاح', data: { ...backup, uploads: full.uploads } });
+      res.json({ success: true, message: full.filesKeptElsewhere
+        ? 'تم حفظ نسخة القاعدة والملفات المتاحة، وتبقى الملفات المرجعية في وجهاتها الأصلية'
+        : 'تم إنشاء نسخة احتياطية كاملة بنجاح',
+        data: { ...backup, uploads: full.uploads, target: full.target, filesKeptElsewhere: full.filesKeptElsewhere } });
     })
   );
 
@@ -1515,7 +1651,7 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
           try { sha256 = (await db.verifyBackup(fileName)).sha256; }
           catch { throw new HttpError(400, 'تعذر التحقق من النسخة المختارة'); }
           authorizeDestructive(req, 'restore', sha256);
-          await db.restoreBackup(fileName, config.backupRetention, sha256, () => { currentDatabaseActor(req); requireAirEnded(req); });
+          await db.restoreBackup(fileName, config.backupRetention, sha256, () => { currentDatabaseActor(req); requireAirEnded(req); }, safetyDatabaseSnapshot);
           initializeTrashRetention(db);
         });
       } catch (err: any) {

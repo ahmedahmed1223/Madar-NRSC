@@ -40,11 +40,11 @@ jobs:
         env:
           POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
         run: npm test
-      - name: Recycle bin, retention and upload links on PostgreSQL
+      - name: Recycle bin, retention and media uploads on PostgreSQL
         env:
           TEST_DATABASE_ENGINE: postgresql
           POSTGRES_TEST_URL: postgresql://madar_ci:madar_ci@127.0.0.1:${{ job.services.postgres.ports[5432] }}/madar_ci
-        run: npm test -- tests/server/trash.test.ts tests/server/retention.test.ts tests/server/externalIntake.test.ts
+        run: npm test -- tests/server/trash.test.ts tests/server/retention.test.ts tests/server/externalIntake.test.ts tests/server/primaryMediaStorage.test.ts
       - name: Build
         run: npm run build
       - name: Install browsers for workflow tests
@@ -77,6 +77,7 @@ jobs:
         run: >-
           node tests/e2e/run-isolated.mjs tests/e2e/department-chart.spec.ts tests/e2e/assignment-routing.spec.ts
           tests/e2e/production-print.spec.ts tests/e2e/workspace-polish.spec.ts
+          tests/e2e/org-structure-map.spec.ts tests/e2e/workflow-flowchart.spec.ts tests/e2e/workflow-publication.spec.ts
       - name: Recycle bin and storage diagnostics
         run: node tests/e2e/run-isolated.mjs trash.spec.ts storage-diagnostics.spec.ts
       - name: Bulletin assembly and programme templates
@@ -84,7 +85,7 @@ jobs:
       - name: Desktop and mobile planning and production layouts
         run: node tests/e2e/run-isolated.mjs tests/e2e/catalog-responsive.spec.ts tests/e2e/planning-responsive.spec.ts tests/e2e/production-mobile.spec.ts tests/e2e/ux.spec.ts
       - name: Workspace navigation and responsive route coverage
-        run: node tests/e2e/run-isolated.mjs tests/e2e/workspace-shell.spec.ts tests/e2e/website-transformation.spec.ts
+        run: node tests/e2e/run-isolated.mjs tests/e2e/workspace-shell.spec.ts tests/e2e/website-transformation.spec.ts tests/e2e/personal-workspace.spec.ts tests/e2e/shell-v4.spec.ts
       - name: Newsroom 4.4 editing, intake and studio workflows
         run: node tests/e2e/run-isolated.mjs tests/e2e/news-taxonomy.spec.ts tests/e2e/presenter-instructions.spec.ts tests/e2e/v44-workspaces.spec.ts
       - name: Preserve browser failure evidence

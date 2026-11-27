@@ -6,7 +6,7 @@ import { CollectionName, EntityRow, isCollectionName, type PrivateRecordCollecti
 import { logger } from './logger';
 import { ARCHIVE_FILTER, MIGRATIONS, PENDING_PERSONAL_REMINDER, SETTLED_SQL } from './dbMigrations';
 import type { WorkReminder, WorkReminderCollection } from './workReminders';
-import { withStableBackup } from './databaseRecovery';
+import { withBackupSource, withStableBackup } from './databaseRecovery';
 import { buildVocabulary, type Vocabulary } from '../shared/arabicSearch';
 import type { NewsArchiveFilters } from '../shared/newsArchive';
 import type { DatabaseTarget } from './databaseEngineState';
@@ -77,6 +77,8 @@ export interface UploadRecord {
   createdAt: string;
   /** The server's own copy was removed; the file is read from a copy elsewhere. */
   localEvicted?: boolean;
+  /** The upload was committed directly to its remote primary destination. */
+  remotePrimary?: boolean;
   scope?: 'media' | 'chat' | 'legacy';
 }
 
@@ -362,6 +364,16 @@ export class NewsroomDatabase {
     const rows = this.db.prepare(`SELECT * FROM entities
       WHERE collection = 'news' AND deleted = 0 AND json_extract(data, '$.status') = 'SCHEDULED'
       ORDER BY position ASC, id ASC`).all() as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  listDueBulletinMediaReviews(now: string): EntityRow[] {
+    const postgres = this.db instanceof PostgresDatabase;
+    const state = postgres ? "(data::json #>> '{mediaReview,state}')" : "json_extract(data, '$.mediaReview.state')";
+    const deadline = postgres ? "(data::json #>> '{mediaReview,deadlineAt}')" : "json_extract(data, '$.mediaReview.deadlineAt')";
+    const rows = this.db.prepare(`SELECT * FROM entities
+      WHERE collection = 'bulletinStories' AND deleted = 0 AND json_extract(data, '$.deletedAt') IS NULL
+        AND ${state} = 'PREVIEW' AND ${deadline} <= ? ORDER BY ${deadline}, id LIMIT 100`).all(now) as RawEntityRow[];
     return rows.map(toEntityRow);
   }
 
@@ -839,9 +851,9 @@ export class NewsroomDatabase {
   insertUpload(u: UploadRecord) {
     this.db
       .prepare(
-        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at, local_evicted, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO uploads (id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at, local_evicted, scope, remote_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt, u.localEvicted ? 1 : 0, u.scope ?? 'media');
+      .run(u.id, u.storedName, u.originalName, u.mimeType, u.sizeBytes, u.uploadedBy, u.createdAt, u.localEvicted ? 1 : 0, u.scope ?? 'media', u.remotePrimary ? 1 : 0);
   }
 
   getUpload(id: string): UploadRecord | null {
@@ -856,6 +868,7 @@ export class NewsroomDatabase {
       uploadedBy: r.uploaded_by,
       createdAt: r.created_at,
       localEvicted: r.local_evicted === 1,
+      ...(r.remote_primary === 1 && { remotePrimary: true }),
       scope: r.scope,
     };
   }
@@ -1313,11 +1326,11 @@ export class NewsroomDatabase {
     return readConsoleQuery(this.db, sql, maxRows);
   }
 
-  async createBackup(kind?: 'auto' | 'prerestore', retention = 20): Promise<DbBackupFileInfo> {
+  async createBackup(kind?: 'auto' | 'prerestore', retention = 20, outputDirectory = this.backupsDir): Promise<DbBackupFileInfo> {
     const now = new Date();
     const stamp = now.toISOString().replace(/[:.]/g, '-');
     const fileName = `newsroom_backup_${stamp}${kind ? `_${kind}` : ''}.sqlite`;
-    const target = path.join(this.backupsDir, fileName);
+    const target = path.join(outputDirectory, fileName);
     try {
       if (this.db instanceof PostgresDatabase) {
         const pending = `${target}.${crypto.randomBytes(6).toString('hex')}.tmp`;
@@ -1331,7 +1344,7 @@ export class NewsroomDatabase {
       this.setMeta('backup_last_attempt', JSON.stringify({ at: now.toISOString(), status: 'failed' }));
       throw error;
     }
-    this.pruneBackups(retention);
+    if (outputDirectory === this.backupsDir) this.pruneBackups(retention);
     const stat = fs.statSync(target);
     return { fileName, sizeBytes: stat.size, sizeFormatted: formatSize(stat.size), createdAt: now.toISOString() };
   }
@@ -1371,19 +1384,20 @@ export class NewsroomDatabase {
   }
 
   async verifyBackup(fileName: string) {
-    const source = this.backupFilePath(fileName);
-    const probe = new Database(source, { readonly: true, fileMustExist: true });
-    try {
-      const integrity = probe.pragma('integrity_check', { simple: true });
-      if (integrity !== 'ok') throw new Error('النسخة الاحتياطية تالفة ولا يمكن استعادتها');
-      const hasEntities = probe.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`).get();
-      if (!hasEntities) throw new Error('النسخة الاحتياطية لا تنتمي إلى هذا الإصدار من النظام');
-    } finally {
-      probe.close();
-    }
-    const hash = crypto.createHash('sha256');
-    for await (const chunk of fs.createReadStream(source)) hash.update(chunk);
-    return { valid: true as const, fileName, checkedAt: new Date().toISOString(), sha256: hash.digest('hex') };
+    return withBackupSource(this, fileName, async source => {
+      const probe = new Database(source, { readonly: true, fileMustExist: true });
+      try {
+        const integrity = probe.pragma('integrity_check', { simple: true });
+        if (integrity !== 'ok') throw new Error('النسخة الاحتياطية تالفة ولا يمكن استعادتها');
+        const hasEntities = probe.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`).get();
+        if (!hasEntities) throw new Error('النسخة الاحتياطية لا تنتمي إلى هذا الإصدار من النظام');
+      } finally {
+        probe.close();
+      }
+      const hash = crypto.createHash('sha256');
+      for await (const chunk of fs.createReadStream(source)) hash.update(chunk);
+      return { valid: true as const, fileName, checkedAt: new Date().toISOString(), sha256: hash.digest('hex') };
+    });
   }
 
   isKnownCollection(value: string) { return isCollectionName(value); }
@@ -1412,7 +1426,7 @@ export class NewsroomDatabase {
   }
 
   /** Replace the live database with a validated backup (a safety backup is taken first). */
-  async restoreBackup(fileName: string, retention = 20, expectedHash?: string, beforeReplace?: () => void) {
+  async restoreBackup(fileName: string, retention = 20, expectedHash?: string, beforeReplace?: () => void, backupCurrent?: () => Promise<unknown>) {
     await withStableBackup(this, fileName, path.join(this.dataDir, 'rehearsals'), async (source, sha256) => {
       if (expectedHash && expectedHash !== sha256) throw new Error('Snapshot changed');
       const probe = new Database(source, { fileMustExist: true });
@@ -1424,7 +1438,7 @@ export class NewsroomDatabase {
         probe.pragma('secure_delete = ON');
         this.storedSecrets.migrate(probe);
       } finally { probe.close(); }
-      await this.createBackup('prerestore', retention);
+      await (backupCurrent ? backupCurrent() : this.createBackup('prerestore', retention));
       beforeReplace?.();
       const revision = this.currentRev();
       const identity = this.dbId;

@@ -3,10 +3,14 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Copy, ExternalLink, FileText, 
 import { apiService } from '../../services/api';
 import { createDepartmentLabeler } from '../../services/departmentLabels';
 import { CardBriefReview } from './CardBriefReview';
+import { CardConsolidationControl } from './CardConsolidationControl';
 import { CardTimingValues } from './CardTimingValues';
 import { MessageOriginLabel } from '../messages/MessageOriginLabel';
+import { stepReceiptDeadline, stepReceiptPending, stepStartError } from '../../shared/cardExecution';
+import { newId } from '../../shared/ids';
+import { fromLocalInputValue } from '../../shared/dates';
 import { stepLaborMinutes } from '../../shared/cardExecutionTiming';
-import { confirmDialog } from '../../services/dialogs';
+import { confirmDialog, promptDialog } from '../../services/dialogs';
 import { confirmSaved } from '../../services/confirmSave';
 import { notify } from '../../services/notify';
 import { navigateTo } from '../../services/uiEvents';
@@ -16,13 +20,16 @@ import {
   REVIEW_STEP_TYPES,
   canClaimStep,
   canGovernCard,
+  canReviewCardStep,
   canSendBack,
   cardContributions,
+  cardCloseError,
   cardHoldReason,
   cardKindName,
   cardProgress,
   cardState,
   complexityName,
+  hasConfiguredWorkflow,
   isCardLate,
   isStepOpen,
   isStepOwnLate,
@@ -40,6 +47,8 @@ import { assignmentScope } from '../../shared/assignmentScope';
 import { minutesLabel } from '../../shared/workload';
 import { AR, countLabel } from '../../shared/arabicPlural';
 import { CARD_STATE_STYLE, INPUT, LABEL, STEP_STATUS_STYLE, candidateLabel, cardCandidates, when } from './cardUi';
+import { buildCardWorkflowGraph, type WorkflowGraphNode } from '../../shared/workflowGraph';
+import { WorkflowFlowchart } from '../workflow/WorkflowFlowchart';
 
 interface CardDetailProps {
   card: ProductionCard;
@@ -56,7 +65,7 @@ const BTN = 'inline-flex items-center gap-1.5 min-h-11 px-3 py-2 rounded-lg text
 const MEDIA_TYPE_NAMES: Record<string, string> = { IMAGE: 'صورة', VIDEO: 'فيديو', AUDIO: 'صوت', DOCUMENT: 'وثيقة', PDF: 'PDF' };
 
 /** The open panel under a step: finishing it, reporting a blocker, sending work back, or handing it to someone else. */
-type Panel = { stepId: string; kind: 'done' | 'block' | 'back' | 'reassign' } | null;
+type Panel = { stepId: string; kind: 'done' | 'block' | 'back' | 'reviewBack' | 'reassign' } | null;
 
 /** One production card: its steps and handoffs, the script, the material and the documented trail. */
 export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, onOpenTarget, onSaveAsTemplate, now = Date.now() }) => {
@@ -64,13 +73,14 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const labelDepartment = useMemo(createDepartmentLabeler, [settings]);
   const stations = stationsOf(settings);
   const stepTypes = stepTypesOf(settings);
-  const actor = apiService.cardActor();
+  const actor = apiService.cardActor(card);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [doneNote, setDoneNote] = useState('');
   const [doneMinutes, setDoneMinutes] = useState('');
   const [reason, setReason] = useState('');
+  const [reviewDueAt, setReviewDueAt] = useState('');
   const [waitingOn, setWaitingOn] = useState('');
   const [backTo, setBackTo] = useState('');
   const [reassignTo, setReassignTo] = useState('');
@@ -111,6 +121,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
   const canReassign = open && (actor.canManage || (isOwner && actor.canWork));
   const canDecide = actor.canManage || isOwner;
   const governs = canGovernCard(card, actor, stations);
+  const closeBlocker = cardCloseError(card);
   const contributions = cardContributions(card, stepTypes);
   const latestDecision = [...(card.log || [])].reverse().find((e) => e.decision);
 
@@ -150,10 +161,17 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
       return false;
     }
   };
-  const setStep = (step: CardStep, changes: Partial<CardStep>, ok: string) => act(() => apiService.updateCardStep(card.id, step.id, changes), ok);
+  const setStep = (step: CardStep, changes: Partial<CardStep>, ok: string) => {
+    if (changes.status === 'IN_PROGRESS' || changes.status === 'DONE') {
+      const blocker = stepStartError(card, { ...step, ...changes });
+      if (blocker) { setMessage({ ok: false, text: blocker }); return false; }
+    }
+    return act(() => apiService.updateCardStep(card.id, step.id, changes), ok);
+  };
 
   const openPanel = (step: CardStep, kind: NonNullable<Panel>['kind']) => {
     setReason('');
+    if (kind === 'reviewBack') setReviewDueAt('');
     if (kind === 'done') {
       setDoneNote(step.note || '');
       setDoneMinutes('');
@@ -168,6 +186,15 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     setPanel({ stepId: step.id, kind });
   };
 
+  const manageStep = (node: WorkflowGraphNode) => {
+    const id = node.id.slice('step:'.length);
+    requestAnimationFrame(() => {
+      const item = document.getElementById(`card-step-${id}`);
+      item?.scrollIntoView({ block: 'center' });
+      item?.focus();
+    });
+  };
+
   /** What happens next once this step is done, said only after the server confirmed it. */
   const handoffText = (step: CardStep) => {
     const pending = openStepsBefore(card, step.id);
@@ -180,9 +207,19 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     return 'سُجّل الإنجاز؛ المهمة التالية لم تُسند بعد';
   };
 
+  const deliverPartial = async (step: CardStep) => {
+    const text = await promptDialog({ title: 'تسليم إفادة أولية', label: 'الإفادة والمخرجات المتاحة', multiline: true, required: true, confirmLabel: 'تسجيل التسليم الجزئي' });
+    if (!text?.trim()) return;
+    act(() => apiService.updateCard(card.id, current => ({ ...current, log: [...(current.log || []), {
+      id: newId('log'), kind: 'NOTE', stepId: step.id, text: text.trim(), delivery: 'PARTIAL', mediaIds: current.mediaIds,
+    }] })), 'سُجّل التسليم الجزئي في سجل التكليف');
+  };
+
   const finish = async (step: CardStep) => {
+    const blocker = stepStartError(card, step);
+    if (blocker) { setMessage({ ok: false, text: blocker }); return; }
     const pending = openStepsBefore(card, step.id);
-    if (pending.length) {
+    if (pending.length && !step.reviewerId) {
       const names = pending.map((s) => `«${stepTypeName(stepTypes, s.type)}» (${stepAssigneeLabel(s, stations, labelDepartment)})`).join('، ');
       const go = await confirmDialog({ title: 'الخطوة السابقة لم تكتمل', message: `${names} لم تكتمل بعد. يُسجَّل إنجازك، ولا يصل التسليم إلى الخطوة التالية حتى تكتمل.`, confirmLabel: 'تسجيل الإنجاز', cancelLabel: 'تراجع' });
       if (!go) return;
@@ -193,7 +230,8 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
       return;
     }
     const minutes = parsedMinutes === undefined ? undefined : Math.max(0, Math.round(parsedMinutes));
-    if (act(() => apiService.finishCardStep(card.id, step.id, doneNote, minutes), handoffText(step))) setPanel(null);
+    const saved = step.reviewerId ? 'أُرسلت المخرجات للمراجعة' : handoffText(step);
+    if (act(() => apiService.finishCardStep(card.id, step.id, doneNote, minutes), saved)) setPanel(null);
   };
 
   const copy = async (text: string, success: string) => {
@@ -226,6 +264,12 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
     if (act(() => apiService.sendBackCardStep(card.id, target.id, reason, step.id), ok)) setPanel(null);
   };
 
+  const returnReviewedStep = (step: CardStep) => {
+    const due = new Date(fromLocalInputValue(reviewDueAt));
+    if (!reason.trim() || !Number.isFinite(due.getTime())) return;
+    if (act(() => apiService.sendBackCardStep(card.id, step.id, reason, undefined, due.toISOString()), 'أُعيدت الخطوة للتعديل بالموعد الجديد')) setPanel(null);
+  };
+
   const reassign = (step: CardStep) => {
     if (!reassignTo) return;
     let changes: Partial<CardStep>;
@@ -239,7 +283,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
         assigneeId: reassignTo,
         assigneeName: undefined,
         ...(actor.canManage ? { departmentId: undefined, stationId: undefined } : {}),
-        status: step.status === 'BLOCKED' ? 'IN_PROGRESS' : step.status,
+        status: step.receiptMinutes ? 'TODO' : step.status === 'BLOCKED' ? 'IN_PROGRESS' : step.status,
         blockedReason: undefined,
         waitingOnId: undefined,
       };
@@ -358,6 +402,8 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
           <p ref={messageRef} role="status" className={`p-3 rounded-xl font-bold border ${message.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>{message.text}</p>
         )}
 
+        {open && governs && <CardConsolidationControl cardId={card.id} />}
+
         {card.brief && (
           <section>
             <h2 className="font-bold text-slate-800 text-sm mb-1">المطلوب إنجازه</h2>
@@ -371,6 +417,12 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
           <p className="text-xs text-slate-700">العمل المسجل يجمع جلسات الفريق. الزمن منذ أول بدء يشمل التوقفات حتى اكتمال المهام. الانتظار المرصود يجمع الانتظار قبل البدء وفترات التعطل الموثقة، ويُحسب الوقت المتداخل مرة واحدة.</p>
         </section>
 
+        <WorkflowFlowchart
+          graph={buildCardWorkflowGraph(card, stepTypes, now, step => stepAssigneeLabel(step, stations, labelDepartment))}
+          label="مخطط تنفيذ التكليف"
+          onManage={manageStep}
+        />
+
         <section>
           <h2 className="font-bold text-slate-800 text-sm mb-2">المهام والتسليم</h2>
           {card.steps.length === 0 && <p className="text-slate-500">لم تُضف مهام لهذا التكليف بعد.</p>}
@@ -378,8 +430,12 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             {card.steps.map((step, index) => {
               const mine = step.assigneeId === actor.id;
               const may = open && (actor.canManage || (mine && actor.canWork));
+              const canReview = canReviewCardStep(card, step, actor.id);
+              const awaitingReview = step.status === 'IN_REVIEW';
               const stepLate = isStepOwnLate(card, step);
               const stepOpen = isStepOpen(step);
+              const workBlocker = stepStartError(card, step);
+              const receiptDue = stepReceiptDeadline(step);
               const labor = stepLaborMinutes(step);
               const backTargets = sendBackTargets(card, step.id);
               // On a review step its holder sends work back; the owner or a supervisor may do it from the step the card waits on.
@@ -390,11 +446,11 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
               const start = mine ? 'bg-blue-600 text-white' : 'border border-blue-200 text-blue-700';
               const finishStyle = mine ? 'bg-emerald-700 text-white' : 'border border-emerald-300 text-emerald-800';
               return (
-                <li key={step.id} className={`border rounded-2xl p-3 space-y-2 ${mine && open && step.status !== 'DONE' ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
+                <li key={step.id} id={`card-step-${step.id}`} data-testid={`card-step-${step.id}`} tabIndex={-1} className={`border rounded-2xl p-3 space-y-2 focus-visible:outline-2 focus-visible:outline-blue-600 ${mine && open && step.status !== 'DONE' ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="w-6 h-6 shrink-0 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center tabular-nums">{index + 1}</span>
                     <h3 className="font-bold text-slate-900 text-sm">{stepTypeName(stepTypes, step.type)}</h3>
-                    <span className={`px-2 py-0.5 rounded-md border font-bold ${STEP_STATUS_STYLE[step.status]}`}>{stepStatusName(step.status)}</span>
+                    <span className={`px-2 py-0.5 rounded-md border font-bold ${STEP_STATUS_STYLE[step.status]}`}>{step.skippedReason && step.status === 'SKIPPED' ? 'تم التجاوز' : stepStatusName(step.status)}</span>
                     {step.returnedReason && stepOpen && <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-800 border border-violet-200 font-bold">معادة للتعديل</span>}
                     {stepLate && <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold">متأخرة</span>}
                     {mine && <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-bold">مهمتي</span>}
@@ -402,13 +458,31 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                   {step.title && <p className="text-slate-700">{step.title}</p>}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-slate-600">
                     <span>المكلف: {stepAssigneeLabel(step, stations, labelDepartment)}</span>
+                    {step.reviewerId && <span>المراجع: {step.reviewerName || 'المراجع المحدد'}</span>}
                     {step.assigneeId && step.stationId && <span>المحطة: {stationName(stations, step.stationId)}</span>}
                     {step.dueAt && <span>التسليم: {when(step.dueAt)}</span>}
                     <span>التعقيد: {complexityName(step.complexity)}</span>
                     {step.estimateMinutes ? <span>المقدر: {minutesLabel(step.estimateMinutes)}</span> : null}
                     {labor !== null && <span>العمل المسجل {labor === 0 ? '0 د' : minutesLabel(labor)}</span>}
-                    {step.doneAt && <span>أنجزها {step.doneByName} — {when(step.doneAt)}</span>}
+                    {step.doneAt && <span>{step.reviewerId ? 'قبلها' : 'أنجزها'} {step.doneByName} — {when(step.doneAt)}</span>}
                   </div>
+                  {step.status === 'SKIPPED' && step.skippedReason && <p className="text-sm text-slate-700">{step.skippedReason}{step.skippedAt ? ` · ${when(step.skippedAt)}` : ''}</p>}
+                  {stepOpen && workBlocker && <p className="text-sm font-medium text-amber-900">{workBlocker}{Number.isFinite(receiptDue) ? ` · المهلة ${when(new Date(receiptDue).toISOString())}` : ''}</p>}
+                  {open && stepOpen && !awaitingReview && mine && actor.canWork && (
+                    <div className="flex flex-wrap gap-2">
+                      {stepReceiptPending(step) ? (
+                        <button type="button" className={`${BTN} bg-blue-700 text-white`} onClick={() => setStep(step, { receiptConfirmedAt: new Date().toISOString() }, 'تأكد استلام المهمة')}>تأكيد الاستلام</button>
+                      ) : !workBlocker && (
+                        <button type="button" className={`${BTN} border border-blue-200 text-blue-800`} onClick={() => void deliverPartial(step)}>تسليم إفادة أولية</button>
+                      )}
+                    </div>
+                  )}
+                  {open && stepOpen && step.optional && (actor.canManage || actor.canSkipOptionalStep) && (
+                    <button type="button" className={`${BTN} border border-slate-300 text-slate-700`} onClick={async () => {
+                      const reason = await promptDialog({ title: 'تجاوز مهمة اختيارية', label: 'سبب التجاوز', required: true, multiline: true });
+                      if (reason?.trim()) setStep(step, { status: 'SKIPPED', skippedReason: reason.trim() }, 'تم تجاوز المهمة الاختيارية');
+                    }}>تجاوز المهمة الاختيارية</button>
+                  )}
                   {!!step.timeLog?.length && <details className="border-y border-slate-200 text-xs text-slate-700">
                     <summary className="min-h-11 py-2.5 cursor-pointer font-semibold text-blue-700">جلسات العمل ({step.timeLog.length})</summary>
                     <ul className="divide-y divide-slate-200">
@@ -440,7 +514,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                             type="checkbox"
                             className="w-4 h-4"
                             checked={!!item.done}
-                            disabled={!may || !stepOpen}
+                            disabled={!may || !stepOpen || awaitingReview}
                             onChange={(e) => setStep(step, { checklist: step.checklist!.map((c, j) => (j === i ? { ...c, done: e.target.checked } : c)) }, e.target.checked ? `تم: ${item.text}` : `أُلغي التأشير: ${item.text}`)}
                           />
                           <span className={item.done ? 'line-through text-slate-500' : ''}>{item.text}</span>
@@ -465,7 +539,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                       <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => finish(step)} className={`${BTN} bg-emerald-700 text-white`}>
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          تأكيد الإنجاز والتسليم
+                          {step.reviewerId ? 'إرسال المخرجات للمراجعة' : 'تأكيد الإنجاز والتسليم'}
                         </button>
                         {cancelButton}
                       </div>
@@ -543,6 +617,18 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                     </div>
                   )}
 
+                  {panelHere === 'reviewBack' && (
+                    <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+                      {reasonField(`review-reason-${step.id}`, 'سبب الإعادة', 'ما التعديل المطلوب؟')}
+                      <label className={LABEL} htmlFor={`review-due-${step.id}`}>الموعد الجديد</label>
+                      <input id={`review-due-${step.id}`} type="datetime-local" className={INPUT} value={reviewDueAt} onChange={event => setReviewDueAt(event.target.value)} />
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" disabled={!reason.trim() || !reviewDueAt} onClick={() => returnReviewedStep(step)} className={`${BTN} bg-violet-700 text-white disabled:opacity-50`}>تأكيد الإعادة</button>
+                        {cancelButton}
+                      </div>
+                    </div>
+                  )}
+
                   {!panelHere && (
                     <div className="flex flex-wrap gap-2">
                       {open && canClaimStep(step, actor) && stepOpen && (
@@ -557,11 +643,17 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                           بدء العمل
                         </button>
                       )}
-                      {may && (step.status === 'TODO' || step.status === 'IN_PROGRESS' || step.status === 'BLOCKED') && (
+                      {may && (!step.reviewerId || mine) && (step.status === 'TODO' || step.status === 'IN_PROGRESS' || step.status === 'BLOCKED') && (
                         <button type="button" onClick={() => openPanel(step, 'done')} className={`${BTN} ${finishStyle}`}>
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          تم الإنجاز
+                          {step.reviewerId ? 'إرسال للمراجعة' : 'تم الإنجاز'}
                         </button>
+                      )}
+                      {canReview && awaitingReview && (
+                        <button type="button" onClick={() => setStep(step, { status: 'DONE' }, 'قُبلت مخرجات الخطوة')} className={`${BTN} bg-emerald-700 text-white`}>قبول المخرجات</button>
+                      )}
+                      {canReview && (
+                        <button type="button" onClick={() => openPanel(step, 'reviewBack')} className={`${BTN} border border-violet-300 text-violet-800`}>إعادة الخطوة للتعديل</button>
                       )}
                       {offerBack && (
                         <button type="button" onClick={() => openPanel(step, 'back')} className={`${BTN} border border-violet-300 text-violet-800`}>
@@ -575,7 +667,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                       {may && step.status === 'BLOCKED' && (
                         <button type="button" onClick={() => setStep(step, { status: 'IN_PROGRESS', blockedReason: undefined, waitingOnId: undefined }, 'استؤنف العمل')} className={`${BTN} border border-slate-200 text-slate-700`}>استئناف العمل</button>
                       )}
-                      {may && step.status === 'DONE' && (
+                      {may && step.status === 'DONE' && !step.reviewerId && (
                         <button type="button" onClick={() => setStep(step, { status: 'IN_PROGRESS' }, 'أُعيد فتح المهمة')} className={`${BTN} border border-slate-200 text-slate-700`}>إعادة فتح</button>
                       )}
                       {canReassign && stepOpen && (
@@ -584,7 +676,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
                           إعادة الإسناد
                         </button>
                       )}
-                      {open && actor.canManage && stepOpen && (
+                      {open && actor.canManage && stepOpen && step.optional === undefined && !step.reviewerId && (
                         <button type="button" onClick={() => setStep(step, { status: 'SKIPPED', blockedReason: undefined }, 'عُدّت المهمة غير مطلوبة')} className={`${BTN} border border-slate-200 text-slate-600`}>غير مطلوبة</button>
                       )}
                       {open && actor.canManage && step.status === 'SKIPPED' && (
@@ -771,8 +863,19 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
               <li key={entry.id} className={`p-2 rounded-lg border ${entry.decision ? 'bg-blue-50 border-blue-200' : entry.kind === 'NOTE' ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100'}`}>
                 <p className="text-slate-800 whitespace-pre-line">
                   {entry.decision && <span className="px-1.5 py-0.5 ml-1 rounded-md bg-blue-600 text-white font-bold text-2xs">قرار</span>}
-                  {entry.text}
+                  {entry.delivery && <span className="me-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-2xs font-bold text-violet-800">{entry.delivery === 'FINAL' ? 'تسليم نهائي' : 'تسليم جزئي'}</span>}
+                  <span>{entry.text}</span>
                 </p>
+                {entry.deliveryLinks?.length ? (
+                  <ul className="mt-1 flex flex-wrap gap-2">
+                    {entry.deliveryLinks.map((link, index) => (
+                      <li key={`${link.url}-${index}`}>
+                        <a className="inline-flex min-h-11 items-center text-xs font-semibold text-blue-800 underline" href={link.url} target="_blank" rel="noreferrer">{link.label || link.url}</a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {entry.mediaIds?.length ? <p className="mt-1 text-2xs text-slate-600">{entry.mediaIds.map(id => library.find(item => item.id === id)?.title || 'مادة من المكتبة').join('، ')}</p> : null}
                 <p className="text-2xs text-slate-500 mt-0.5">
                   {entry.byName}
                   {entry.stationId ? ` — ${stationName(stations, entry.stationId)}` : ''} • {when(entry.at)}
@@ -799,20 +902,25 @@ export const CardDetail: React.FC<CardDetailProps> = ({ card, onClose, onEdit, o
             {open && governs && (
               <button
                 type="button"
+                disabled={!!closeBlocker}
                 onClick={async () => {
-                  if (state !== 'READY' && !(await confirmDialog({ title: 'إغلاق تكليف لم يكتمل', message: 'ما زالت في التكليف مهام لم تُنجز. إغلاقه يخرجه من أعباء الفريق ولا يحتسبها إنتاجاً مكتملاً.', confirmLabel: 'إغلاق على أي حال', cancelLabel: 'تراجع' }))) return;
+                  if (!hasConfiguredWorkflow(card) && state !== 'READY' && !(await confirmDialog({ title: 'إغلاق تكليف لم يكتمل', message: 'ما زالت في التكليف مهام لم تُنجز. إغلاقه يخرجه من أعباء الفريق ولا يحتسبها إنتاجاً مكتملاً.', confirmLabel: 'إغلاق على أي حال', cancelLabel: 'تراجع' }))) return;
                   act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CLOSED' })), 'أُغلق التكليف وأُرشف');
                 }}
                 // Closing is the obvious next step only once everything is done.
-                className={`${BTN} ${state === 'READY' ? 'bg-emerald-700 text-white' : 'border border-slate-200 text-slate-700'}`}
+                className={`${BTN} ${state === 'READY' ? 'bg-emerald-700 text-white' : 'border border-slate-200 text-slate-700'} disabled:opacity-50`}
               >
                 إغلاق بعد البث
               </button>
             )}
+            {open && governs && closeBlocker && <p className="self-center text-xs text-slate-600">{closeBlocker}</p>}
             {open && governs && (
               <button
                 type="button"
-                onClick={async () => (await confirmDialog({ title: 'إلغاء التكليف', message: 'تتوقف المهام المفتوحة ولا يُحتسب التكليف في الإنتاج.', confirmLabel: 'إلغاء التكليف', cancelLabel: 'تراجع', danger: true })) && act(() => apiService.updateCard(card.id, (c) => ({ ...c, status: 'CANCELLED' })), 'أُلغي التكليف')}
+                onClick={async () => {
+                  const reason = await promptDialog({ title: 'إلغاء التكليف', label: 'سبب الإلغاء', multiline: true, required: true, confirmLabel: 'إلغاء التكليف' });
+                  if (reason?.trim()) act(() => apiService.updateCard(card.id, c => ({ ...c, status: 'CANCELLED', cancellationReason: reason.trim() })), 'أُلغي التكليف وحُفظت مخرجاته');
+                }}
                 className={`${BTN} border border-slate-200 text-slate-700`}
               >
                 إلغاء التكليف

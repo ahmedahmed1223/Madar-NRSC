@@ -6,6 +6,7 @@ import { confirmSaved } from '../../services/confirmSave';
 import { notify } from '../../services/notify';
 import { cardKindName, stepTypeName, stepTypesOf, type ProductionCard } from '../../shared/productionCards';
 import { duplicateTemplate, RULE_KINDS, type WorkflowTemplate } from '../../shared/workflowTemplates';
+import { assignmentTemplate, mayManageTemplate, publishedWorkflow, templateScope } from '../../shared/workflowPublication';
 import { AR, countLabel } from '../../shared/arabicPlural';
 
 interface TemplatesPanelProps {
@@ -22,6 +23,7 @@ const BTN = 'inline-flex items-center gap-1.5 min-h-11 px-3 py-2 rounded-lg text
 /** «القوالب»: the workflows assignments are created from; supervisors create, copy, edit and archive them. */
 export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards, canManage, onUse, onEdit, onNew }) => {
   const stepTypes = stepTypesOf(apiService.getSettings());
+  const currentUser = apiService.getCurrentUser();
   const [showArchived, setShowArchived] = useState(false);
   const shown = templates.filter((t) => !!t.archived === showArchived);
   const used = (id: string) => cards.filter((c) => c.templateId === id).length;
@@ -53,11 +55,17 @@ export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards
       </div>
       {shown.length === 0 && <p className="text-center text-xs text-slate-500 py-10 bg-white border border-dashed border-slate-300 rounded-2xl">{showArchived ? 'لا قوالب مؤرشفة.' : 'لا قوالب بعد.'}</p>}
       <ul className="grid gap-3 md:grid-cols-2">
-        {shown.map((t) => (
+        {shown.map((t) => {
+          const scope = templateScope(t);
+          const published = publishedWorkflow(t);
+          const editable = !!currentUser && mayManageTemplate(currentUser, t, canManage);
+          const usable = assignmentTemplate(t);
+          return (
           <li key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-bold text-slate-900">{t.name}</h3>
               <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">{cardKindName(t.kind)}</span>
+              <span className="text-slate-700">{scope === 'shared' ? 'مشترك' : scope === 'news' ? 'مسار الأخبار' : 'مسار البرامج'} · {published ? `الإصدار المنشور ${published.version}` : 'مسودة غير منشورة'}</span>
               {t.priority === 'URGENT' && <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold">عاجل</span>}
               {t.builtIn && <span className="px-2 py-0.5 rounded-md border border-slate-200 text-slate-600">جاهز</span>}
             </div>
@@ -72,12 +80,13 @@ export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards
             <p className="text-2xs text-slate-500">{countLabel(t.steps.length, AR.task)} · {used(t.id) ? `استُخدم في ${countLabel(used(t.id), { one: 'تكليف واحد', two: 'تكليفين', few: 'تكليفات', many: 'تكليفاً' })}` : 'لم يُستخدم بعد'}</p>
             {canManage && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {!t.archived && (
-                  <button type="button" onClick={() => onUse(t)} className={`${BTN} bg-blue-600 text-white`}>
+                {usable && (
+                  <button type="button" onClick={() => onUse(usable)} className={`${BTN} bg-blue-600 text-white`}>
                     <Play className="w-3.5 h-3.5" />
                     إنشاء تكليف
                   </button>
                 )}
+                {editable && <>
                 <button type="button" onClick={() => onEdit(t)} className={`${BTN} border border-slate-200 text-slate-700`}>
                   <Pencil className="w-3.5 h-3.5" />
                   تعديل
@@ -103,10 +112,12 @@ export const TemplatesPanel: React.FC<TemplatesPanelProps> = ({ templates, cards
                     حذف
                   </button>
                 )}
+                </>}
               </div>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

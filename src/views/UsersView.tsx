@@ -156,6 +156,12 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch,
   /** Resolves true once the server accepted the account; false keeps the form open with what was typed. */
   const handleSaveUser = async (userData: Partial<User>, initialPassword?: string): Promise<boolean> => {
     try {
+      if (!userData.id && initialPassword) {
+        const saved = await ApiService.createUserWithPassword(userData, initialPassword);
+        loadData();
+        showToast(`تم إنشاء الحساب: ${saved.fullName}`);
+        return true;
+      }
       const saved = ApiService.saveUser(userData);
       loadData();
       if (initialPassword) {
@@ -165,11 +171,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser, onUserSwitch,
         try {
           await authClient.setUserPassword(saved.id, initialPassword);
         } catch (err) {
-          if (!userData.id) {
-            // A newly created account without credentials must not remain in the roster.
-            ApiService.deleteUser(saved.id);
-            throw err;
-          }
           loadData();
           notify({ type: 'warning', message: `حُفظت بيانات الحساب، لكن تعذر تغيير كلمة المرور: ${(err as Error).message || 'حاول مرة أخرى'}` });
           return false;

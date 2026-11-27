@@ -1,4 +1,8 @@
+import { apiFetch } from '../../services/http';
+import { notify } from '../../services/notify';
+import { PrimaryStorageSettings, type BackupPrimaryReadiness } from './PrimaryStorageSettings';
 import { useEffect, useState } from 'react';
+import { DropboxAuthorization, DropboxEnvironmentKeys } from './DropboxAuthorization';
 import { CheckCircle2, Cloud, Copy, ExternalLink, FolderTree, KeyRound, RefreshCw, Save, Server, TriangleAlert } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
@@ -63,15 +67,18 @@ export function StorageSettings() {
   const [networksText, setNetworksText] = useState(() => settings.share.localNetworks.join('\n'));
   const [status, setStatus] = useState<StorageStatus | null>(null);
   const [statusError, setStatusError] = useState('');
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [backupReadiness, setBackupReadiness] = useState<BackupPrimaryReadiness | null>(null);
+  const [message, setMessageState] = useState<{ ok: boolean; text: string } | null>(null);
+  const setMessage = (feedback: { ok: boolean; text: string } | null) => {
+    setMessageState(feedback);
+    if (feedback) notify({ type: feedback.ok ? 'success' : 'error', message: feedback.text });
+  };
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState('');
-  const [dbx, setDbx] = useState({ appKey: '', appSecret: '', code: '' });
   const [dropboxChecks, setDropboxChecks] = useState<Partial<Record<DropboxCheck, DropboxVerification>>>({});
   const [drive, setDrive] = useState({ clientId: '', clientSecret: '' });
   const [redirectUri, setRedirectUri] = useState('');
   const [token, setToken] = useState('');
-  const [showDropboxSecret, setShowDropboxSecret] = useState(false);
   const [showDriveSecret, setShowDriveSecret] = useState(false);
 
   const current: ResolvedStorageSettings = { ...settings, share: { ...settings.share, localNetworks: networksText.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean) } };
@@ -87,6 +94,10 @@ export function StorageSettings() {
   };
   useEffect(() => {
     void refresh();
+    const backupCheck = new AbortController();
+    void apiFetch<{ data: { primaryDestinations?: BackupPrimaryReadiness } }>('/api/v1/db/backup-status', { signal: backupCheck.signal })
+      .then(result => { if (!backupCheck.signal.aborted) setBackupReadiness(result.data.primaryDestinations ?? null); })
+      .catch(() => undefined);
     // Back from Google's consent page.
     const address = new URL(window.location.href);
     const result = address.searchParams.get('storage');
@@ -96,7 +107,7 @@ export function StorageSettings() {
       writeBrowserHistory('replace', window.history.state, address.pathname + address.search + address.hash);
     }
     const t = window.setInterval(refresh, 30_000);
-    return () => window.clearInterval(t);
+    return () => { window.clearInterval(t); backupCheck.abort(); };
   }, []);
 
   const run = async (label: string, fn: () => Promise<void>) => {
@@ -140,10 +151,25 @@ export function StorageSettings() {
   };
 
   const q = status?.queue;
+  const cloudSummary = (provider: 'dropbox' | 'gdrive') => {
+    if (!status?.[provider].connected) return 'غير مربوط';
+    if (status.primaryMedia === provider) return 'وجهة الوسائط الأساسية';
+    return status[provider].enabled ? 'النسخ الإضافي مفعّل' : 'متاح للتصفح';
+  };
   const checkDropbox = (check: DropboxCheck) => run(`dbx-check-${check}`, async () => {
     setDropboxChecks((prev) => ({ ...prev, [check]: undefined }));
     const result = await storageClient.verifyDropbox(check);
     setDropboxChecks((prev) => ({ ...prev, [check]: result }));
+    const checks = [
+      { label: 'ربط Dropbox', status: result.credentials },
+      { label: 'مجلد Dropbox', status: result.folder },
+      { label: 'قراءة ملفات Dropbox', status: result.read },
+      { label: 'كتابة ملفات Dropbox', status: result.write },
+    ];
+    const problem = checks.find(item => item.status && item.status !== 'verified');
+    setMessage(problem?.status ? { ok: false, text: problem.label + ' · ' + DROPBOX_CHECK_MESSAGES[problem.status] } : {
+      ok: true, text: check === 'connection' ? 'نجح فحص الاتصال بمجلد Dropbox.' : 'نجح فحص أذونات القراءة والكتابة في Dropbox.',
+    });
   });
   const connectionCheck = dropboxChecks.connection;
   const permissionCheck = dropboxChecks.permissions;
@@ -152,16 +178,17 @@ export function StorageSettings() {
   return (
     <form onSubmit={save} className="py-4 space-y-8" aria-label="التخزين">
       <section aria-labelledby="storage-overview" className="space-y-3">
-        <h2 id="storage-overview" className="text-lg font-bold text-slate-900">أين تُحفظ المواد</h2>
+        <h2 id="storage-overview" className="text-lg font-bold text-slate-900">التخزين</h2>
+        <PrimaryStorageSettings settings={settings} status={status} backups={backupReadiness} disabled={saving} onChange={(key, value) => setSettings(previous => ({ ...previous, [key]: value }))} />
         <p className="text-sm text-slate-600 max-w-3xl leading-6">
-          كل ملف يُرفع إلى المكتبة يُحفظ أولاً على الخادم، ثم يُنسخ تلقائياً إلى Dropbox أو Google Drive إن كانا مربوطين ومفعّلين. الزملاء داخل شبكة المحطة يستطيعون أيضاً حفظ نسخة في المجلد المشترك. ويمكن من المكتبة البحث في هذه الأماكن وإضافة ملف موجود فيها دون نسخه.
+          عند اختيار خادم مدار للوسائط، تعمل خيارات النسخ الإضافية إلى الخدمات المربوطة أدناه. يمكن تصفّح الملفات الموجودة أصلًا في الخدمة وإضافتها إلى المكتبة من مكانها.
         </p>
         {statusError && <p role="alert" className="text-sm text-red-700">{statusError}</p>}
         <dl className="grid grid-cols-2 lg:grid-cols-4 border-y border-slate-200 divide-x divide-x-reverse divide-slate-200">
           {[
-            { label: 'Dropbox', value: status?.dropbox.connected ? (status.dropbox.enabled ? 'النسخ مفعّل' : 'النسخ متوقف') : 'غير مربوط', ok: !!status?.dropbox.connected && status.dropbox.enabled },
-            { label: 'Google Drive', value: status?.gdrive.connected ? (status.gdrive.enabled ? 'مفعّل' : 'مربوط وغير مفعّل') : 'غير مربوط', ok: !!status?.gdrive.connected && status.gdrive.enabled },
-            { label: 'المجلد المشترك', value: !status?.share.enabled ? 'غير مفعّل' : status.share.mode === 'direct' ? 'مركّب على الخادم' : status.share.bridgeOnline ? 'الجسر متصل' : status.share.mode === 'bridge' ? 'الجسر غير متصل' : 'بلا جسر', ok: !!status?.share.enabled && (status.share.mode === 'direct' || status.share.bridgeOnline) },
+            { label: 'Dropbox', value: cloudSummary('dropbox'), ok: !!status?.dropbox.connected },
+            { label: 'Google Drive', value: cloudSummary('gdrive'), ok: !!status?.gdrive.connected },
+            { label: 'المجلد المشترك', value: status?.primaryMedia === 'nas' && status.share.mode === 'direct' ? 'وجهة الوسائط الأساسية' : !status?.share.enabled ? 'غير مفعّل' : status.share.mode === 'direct' ? 'مركّب على الخادم' : status.share.bridgeOnline ? 'الجسر متصل' : status.share.mode === 'bridge' ? 'الجسر غير متصل' : 'بلا جسر', ok: (status?.primaryMedia === 'nas' || !!status?.share.enabled) && (status.share.mode === 'direct' || status.share.bridgeOnline) },
             { label: 'بانتظار النسخ', value: q ? `${q.pending}${q.failed ? ` · ${q.failed} تعذّر` : ''}` : '—', ok: !!q && !q.failed },
           ].map((m) => (
             <div key={m.label} className="px-4 py-3">
@@ -180,13 +207,13 @@ export function StorageSettings() {
             </button>
           )}
         </div>
-        <label className="flex items-start gap-3 min-h-11 text-sm max-w-3xl">
+        {settings.primaryMedia === 'local' && <label className="flex items-start gap-3 min-h-11 text-sm max-w-3xl">
           <input type="checkbox" className="mt-1 w-4 h-4" checked={!settings.keepLocalCopy} onChange={(e) => setSettings({ ...settings, keepLocalCopy: !e.target.checked })} />
           <span>
             <span className="font-semibold text-slate-900">وفّر مساحة الخادم</span>
             <span className="block text-slate-600">يُحذف ملف الخادم بعد التأكد من وجوده في Dropbox أو Google Drive، ويُقرأ منهما عند فتحه.</span>
           </span>
-        </label>
+        </label>}
       </section>
 
       {/* Dropbox */}
@@ -196,6 +223,9 @@ export function StorageSettings() {
           {status && (status.dropbox.connected ? <StatusChip ok={false}>بيانات الربط محفوظة{status.dropbox.account ? ` · ${status.dropbox.account}` : ''}</StatusChip> : <StatusChip ok={false}>غير مربوط</StatusChip>)}
           {status?.dropbox.lastError && <StatusChip ok={false} warn>آخر خطأ: {status.dropbox.lastError}</StatusChip>}
         </div>
+        {status?.dropbox.connected && !status.dropbox.enabled && (
+          <p role="status" className="text-sm text-slate-700">الربط محفوظ والنسخ متوقف. يمكنك تصفح Dropbox الآن من مكتبة الوسائط. ولنسخ المواد تلقائياً، حدّد المجلد وفعّل «انسخ ملفات المكتبة إلى Dropbox» ثم اضغط «حفظ إعدادات التخزين».</p>
+        )}
         <div className="grid sm:grid-cols-2 gap-4 max-w-3xl">
           <label className="flex items-center gap-2 min-h-11 text-sm font-semibold">
             <input type="checkbox" className="w-4 h-4" checked={settings.dropbox.enabled} onChange={(e) => setSettings({ ...settings, dropbox: { ...settings.dropbox, enabled: e.target.checked } })} />
@@ -234,44 +264,21 @@ export function StorageSettings() {
           </div>
         </div>
         {status?.dropbox.managedByEnvironment ? (
-          <p className="text-sm text-slate-600">مفاتيح Dropbox محددة في إعدادات الخادم (متغيرات البيئة).</p>
-        ) : status?.dropbox.connected ? (
-          <button type="button" className={SECONDARY} disabled={!!busy} onClick={() => run('dbx-off', async () => {
-            if (!(await confirmDialog({ title: 'فصل Dropbox', message: 'يتوقف النسخ إلى Dropbox، والملفات التي لا توجد إلا فيه لن تُفتح حتى تعيد الربط. الملفات في Dropbox نفسها لا تُحذف.', confirmLabel: 'فصل', danger: true }))) return;
-            setStatus(await storageClient.disconnect('dropbox'));
-            setDropboxChecks({});
-          })}>فصل Dropbox</button>
+          <div><p className="mb-1 text-sm font-semibold">يدير الخادم ربط Dropbox عبر متغيرات البيئة.</p><DropboxEnvironmentKeys /></div>
         ) : (
-          <details className="max-w-3xl rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <summary className="cursor-pointer min-h-11 flex items-center font-semibold text-slate-900">ربط Dropbox</summary>
-            <ol className="mt-3 space-y-4 text-sm text-slate-700 list-decimal pr-5">
-              <li>أنشئ تطبيقاً في <a className="text-blue-700 underline" href="https://www.dropbox.com/developers/apps" target="_blank" rel="noreferrer">Dropbox App Console</a> (نوع الوصول: Full Dropbox أو App folder) وفعّل أذونات <span dir="ltr">files.content.read / files.content.write / files.metadata.read</span>.</li>
-              <li className="space-y-2">
-                <span>انسخ مفتاح التطبيق وسرّه:</span>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <input className={INPUT} dir="ltr" aria-label="App key" placeholder="App key" value={dbx.appKey} onChange={(e) => setDbx({ ...dbx, appKey: e.target.value.trim() })} />
-                  <span className="flex items-center gap-1"><input className={`${INPUT} min-w-0`} dir="ltr" type={showDropboxSecret ? 'text' : 'password'} autoComplete="off" aria-label="App secret" placeholder="App secret" value={dbx.appSecret} onChange={(e) => setDbx({ ...dbx, appSecret: e.target.value.trim() })} /><PasswordVisibilityButton visible={showDropboxSecret} onClick={() => setShowDropboxSecret(value => !value)} /></span>
-                </div>
-              </li>
-              <li>
-                <button type="button" className={SECONDARY} disabled={!dbx.appKey || !!busy} onClick={() => run('dbx-url', async () => { window.open(await storageClient.dropboxAuthorizeUrl(dbx.appKey), '_blank', 'noopener'); })}>
-                  <ExternalLink className="w-4 h-4" aria-hidden="true" /> افتح صفحة الموافقة في Dropbox
-                </button>
-              </li>
-              <li className="space-y-2">
-                <span>الصق الرمز الذي يظهر بعد الموافقة:</span>
-                <div className="flex flex-wrap gap-2">
-                  <input className={`${INPUT} sm:w-96`} dir="ltr" aria-label="رمز التفويض من Dropbox" value={dbx.code} onChange={(e) => setDbx({ ...dbx, code: e.target.value.trim() })} />
-                  <button type="button" className={PRIMARY} disabled={!dbx.appKey || !dbx.appSecret || !dbx.code || !!busy} onClick={() => run('dbx-connect', async () => {
-                    setStatus(await storageClient.connectDropbox(dbx.appKey, dbx.appSecret, dbx.code));
-                    setDropboxChecks({});
-                    setDbx({ appKey: '', appSecret: '', code: '' });
-                    setMessage({ ok: true, text: 'رُبط Dropbox. فعّل النسخ واحفظ الإعدادات.' });
-                  })}>ربط</button>
-                </div>
-              </li>
-            </ol>
-          </details>
+          <>
+            {status?.dropbox.connected && (
+              <button type="button" className={SECONDARY} disabled={!!busy} onClick={() => run('dbx-off', async () => {
+                if (!(await confirmDialog({ title: 'فصل Dropbox', message: 'يتوقف النسخ إلى Dropbox، والملفات التي لا توجد إلا فيه لن تُفتح حتى تعيد الربط. الملفات في Dropbox نفسها لا تُحذف.', confirmLabel: 'فصل', danger: true }))) return;
+                setStatus(await storageClient.disconnect('dropbox'));
+                setDropboxChecks({});
+              })}>فصل Dropbox</button>
+            )}
+            <DropboxAuthorization connected={!!status?.dropbox.connected} onFeedback={setMessage} onConnected={next => {
+              setStatus(next);
+              setDropboxChecks({});
+            }} />
+          </>
         )}
       </fieldset>
 
@@ -416,7 +423,7 @@ export function StorageSettings() {
           <Save className="w-4 h-4" aria-hidden="true" /> {saving ? 'جارٍ الحفظ...' : 'حفظ إعدادات التخزين'}
         </button>
         {message && (
-          <p role={message.ok ? 'status' : 'alert'} className={`text-sm font-semibold ${message.ok ? 'text-emerald-800' : 'text-red-700'}`}>{message.text}</p>
+          <p className={`text-sm font-semibold ${message.ok ? 'text-emerald-800' : 'text-red-700'}`}>{message.text}</p>
         )}
       </div>
     </form>

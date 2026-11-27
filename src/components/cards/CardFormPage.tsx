@@ -1,3 +1,5 @@
+import { WORKFLOW_TRACKS } from '../../shared/workflowTracks';
+import { StepExecutionFields } from './StepExecutionFields';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { FormPage } from '../common/FormPage';
@@ -259,7 +261,7 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
                   </select>
                   <button type="button" disabled={index === 0} onClick={() => moveStep(index, -1)} aria-label="تقديم المهمة" className="p-2 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40"><ArrowUp className="w-4 h-4" /></button>
                   <button type="button" disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)} aria-label="تأخير المهمة" className="p-2 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40"><ArrowDown className="w-4 h-4" /></button>
-                  <button type="button" onClick={() => setSteps((list) => list.filter((s) => s.id !== step.id))} aria-label="حذف المهمة" className="p-2 rounded-lg border border-rose-200 text-rose-700"><Trash2 className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => setSteps((list) => list.filter(s => s.id !== step.id).map(s => ({ ...s, dependencies: s.dependencies?.filter(dep => dep.stepId !== step.id) })))} aria-label="حذف المهمة" className="p-2 rounded-lg border border-rose-200 text-rose-700"><Trash2 className="w-4 h-4" /></button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                   <div className="lg:col-span-2">
@@ -295,8 +297,15 @@ export const CardFormPage: React.FC<CardFormPageProps> = ({ isOpen, onClose, car
                     <label htmlFor={`step-due-${step.id}`} className={LABEL}>التسليم</label>
                     <input id={`step-due-${step.id}`} type="datetime-local" value={localInput(step.dueAt)} onChange={(e) => patchStep(step.id, { dueAt: fromInput(e.target.value) })} className={INPUT} />
                   </div>
+                  <StepExecutionFields step={step} tracks={WORKFLOW_TRACKS.filter(track => apiService.cardActor({ kind: track === 'news' ? 'NEWS' : 'PROGRAM' }, false).canManage)} choices={steps.map(item => ({ id: item.id, label: item.title || stepTypes.find(type => type.id === item.type)?.name || item.type }))} onChange={changes => patchStep(step.id, changes)} />
                   <div>
-                    <label htmlFor={`step-cx-${step.id}`} className={LABEL}>التعقيد</label>
+                    <label htmlFor={`step-reviewer-${step.id}`} className={LABEL}>مراجع الخطوة</label>
+                    <select id={`step-reviewer-${step.id}`} value={step.reviewerId || ''} onChange={event => patchStep(step.id, { reviewerId: event.target.value || undefined })} className={INPUT}>
+                      <option value="">بلا مراجعة مستقلة</option>
+                      {step.reviewerId && !people.some(person => person.id === step.reviewerId) && <option value={step.reviewerId}>{step.reviewerName || 'المراجع الحالي'}</option>}
+                      {people.map(person => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+                    </select>
+                    <label htmlFor={`step-cx-${step.id}`} className={`${LABEL} mt-3`}>التعقيد</label>
                     <select id={`step-cx-${step.id}`} value={step.complexity} onChange={(e) => patchStep(step.id, { complexity: Number(e.target.value) as 1 | 2 | 3 })} className={INPUT}>
                       {COMPLEXITIES.map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>

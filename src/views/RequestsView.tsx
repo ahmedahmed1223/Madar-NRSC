@@ -1,4 +1,6 @@
 import { createDepartmentLabeler } from '../services/departmentLabels';
+import { handlesSupport, supportRecipient, supportTrack } from '../shared/trackSupport';
+import { supportDestinations } from '../components/requests/supportDestinations';
 import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { confirmDialog, promptDialog } from '../services/dialogs';
@@ -149,7 +151,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
     && matchesQuery(query, r.title, r.details, r.requesterName, r.assigneeName, r.addressedToName, r.link?.title, r.lines || []);
   const list = focusedRequest ? [focusedRequest] : listTab === 'DELIVERY' ? delivery.filter(matchesFilters) : requests
       .filter(r => !focusSegmentId || r.link?.segmentId === focusSegmentId)
-      .filter(r => listTab === 'ALL' || (listTab === 'INBOX' ? r.departmentId === (canManage ? dept : myDept) : r.requesterId === currentUser.id))
+      .filter(r => listTab === 'ALL' || (listTab === 'INBOX' ? (supportTrack(r.type) ? handlesSupport(r, currentUser) : r.departmentId === (canManage ? dept : myDept)) : r.requesterId === currentUser.id))
       .filter((r) => !!focusSegmentId || showClosed || pendingIds.has(r.id) || !isRequestClosed(r.status))
       .filter(r => !!focusSegmentId || matchesFilters(r))
       .sort((a, b) => Number(b.priority === 'URGENT') - Number(a.priority === 'URGENT') || b.createdAt.localeCompare(a.createdAt));
@@ -157,7 +159,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
   const newsById = new Map(canSeeNews && list.some(request => request.link?.kind === 'news') ? apiService.getNews().map(item => [item.id, item] as const) : []);
   const episodesById = new Map(canSeeEpisodes && list.some(request => request.link?.episodeId) ? apiService.getEpisodes().map(item => [item.id, item] as const) : []);
   const mediaById = new Map(canSeeMedia && list.some(request => request.resultMediaId || request.sourceMediaIds?.length) ? apiService.getMedia().map(item => [item.id, item] as const) : []);
-  const inboxCount = requests.filter((r) => r.departmentId === myDept && (pendingIds.has(r.id) || !isRequestClosed(r.status))).length;
+  const inboxCount = requests.filter(r => (supportTrack(r.type) ? handlesSupport(r, currentUser) : r.departmentId === myDept) && (pendingIds.has(r.id) || !isRequestClosed(r.status))).length;
 
   return (
     <div className="space-y-5">
@@ -256,7 +258,11 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
         )}
         {list.map((r) => {
           const type = requestTypeOf(r.type);
-          const isHandler = departmentIdOf(currentUser) === r.departmentId || canManage;
+          const track = supportTrack(r.type);
+          const isHandler = track ? handlesSupport(r, currentUser) : departmentIdOf(currentUser) === r.departmentId || canManage;
+          const reroute = track && isHandler && r.status === 'OPEN' && supportRecipient(currentUser, track, true)
+            ? supportDestinations(currentUser, track, false, r.requesterId) : [];
+          const sourceCard = track && r.supportCardId && apiService.getCard(r.supportCardId);
           const isRequester = r.requesterId === currentUser.id;
           const pendingWrite = pendingIds.has(r.id);
           const busyRow = busy.has(r.id) || pendingWrite;
@@ -281,7 +287,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
               <MessageOriginLabel origin={r.messageOrigin} />
               {r.details && <p className="text-xs text-slate-600 whitespace-pre-line break-words">{r.details}</p>}
               {!!r.sourceMediaIds?.length && <div className="space-y-1.5">
-                <h3 className="text-xs font-bold text-slate-700">ملفات المصدر وعلامات المونتاج</h3>
+                <h3 className="text-xs font-bold text-slate-700">{track ? 'المواد المطلوبة للمساندة' : 'ملفات المصدر وعلامات المونتاج'}</h3>
                 {r.sourceMediaIds.map(id => {
                   const source = mediaById.get(id);
                   return <div key={id} className="p-2 border border-slate-200 rounded-lg text-xs">
@@ -303,7 +309,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                   من: {r.requesterName}
                   {r.requesterDepartmentId ? ` (${departmentName(r.requesterDepartmentId)})` : ''}
                 </span>
-                {r.status === 'OPEN' && !pendingWrite && <span>لدى قسم {departmentName(r.departmentId)} · بانتظار الاستلام</span>}
+                {r.status === 'OPEN' && !pendingWrite && !track && <span>لدى قسم {departmentName(r.departmentId)} · بانتظار الاستلام</span>}
+                {track && (sourceCard ? <button type="button" className="min-h-11 font-semibold text-blue-700" onClick={() => navigateTo.emit(`/cards/${encodeURIComponent(sourceCard.id)}`)}>التكليف الأصلي · {sourceCard.title}</button> : <span>التكليف الأصلي خارج نطاق حسابك</span>)}
                 {r.addressedToName && !r.assigneeName && <span className="font-bold text-violet-700">موجّه إلى: {r.addressedToName}</span>}
                 {r.assigneeName && !pendingWrite && <span>{r.status === 'OPEN' ? 'آخر مستلم' : 'تولّى الطلب'}: {r.assigneeName}</span>}
                 {dueAt ? <span>مطلوب قبل: <time dateTime={dueAt}>{when(dueAt)}</time></span> : !isRequestClosed(r.status) && <span>موعد التسليم غير محدد</span>}
@@ -320,8 +327,24 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                 {resultMedia && <button type="button" onClick={() => navigateTo.emit(`/media/${encodeURIComponent(resultMedia.id)}`)} className="min-h-11 text-blue-700 hover:underline break-words min-w-0">المادة المسلّمة: {resultMedia.title || resultMedia.fileName}</button>}
               </div>
               {r.resolution && <p className="text-2xs text-rose-700">السبب: {r.resolution}</p>}
+              {track && !!r.history?.length && <details className="text-xs text-slate-700">
+                <summary className="min-h-9 cursor-pointer font-semibold">سجل المساندة</summary>
+                <ol className="space-y-1 ps-4">{r.history.map((entry, i) => <li key={i}>{when(entry.at)} · {entry.byName} · {entry.note || requestStatusName(entry.status)}</li>)}</ol>
+              </details>}
 
               <fieldset disabled={busyRow || !isOnline} className="flex flex-wrap gap-2 pt-1 min-w-0 disabled:opacity-60">
+                {reroute.length > 0 && <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
+                  event.preventDefault();
+                  const id = new FormData(event.currentTarget).get('destination');
+                  if (typeof id === 'string' && id) void changeStatus(r, { addressedToId: id }, 'أُعيد توجيه طلب المساندة');
+                }}>
+                  <label className="grid gap-1 text-xs font-semibold">إعادة توجيه المساندة
+                    <select required name="destination" defaultValue="" className="min-h-11 rounded-lg border px-2">
+                      <option value="">اختر زميلاً في المسار</option>{reroute.map(user => <option key={user.id} value={user.id}>{user.fullName}</option>)}
+                    </select>
+                  </label>
+                  <button className="min-h-11 px-2 text-xs font-bold text-blue-700">تأكيد إعادة التوجيه</button>
+                </form>}
                 {r.proposedDueAt && !isRequestClosed(r.status) && <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="الموعد البديل">
                   <span>موعد مقترح <time dateTime={r.proposedDueAt}>{when(r.proposedDueAt)}</time></span>
                   {isRequester && <>
@@ -345,7 +368,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({ currentUser, onOpenN
                     استلام الطلب
                   </button>
                 )}
-                {isHandler && (r.status === 'OPEN' || r.status === 'ACCEPTED') && (
+                {isHandler && ((!track && r.status === 'OPEN') || r.status === 'ACCEPTED') && (
                   <button
                     type="button"
                     onClick={() => complete(r)}

@@ -10,6 +10,7 @@ import { screenLabel } from './screens';
 import { stationsOf, type Station } from './stations';
 import { departmentName, departmentsOf, type Department } from './departments';
 import { stepTypesOf } from './productionCards';
+import { WORKFLOW_DELEGATION_LABEL, WORKFLOW_ROLE_LABEL, WORKFLOW_TRACK_LABEL, WORKFLOW_TRACKS, type WorkflowDelegations, type WorkflowRoles } from './workflowTracks';
 
 /** Arabic names of every audit action type the server writes (older rows' types included). */
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
@@ -27,6 +28,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   USER_CREATE: 'إضافة مستخدم', USER_UPDATE: 'تعديل بيانات مستخدم', USER_DELETE: 'حذف مستخدم',
   USER_SUSPEND: 'تجميد حساب', USER_ACTIVATE: 'إعادة تنشيط حساب',
   ROLE_CHANGE: 'تغيير دور مستخدم', PERMISSION_OVERRIDE: 'استثناءات الصلاحيات',
+  WORKFLOW_ACCESS_CHANGE: 'أدوار وتفويضات مسارات الإعداد',
   USER_STATION_CHANGE: 'نقل مستخدم بين المحطات', USER_DEPARTMENT_CHANGE: 'نقل مستخدم بين الأقسام', MANAGED_SCOPE_CHANGE: 'محطات المدير العام',
   ROLE_CREATE: 'إنشاء دور', ROLE_UPDATE: 'تعديل دور', ROLE_DELETE: 'حذف دور', PERMISSIONS_UPDATED: 'تعديل الصلاحيات',
   STATION_CHANGE: 'تعديل المحطات', STATION_REMOVE: 'حذف محطة', DEPARTMENT_CHANGE: 'تعديل الأقسام الإدارية',
@@ -71,12 +73,28 @@ export function overridesDiff(before: string[] = [], after: string[] = []): stri
   return parts.join('؛ ') || 'بلا تغيير';
 }
 
+function describeWorkflowAccess(roles?: WorkflowRoles | null, delegations?: WorkflowDelegations): string {
+  return list(WORKFLOW_TRACKS.map(track => {
+    const role = roles?.[track];
+    const access = roles == null ? 'صلاحيات الدور الحالي' : role ? WORKFLOW_ROLE_LABEL[track][role] : 'بلا دور إعداد';
+    const grant = delegations?.[track];
+    const delegation = grant ? `، تفويض: ${list(grant.permissions.map(permission => WORKFLOW_DELEGATION_LABEL[permission]))} حتى ${grant.expiresAt}` : '';
+    return `${WORKFLOW_TRACK_LABEL[track]}: ${access}${delegation}`;
+  }));
+}
+
 /** Audit entries for a change to a user account (create, delete, role, exceptions, suspension, station, department, profile). */
 export function userAuditEntries(before: any, after: any, ctx: { roles: RoleDefinition[]; stations: Station[]; groups?: { id: string; name: string }[] }): AuditEntryDraft[] {
   const target = after ?? before;
   const name = target?.fullName || target?.email || target?.id;
   const base = { targetEntity: 'USER', targetId: String(target?.id || '') };
   const out: AuditEntryDraft[] = [];
+  if (after && !after.deletedAt && (
+    !same(before?.workflowRoles, after.workflowRoles) || !same(before?.workflowDelegations || {}, after.workflowDelegations || {})
+  )) {
+    out.push({ ...base, actionType: 'WORKFLOW_ACCESS_CHANGE', severity: 'SECURITY',
+      details: `صلاحيات الإعداد لـ${name}: ${q(describeWorkflowAccess(before?.workflowRoles, before?.workflowDelegations))} ← ${q(describeWorkflowAccess(after.workflowRoles, after.workflowDelegations))}` });
+  }
   if (!before && after) {
     const privileged = ['SUPER_ADMIN', 'ADMIN'].includes(after.role) || !!after.customRoleId || (after.customPermissions?.length ?? 0) > 0;
     out.push({ ...base, actionType: 'USER_CREATE', severity: privileged ? 'SECURITY' : 'INFO',

@@ -6,12 +6,13 @@ import { CATEGORY_HAS_CHILDREN, categoryParentError } from '../shared/newsCatego
 import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
 import { preparePersonalTask, type PersonalTask, type PersonalTaskInput } from '../shared/personalTasks';
 import { assignmentScope } from '../shared/assignmentScope';
+import { handlesSupport, supportRecipient, supportTrack } from '../shared/trackSupport';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import { sanitizeWorkSections, type WorkSectionPreferences } from '../shared/workContext';
 import { savedFilterRequest } from './savedNewsFilterTransport';
 import { handoverRequest } from './handoverTransport';
 import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
-import type { SyncOpResult } from '../shared/collections';
+import type { EntityRow, SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
 import { createSearchIndex, matchesSearch, parseQuery, prepareText, scorePrepared, type SearchIndex } from '../shared/arabicSearch';
@@ -88,6 +89,9 @@ import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
 import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
 import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
+import { cardWorkflowAccess, workflowAccess } from '../shared/workflowAccess';
+import { mayManageTemplate } from '../shared/workflowPublication';
+import { WORKFLOW_TRACKS } from '../shared/workflowTracks';
 import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
 import { applyDepartmentSettings, departmentIdOf, findDepartmentId } from '../shared/departments';
 import { rememberStationSettings } from '../shared/stations';
@@ -338,6 +342,14 @@ export class ApiService {
     return this.getUsers().find((u) => u.id === id);
   }
 
+  static async createUserWithPassword(user: Partial<User>, password: string): Promise<User> {
+    const { row } = await apiFetch<{ row: EntityRow }>('/api/v1/users', {
+      method: 'POST', json: { user, password }, signal: AbortSignal.timeout(20_000),
+    });
+    dataStore.mergeSearchRows([row]);
+    return row.d as User;
+  }
+
   static saveUser(user: Partial<User> & { id?: string }): User {
     const users = this.getUsers();
     if (user.id) {
@@ -356,6 +368,8 @@ export class ApiService {
       phone: user.phone || '',
       role: user.role || 'JOURNALIST',
       customRoleId: user.customRoleId,
+      workflowRoles: user.workflowRoles,
+      workflowDelegations: user.workflowDelegations,
       avatarUrl: user.avatarUrl || '/avatar.svg',
       jobTitle: user.jobTitle || 'صحفي',
       departmentId: user.departmentId || 'newsroom',
@@ -1313,6 +1327,13 @@ export class ApiService {
     );
   }
 
+  /** Reports a correction already passed by the live reader directly to the broadcast desk. */
+  static async reportPrompterCorrection(showId: string, segmentId: string, revision: string): Promise<void> {
+    await apiFetch(`/api/v1/onair/${encodeURIComponent(showId)}/prompter-correction`, {
+      method: 'POST', json: { segmentId, revision }, signal: AbortSignal.timeout(5000),
+    });
+  }
+
   // --- REQUESTS BETWEEN DEPARTMENTS ---
   // --- BULLETINS ---
   static getBulletins(): Bulletin[] {
@@ -1359,12 +1380,13 @@ export class ApiService {
   }
 
   /** Saves a story after the same checks the server applies (the server has the last word). */
-  static saveBulletinStory(data: Partial<BulletinStory> & { bulletinId: string }): BulletinStory {
+  static saveBulletinStory(data: Partial<BulletinStory> & { bulletinId: string }, base?: EntityRow): BulletinStory {
     const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
     const now = new Date().toISOString();
     const me = this.getCurrentUser();
     const idx = data.id ? all.findIndex((x) => x.id === data.id) : -1;
-    const before = idx >= 0 ? all[idx] : null;
+    if (base && (base.c !== 'bulletinStories' || base.id !== data.id || idx < 0)) throw new Error('نسخة القصة غير متاحة');
+    const before = base ? base.d as BulletinStory : idx >= 0 ? all[idx] : null;
     const bulletin = this.getBulletins().find((b) => b.id === data.bulletinId);
     const actor = this.bulletinActor();
     const siblings = this.getBulletinStories(data.bulletinId);
@@ -1400,9 +1422,12 @@ export class ApiService {
     next.approvals = approvals;
     if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
     if (next.status !== 'APPROVED') Object.assign(next, { approvedById: undefined, approvedByName: undefined, approvedAt: undefined });
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.bulletinStories.storageKey, all);
+    if (base) dataStore.queueVersionedRow({ ...base, d: next });
+    else {
+      if (idx >= 0) all[idx] = next;
+      else all.push(next);
+      setStored(COLLECTIONS.bulletinStories.storageKey, all);
+    }
     return next;
   }
 
@@ -1482,9 +1507,10 @@ export class ApiService {
   /** Programme episodes and bulletins that can run in on-air mode. */
   static getAirShows(): any[] {
     const stories = this.getBulletinStories();
+    const current = new Map(this.getOnAirStates().filter(state => state.status === 'LIVE').map(state => [state.episodeId, state.currentSegmentId]));
     return [
       ...this.getEpisodes(),
-      ...this.getBulletins().map((b) => bulletinAsShow(b, stories.filter((x) => x.bulletinId === b.id))),
+      ...this.getBulletins().map((b) => bulletinAsShow(b, stories.filter((x) => x.bulletinId === b.id), current.get(b.id))),
     ];
   }
 
@@ -1504,6 +1530,7 @@ export class ApiService {
     const req: DeptRequest = {
       id: data.id || newId('req'),
       type: type.id,
+      ...(data.supportCardId ? { supportCardId: data.supportCardId } : {}),
       departmentId: type.departmentId,
       title: data.title.trim(),
       details: data.details?.trim() || '',
@@ -1540,7 +1567,9 @@ export class ApiService {
     const err = requestChangeError(before, after, {
       id: me.id,
       departmentId: departmentIdOf(me),
-      canManage: RbacService.hasPermission(me, 'requests.manage'),
+      canManage: !supportTrack(before.type) && RbacService.hasPermission(me, 'requests.manage'),
+      handlesSupport: handlesSupport(before, me),
+      routesSupport: !!supportTrack(before.type) && supportRecipient(me, supportTrack(before.type)!, true),
     });
     if (err) throw new Error(err);
     all[idx] = { ...after, updatedAt: new Date().toISOString() };
@@ -1563,9 +1592,14 @@ export class ApiService {
   }
 
   /** What the signed-in colleague may do on cards (the server applies the same rules). */
-  static cardActor(): CardActor {
+  static cardActor(card?: Pick<ProductionCard, 'kind' | 'target'> & Partial<Pick<ProductionCard, 'steps'>>, existing = true): CardActor {
     const me = this.getCurrentUser();
-    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: findDepartmentId(me), canManage: RbacService.hasPermission(me, 'cards.manage'), canWork: RbacService.hasPermission(me, 'cards.work') };
+    const legacy = { view: RbacService.hasPermission(me, 'cards.view'), manage: RbacService.hasPermission(me, 'cards.manage'), work: RbacService.hasPermission(me, 'cards.work') };
+    const access = card ? cardWorkflowAccess(me, card, legacy, existing) : {
+      canManage: WORKFLOW_TRACKS.some(track => workflowAccess(me, track, legacy, existing).canManage),
+      canWork: WORKFLOW_TRACKS.some(track => workflowAccess(me, track, legacy, existing).canWork),
+    };
+    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: findDepartmentId(me), ...access };
   }
 
   /** Creates or replaces a card after checking it with the rules the server enforces. */
@@ -1573,7 +1607,7 @@ export class ApiService {
     const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
     const idx = all.findIndex((c) => c.id === card.id);
     const before = idx === -1 ? null : all[idx];
-    const error = cardChangeError(before, card, this.cardActor(), cardContextOf(this.getSettings(), this.getUsers()));
+    const error = cardChangeError(before, card, this.cardActor(card, !!before), cardContextOf(this.getSettings(), this.getUsers()));
     if (error) throw new Error(error);
     const saved = { ...card, updatedAt: new Date().toISOString() };
     if (idx === -1) setStored(COLLECTIONS.productionCards.storageKey, [saved, ...all]);
@@ -1604,29 +1638,44 @@ export class ApiService {
   }
 
   /** Sends an earlier step back for rework with a reason (a reviewer, the owner or a supervisor). */
-  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string): ProductionCard {
-    return this.updateCard(cardId, (card) => sendBackCard(card, targetStepId, reason, fromStepId));
+  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string, dueAt?: string): ProductionCard {
+    return this.updateCard(cardId, (card) => {
+      const target = card.steps.find(step => step.id === targetStepId);
+      if (!target?.reviewerId) return sendBackCard(card, targetStepId, reason, fromStepId);
+      return { ...card, steps: card.steps.map(step => step.id === target.id
+        ? { ...step, status: step.assigneeId ? 'IN_PROGRESS' : 'TODO', returnedReason: reason.trim(), dueAt }
+        : step) };
+    });
   }
 
   /** Finishes a step; the minutes of this work session are added to the step's total, never replacing it. */
   static finishCardStep(cardId: string, stepId: string, note: string | undefined, sessionMinutes?: number): ProductionCard {
     const me = this.getCurrentUser();
-    return this.updateCard(cardId, (card) => ({
-      ...card,
-      steps: card.steps.map((s) => {
-        if (s.id !== stepId) return s;
-        const session = sessionMinutes && sessionMinutes > 0 ? [{ id: newId('tim'), minutes: Math.min(1440, Math.round(sessionMinutes)), byId: me.id, byName: me.fullName, at: new Date().toISOString() }] : [];
-        return {
-          ...s,
-          status: 'DONE' as const,
-          note: note?.trim() || undefined,
-          blockedReason: undefined,
-          waitingOnId: undefined,
-          timeLog: session.length ? [...(s.timeLog || []), ...session] : s.timeLog,
-          spentMinutes: (s.spentMinutes || 0) + timeLogMinutes(session) || undefined,
-        };
-      }),
-    }));
+    return this.updateCard(cardId, (card) => {
+      const step = card.steps.find(item => item.id === stepId);
+      if (!step) throw new Error('المهمة غير موجودة');
+      const text = note?.trim() || undefined;
+      const review = !!step.reviewerId;
+      if (review && !text && !card.mediaIds?.length && !card.links?.length) throw new Error('أضف ملاحظة التسليم أو أرفق المخرجات قبل المراجعة');
+      const session = sessionMinutes && sessionMinutes > 0 ? [{ id: newId('tim'), minutes: Math.min(1440, Math.round(sessionMinutes)), byId: me.id, byName: me.fullName, at: new Date().toISOString() }] : [];
+      const finished: CardStep = {
+        ...step,
+        status: review ? 'IN_REVIEW' : 'DONE',
+        note: text,
+        blockedReason: undefined,
+        waitingOnId: undefined,
+        timeLog: session.length ? [...(step.timeLog || []), ...session] : step.timeLog,
+        spentMinutes: (step.spentMinutes || 0) + timeLogMinutes(session) || undefined,
+      };
+      return {
+        ...card,
+        steps: card.steps.map(item => item.id === stepId ? finished : item),
+        log: review ? [...(card.log || []), {
+          id: newId('log'), kind: 'NOTE', delivery: 'FINAL', stepId, text: text || 'أُرفقت مخرجات التسليم',
+          mediaIds: card.mediaIds, deliveryLinks: card.links,
+        }] : card.log,
+      };
+    });
   }
 
   static deleteCard(id: string): void {
@@ -1644,7 +1693,9 @@ export class ApiService {
   static saveWorkflowTemplate(template: WorkflowTemplate): WorkflowTemplate {
     const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
     const idx = all.findIndex((t) => t.id === template.id);
-    const error = templateChangeError(idx === -1 ? null : all[idx], template, this.cardActor().canManage);
+    const before = idx === -1 ? null : all[idx];
+    const me = this.getCurrentUser();
+    const error = templateChangeError(before, template, mayManageTemplate(me, before || template, RbacService.hasPermission(me, 'cards.manage')));
     if (error) throw new Error(error);
     const saved = { ...template, name: template.name.trim(), updatedAt: new Date().toISOString() };
     if (idx === -1) setStored(COLLECTIONS.workflowTemplates.storageKey, [saved, ...all]);

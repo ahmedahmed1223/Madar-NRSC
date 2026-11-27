@@ -45,7 +45,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
             <BookOpen className="w-5 h-5 text-blue-600" />
             المساعدة
           </h1>
-          <p className="text-xs text-slate-500 mt-1">أدلة مختصرة لكل مهمة يومية. قسمك: {departmentName(myDept)}.</p>
+          <p className="text-xs text-slate-500 mt-1">دليل العمل اليومي وجولات حسب صلاحياتك. قسمك: {departmentName(myDept)}.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onOpenShortcuts} className="min-h-10 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
@@ -77,7 +77,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ currentUser, onOpenWhatsNew,
 
       <section aria-labelledby="help-tours-title" className="space-y-2">
         <h2 id="help-tours-title" className="text-sm font-bold text-slate-900">جولات تفاعلية</h2>
-        <p className="text-xs text-slate-600">تشير الجولة إلى الأزرار الحقيقية في الشاشة وتشرح كل واحد. الأسهم للتنقل وEsc للإنهاء.</p>
+        <p className="text-xs text-slate-600">اختر مسار العمل. تنتقل الجولة بين الشاشات وتوضح خطواته دون تغيير البيانات. استخدم الأسهم للتنقل وEsc للإنهاء.</p>
         <ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
           {toursFor(currentUser).map((tour) => (
             <li key={tour.id}>

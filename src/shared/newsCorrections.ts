@@ -6,3 +6,4 @@ export interface CreateCorrectionInput {
   newsId: string; expectedVersion: number; reason: string; summary: string;
   requestId: string; relatedCorrectionId?: string;
 }
+export const BULLETIN_SOURCE_CORRECTION = 'BULLETIN_SOURCE_CORRECTION';

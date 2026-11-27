@@ -12,6 +12,7 @@ export function broadcastArchiveFiles(state: BroadcastWithArchive, fallback: Bro
   const rows = broadcastOutcomes(state, fallback);
   const plan = state.archivedPlan || fallback;
   const newsIds = new Set(plan.flatMap(item => item.newsId ? [item.newsId] : []));
+  const requests = (state.correctionRequests || []).filter(item => item.startedAt === state.startedAt);
   const sections = plan.map(item => `${item.title}\n${item.script || 'لا نص محفوظ'}`);
   return {
     'manifest.json': JSON.stringify({
@@ -25,6 +26,10 @@ export function broadcastArchiveFiles(state: BroadcastWithArchive, fallback: Bro
     ]),
     'scripts.txt': sections.join('\n\n'),
     'guests.csv': toCsv([['الفقرة', 'الضيف'], ...plan.flatMap(item => item.guestNames.map(guest => [item.title, guest]))]),
+    ...(requests.length ? { 'correction-requests.csv': toCsv([
+      ['الفقرة', 'وقت البث', 'سبب الطلب', 'صاحب الطلب', 'وقت التسجيل', 'التصحيح المرتبط'],
+      ...requests.map(item => [item.segmentTitle, item.airedAt, item.reason, item.actorName, item.createdAt, item.correctionId]),
+    ]) } : {}),
     'corrections.csv': toCsv([
       ['الخبر', 'التصحيح', 'السبب', 'التاريخ'],
       ...corrections.filter(entry => newsIds.has(entry.newsId)).map(entry => [entry.newsId, entry.summary, entry.reason, entry.createdAt]),

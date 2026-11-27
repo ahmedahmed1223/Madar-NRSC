@@ -9,6 +9,7 @@ import { seedDatabase } from './src/server/seed';
 import { createApp } from './src/server/app';
 import { removeUpload } from './src/server/uploads';
 import { createScheduledBulletins, publishDueScheduledNews } from './src/server/scheduler';
+import { approveDueBulletinMedia } from './src/server/bulletinMediaReview';
 import { sendDuePersonalTaskReminders } from './src/server/personalTaskReminders';
 import { sendDueWorkReminders } from './src/server/workReminders';
 import { sendShiftGapNotices } from './src/server/shiftGapNotices';
@@ -215,6 +216,14 @@ async function main() {
   };
   timers.push(setInterval(scheduleBulletins, 10 * 60 * 1000));
   scheduleBulletins();
+
+  const updateMediaPreviews = () => {
+    try {
+      if (approveDueBulletinMedia(db)) changeBus.emit('rev', db.currentRev());
+    } catch (error) { logger.error('scheduled bulletin media review failed', { error: String(error) }); }
+  };
+  timers.push(setInterval(updateMediaPreviews, 10_000));
+  updateMediaPreviews();
 
   // E-mail and phone/desktop push for new notifications (per-colleague preferences).
   if (config.deliverySeconds > 0) {

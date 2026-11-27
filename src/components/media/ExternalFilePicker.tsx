@@ -9,8 +9,8 @@ const SOURCE_NAMES: Record<ExternalSource, string> = { dropbox: 'Dropbox', gdriv
 export function availableSources(status: StorageStatus | null): ExternalSource[] {
   if (!status) return [];
   const out: ExternalSource[] = [];
-  if (status.dropbox.enabled && status.dropbox.connected) out.push('dropbox');
-  if (status.gdrive.enabled && status.gdrive.connected) out.push('gdrive');
+  if (status.dropbox.connected) out.push('dropbox');
+  if (status.gdrive.connected) out.push('gdrive');
   if (status.share.enabled && status.share.mode !== 'none' && status.share.indexedFiles > 0) out.push('share');
   return out;
 }
@@ -26,11 +26,11 @@ function size(bytes: number) {
  * Finds a file already in Dropbox, Google Drive or the station's shared folder and makes it part
  * of the library without copying it to the server (it is read from where it is when opened).
  */
-export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSource[]; onPicked: (file: ImportedFile, source: ExternalSource) => void }) {
+export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSource[]; onPicked?: (file: ImportedFile, source: ExternalSource) => void }) {
   const [source, setSource] = useState<ExternalSource>(sources[0]);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ExternalFile[] | null>(null);
-  const [folder, setFolder] = useState<{ at: string; trail: { at: string; name: string }[] } | null>(null);
+  const [folder, setFolder] = useState<{ at: string; trail: { at: string; name: string }[]; hasMore?: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState('');
@@ -46,10 +46,10 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
       if (mine !== seq.current) return;
       setItems(result.items);
       setFolder((prev) => {
-        if (!at) return { at: result.at, trail: [] };
+        if (!at) return { at: result.at, trail: [], hasMore: result.hasMore };
         const trail = prev?.trail || [];
         const existing = trail.findIndex((t) => t.at === at);
-        return { at: result.at, trail: existing >= 0 ? trail.slice(0, existing + 1) : [...trail, { at, name: name || at }] };
+        return { at: result.at, hasMore: result.hasMore, trail: existing >= 0 ? trail.slice(0, existing + 1) : [...trail, { at, name: name || at }] };
       });
     } catch (err) {
       if (mine === seq.current) setError(err instanceof Error ? err.message : 'تعذر فتح المجلد');
@@ -68,14 +68,14 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  const search = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const search = async () => {
     const q = query.trim();
     if (q.length < 2) return setError('اكتب حرفين على الأقل');
     const mine = ++seq.current;
     setLoading(true);
     setError('');
     setFolder(null);
+    setItems(null);
     try {
       const found = await storageClient.search(source, q);
       if (mine === seq.current) setItems(found);
@@ -87,7 +87,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
   };
 
   const add = async (file: ExternalFile) => {
-    if (adding) return;
+    if (adding || !onPicked) return;
     setAdding(file.ref);
     setError('');
     try {
@@ -118,7 +118,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
           ))}
         </div>
       )}
-      <form onSubmit={search} className="flex gap-2" role="search">
+      <div className="flex flex-wrap items-center gap-2" role="search">
         <label className="relative flex-1">
           <span className="sr-only">ابحث في {SOURCE_NAMES[source]}</span>
           <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
@@ -126,12 +126,14 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }}
             placeholder={`ابحث في ${SOURCE_NAMES[source]} باسم الملف…`}
             className="w-full min-h-11 pr-9 pl-3 border border-slate-300 rounded-lg bg-white text-sm"
           />
         </label>
-        <button type="submit" className="min-h-11 px-4 rounded-lg bg-slate-900 text-white text-sm font-bold" disabled={loading}>بحث</button>
-      </form>
+        <button type="button" className="min-h-11 px-4 rounded-lg bg-slate-900 text-white text-sm font-bold" disabled={loading} onClick={() => void search()}>بحث</button>
+        {!folder && items && source !== 'share' && <button type="button" className="min-h-11 px-2 text-sm font-bold text-blue-800" onClick={() => { setQuery(''); void browse(); }}>العودة إلى المجلد الرئيسي</button>}
+      </div>
       {folder && (
         <nav aria-label="المجلد الحالي" className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
           <button type="button" className="min-h-9 px-2 rounded hover:bg-slate-100 font-semibold" onClick={() => browse()}>المجلد الرئيسي</button>
@@ -143,6 +145,7 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
           ))}
         </nav>
       )}
+      {folder?.hasMore && !loading && <p className="text-sm text-slate-600">تظهر أول ألف نتيجة من هذا المجلد. استخدم البحث للوصول إلى ملفات أخرى.</p>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100" aria-busy={loading}>
         {loading && (
@@ -166,11 +169,11 @@ export function ExternalFilePicker({ sources, onPicked }: { sources: ExternalSou
                     {[f.path !== f.name ? f.path : '', size(f.size), f.modifiedAt ? new Date(f.modifiedAt).toLocaleDateString(appLocale(), zoneOptions()) : ''].filter(Boolean).join(' · ')}
                   </p>
                 </div>
-                {f.supported ? (
+                {f.supported && onPicked ? (
                   <button type="button" onClick={() => add(f)} disabled={!!adding} className="shrink-0 min-h-10 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50">
                     {adding === f.ref ? 'جارٍ الإضافة…' : 'إضافة'}
                   </button>
-                ) : (
+                ) : !f.supported && (
                   <span className="shrink-0 text-2xs text-slate-500">نوع غير مدعوم</span>
                 )}
               </div>

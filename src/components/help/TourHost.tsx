@@ -10,7 +10,9 @@ const PAD = 8;
 
 /** Tours this colleague can take: their role opens the screen and holds the permission. */
 export function toursFor(user: User): Tour[] {
-  return TOURS.filter((t) => (!t.screen || RbacService.canOpenScreen(user, t.screen)) && (!t.permission || RbacService.hasPermission(user, t.permission)));
+  const available = (entry: { screen?: string; permission?: string }) =>
+    (!entry.screen || RbacService.canOpenScreen(user, entry.screen)) && (!entry.permission || RbacService.hasPermission(user, entry.permission));
+  return TOURS.filter(available).map(tour => ({ ...tour, steps: tour.steps.filter(available) })).filter(tour => tour.steps.length > 0);
 }
 
 /** First visible element matching a selector list (the same control may exist for phone and desktop). */
@@ -37,13 +39,13 @@ export const TourHost: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const opener = useRef<HTMLElement | null>(null);
 
   const start = useCallback((id: string) => {
-    const next = TOURS.find((t) => t.id === id);
+    const next = toursFor(currentUser).find((t) => t.id === id);
     if (!next) return;
     opener.current = document.activeElement as HTMLElement | null;
     setOffer(false);
     setIndex(0);
     setTour(next);
-  }, []);
+  }, [currentUser]);
   const end = useCallback(() => {
     setTour(null);
     setRect(null);

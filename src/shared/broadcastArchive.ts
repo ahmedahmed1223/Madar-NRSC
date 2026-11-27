@@ -15,7 +15,24 @@ export interface BroadcastArchiveItem {
   countsForOutput?: boolean;
 }
 
-export type BroadcastWithArchive = OnAirState & { archivedPlan?: BroadcastArchiveItem[] };
+export interface BroadcastCorrectionRequest {
+  id: string;
+  startedAt: string;
+  segmentId: string;
+  segmentTitle: string;
+  airedAt: string;
+  newsId?: string;
+  correctionId?: string;
+  reason: string;
+  actorId: string;
+  actorName: string;
+  createdAt: string;
+}
+
+export type BroadcastWithArchive = OnAirState & {
+  archivedPlan?: BroadcastArchiveItem[];
+  correctionRequests?: BroadcastCorrectionRequest[];
+};
 
 export function broadcastOutcomes(state: BroadcastWithArchive, fallback: BroadcastArchiveItem[] = []) {
   const plan = state.archivedPlan || fallback;

@@ -11,7 +11,7 @@ import { anchorScriptWords, presenterKey } from '../../shared/presenterTiming';
 import { readingSeconds } from '../../shared/readTime';
 import { PronunciationPanel } from './PronunciationPanel';
 import { matchingPronunciations } from '../../shared/pronunciation';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   X,
   Play,
@@ -30,7 +30,9 @@ import { RundownSegment } from '../../types';
 import { segmentClock } from '../../shared/durations';
 import { segmentTypeName } from '../../shared/episodeNouns';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
-import { prompterScrollDelta, prompterShortcut } from '../../shared/prompterControls';
+import { prompterScriptRevision, prompterScrollDelta, prompterShortcut, remapPrompterReadingPosition } from '../../shared/prompterControls';
+import { isPresenterAccount } from '../../shared/onair';
+import { prompterAnchorAtLine, prompterGlyphTop, prompterTextMap } from './prompterPosition';
 import { useReadingPreferences } from '../../hooks/useReadingPreferences';
 import { READING_FONT_MIN, READING_FONT_MAX } from '../../services/readingPreferences';
 
@@ -80,17 +82,26 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [displayError, setDisplayError] = useState('');
+  const [scriptNotice, setScriptNotice] = useState('');
+  const [showingLastApproved, setShowingLastApproved] = useState(false);
+  const [directorReport, setDirectorReport] = useState<{ showId: string; segmentId: string; revision: string } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scriptRef = useRef<HTMLDivElement>(null);
+  const readingLineRef = useRef<HTMLDivElement>(null);
+  const renderedScript = useRef<{ segmentId: string; source: string; approved: boolean } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  const activeSegment = segments[currentSegmentIndex] || segments[0];
+  const activeSegment = (followDirector && followId ? segments.find(segment => segment.id === followId) : undefined) ||
+    segments[currentSegmentIndex] || segments[0];
+  const scriptSource = activeSegment?.scriptText || activeSegment?.script || '';
+  const notApproved = !!(activeSegment as { notApproved?: boolean } | undefined)?.notApproved;
   const currentUser = apiService.getCurrentUser();
   const paces = usePresenterPaces();
   const pace = paces.get(presenterKey(activeSegment?.presenterName || (episodeId ? apiService.getEpisodes().find(episode => episode.id === episodeId)?.presenterName : undefined)));
   const scriptWords = anchorScriptWords(activeSegment?.scriptText || activeSegment?.script);
-  const estimatedRead = scriptWords && pace && !(activeSegment as { notApproved?: boolean } | undefined)?.notApproved ? readingSeconds(scriptWords, pace.wpm) : null;
+  const estimatedRead = scriptWords && pace && !notApproved ? readingSeconds(scriptWords, pace.wpm) : null;
   useEffect(() => {
     if (currentSegmentIndex >= segments.length) setCurrentSegmentIndex(Math.max(0, segments.length - 1));
   }, [currentSegmentIndex, segments.length]);
@@ -196,8 +207,70 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
   useEffect(() => {
     setIsPlaying(false);
     setElapsedSeconds(0);
+    setScriptNotice('');
+    setDirectorReport(null);
     if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
   }, [activeSegment?.id]);
+
+  useLayoutEffect(() => {
+    const script = scriptRef.current;
+    const reader = scrollContainerRef.current;
+    const segmentId = activeSegment?.id;
+    if (!script || !reader || !segmentId) {
+      renderedScript.current = null;
+      setShowingLastApproved(false);
+      return;
+    }
+    const previous = renderedScript.current;
+    const sameSegment = previous?.segmentId === segmentId;
+    // Revising an approved bulletin story temporarily replaces its public copy with an approval
+    // placeholder. Keep the current reading copy and cursor until the corrected copy is approved.
+    if (sameSegment && notApproved && previous.approved && previous.source) {
+      setShowingLastApproved(true);
+      return;
+    }
+    setShowingLastApproved(false);
+    if (sameSegment && previous.source === scriptSource && previous.approved === !notApproved) return;
+    const before = sameSegment ? prompterTextMap(script) : null;
+    const lineTop = readingLineRef.current?.getBoundingClientRect().top;
+    const anchor = before && lineTop !== undefined && reader.scrollTop > 0 ? prompterAnchorAtLine(before.nodes, lineTop) : null;
+    script.innerHTML = sanitizeHtml(scriptSource.replace(/\n/g, '<br />'));
+    renderedScript.current = { segmentId, source: scriptSource, approved: !notApproved };
+    if (!before) return;
+    const after = prompterTextMap(script);
+    if (before.text !== after.text) {
+      setScriptNotice('حُدّث نص الملقّن');
+      setDirectorReport(null);
+    }
+    if (!anchor) return;
+    const revision = remapPrompterReadingPosition(before.text, after.text, anchor.offset);
+    const nextTop = prompterGlyphTop(after.nodes, revision.offset);
+    if (nextTop !== undefined) reader.scrollTop += nextTop - anchor.top;
+    if (revision.amendedPastSentence && episodeId && followId === segmentId && currentUser.id === userId && isPresenterAccount(currentUser)) {
+      setDirectorReport({ showId: episodeId, segmentId, revision: prompterScriptRevision(scriptSource) });
+    }
+  }, [activeSegment?.id, scriptSource, notApproved, episodeId, followId, currentUser, userId]);
+
+  useEffect(() => {
+    if (!scriptNotice) return;
+    const timer = setTimeout(() => setScriptNotice(''), 8500);
+    return () => clearTimeout(timer);
+  }, [scriptNotice, scriptSource]);
+
+  useEffect(() => {
+    if (!connected || !directorReport) return;
+    let active = true;
+    void apiService.reportPrompterCorrection(directorReport.showId, directorReport.segmentId, directorReport.revision)
+      .then(() => {
+        if (!active) return;
+        setScriptNotice('حُدّث نص الملقّن وأُبلغ المخرج بالتصحيح في النص المقروء');
+        setDirectorReport(null);
+      })
+      .catch(() => {
+        if (active) setScriptNotice('حُدّث نص الملقّن وتعذّر تأكيد تنبيه المخرج');
+      });
+    return () => { active = false; };
+  }, [connected, directorReport]);
 
   // Keyboard controls: Space to play/pause, Arrows to switch segment
   useEffect(() => {
@@ -423,16 +496,19 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
         {/* Center Prompter Reading View */}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-black relative">
           {/* Eyeline Marker (Horizontal line across reading area) */}
-          <div className="absolute top-1/3 left-0 right-0 h-14 border-y border-red-500/20 bg-red-500/5 pointer-events-none z-10 flex items-center justify-between px-4">
+          <div ref={readingLineRef} className="absolute top-1/3 left-0 right-0 h-14 border-y border-red-500/20 bg-red-500/5 pointer-events-none z-10 flex items-center justify-between px-4">
             <span aria-hidden="true" className="text-xs text-red-300">خط القراءة</span>
           </div>
+          <p role="status" className={scriptNotice || showingLastApproved ? 'pointer-events-none absolute start-3 top-3 z-20 rounded-md bg-zinc-900 px-3 py-2 text-sm text-amber-300' : 'sr-only'}>
+            {showingLastApproved ? 'النص المعتمد السابق · بانتظار اعتماد التصحيح' : scriptNotice}
+          </p>
 
           {/* Reading Text Container */}
           <div
             ref={scrollContainerRef}
             tabIndex={0} role="region" aria-label="نص الملقّن"
             onWheel={() => setIsPlaying(false)} onTouchStart={() => setIsPlaying(false)} onPointerDown={() => setIsPlaying(false)}
-            className={`flex-1 overflow-y-auto px-6 sm:px-16 py-32 transition-transform duration-100 ${
+            className={`flex-1 overflow-y-auto [overflow-anchor:none] px-6 sm:px-16 py-32 transition-transform duration-100 ${
               isMirrored ? 'scale-x-[-1]' : ''
             }`}
           >
@@ -463,13 +539,8 @@ const OpenTeleprompter: React.FC<TeleprompterModalProps> = ({
                   style={{ fontSize: `${fontSize}px`, lineHeight: 1.7, overflowWrap: 'anywhere' }}
                   className={`font-sans font-medium text-right leading-relaxed ${themeTextColor}`}
                 >
-                  {(activeSegment.scriptText || activeSegment.script) ? (
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml((activeSegment.scriptText || activeSegment.script || '').replace(/\n/g, '<br />')),
-                      }}
-                    />
-                  ) : (
+                  <div ref={scriptRef} />
+                  {!scriptSource && !showingLastApproved && (
                     <div className="text-zinc-400 text-center py-20">
                       [لا يوجد نص أوتوكيو مكتوب {isBulletin ? 'لهذه القصة' : 'لهذه الفقرة'} - اعتمد على الملاحظات الإخراجية]
                     </div>

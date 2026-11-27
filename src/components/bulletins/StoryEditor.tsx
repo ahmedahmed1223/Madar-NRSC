@@ -2,7 +2,11 @@ import { countLabel } from '../../shared/arabicPlural';
 import { LongTextField } from '../common/TextSizeControls';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BulletinRemoteGuest } from '../../shared/bulletins';
+import type { EntityRow } from '../../shared/collections';
 import { BulletinGuestFields } from './BulletinGuestFields';
+import { StoryMediaReview } from './StoryMediaReview';
+import { StoryHistory } from './StoryHistory';
+import { mayReviewBulletinMedia } from '../../shared/bulletinMediaReview';
 import { dataStore } from '../../services/dataStore';
 import { ReviewThreads } from '../editor/ReviewThreads';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -58,11 +62,13 @@ export const anchorCopyFromNews = (n: { summary?: string; content?: string }) =>
 export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onClose, onSaved }) => {
   const isOpen = !!story;
   const isNew = !story?.id;
+  const [base, setBase] = useState<EntityRow | null>(null);
+  const savedStory: Partial<BulletinStory> | null = base && base.id === story?.id ? base.d : story;
   const actor = { id: currentUser.id, canApprove: RbacService.hasPermission(currentUser, 'bulletins.approve'), canEdit: RbacService.hasPermission(currentUser, 'bulletins.edit'), role: currentUser.role };
   const approver = isApprover(bulletin, actor);
   /** May give the story's next sign-off now. */
-  const approverNow = isApprover(bulletin, actor, story?.id ? story : { approvals: [] });
-  const progress = story?.id ? approvalProgress(bulletin, story as BulletinStory) : null;
+  const approverNow = isApprover(bulletin, actor, savedStory?.id ? savedStory : { approvals: [] });
+  const progress = savedStory?.id ? approvalProgress(bulletin, savedStory as BulletinStory) : null;
   const mayEdit = actor.canEdit || approver;
   const lock = useEditLock('bulletinStories', story?.id, isOpen && !isNew && mayEdit);
   const lockedByOther = lock.status === 'locked';
@@ -89,24 +95,32 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   const [sourceSnapshot, setSourceSnapshot] = useState<string | undefined>();
   const [comparison, setComparison] = useState<{ script: string; stamp: string } | null>(null);
   const [sourceUndo, setSourceUndo] = useState<{ script: string; stamp?: string; snapshot?: string; applied: string } | null>(null);
+  const [latest, setLatest] = useState<EntityRow | null>(null);
+  const [legacyDraft, setLegacyDraft] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const loadSavedStory = (value: Partial<BulletinStory>, source: EntityRow | null) => {
+    setSlug(value.slug || '');
+    setType(value.type || 'READER');
+    setRemoteGuest(value.remoteGuest);
+    setAnchorName(value.anchorName || '');
+    setScript(value.script || '');
+    setClipMediaId(value.clipMediaId);
+    setClipSeconds(value.clipSeconds ? String(value.clipSeconds) : '');
+    setManualSeconds(value.manualSeconds ? String(value.manualSeconds) : '');
+    setGraphics(value.graphics || []);
+    setDirectorNotes(value.directorNotes || '');
+    setReturnNote('');
+    setNewsStamp(value.newsUpdatedAt);
+    setSourceSnapshot(value.newsSourceSnapshot);
+    setComparison(null); setSourceUndo(null); pendingId.current = undefined; graphicsRequestId.current = undefined;
+    setBase(source); setLatest(null); setLegacyDraft(false); setError(null);
+  };
 
   useEffect(() => {
-    if (!story) { setInitialized(''); return; }
-    setSlug(story.slug || '');
-    setType((story.type as StoryType) || 'READER');
-    setRemoteGuest(story.remoteGuest);
-    setAnchorName(story.anchorName || '');
-    setScript(story.script || '');
-    setClipMediaId(story.clipMediaId);
-    setClipSeconds(story.clipSeconds ? String(story.clipSeconds) : '');
-    setManualSeconds(story.manualSeconds ? String(story.manualSeconds) : '');
-    setGraphics(story.graphics || []);
-    setDirectorNotes(story.directorNotes || '');
-    setReturnNote('');
-    setNewsStamp(story.newsUpdatedAt);
-    setSourceSnapshot(story.newsSourceSnapshot);
-    setComparison(null); setSourceUndo(null); pendingId.current = undefined; graphicsRequestId.current = undefined;
-    setError(null);
+    if (!story) { setInitialized(''); setHistoryOpen(false); return; }
+    const source = story.id ? dataStore.confirmedRow('bulletinStories', story.id) : null;
+    loadSavedStory(source?.d ?? story, source);
     setInitialized(story.id || `new:${bulletin.id}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id, isOpen]);
@@ -114,16 +128,16 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   const meta = storyTypeOf(type);
   const timing = storyTiming({ type, script, clipSeconds: Number(clipSeconds) || 0, manualSeconds: Number(manualSeconds) || 0 });
   const clip = useMemo(() => (clipMediaId ? apiService.getMedia().find((m) => m.id === clipMediaId) : undefined), [clipMediaId]);
-  const news = story?.newsId ? apiService.getNews().find((n) => n.id === story.newsId) : undefined;
+  const news = savedStory?.newsId ? apiService.getNews().find((n) => n.id === savedStory.newsId) : undefined;
   const newsChanged = !!news && !!newsStamp && news.updatedAt > newsStamp;
-  const status = story?.status || 'DRAFT';
+  const status = savedStory?.status || 'DRAFT';
 
   const payload = (): Partial<BulletinStory> & { bulletinId: string } => ({
     id: story?.id || pendingId.current,
     bulletinId: bulletin.id,
-    ...(story?.rank !== undefined ? { rank: story.rank } : {}),
-    ...(story?.newsId ? { newsId: story.newsId, newsUpdatedAt: newsStamp, newsSourceSnapshot: sourceSnapshot } : {}),
-    ...(story?.wireId ? { wireId: story.wireId } : {}),
+    ...(story?.rank !== undefined && !story.id ? { rank: story.rank } : {}),
+    ...(savedStory?.newsId ? { newsId: savedStory.newsId, newsUpdatedAt: newsStamp, newsSourceSnapshot: sourceSnapshot } : {}),
+    ...(savedStory?.wireId ? { wireId: savedStory.wireId } : {}),
     slug: slug.trim(),
     type,
     remoteGuest: type === 'LIVE' || type === 'PHONE' ? remoteGuest : undefined,
@@ -137,18 +151,23 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
   });
 
   const recovery = useFormDraft(`bulletin-story:${currentUser.id}:${story?.id || bulletin.id}`, isOpen && canEdit && initialized === (story?.id || `new:${bulletin.id}`),
-    { slug, type, script, anchorName, clipMediaId: clipMediaId || '', clipSeconds, manualSeconds, graphics, directorNotes, newsStamp: newsStamp || '', sourceSnapshot: sourceSnapshot ?? '', remoteGuest },
+    { slug, type, script, anchorName, clipMediaId: clipMediaId || '', clipSeconds, manualSeconds, graphics, directorNotes, newsStamp: newsStamp || '', sourceSnapshot: sourceSnapshot ?? '', remoteGuest, base },
     value => {
       setSlug(value.slug); setType(value.type); setScript(value.script); setAnchorName(value.anchorName);
       setClipMediaId(value.clipMediaId || undefined); setClipSeconds(value.clipSeconds); setManualSeconds(value.manualSeconds);
       setGraphics(value.graphics); setDirectorNotes(value.directorNotes); setNewsStamp(value.newsStamp || undefined); setSourceSnapshot(value.sourceSnapshot || undefined);
       setRemoteGuest(value.remoteGuest);
-    });
+      if (story?.id && value.base?.id === story.id && value.base.c === 'bulletinStories' && Number.isSafeInteger(value.base.v) && value.base.v > 0) {
+        setBase(value.base); setLegacyDraft(false);
+      } else if (story?.id) setLegacyDraft(true);
+    }, ['base']);
   const save = async (statusChange?: BulletinStory['status'], extra: Partial<BulletinStory> = {}) => {
     if (saving || !canEdit) return;
     setSaving(true); setError(null);
     try {
-      const saved = apiService.saveBulletinStory({ ...payload(), ...(statusChange ? { status: statusChange } : {}), ...extra });
+      if (story?.id && !base) throw new Error('انتظر تأكيد القصة ثم افتحها مجدداً قبل الحفظ');
+      if (legacyDraft && !await confirmDialog({ title: 'مراجعة مسودة مستعادة', message: 'لم تُحفظ النسخة المرجعية لهذه المسودة القديمة. راجع النص المحفوظ في سجل النسخ قبل تطبيق المسودة.', confirmLabel: 'تطبيق المسودة' })) return;
+      const saved = apiService.saveBulletinStory({ ...payload(), ...(statusChange ? { status: statusChange } : {}), ...extra }, base ?? undefined);
       pendingId.current = saved.id;
       const outcome = await dataStore.awaitWrite('bulletinStories', saved.id);
       if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ القصة بعد؛ بقيت الحقول لإعادة المحاولة');
@@ -168,6 +187,8 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
       onClose();
     } catch (err: any) {
       setError(err?.message || 'تعذر حفظ القصة');
+      const current = story?.id ? dataStore.confirmedRow('bulletinStories', story.id) : null;
+      if (current && base && current.v !== base.v) setLatest(current);
     } finally { setSaving(false); }
   };
 
@@ -235,11 +256,22 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
           {!isNew && (
             <div className="flex flex-wrap items-center gap-2 text-2xs">
               <span className={`font-bold px-2 py-0.5 rounded-full ${STATUS_TONE[status]}`}>{storyStatusName(status)}</span>
-              {story.writerName && <span className="text-slate-500">كتبها: {story.writerName}</span>}
-              {story.approvedByName && <span className="text-emerald-700">اعتمدها: {story.approvedByName}</span>}
+              {savedStory?.writerName && <span className="text-slate-500">كتبها: {savedStory.writerName}</span>}
+              {savedStory?.approvedByName && <span className="text-emerald-700">اعتمدها: {savedStory.approvedByName}</span>}
               {status === 'APPROVED' && !approver && canEdit && <span className="text-amber-700 font-bold">أي تعديل على النص سيعيدها للاعتماد</span>}
+              <button type="button" onClick={() => setHistoryOpen(true)} className="rounded-lg border border-slate-300 px-2 text-sm font-semibold">سجل النسخ</button>
             </div>
           )}
+
+          {latest?.d && <section aria-label="أحدث نسخة محفوظة" className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
+            <p className="font-semibold">النسخة المحفوظة الآن ({latest.v}) · {latest.d.slug}</p>
+            <p className="max-h-48 overflow-auto whitespace-pre-wrap break-words">{plainText(latest.d.script || '') || 'لا نص في هذه النسخة.'}</p>
+            <button type="button" onClick={async () => {
+              if (recovery.dirty && !await confirmDialog({ title: 'تحميل النسخة المحفوظة', message: 'سيُستبدل النص الموجود في الحقول. انسخ تعديلك أولاً إن أردت الاحتفاظ به.', confirmLabel: 'تحميل النسخة' })) return;
+              recovery.clearDraft();
+              loadSavedStory(latest.d, latest);
+            }} className="rounded-lg border border-slate-300 px-3 font-semibold">تحميل النسخة المحفوظة</button>
+          </section>}
 
           {newsChanged && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-blue-900 bg-blue-50 border border-blue-200 rounded-xl p-3">
@@ -359,6 +391,8 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
                 مدة اللقطة (ثوانٍ)
                 <input id="story-clip-seconds" type="number" min={0} readOnly={!canEdit} value={clipSeconds} onChange={(e) => setClipSeconds(e.target.value)} className="w-24 px-2 py-1.5 border border-slate-300 rounded-lg text-xs" />
               </label>
+              {story?.id && clipMediaId && <StoryMediaReview bulletinId={bulletin.id} storyId={story.id} clipMediaId={clipMediaId} allowed={mayReviewBulletinMedia(bulletin, actor)} />}
+              {clipMediaId && story?.clipMediaId !== clipMediaId && <p className="text-xs text-slate-700">احفظ القصة لتأكيد اختيار المادة.</p>}
             </div>
           )}
 
@@ -495,6 +529,13 @@ export const StoryEditor: React.FC<Props> = ({ bulletin, story, currentUser, onC
               setPickerOpen(false);
             }}
           />
+          {historyOpen && story?.id && <StoryHistory bulletinId={bulletin.id} storyId={story.id} allowRestore={!recovery.dirty && !lockedByOther}
+            onClose={() => setHistoryOpen(false)} onRestored={row => {
+              recovery.clearDraft();
+              loadSavedStory(row.d, row);
+              setHistoryOpen(false);
+              onSaved?.('استُعيدت النسخة كمسودة');
+            }} />}
         </form>
       )}
     </FormPage>

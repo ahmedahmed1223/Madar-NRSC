@@ -4,6 +4,7 @@ import { apiService } from '../../services/api';
 import { notify } from '../../services/notify';
 import { fromLocalInputValue } from '../../shared/dates';
 import { cardKindName, stepAssigneeLabel, stepTypeName, stepTypesOf, type ProductionCard } from '../../shared/productionCards';
+import { assignmentTemplate } from '../../shared/workflowPublication';
 import { cardFromTemplate, defaultPick, ruleCandidates, RULE_KINDS, type WorkflowTemplate } from '../../shared/workflowTemplates';
 import { departmentStationIds, departmentsAtStation, departmentsOf } from '../../shared/departments';
 import { createDepartmentLabeler } from '../../services/departmentLabels';
@@ -33,7 +34,10 @@ export const AssignFromTemplatePage: React.FC<AssignFromTemplatePageProps> = ({ 
   const departments = departmentsOf(settings);
   const labelDepartment = useMemo(createDepartmentLabeler, [isOpen, settings]);
   const stepTypes = stepTypesOf(settings);
-  const templates = useMemo(() => (isOpen ? apiService.getWorkflowTemplates().filter((t) => !t.archived) : []), [isOpen]);
+  const templates = useMemo(() => (isOpen ? apiService.getWorkflowTemplates().flatMap(t => {
+    const active = assignmentTemplate(t);
+    return active ? [active] : [];
+  }) : []), [isOpen]);
   const eligibility = useMemo(() => assignmentScope(currentUser, settings), [currentUser, settings]);
   const scope = eligibility.stations;
   // Managers hand work to colleagues in the stations they follow.

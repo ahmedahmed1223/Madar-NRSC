@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ArchiveRestore, RefreshCw } from 'lucide-react';
 import { formatDay } from '../shared/dateFormat';
-import { TRASH_SECTIONS, type TrashCollection, type TrashItem, type TrashPage } from '../shared/trash';
+import { isTrashCollection, TRASH_SECTIONS, type TrashCollection, type TrashItem, type TrashPage } from '../shared/trash';
 import { listTrash, restoreTrashItem } from '../services/trashClient';
 
 const messageOf = (error: unknown, fallback: string) => error instanceof Error && error.name !== 'TypeError' ? error.message : fallback;
 
-export function TrashView() {
-  const [collection, setCollection] = useState<TrashCollection | ''>('');
+export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFocus: (id: TrashCollection | null) => void }) {
+  const collection = isTrashCollection(focusId) ? focusId : '';
   const [cursor, setCursor] = useState<string | null>(null);
   const [request, setRequest] = useState(0);
   const [page, setPage] = useState<TrashPage | null>(null);
@@ -33,8 +33,8 @@ export function TrashView() {
     return () => controller.abort();
   }, [collection, cursor, request]);
 
-  const refresh = (nextCollection = collection) => {
-    setCollection(nextCollection);
+  const refresh = (nextCollection: TrashCollection | '' = collection) => {
+    if (nextCollection !== collection) onFocus(nextCollection || null);
     setCursor(null);
     setPage(previous => previous && { ...previous, items: [], nextCursor: null });
     setFeedback(null);
@@ -77,6 +77,7 @@ export function TrashView() {
           <select id="trash-section" value={collection} disabled={!!restoring} onChange={event => refresh(event.target.value as TrashCollection | '')}
             className="min-h-11 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
             <option value="">كل الأقسام المتاحة</option>
+            {collection && !page?.collections.includes(collection) && <option value={collection}>{TRASH_SECTIONS[collection].label}</option>}
             {page?.collections.map(key => <option key={key} value={key}>{TRASH_SECTIONS[key].label}</option>)}
           </select>
         </div>

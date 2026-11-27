@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createTestServer, DEMO_PASSWORD, loginAgent } from '../helpers';
 import { seedDatabase } from '../../src/server/seed';
@@ -38,6 +38,35 @@ it('allows a token holder to claim an opted-in clean installation exactly once',
   expect(session.user.role).toBe('SUPER_ADMIN');
   expect(session.mustChangePassword).toBe(false);
   expect(session.setupReviewId).toEqual(expect.any(String));
+});
+
+it('creates a team profile and usable temporary credentials in one transaction', async () => {
+  server = await createTestServer();
+  const { app, db } = server;
+  const admin = await loginAgent(app, 'admin@akhbar.tv');
+  const staff = await loginAgent(app, 'journalist@akhbar.tv');
+  const user = { fullName: 'محرر المناوبة', role: 'JOURNALIST', email: 'shift-editor@example.com', jobTitle: 'صحفي', departmentId: 'newsroom' };
+  const password = 'ShiftEditor2026';
+  const endpoint = '/api/v1/users';
+  await staff.post(endpoint).set(H).send({ user, password }).expect(403);
+  await admin.post(endpoint).set(H).send({ user, password: 'weak' }).expect(400);
+  expect(db.findUserIdByEmail(user.email)).toBeFalsy();
+  const interrupted = vi.spyOn(db, 'setPassword').mockImplementationOnce(() => { throw new Error('simulated credential storage failure'); });
+  try {
+    await admin.post(endpoint).set(H).send({ user, password }).expect(500);
+    expect(db.findUserIdByEmail(user.email)).toBeFalsy();
+    expect(db.getCredentialsByEmail(user.email)).toBeFalsy();
+  } finally {
+    interrupted.mockRestore();
+  }
+  const { body } = await admin.post(endpoint).set(H).send({ user, password }).expect(201);
+  expect(body.row.d.email).toBe(user.email);
+  expect(JSON.stringify(body)).not.toContain(password);
+  const accounts = (await admin.get('/api/v1/data').expect(200)).body.collections.users;
+  expect(accounts.filter((row: any) => row.d.email === user.email)).toHaveLength(1);
+  await admin.post(endpoint).set(H).send({ user, password: 'OtherPassword2026' }).expect(409);
+  const member = await loginAgent(app, user.email, password);
+  expect((await member.get('/api/v1/auth/me').expect(200)).body).toMatchObject({ user: { id: body.row.id }, mustChangePassword: true });
 });
 
 it('requires replacement of a temporary password created through browser setup', async () => {

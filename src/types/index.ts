@@ -3,6 +3,7 @@
  */
 
 import type { BookingStatus, ContactLogEntry, EpisodeBrief, EpisodeTopic, ProgramTemplate, QuestionKind, ReportBrief, SegmentGuest } from '../shared/episodePlan';
+import type { WorkflowDelegations, WorkflowRoles } from '../shared/workflowTracks';
 
 export type UserRole =
   | 'SUPER_ADMIN'
@@ -35,6 +36,10 @@ export interface User {
   phone?: string;
   role: UserRole;
   customRoleId?: string;
+  /** Explicit production roles by track. An omitted or null policy preserves legacy access. */
+  workflowRoles?: WorkflowRoles | null;
+  /** Time-limited production permissions, independent of editorial approval. */
+  workflowDelegations?: WorkflowDelegations;
   avatarUrl: string;
   jobTitle: string;
   /** Display name of the department (kept in sync with departmentId). */
@@ -524,6 +529,7 @@ export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'PDF';
 
 export interface MediaFile {
   id: string;
+  folderId?: string | null;
   fileName: string;
   originalName?: string;
   mimeType?: string;
@@ -557,6 +563,8 @@ export interface MediaFile {
   deletedAt?: string | null;
 }
 
+export type { MediaFolder } from '../shared/mediaFolders';
+
 export type MediaAsset = MediaFile & {
   title?: string;
   fileUrl?: string;
@@ -571,7 +579,7 @@ export interface AppNotification {
   userId: string;
   title: string;
   message: string;
-  type: 'TASK_ASSIGNED' | 'TASK' | 'NEWS_REVIEW' | 'NEWS_APPROVED' | 'NEWS_REJECTED' | 'EPISODE_SCHEDULE' | 'BREAKING_NEWS' | 'SYSTEM';
+  type: 'TASK_ASSIGNED' | 'BULLETIN_SOURCE_CORRECTION' | 'TASK' | 'NEWS_REVIEW' | 'NEWS_APPROVED' | 'NEWS_REJECTED' | 'EPISODE_SCHEDULE' | 'BREAKING_NEWS' | 'SYSTEM';
   /** Delivery category (see shared/notifications) — decides e-mail/push per colleague. */
   category?: string;
   urgent?: boolean;

@@ -16,6 +16,7 @@ export const COLLECTIONS = {
   guests: { storageKey: 'nrcs_guests_v1', kind: 'list' },
   tasks: { storageKey: 'nrcs_tasks_v1', kind: 'list' },
   media: { storageKey: 'nrcs_media_v1', kind: 'list' },
+  mediaFolders: { storageKey: 'madar_media_folders_v1', kind: 'list' },
   categories: { storageKey: 'nrcs_categories_v1', kind: 'list' },
   sources: { storageKey: 'nrcs_sources_v1', kind: 'list' },
   pronunciationTerms: { storageKey: 'madar_pronunciation_terms_v1', kind: 'list' },
@@ -97,7 +98,7 @@ export interface BroadcastState {
 }
 
 /** Collections whose previous versions are kept for review and restore. */
-export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories']);
+export const HISTORY_COLLECTIONS: ReadonlySet<CollectionName> = new Set(['news', 'stories', 'workflowTemplates']);
 
 /**
  * Collections where a write based on an older version is merged on the server instead of refused

@@ -104,6 +104,16 @@ test('user table offers account actions and temporary password feedback', async 
     await expect(page.getByText('تأكيد كلمة المرور مطابق.')).toBeVisible();
     await page.getByRole('button', { name: 'إخفاء كلمة المرور' }).click();
     await expect(password).toHaveAttribute('type', 'password');
+    const confirmation = page.getByLabel('تأكيد كلمة المرور', { exact: true });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
+    await confirmation.fill('مختلفة');
+    await page.evaluate(value => navigator.clipboard.writeText(value), await password.inputValue());
+    await confirmation.press('Control+a');
+    await confirmation.press('Control+v');
+    await expect(confirmation).toBeFocused();
+    await expect(confirmation).toHaveValue(await password.inputValue());
+    await expect(page.getByText('تأكيد كلمة المرور مطابق.')).toBeVisible();
+    await page.evaluate(() => navigator.clipboard.writeText(''));
     await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
 
     const [download] = await Promise.all([

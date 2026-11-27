@@ -25,7 +25,7 @@ const blank = (user: User): HandoverDraftInput => {
 };
 const editable = (row: HandoverRow): HandoverDraftInput => {
   const { id, schemaVersion, departmentId, sourceDate, sourceShift, recipientDate, recipientShift, title, note, supersedesId } = row.d;
-  return { id, schemaVersion, departmentId, sourceDate, sourceShift, recipientDate, recipientShift, title, note, ...(supersedesId ? { supersedesId } : {}), references: row.d.references.flatMap(ref => ref.available ? [{ collection: ref.collection, id: ref.id, note: ref.note }] : []) };
+  return { id, schemaVersion, departmentId, sourceDate, sourceShift, recipientDate, recipientShift, title, note, recipientUserId: row.d.recipientUserId, ...(supersedesId ? { supersedesId } : {}), references: row.d.references.flatMap(ref => ref.available ? [{ collection: ref.collection, id: ref.id, note: ref.note }] : []) };
 };
 function referenceChoices(user: User): { reference: HandoverReference; title: string }[] {
   const can = (code: string) => RbacService.hasPermission(user, code);
@@ -35,6 +35,7 @@ function referenceChoices(user: User): { reference: HandoverReference; title: st
     ['bulletinStories', can('rundown.view') || can('bulletins.edit') ? apiService.getBulletinStories() : []],
     ['episodes', can('programs.view') ? apiService.getEpisodes() : []],
     ['tasks', can('tasks.view') ? apiService.getTasks() : []],
+    ['productionCards', can('cards.view') ? apiService.getCards() : []],
     ['requests', can('tasks.view') ? apiService.getRequests() : []],
   ] as const;
   return sources.flatMap(([collection, rows]) => rows.filter((r: any) => !r.deletedAt).map((r: any) => ({ reference: { collection, id: r.id, note: '' }, title: String(r.title || r.slug || r.name || 'مرجع') })));
@@ -155,7 +156,8 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
       }
       if (action === 'save' && draft) { row = await apiService.saveShiftHandover(draft, baseV, controller.signal); setMessage('حُفظت المسودة على الخادم'); }
       else if (action === 'publish' && selected) {
-        if (!await confirmDialog({ title: 'نشر تسليم الوردية', message: `نشر إلى قسم ${departmentName(selected.d.departmentId)}، ${selected.d.recipientDate}، الوردية ${shiftName(selected.d.recipientShift)}. عدد المراجع: ${selected.d.references.length}. ستكون ملاحظات القسم متاحة لهذا الجمهور.`, confirmLabel: 'نشر التسليم' })) return;
+        const recipient = selected.d.recipientUserId ? apiService.getUserById(selected.d.recipientUserId)?.fullName || 'الزميل المحدد' : 'أعضاء الوردية حسب الجدول';
+        if (!await confirmDialog({ title: 'نشر تسليم الوردية', message: `يُطلب تأكيد الاستلام من ${recipient}. يظهر التسليم لقسم ${departmentName(selected.d.departmentId)}، ${selected.d.recipientDate}، الوردية ${shiftName(selected.d.recipientShift)}. عدد المراجع: ${selected.d.references.length}.`, confirmLabel: 'نشر التسليم' })) return;
         row = await apiService.publishShiftHandover(id, selected.v, controller.signal); setMessage('نُشر التسليم على الخادم');
       } else if (action === 'ack') { row = await apiService.acknowledgeShiftHandover(id, receiptNote, controller.signal); setMessage('تأكد استلام الوردية على الخادم'); }
       else if (action === 'remind') { row = await apiService.remindShiftHandover(id, controller.signal); setMessage('تأكد إرسال التذكير للمستلمين المؤهلين'); }
@@ -249,6 +251,13 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
         {draft ? <fieldset disabled={pending} className="space-y-3 min-w-0">
           <label className="block text-sm font-semibold">عنوان التسليم<input ref={titleRef} className={control} maxLength={120} value={draft.title} onChange={e => update({ title: e.target.value })} /></label>
           <label className="block text-sm font-semibold">القسم<select aria-label="القسم" className={control} value={draft.departmentId} onChange={e => update({ departmentId: e.target.value as any })}>{DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{labelDepartment(d)}</option>)}</select></label>
+          <label className="block text-sm font-semibold">مستلم التسليم
+            <select className={control} value={draft.recipientUserId || ''} onChange={e => update({ recipientUserId: e.target.value || undefined })}>
+              <option value="">أعضاء الوردية المستلمة حسب الجدول</option>
+              {apiService.getUsers().filter(user => user.id !== currentUser.id && user.isActive && !user.deletedAt && RbacService.hasPermission(user, 'handover.view')).map(user =>
+                <option key={user.id} value={user.id}>{user.fullName}</option>)}
+            </select>
+          </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block text-sm font-semibold">تاريخ الوردية الصادرة<input className={control} type="date" value={draft.sourceDate} onChange={e => update({ sourceDate: e.target.value })} /></label>
             <label className="block text-sm font-semibold">الوردية الصادرة<select className={control} value={draft.sourceShift} onChange={e => update({ sourceShift: e.target.value as any })}>{SHIFTS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
@@ -261,8 +270,15 @@ function ShiftHandoversContent({ currentUser, onNavigate, focusId }: ShiftHandov
           {draft.references.map((ref, index) => <div key={`${ref.collection}:${ref.id}`} className="border-b border-slate-200 py-2 space-y-2"><div className="flex items-center gap-2"><span className="text-sm flex-1 min-w-0 break-words">{choices.find(c => c.reference.id === ref.id && c.reference.collection === ref.collection)?.title || 'مرجع غير متاح حالياً'}</span><button className={button} aria-label={`حذف المرجع ${index + 1}`} title="حذف المرجع" onClick={() => update({ references: draft.references.filter((_, i) => i !== index) })}><Trash2 size={18} /></button></div><label className="block text-sm">ملاحظة المرجع {index + 1}<textarea className={control} maxLength={500} value={ref.note} onChange={e => update({ references: draft.references.map((r, i) => i === index ? { ...r, note: e.target.value } : r) })} /></label></div>)}
         </fieldset> : selected && <div className="space-y-3"><p className="text-sm text-slate-600">{departmentName(selected.d.departmentId)} · {selected.d.recipientDate} · {shiftName(selected.d.recipientShift)} · {selected.d.authorName}{selected.d.publishedAt ? ` · ${new Date(selected.d.publishedAt).toLocaleString('ar')}` : ''}</p><p className="text-sm text-slate-800 whitespace-pre-wrap break-words">{selected.d.note}</p><ul className="space-y-2">{selected.d.references.map((ref, i) => <li key={i} className="text-sm break-words">{ref.available ? <><button className={`${button} text-blue-700`} onClick={() => {
           if (ref.collection === 'bulletinStories') { const story = apiService.getBulletinStories().find(s => s.id === ref.id); if (!story) { setMessage('المرجع غير متاح حالياً'); return; } try { sessionStorage.setItem('madar-open-bulletin-story', ref.id); } catch { /* Navigation remains available. */ } onNavigate(`/bulletins/${encodeURIComponent(story.bulletinId)}`); }
-          else onNavigate(`/${ref.collection}/${encodeURIComponent(ref.id)}`);
-        }}><ExternalLink size={16} />{ref.title}</button><p className="whitespace-pre-wrap">{ref.note}</p></> : <span className="text-slate-500">مرجع غير متاح</span>}</li>)}</ul>
+          else onNavigate(`/${ref.collection === 'productionCards' ? 'cards' : ref.collection}/${encodeURIComponent(ref.id)}`);
+        }}><ExternalLink size={16} />{ref.title}</button><p className="whitespace-pre-wrap">{ref.note}</p>
+          {ref.work && <dl className="mt-1 grid gap-1 text-sm">
+            <div><dt className="inline font-semibold">العمل المفتوح · </dt><dd className="inline">{ref.work.open ? `${ref.work.openSteps} مهام مفتوحة` : 'انتهى العمل على التكليف'}</dd></div>
+            {ref.work.openWork.length > 0 && <div><dt className="sr-only">المهام المتبقية</dt><dd><ul className="list-disc space-y-0.5 ps-5">{ref.work.openWork.map((text, index) => <li key={index}>{text}</li>)}</ul></dd></div>}
+            {ref.work.latestUpdate && <div><dt className="inline font-semibold">آخر إفادة · </dt><dd className="inline">{ref.work.latestUpdate}</dd></div>}
+            {ref.work.nearestDueAt && <div><dt className="inline font-semibold">أقرب موعد · </dt><dd className="inline">{new Date(ref.work.nearestDueAt).toLocaleString('ar')}</dd></div>}
+            {ref.work.decision && <div><dt className="inline font-semibold">يحتاج قراراً · </dt><dd className="inline">{ref.work.decision}</dd></div>}
+          </dl>}</> : <span className="text-slate-500">مرجع غير متاح</span>}</li>)}</ul>
           {selected.d.state === 'PUBLISHED' && <><h3 className="text-sm font-bold">الاستلام ({selected.receipts.length})</h3>{selected.recipients.map(r => <p key={r.userId} className="text-sm text-slate-600">{r.userName} · {r.received ? 'أكد الاستلام' : 'لم يؤكد الاستلام'}</p>)}{selected.receipts.map(r => <p key={r.id} className="text-sm text-slate-600 break-words">{r.userName} · {new Date(r.createdAt).toLocaleString('ar')} {r.note}</p>)}{receiptState === 'confirmed' && <p className="text-sm font-semibold text-emerald-700">تم تأكيد استلامك.</p>}{receiptState === 'pending' && <label className="block text-sm font-semibold">ملاحظة الاستلام<textarea className={control} maxLength={500} value={receiptNote} disabled={pending || !isOnline} onChange={e => setReceiptNote(e.target.value)} /></label>}</>}
         </div>}
         <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3">

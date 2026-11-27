@@ -7,9 +7,13 @@ import { AirScriptPanel } from '../components/onair/AirScriptPanel';
 import { evaluateBulletinReadiness } from '../shared/bulletinReadiness';
 import { ReadinessPanel } from '../components/bulletins/ReadinessPanel';
 import { AirSourceStatus } from '../components/onair/AirSourceStatus';
+import { PrompterCorrectionCue } from '../components/onair/PrompterCorrectionCue';
+import { BulletinCorrectionNotices } from '../components/onair/BulletinCorrectionNotices';
 import { useAirConnection } from '../hooks/useAirConnection';
 import { dataStore } from '../services/dataStore';
 import { confirmDialog } from '../services/dialogs';
+import { notify } from '../services/notify';
+import { sendBulletinPlaybackFailure } from '../services/bulletinAirCue';
 import { navigateTo } from '../services/uiEvents';
 import { AsRunPanel } from '../components/onair/AsRunPanel';
 import { segmentGuests } from '../shared/episodePlan';
@@ -23,7 +27,7 @@ import { DEPARTMENTS, departmentIdOf, departmentName } from '../shared/departmen
 import { canControlOnAir, CUE_PRESETS, Cue, formatClock, liveTiming, PRESENTER_INSTRUCTIONS } from '../shared/onair';
 import { usePresenterPaces } from '../hooks/usePresenterPaces';
 import { estimatedSegmentRead, presenterKey, rundownBackTimes } from '../shared/presenterTiming';
-import { bulletinTiming, clockOf, minutesOfDay, storyTiming } from '../shared/bulletins';
+import { bulletinTiming, clockOf, minutesOfDay, storyTiming, storyTypeOf } from '../shared/bulletins';
 import { episodeReadiness } from '../shared/production';
 import { stationTimeZone } from '../shared/dates';
 import { programmeSeconds, secondsUntilStart, stationWall } from '../shared/stationTime';
@@ -68,7 +72,7 @@ export const OnAirView: React.FC<OnAirViewProps> = (props) => {
 };
 
 const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScreen, selectedShowId, onSelectShow }) => {
-  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings', 'users'], 1000);
+  useLiveData(['onAir', 'episodes', 'bulletins', 'bulletinStories', 'cues', 'requests', 'media', 'settings', 'users', 'notifications'], 1000);
   const labelDepartment = createDepartmentLabeler();
   const [displayOverride, setDisplayOverride] = useState<AirDisplayMode | null>(null);
   const displayMode = displayOverride || airDisplayDefault(apiService.getSettings(), 'onAir');
@@ -216,6 +220,15 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
   const remainingCls = !timing ? '' : timing.remaining < 0 ? 'text-red-400' : timing.remaining <= 30 ? 'text-amber-300' : 'text-emerald-300';
   const selectedTitle = episode ? `${episode.programName} — ${episode.title}` : '';
   const nextSegment = timing?.next ?? (!live && state?.status !== 'ENDED' ? rundown[0] : undefined);
+  const liveStory = live ? bulletinStories.find(story => story.id === state?.currentSegmentId) : undefined;
+  const mediaIssue = live ? issues.find(issue => ['VIDEO', 'MEDIA_REVIEW', 'MEDIA_RIGHTS'].includes(issue.code) &&
+    (issue.storyId === liveStory?.id || issue.storyId === nextSegment?.id)) : undefined;
+  const reportPlaybackFailure = async () => {
+    if (!episode || !liveStory) return;
+    if (await run(() => sendBulletinPlaybackFailure(episode.id, liveStory.slug), 'cues')) {
+      notify({ type: 'success', message: 'أُرسل تنبيه تعذّر التشغيل إلى فريق البث' });
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -242,6 +255,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
       </div>
 
       <AirSourceStatus connected={connected} control={canControl} />
+      {episode && canControl && <PrompterCorrectionCue showId={episode.id} user={currentUser} />}
+      {episode && canControl && <BulletinCorrectionNotices showId={episode.id} operatorId={currentUser.id} />}
       {!live && bulletin && <ReadinessPanel issues={issues} stories={bulletinStories} users={apiService.getUsers()} airStoryCount={rundown.length} onOpen={canOpenBulletin ? story => {
         try { sessionStorage.setItem('madar-open-bulletin-story', story.id); } catch { /* The bulletin remains reachable. */ }
         navigateTo.emit(`/bulletins/${encodeURIComponent(bulletin.id)}`);
@@ -322,6 +337,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
 
             <AirDisplayControls mode={displayMode} onChange={setDisplayOverride} />
             {displayMode === 'TEXT' && state?.status !== 'ENDED' && <AirScriptPanel segmentId={timing?.current?.id || rundown[0]?.id} script={timing?.current ? timing.current.scriptText : rundown[0]?.scriptText} live={live} />}
+            {liveStory && (liveStory.killed || liveStory.floated) && <p role="status" className="text-sm font-semibold text-amber-200">تغيّر ترتيب البث. يبقى النص الحالي حتى الانتقال.</p>}
+            {mediaIssue && <p role="status" className="text-sm font-semibold text-amber-200">{mediaIssue.storyId === liveStory?.id ? 'المادة الحالية' : 'المادة التالية'} · {mediaIssue.message}</p>}
             {nextSegment && (
               <p className="text-xs text-slate-300 border-t border-slate-800 pt-3">
                 {live ? 'التالي' : 'الفقرة الأولى'} · <strong className="text-white">{nextSegment.title}</strong> ({formatClock(nextSegment.durationSeconds || 0)})
@@ -345,6 +362,8 @@ const OnAirControl: React.FC<OnAirViewProps> = ({ currentUser, onOpenStudioScree
                       <ChevronRight className="w-4 h-4" />
                       السابقة
                     </button>
+                    {liveStory && storyTypeOf(liveStory.type).clip && <button type="button" onClick={() => void reportPlaybackFailure()}
+                      className="min-h-11 rounded-xl border border-amber-300 px-3 text-sm font-semibold text-amber-100 hover:bg-slate-800">تعذّر تشغيل المادة</button>}
                     <button
                       type="button"
                       onClick={async () => (await confirmDialog('إنهاء البث؟ ستُسجَّل الحلقة كمذاعة.')) && run(() => apiService.setOnAir(episode.id, 'ENDED', state!.currentSegmentId))}

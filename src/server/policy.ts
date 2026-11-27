@@ -12,6 +12,7 @@ import { bookingError, diaryError, RESOURCE_KINDS } from '../shared/planning';
 import { commentError } from '../shared/comments';
 import { episodePlanError } from '../shared/episodePlan';
 import { episodeReadiness, requestChangeError } from '../shared/production';
+import { handlesSupport, supportRecipient, supportTrack } from '../shared/trackSupport';
 import { departmentIdOf, departmentsAtStation, departmentsError, departmentsOf, departmentStationIds, findDepartmentId, isDepartmentId, removedDepartmentsInUse } from '../shared/departments';
 import { DEFAULT_ROLE_DEFINITIONS, findUserRole } from '../shared/rbac';
 import { canControlOnAir, isCueForUser, isPresenterAccount, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
@@ -25,10 +26,16 @@ import { settingsError } from '../shared/settings';
 import { allowsModule, moduleForRecord, moduleSubject, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
 import { inferredStationPolicyChangeError, moduleAllowed, moduleAllowsRecord } from './moduleAccess';
 import { canGovernCard, cardChangeError, cardContextOf, GOVERN_DENIED, isStepOpen } from '../shared/productionCards';
+import { evaluatePermission } from '../shared/rbac';
+import { mayReadWorkflowTrack } from '../shared/workflowTracks';
+import { cardWorkflowAccess, cardWorkflowTrack, workflowAccess } from '../shared/workflowAccess';
+import { mayManageTemplate, publishedWorkflow, templateScope } from '../shared/workflowPublication';
 import { templateChangeError } from '../shared/workflowTemplates';
 import { screensError } from '../shared/screens';
 import { canReadMessage, chatReadsError, conversationChangeError, sendError } from '../shared/chat';
-import { stationsOf } from '../shared/stations';
+import { stationsOf, stationGroupsOf, stationScope } from '../shared/stations';
+import { mediaFolderInScope } from '../shared/mediaFolders';
+import { mediaFolderChangeError, mediaPlacementError } from './mediaFolders';
 import { canEditNewsContent, contentDenial, embargoDenial, isUnderEmbargo, reviewBookkeepingDenial, transitionDenial } from '../shared/newsWorkflow';
 import { handledChangeError, manualWireError } from '../shared/wires';
 import { PERSONAL_NOTE_BODY_LIMIT, PERSONAL_NOTE_TITLE_LIMIT } from '../shared/personalWorkspace';
@@ -38,6 +45,7 @@ import { assignmentScope } from '../shared/assignmentScope';
 import { workReminderError, workReminderInstant } from '../shared/workReminders';
 import { canEditOwnStation, ownStationChangeError } from '../shared/ownStationChange';
 import { permissionChangeError, permissionListError, restrictionRemovalError } from './permissionChanges';
+import { mayManageWorkflowTrack, workflowScopeError, WORKFLOW_TRACKS } from '../shared/workflowTracks';
 
 export type WriteKind = 'create' | 'update' | 'delete';
 
@@ -194,6 +202,22 @@ const usersPolicy: Policy = (input) => {
   // Super-admin accounts can only be touched by a super admin (or themselves for profile fields).
   const targetIsSuper = before?.role === 'SUPER_ADMIN' || after?.role === 'SUPER_ADMIN';
   if (targetIsSuper && !actorIsSuper && targetId !== self) return 'فقط مدير النظام العام يمكنه تعديل أو حذف حسابات المدير العام';
+
+  const workflowRolesChanged = after && changed(before, after, 'workflowRoles');
+  const workflowDelegationsChanged = after && changed(before, after, 'workflowDelegations');
+  if (workflowRolesChanged || workflowDelegationsChanged) {
+    if (targetId === self || !auth.can('users.manage_roles_permissions')) return DENIED;
+    const invalid = workflowScopeError(after.workflowRoles, after.workflowDelegations);
+    if (invalid) return invalid;
+    const returnsToLegacy = before?.workflowRoles != null && after.workflowRoles == null;
+    if (WORKFLOW_TRACKS.some(track => (
+      returnsToLegacy ||
+      before?.workflowRoles?.[track] !== after.workflowRoles?.[track] ||
+      JSON.stringify(before?.workflowDelegations?.[track]) !== JSON.stringify(after.workflowDelegations?.[track])
+    ) && !mayManageWorkflowTrack(auth.user, track, auth.can('cards.manage')))) {
+      return 'تغيير الأدوار والتفويضات يتطلب صلاحية إدارة المسار المعني';
+    }
+  }
 
   if (kind === 'delete' || isSoftDelete(before, after)) {
     if (targetId === self) return 'لا يمكن حذف الحساب النشط حالياً';
@@ -398,7 +422,8 @@ const tasksPolicy: Policy = ({ auth, kind, before, after, list }) => {
   return 'صلاحياتك لا تسمح بإدارة المهام';
 };
 
-const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
+const mediaPolicy: Policy = (input) => {
+  const { auth, kind, before, after } = input;
   if (kind === 'create' && (after.privateMessageMedia || String(after.id).startsWith('msgmedia-'))) return 'يسجل الخادم مراجع مرفقات الرسائل';
   if (kind === 'create' && after.deletedAt) return 'أضف المادة إلى المكتبة قبل نقلها إلى سلة المحذوفات';
   if (kind !== 'delete' && changed(before, after, 'privateMessageMedia')) return 'لا يمكن تغيير مرجع مرفق الرسالة';
@@ -421,7 +446,7 @@ const mediaPolicy: Policy = ({ auth, kind, before, after }) => {
   if (approvalChanged && !(auth.can('news.approve') || auth.can('media.delete'))) return 'اعتماد الفيديو للبث لمن يملك صلاحية الاعتماد';
   if (before?.rights && !(auth.can('news.approve') || auth.can('media.delete')) &&
     (changed(before, after, 'url') || changed(before, after, 'fileUrl'))) return 'تغيير مصدر مادة تحمل حقوق بث لمن يملك صلاحية الاعتماد أو إدارة الوسائط';
-  return mediaEditorialError(after);
+  return mediaPlacementError(input) || mediaEditorialError(after);
 };
 
 const notificationsPolicy: Policy = ({ auth, kind, before, after }) => {
@@ -582,6 +607,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   guests: require('guests.manage'),
   tasks: tasksPolicy,
   media: mediaPolicy,
+  mediaFolders: mediaFolderChangeError,
   categories: categoryPolicy,
   productionPeople: ({ auth, kind, before, after, list }) => {
     if (!auth.can('system.settings')) return DENIED;
@@ -662,7 +688,8 @@ export const POLICIES: Record<CollectionName, Policy> = {
     if (!['LIVE', 'ENDED'].includes(after?.status)) return 'حالة البث غير صالحة';
     const episode = findShow(String(after?.episodeId), (c) => list?.(c) || []);
     if (!episode || after?.id !== episode.id) return 'الحلقة أو النشرة غير موجودة';
-    if (!(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
+    const finishingCurrent = before?.status === 'LIVE' && after.status === 'ENDED' && before.currentSegmentId === after.currentSegmentId;
+    if (!finishingCurrent && !(episode.rundown || []).some((seg: any) => seg.id === after.currentSegmentId)) return 'الفقرة ليست ضمن رانداون البث';
     if (after.status === 'LIVE') {
       const session = before?.status === 'LIVE' ? { showId: episode.id, startedAt: after.startedAt } : undefined;
       const bulletin = (list?.('bulletins') || []).find((b: any) => b.id === after.episodeId);
@@ -690,6 +717,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
   },
   cues: ({ auth, kind, before, after, list }) => {
     if (kind === 'create') {
+      if (after?.purpose !== undefined) return 'نوع التنبيه خاص بتصحيح التلقين المسجّل على الخادم';
       if (!canControlOnAir(auth.user, auth.can) && !auth.can('tasks.intercom_broadcast')) return 'إرسال تنبيهات الهواء للمخرج والكنترول';
       if (typeof after?.message !== 'string' || !after.message.trim() || after.message.length > 300) return 'نص التنبيه غير صالح';
       if (!Array.isArray(after?.targetDepartmentIds) || !after.targetDepartmentIds.every(isDepartmentId)) return 'القسم المستهدف غير معروف';
@@ -712,19 +740,41 @@ export const POLICIES: Record<CollectionName, Policy> = {
     return JSON.stringify(restBefore) === JSON.stringify(restAfter) ? null : 'التنبيه لا يُعدَّل بعد إرساله';
   },
   requests: ({ auth, kind, before, after, list }) => {
-    const canManage = auth.can('requests.manage');
+    const track = supportTrack(before?.type || after?.type);
+    if (track && !any(auth, 'requests.manage', 'requests.create')) return DENIED;
+    const canManage = !track && auth.can('requests.manage');
     if (kind === 'delete' || isSoftDelete(before, after)) {
       return canManage || (before?.requesterId === auth.user.id && before?.status === 'OPEN') ? null : 'لا يمكنك حذف هذا الطلب';
     }
     if (kind === 'create' && !auth.can('requests.create')) return 'صلاحياتك لا تسمح بإرسال طلبات للأقسام';
-    const denied = requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage });
+    if (track && (!before || after.addressedToId !== before.addressedToId)) {
+      const user = list?.('users').find(item => item.id === after.addressedToId);
+      if (!supportRecipient(user, track, !before) || user.id === after.requesterId) return 'اختر مستلماً مخوّلاً في المسار المطلوب';
+      if (user.stationId && !assignmentScope(auth.user, list?.('settings')[0]).stations.has(user.stationId)) return 'مستلم طلب المساندة خارج نطاق محطاتك';
+      if (!before) {
+        const card = list?.('productionCards').find(item => item.id === after.supportCardId);
+        if (!card || card.deletedAt || card.status !== 'OPEN' || cardWorkflowTrack(card) === track ||
+          (card.ownerId !== auth.user.id && card.createdById !== auth.user.id) ||
+          !canRead(auth, 'productionCards', card, (collection, id) => list?.(collection).find(item => item.id === id))) return 'اختر تكليفاً مفتوحاً تملكه في المسار الآخر';
+      }
+    }
+    const denied = requestChangeError(before, after, { id: auth.user.id, departmentId: departmentIdOf(auth.user), canManage,
+      handlesSupport: !!before && handlesSupport(before, auth.user), routesSupport: !!track && supportRecipient(auth.user, track, true) });
     if (denied) return denied;
     if (after.link?.episodeId && changed(before, after, 'link') && !moduleAllowed(auth, 'programmes')) return MODULE_UNAVAILABLE;
     if (after.sourceMediaIds?.length && changed(before, after, 'sourceMediaIds')) {
       if (!any(auth, 'media.view', 'media.upload')) return 'ربط مصادر المونتاج يتطلب الوصول إلى مكتبة الوسائط';
       const existing = new Set(before?.sourceMediaIds || []);
       const media = list?.('media') || [];
-      if (after.sourceMediaIds.some((id: string) => !existing.has(id) && !media.some(asset => asset.id === id && !asset.deletedAt && ['VIDEO', 'AUDIO'].includes(asset.mediaType) && (!asset.privateMessageMedia || asset.ownerId === auth.user.id)))) return 'ملف مصدر المونتاج غير متاح في مكتبة الوسائط';
+      if (track) {
+        const card = list?.('productionCards').find(item => item.id === after.supportCardId && !item.deletedAt);
+        const lookup = (collection: CollectionName, id: string) => list?.(collection).find(item => item.id === id);
+        if (!card || !canRead(auth, 'productionCards', card, lookup) || after.sourceMediaIds.some((id: string) => {
+          if (existing.has(id)) return false;
+          const asset = media.find(item => item.id === id);
+          return !card.mediaIds?.includes(id) || !asset || asset.deletedAt || asset.privateMessageMedia || !canRead(auth, 'media', asset, lookup);
+        })) return 'اختر مواد متاحة من مرفقات التكليف الأصلي';
+      } else if (after.sourceMediaIds.some((id: string) => !existing.has(id) && !media.some(asset => asset.id === id && !asset.deletedAt && ['VIDEO', 'AUDIO'].includes(asset.mediaType) && (!asset.privateMessageMedia || asset.ownerId === auth.user.id)))) return 'ملف مصدر المونتاج غير متاح في مكتبة الوسائط';
     }
     const resultId = after.resultMediaId;
     const completingWithResult = after.status === 'DONE' && (before?.status !== 'DONE' || changed(before, after, 'resultMediaId'));
@@ -812,7 +862,20 @@ export const POLICIES: Record<CollectionName, Policy> = {
   resources: resourcesPolicy,
   bookings: bookingsPolicy,
   productionCards: ({ auth, kind, before, after, list }) => {
-    const canManage = auth.can('cards.manage');
+    const track = cardWorkflowTrack(before || after);
+    if (before && after && cardWorkflowTrack(after) !== track) return 'لا يمكن تغيير مسار تكليف محفوظ';
+    const legacyAccess = { view: auth.can('cards.view'), manage: auth.can('cards.manage'), work: auth.can('cards.work') };
+    const access = cardWorkflowAccess(auth.user, before || after, legacyAccess, !!before);
+    if (!access.view) return 'هذا التكليف خارج مسار حسابك';
+    const canManage = access.canManage;
+    if (!before && after?.templateId) {
+      const template = list?.('workflowTemplates').find(item => item.id === after.templateId);
+      if (template?.drafting || after.templateVersion !== undefined) {
+        const published = template && !template.deletedAt && !template.archived && publishedWorkflow(template);
+        if (!published || published.version !== after.templateVersion ||
+          (templateScope(template) !== 'shared' && templateScope(template) !== track)) return 'اختر الإصدار المنشور المناسب لمسار التكليف';
+      }
+    }
     if (assignedWorkOnly(auth.can)) {
       if (!cardAssignedTo(before, auth.user.id)) return 'يمكنك التعامل مع التكليفات المسندة إليك فقط';
       if (Array.isArray(after?.steps) && before?.steps?.some((step: any) => step.assigneeId !== auth.user.id &&
@@ -822,7 +885,7 @@ export const POLICIES: Record<CollectionName, Policy> = {
     }
     const settings = list?.('settings')[0];
     const departments = departmentsOf(settings);
-    const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: findDepartmentId(auth.user, departments), canManage, canWork: auth.can('cards.work') };
+    const actor = { id: auth.user.id, stationId: auth.user.stationId, managedStationIds: auth.user.managedStationIds, managedGroupIds: auth.user.managedGroupIds, role: auth.user.role, departmentId: findDepartmentId(auth.user, departments), ...access };
     const users = list?.('users') || [];
     const ctx = cardContextOf(settings, users);
     if (kind === 'delete' || isSoftDelete(before, after) || before?.deletedAt) {
@@ -840,12 +903,22 @@ export const POLICIES: Record<CollectionName, Policy> = {
         after.steps.some((step: { stationId?: string }) => auth.moduleAllowsNewWork?.('assignments', step.stationId) === false))) {
       return 'التكليفات في وضع إنهاء الأعمال القائمة، ويمكن متابعة العمل المسند حالياً';
     }
-    const recipients = new Set<string>();
-    if (after.ownerId && after.ownerId !== before?.ownerId) recipients.add(after.ownerId);
-    const previous = new Map<string, { assigneeId?: string; stationId?: string; departmentId?: string }>((before?.steps || []).map(step => [step.id, step]));
+    const recipients = new Map<string, Set<typeof track>>();
+    const recipientOf = (id: string, targetTrack: typeof track) => {
+      const tracks = recipients.get(id) ?? new Set<typeof track>();
+      tracks.add(targetTrack);
+      recipients.set(id, tracks);
+    };
+    if (after.ownerId && after.ownerId !== before?.ownerId) recipientOf(after.ownerId, track);
+    const previous = new Map<string, { assigneeId?: string; stationId?: string; departmentId?: string; executionTrack?: typeof track }>((before?.steps || []).map(step => [step.id, step]));
     for (const step of after.steps) {
       const prior = previous.get(step.id);
-      if (step.assigneeId && step.assigneeId !== prior?.assigneeId) recipients.add(step.assigneeId);
+      const targetTrack = step.executionTrack || track;
+      const assignmentChanged = step.assigneeId !== prior?.assigneeId || step.executionTrack !== prior?.executionTrack;
+      if (assignmentChanged && targetTrack !== track && (!canManage || !workflowAccess(auth.user, targetTrack, legacyAccess, !!before).canManage)) {
+        return 'الإسناد المباشر بين المسارين يتطلب صلاحية الإسناد فيهما؛ استخدم طلب المساندة';
+      }
+      if (step.assigneeId && assignmentChanged) recipientOf(step.assigneeId, targetTrack);
       const poolChanged = !step.assigneeId && (prior?.assigneeId || step.stationId !== prior?.stationId || step.departmentId !== prior?.departmentId);
       if (poolChanged && step.stationId && !scope.stations.has(step.stationId)) {
         return 'محطة التكليف خارج نطاق المحطات التي تديرها أو ترتبط بها';
@@ -859,19 +932,37 @@ export const POLICIES: Record<CollectionName, Policy> = {
         }
       }
     }
-    for (const id of recipients) {
+    for (const [id, tracks] of recipients) {
       const recipient = users.find(u => u.id === id);
       const denied = scope.errorFor(recipient);
       if (denied) return denied;
+      if (recipient && [...tracks].some(targetTrack => !mayReadWorkflowTrack(recipient, targetTrack))) return 'المكلّف خارج مسار التكليف. استخدم طلب المساندة بين المسارين';
       if (recipient && !allowsModule(settings?.moduleAccess, 'assignments', moduleSubject(recipient, findUserRole(recipient, auth.roles)?.id, departments))) {
         return 'التكليفات غير متاحة لأحد الزملاء المختارين';
       }
     }
     return null;
   },
-  workflowTemplates: ({ auth, kind, before, after }) => {
-    if (kind === 'delete') return auth.can('cards.manage') ? null : 'قوالب سير العمل لمسؤولي التكليف';
-    return templateChangeError(before, after, auth.can('cards.manage'));
+  workflowTemplates: ({ auth, kind, before, after, list }) => {
+    const canManage = mayManageTemplate(auth.user, before || after, auth.can('cards.manage'));
+    if (kind === 'delete') return canManage ? null : 'قوالب سير العمل لمسؤولي التكليف في المسار';
+    const error = templateChangeError(before, after, canManage);
+    if (error || !after.publishRequested) return error;
+    const track = templateScope(after) === 'shared' ? cardWorkflowTrack({ kind: after.kind }) : templateScope(after);
+    const settings = list?.('settings')[0];
+    const departments = departmentsOf(settings);
+    const eligibleApprovers = (list?.('users') || []).filter(user => user.isActive && !user.deletedAt &&
+      (track === 'programmes' ? evaluatePermission(user, 'episodes.edit', auth.roles, departments)
+        : evaluatePermission(user, 'bulletins.approve', auth.roles, departments) || evaluatePermission(user, 'news.approve', auth.roles, departments)));
+    for (const step of after.steps) {
+      if (step.type !== 'approve') continue;
+      const rule = step.rule;
+      if (!eligibleApprovers.some(user => rule.kind === 'PERSON' ? user.id === rule.userId
+        : rule.kind === 'ROLE' && (findUserRole(user, auth.roles)?.roleCode ?? user.role) === rule.role)) {
+        return 'حدّد جهة مخوّلة للاعتماد الإلزامي قبل نشر القالب';
+      }
+    }
+    return null;
   },
 };
 
@@ -895,6 +986,9 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
   const delegated = (kind: string, id: unknown) => typeof id === 'string' && !!auth.productionAssignments?.().has(`${kind}:${id}`);
   const showVisible = (id: unknown) => parentVisible('episodes', id) || parentVisible('bulletins', id);
   switch (collection) {
+    case 'requests':
+      if (!supportTrack(data?.type)) return true;
+      return any(auth, 'requests.create', 'requests.manage') && (data?.requesterId === auth.user.id || handlesSupport(data, auth.user));
     case 'shiftHandovers':
     case 'handoverReceipts': return false;
     case 'savedNewsFilters':
@@ -924,6 +1018,11 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       return !data?.expiresAt || data.fromId === auth.user.id || isCueForUser(data, auth.user);
     case 'guests':
       return any(auth, 'guests.view', 'guests.manage');
+    case 'mediaFolders': {
+      const settings = lookup?.('settings', 'singleton');
+      return any(auth, 'media.view', 'media.upload') && mediaFolderInScope(data,
+        stationScope(stationsOf(settings), auth.user, stationGroupsOf(settings)));
+    }
     case 'media': {
       if (!any(auth, 'media.view', 'media.upload')) return false;
       const reference: PrivateMessageMedia | undefined = data?.privateMessageMedia;
@@ -936,7 +1035,8 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
       const work = lookup?.(collection, id);
       if (!work || work.deletedAt || work.messageOrigin?.messageId !== reference.messageId || !messageWorkMediaIds(collection, work).includes(data.id)) return false;
       if (collection === 'requests') {
-        return moduleAllowed(auth, 'requests', work.stationId) && (auth.can('requests.manage') || any(auth, 'requests.view', 'requests.create') &&
+        if (supportTrack(work.type)) return canRead(auth, 'requests', work, lookup);
+        return moduleAllowed(auth, 'requests', work.stationId) && (auth.can('requests.manage') || auth.can('requests.create') &&
           (work.departmentId === departmentIdOf(auth.user) || work.requesterId === auth.user.id));
       }
       return canRead(auth, collection, work, lookup);
@@ -964,8 +1064,15 @@ export function canRead(auth: AuthContext, collection: CollectionName, data: any
     case 'notificationPrefs':
       return data?.userId === auth.user.id;
     case 'productionCards':
-    case 'workflowTemplates':
-      return auth.can('cards.view');
+    case 'workflowTemplates': {
+      const legacy = { view: auth.can('cards.view'), manage: auth.can('cards.manage'), work: auth.can('cards.work') };
+      if (!data) return WORKFLOW_TRACKS.some(track => workflowAccess(auth.user, track, legacy).view);
+      if (collection === 'productionCards') return cardWorkflowAccess(auth.user, data, legacy).view;
+      const scope = templateScope(data);
+      if (!publishedWorkflow(data)) return mayManageTemplate(auth.user, data, legacy.manage);
+      return scope === 'shared' ? WORKFLOW_TRACKS.some(track => workflowAccess(auth.user, track, legacy).view)
+        : workflowAccess(auth.user, scope, legacy).view;
+    }
     case 'messages':
       return canReadMessage(data, auth.user.id);
     case 'conversations':

@@ -27,6 +27,7 @@ export const CARD_STATE_STYLE: Record<CardState, string> = {
 };
 
 export const STEP_STATUS_STYLE: Record<StepStatus, string> = {
+  IN_REVIEW: 'bg-violet-50 text-violet-800 border-violet-200',
   TODO: 'bg-white text-slate-600 border-slate-300',
   IN_PROGRESS: 'bg-blue-50 text-blue-700 border-blue-200',
   BLOCKED: 'bg-rose-50 text-rose-700 border-rose-200',

@@ -9,7 +9,7 @@ test('a private note follows its employee across browsers and is absent for anot
     await author.page.getByRole('button', { name: 'ملاحظة جديدة' }).click();
     await author.page.getByLabel('العنوان', { exact: true }).fill(title);
     await author.page.getByLabel('نص الملاحظة').fill('ملخصي الخاص للمناوبة');
-    await author.page.getByRole('checkbox', { name: 'تثبيت في أعلى القائمة' }).check();
+    await author.page.getByRole('checkbox', { name: 'تثبيت في القائمة وإظهارها في الملصقات' }).check();
     await author.page.getByRole('button', { name: 'حفظ الملاحظة' }).click();
     await expect(author.page.getByText(title, { exact: true })).toBeVisible();
 
@@ -36,7 +36,7 @@ test('tablet navigation opens on demand and closes with Escape', async ({ browse
     const { page } = user;
     const opener = page.getByRole('button', { name: 'فتح القائمة الرئيسية' });
     await expect(opener).toBeVisible();
-    await expect(page.locator('aside')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#workspace-navigation')).toHaveAttribute('aria-hidden', 'true');
     await opener.click();
     await expect(page.getByRole('dialog', { name: 'القائمة الرئيسية' })).toBeVisible();
     await page.keyboard.press('Escape');
