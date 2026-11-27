@@ -45,6 +45,8 @@ for (const mode of ['browser', 'browser-temporary', 'sign-in'] as const) {
           initialPassword = await newPassword.inputValue();
           expect(initialPassword).toHaveLength(12);
           await expect(confirmation).toHaveValue(initialPassword);
+          await newPassword.fill(`${initialPassword}a`);
+          await newPassword.fill(initialPassword);
           const persisted = await page.evaluate(value => [...Object.values(localStorage), ...Object.values(sessionStorage)].some(item => item.includes(value)), initialPassword);
           expect(persisted).toBe(false);
         } else {

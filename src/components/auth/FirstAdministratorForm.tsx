@@ -72,7 +72,6 @@ export function FirstAdministratorForm({ saving, onSavingChange, onCreated }: {
       {copyNotice && <p role="status" className="text-xs text-slate-700">{copyNotice}</p>}
       <label className="block font-semibold">كلمة المرور<input name="password" type={showPasswords ? 'text' : 'password'} value={password} onChange={event => {
         setPassword(event.target.value);
-        setTemporary(false);
         setCopyNotice('');
       }} required minLength={MIN_PASSWORD_LENGTH} maxLength={200} autoComplete="new-password" aria-describedby="first-admin-password-hint" dir="ltr" className={input} /></label>
       <p id="first-admin-password-hint" className="text-xs leading-relaxed text-slate-600">
