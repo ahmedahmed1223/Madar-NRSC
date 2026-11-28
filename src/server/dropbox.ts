@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { logger } from './logger';
+import { validDropboxTeamMemberId } from '../shared/dropboxAuthorization';
 
 /**
  * Minimal Dropbox API v2 client (no SDK): offline refresh tokens, chunked uploads, streamed
@@ -11,6 +12,30 @@ export interface DropboxCredentials {
   appKey: string;
   appSecret: string;
   refreshToken: string;
+  teamMemberId?: string;
+  teamRootNamespaceId?: string;
+  /** The member ID was resolved from the token's authorizing administrator. */
+  automaticTeamMember?: boolean;
+}
+
+interface DropboxAccount {
+  name: string;
+  teamMemberId?: string;
+  rootNamespaceId?: string;
+}
+
+type DropboxRequest = { headers?: Record<string, string>; body?: any; duplex?: 'half'; signal?: AbortSignal };
+type TeamMemberPage = { members: { id: string; name: string; email?: string }[]; cursor?: string };
+
+interface DropboxDirectoryResponse {
+  members: { profile: {
+    team_member_id: string;
+    status?: { '.tag': string };
+    name?: { display_name?: string };
+    email?: string;
+  } }[];
+  has_more: boolean;
+  cursor: string;
 }
 
 export interface DropboxEntry {
@@ -26,6 +51,14 @@ export class DropboxError extends Error {
   constructor(public status: number, message: string, public summary?: string) {
     super(message);
   }
+}
+
+export function dropboxMissingScope(error: unknown): boolean {
+  return error instanceof DropboxError && /^(invalid_scope|missing_scope)(\/|$)/.test(error.summary || '');
+}
+
+function teamTokenNeedsMember(error: unknown): boolean {
+  return error instanceof DropboxError && /^(invalid_select_user|missing_select_user)(\/|$)|entire Dropbox Business team|Dropbox-API-Select-User header/i.test(error.summary || '');
 }
 
 const CHUNK = 8 * 1024 * 1024;
@@ -89,6 +122,7 @@ export async function exchangeAuthorizationCode(appKey: string, appSecret: strin
 export class DropboxClient {
   private accessToken: string | null = null;
   private expiresAt = 0;
+  private selectedAccount?: DropboxAccount;
 
   constructor(private creds: DropboxCredentials, private hosts = dropboxHosts()) {}
 
@@ -111,6 +145,7 @@ export class DropboxClient {
       if (res.ok || res.status === 429 || res.status >= 500) {
         throw new DropboxError(res.ok ? 502 : res.status, 'خدمة تفويض Dropbox غير متاحة الآن');
       }
+      if (scope && body.error === 'invalid_scope') throw new DropboxError(400, `الإذن ${scope} غير ممنوح في Dropbox. فعّله ثم أعد الربط.`, 'invalid_scope');
       throw new DropboxError(res.status, 'تعذر تجديد تفويض Dropbox؛ تحقق من المفاتيح أو أعد الربط', typeof body.error === 'string' ? body.error : undefined);
     }
     if (scope && typeof body.scope === 'string' && !body.scope.split(/\s+/).includes(scope)) {
@@ -138,11 +173,19 @@ export class DropboxClient {
   }
 
   private async call(endpoint: string, args: unknown, signal?: AbortSignal): Promise<any> {
-    const res = await this.raw(`${this.hosts.api}/2/${endpoint}`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(args), signal });
+    const res = await this.storageRaw(`${this.hosts.api}/2/${endpoint}`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(args), signal });
     return res.json();
   }
 
-  private async raw(url: string, init: { headers?: Record<string, string>; body?: any; duplex?: 'half'; signal?: AbortSignal }, retry = true): Promise<Response> {
+  private async storageRaw(url: string, init: DropboxRequest): Promise<Response> {
+    const account = await this.account(init.signal);
+    const headers = { ...init.headers };
+    if (account.teamMemberId) headers['dropbox-api-select-user'] = account.teamMemberId;
+    if (account.rootNamespaceId) headers['dropbox-api-path-root'] = headerJson({ '.tag': 'root', root: account.rootNamespaceId });
+    return this.raw(url, { ...init, headers });
+  }
+
+  private async raw(url: string, init: DropboxRequest, retry = true): Promise<Response> {
     const res = await fetch(url, {
       method: 'POST',
       ...init,
@@ -159,25 +202,134 @@ export class DropboxClient {
       const text = await res.text().catch(() => '');
       let summary = text;
       try {
-        summary = JSON.parse(text).error_summary || text;
+        const body = JSON.parse(text);
+        summary = typeof body.error_summary === 'string' ? body.error_summary : String(body.error?.['.tag'] || text);
       } catch {
         // plain-text error
       }
       if (/not_found/.test(summary)) throw new DropboxError(404, 'الملف غير موجود في Dropbox', summary);
       if (/insufficient_space/.test(summary)) throw new DropboxError(507, 'مساحة Dropbox ممتلئة', summary);
+      if (/^invalid_root(\/|$)/.test(summary)) throw new DropboxError(409, 'تغيّر جذر مساحة Dropbox. تحقق من مسارات ملفات المكتبة ثم جدّد الربط.', 'invalid_root');
       throw new DropboxError(res.status, 'تعذر إكمال الطلب في Dropbox', summary);
     }
     return res;
   }
 
-  async account(signal?: AbortSignal): Promise<{ name: string; email?: string }> {
-    const res = await this.raw(`${this.hosts.api}/2/users/get_current_account`, { signal });
+  private async currentAccount(signal: AbortSignal, teamMemberId?: string): Promise<DropboxAccount> {
+    const headers = teamMemberId ? { 'dropbox-api-select-user': teamMemberId } : undefined;
+    const res = await this.raw(`${this.hosts.api}/2/users/get_current_account`, { signal, headers });
     const body: any = await res.json();
-    return { name: String(body?.name?.display_name || body?.email || 'Dropbox'), email: body?.email };
+    const name = String(body?.name?.display_name || body?.email || 'Dropbox');
+    if (!teamMemberId) return { name };
+    if (body?.disabled || (body?.team_member_id && body.team_member_id !== teamMemberId)) {
+      throw new DropboxError(400, 'عضو Dropbox المحدد غير نشط أو غير متاح لهذا التفويض.', 'invalid_team_member');
+    }
+    const rootNamespaceId = body?.root_info?.root_namespace_id;
+    if (typeof rootNamespaceId !== 'string' || !/^\d+$/.test(rootNamespaceId)) {
+      throw new DropboxError(400, 'تعذر تحديد جذر مساحة Dropbox للعضو المختار.', 'invalid_root');
+    }
+    if (this.creds.teamRootNamespaceId && this.creds.teamRootNamespaceId !== rootNamespaceId) {
+      throw new DropboxError(409, 'تغيّر جذر مساحة Dropbox. تحقق من مسارات ملفات المكتبة ثم جدّد الربط.', 'invalid_root');
+    }
+    return { name, teamMemberId, rootNamespaceId };
+  }
+
+  private async teamAccount(signal: AbortSignal, memberId?: string): Promise<DropboxAccount> {
+    if (memberId && !validDropboxTeamMemberId(memberId)) {
+      throw new DropboxError(400, 'معرّف عضو فريق Dropbox غير صالح.', 'invalid_team_member');
+    }
+    if (!memberId || !this.creds.automaticTeamMember) {
+      const endpoint = memberId ? 'members/get_info_v2' : 'token/get_authenticated_admin';
+      const scope = memberId ? 'members.read' : 'team_info.read';
+      let profile: any;
+      try {
+        const request = memberId ? {
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ members: [{ '.tag': 'team_member_id', team_member_id: memberId }] }),
+        } : {};
+        const result: any = await (await this.raw(`${this.hosts.api}/2/team/${endpoint}`, { ...request, signal })).json();
+        profile = memberId ? result?.members?.[0]?.profile : result?.admin_profile;
+      } catch (error) {
+        if (dropboxMissingScope(error)) {
+          throw new DropboxError(400, `فعّل إذن ${scope} في Dropbox ثم أعد الربط.`, 'missing_scope');
+        }
+        if (error instanceof DropboxError && /^(mapping_not_found|admin_not_active)(\/|$)/.test(error.summary || '')) {
+          throw new DropboxError(400, 'تعذر تحديد المسؤول الذي فوّض ربط فريق Dropbox. جدّد تفويض الفريق أو اختر عضواً نشطاً.', 'invalid_team_member');
+        }
+        if (memberId && error instanceof DropboxError && /linked to a user|user access token|user-linked|team access token/i.test(error.summary || '')) {
+          throw new DropboxError(400, 'اختيار عضو يتطلب تفويض Dropbox لفريق العمل.', 'invalid_team_member');
+        }
+        throw error;
+      }
+      if (profile?.status?.['.tag'] !== 'active' || !validDropboxTeamMemberId(profile?.team_member_id) || (memberId && profile.team_member_id !== memberId)) {
+        throw new DropboxError(400, 'عضو Dropbox المحدد غير نشط أو غير متاح لهذا التفويض.', 'invalid_team_member');
+      }
+      memberId = profile.team_member_id;
+    }
+    try {
+      return await this.currentAccount(signal, memberId);
+    } catch (error) {
+      if (dropboxMissingScope(error)) {
+        throw new DropboxError(400, 'فعّل إذني team_data.member وaccount_info.read في Dropbox ثم أعد الربط.', 'missing_scope');
+      }
+      if (teamTokenNeedsMember(error) || (error instanceof DropboxError && /^user_suspended(\/|$)/.test(error.summary || ''))) {
+        throw new DropboxError(400, 'تعذر استخدام Dropbox بصفة العضو المختار. تحقق من نشاط العضو وإذن team_data.member.', 'invalid_team_member');
+      }
+      throw error;
+    }
+  }
+
+  private async selectAccount(signal: AbortSignal): Promise<DropboxAccount> {
+    if (this.creds.teamMemberId) return this.teamAccount(signal, this.creds.teamMemberId);
+    if (this.creds.teamRootNamespaceId) return this.teamAccount(signal);
+    try {
+      return await this.currentAccount(signal);
+    } catch (error) {
+      if (teamTokenNeedsMember(error)) return this.teamAccount(signal);
+      if (!dropboxMissingScope(error)) throw error;
+    }
+    // Older user-linked grants may have file scopes without account_info.read.
+    try {
+      await this.raw(`${this.hosts.api}/2/files/list_folder`, {
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: '', limit: 1 }), signal,
+      });
+      return { name: 'Dropbox' };
+    } catch (error) {
+      if (teamTokenNeedsMember(error)) return this.teamAccount(signal);
+      throw error;
+    }
+  }
+
+  async account(signal = AbortSignal.timeout(10_000)): Promise<DropboxAccount> {
+    if (this.selectedAccount) return this.selectedAccount;
+    const account = await this.selectAccount(signal);
+    return (this.selectedAccount ??= account);
+  }
+
+  async listActiveTeamMembers(cursor?: string): Promise<TeamMemberPage> {
+    const endpoint = cursor ? 'members/list/continue_v2' : 'members/list_v2';
+    const response = await this.raw(`${this.hosts.api}/2/team/${endpoint}`, {
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(cursor ? { cursor } : { limit: 100, include_removed: false }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = await response.json() as DropboxDirectoryResponse;
+    if (!Array.isArray(data.members) || (data.has_more && (!data.cursor || data.cursor === cursor))) {
+      throw new DropboxError(502, 'لم يُرجع Dropbox صفحة صالحة لأعضاء الفريق.');
+    }
+    return {
+      members: data.members.flatMap(({ profile }) => {
+        if (profile?.status?.['.tag'] !== 'active' || !validDropboxTeamMemberId(profile.team_member_id)) return [];
+        return [{ id: profile.team_member_id, name: profile.name?.display_name || profile.email || profile.team_member_id, email: profile.email }];
+      }),
+      cursor: data.has_more ? data.cursor : undefined,
+    };
   }
 
   async usage(): Promise<{ used: number; allocated?: number }> {
-    const res = await this.raw(`${this.hosts.api}/2/users/get_space_usage`, {});
+    const account = await this.account();
+    const headers = account.teamMemberId ? { 'dropbox-api-select-user': account.teamMemberId } : undefined;
+    const res = await this.raw(`${this.hosts.api}/2/users/get_space_usage`, { headers });
     const body: any = await res.json();
     return { used: Number(body?.used || 0), allocated: Number(body?.allocation?.allocated || 0) || undefined };
   }
@@ -186,7 +338,7 @@ export class DropboxClient {
   async upload(localPath: string, remotePath: string, size: number): Promise<DropboxEntry> {
     const commit = { path: remotePath, mode: 'add', autorename: true, mute: true };
     if (size <= SINGLE_UPLOAD_LIMIT) {
-      const res = await this.raw(`${this.hosts.content}/2/files/upload`, {
+      const res = await this.storageRaw(`${this.hosts.content}/2/files/upload`, {
         headers: { 'content-type': 'application/octet-stream', 'dropbox-api-arg': headerJson(commit) },
         body: await fs.promises.readFile(localPath),
       });
@@ -202,20 +354,20 @@ export class DropboxClient {
       };
       const octet = (arg: unknown) => ({ 'content-type': 'application/octet-stream', 'dropbox-api-arg': headerJson(arg) });
       const first = await readAt(0);
-      const started = await this.raw(`${this.hosts.content}/2/files/upload_session/start`, { headers: octet({ close: false }), body: first });
+      const started = await this.storageRaw(`${this.hosts.content}/2/files/upload_session/start`, { headers: octet({ close: false }), body: first });
       const sessionId = String((await started.json()).session_id);
       let offset = first.length;
       // Every chunk but the last is appended; the last one travels with the commit.
       while (true) {
         const chunk = offset < size ? await readAt(offset) : Buffer.alloc(0);
         if (offset + chunk.length >= size) {
-          const res = await this.raw(`${this.hosts.content}/2/files/upload_session/finish`, {
+          const res = await this.storageRaw(`${this.hosts.content}/2/files/upload_session/finish`, {
             headers: octet({ cursor: { session_id: sessionId, offset }, commit }),
             body: chunk,
           });
           return toEntry(await res.json());
         }
-        await this.raw(`${this.hosts.content}/2/files/upload_session/append_v2`, {
+        await this.storageRaw(`${this.hosts.content}/2/files/upload_session/append_v2`, {
           headers: octet({ cursor: { session_id: sessionId, offset }, close: false }),
           body: chunk,
         });
@@ -230,7 +382,15 @@ export class DropboxClient {
   async download(path: string, range?: string): Promise<Response> {
     const headers: Record<string, string> = { 'dropbox-api-arg': headerJson({ path }) };
     if (range) headers.range = range;
-    return this.raw(`${this.hosts.content}/2/files/download`, { headers });
+    return this.storageRaw(`${this.hosts.content}/2/files/download`, { headers });
+  }
+
+  async verifyFolderWriteAccess(path: string, signal: AbortSignal): Promise<void> {
+    if (!path) return;
+    const body = await this.call('files/get_metadata', { path }, signal);
+    if (body?.sharing_info?.read_only === true) {
+      throw new DropboxError(403, 'مجلد Dropbox للقراءة فقط بالنسبة للحساب المختار.', 'path/no_permission');
+    }
   }
 
   async search(query: string, root: string, limit = 50): Promise<DropboxEntry[]> {

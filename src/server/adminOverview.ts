@@ -8,6 +8,7 @@ import { departmentsOf } from '../shared/departments';
 import { stationsOf } from '../shared/stations';
 import type { AdminOverview } from '../shared/adminOverview';
 import { deploymentWarnings } from './deploymentChecks';
+import { scheduledBackupInterval } from './databaseDiagnostics';
 
 /** Permissions whose holders should protect their account with two-step verification. */
 const PRIVILEGED = ['system.settings', 'system.database_manage', 'users.manage_roles_permissions', 'users.suspend_delete'];
@@ -59,7 +60,11 @@ export function adminOverview(db: NewsroomDatabase, config: AppConfig, now = Dat
   if (!db.isHealthy()) alerts.push({ level: 'error', text: 'فحص قاعدة البيانات لم ينجح؛ راجع «قاعدة البيانات» وأنشئ نسخة احتياطية.' });
   jobs.filter((j) => j.ok === false).forEach((j) => alerts.push({ level: 'error', text: `المهمة الدورية «${j.name}» فشلت في آخر تشغيل.` }));
   if (disk && disk.freeBytes < LOW_DISK_BYTES) alerts.push({ level: 'error', text: 'المساحة الحرة على قرص البيانات أقل من 2 غ.ب.' });
-  if (config.backupIntervalHours <= 0) alerts.push({ level: 'warning', text: 'النسخ الاحتياطي الدوري معطل (BACKUP_INTERVAL_HOURS).' });
+  if (config.backupIntervalHours <= 0) {
+    alerts.push({ level: 'warning', text: 'النسخ الاحتياطي الدوري معطل (BACKUP_INTERVAL_HOURS).' });
+  } else if (scheduledBackupInterval(db, config.backupIntervalHours) <= 0) {
+    alerts.push({ level: 'warning', text: 'النسخ الاحتياطي المجدول متوقف. راجع إعدادات التخزين.' });
+  }
   if (privilegedWithout2fa.length) alerts.push({ level: 'warning', text: `${privilegedWithout2fa.length} من أصحاب الصلاحيات الإدارية بلا تحقق بخطوتين.` });
   const noStation = active.filter((u) => !stations.some((s) => s.id === u.stationId)).length;
   if (stations.length && noStation > active.length / 2) alerts.push({ level: 'warning', text: `${noStation} من الزملاء بلا محطة؛ لن تُنسب أعمالهم لمحطة في «الأعباء والأداء».` });

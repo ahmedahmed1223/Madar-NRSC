@@ -12,11 +12,12 @@ import { moduleAllowed } from './moduleAccess';
 import { createRateLimiter } from './rateLimit';
 import { changeBus } from './sync';
 import { mediaUploadPersistence, queueCopiesForUpload } from './storage';
-import { ALLOWED_UPLOAD_TYPES, drainRequestBody, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, UploadError } from './uploads';
+import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, receiveUpload, removeUpload, sendErrorAfterDrain, UploadError } from './uploads';
 import { activeIntakeIssuer as activeUser, intakeGuestTarget, issueContributorDropLink, issueIntakeTicket as issue, readIntakeTicket as readTicket } from './externalIntakeTickets';
 
 const uploadTypes = Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).filter(([mime]) => /^(audio|video)\//.test(mime)));
 const invalid = 'الرابط غير صالح أو انتهت صلاحيته.';
+const invalidResponse = { success: false, error: invalid };
 
 function mayIssueGuestCheck(req: Request, episode: Episode) {
   const auth = req.auth!;
@@ -34,7 +35,7 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
   const router = express.Router();
   const uploading = new Set<string>();
   const maxUpload = Math.min(config.mediaMaxUploadBytes, 256 * 1024 * 1024);
-  const denied = (res: express.Response) => res.status(410).json({ success: false, error: invalid });
+  const denied = (res: express.Response) => res.status(410).json(invalidResponse);
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
   router.post('/links', requireAuth, createRateLimiter({ windowMs: 60_000, max: 10, key: req => req.auth!.user.id,
@@ -88,13 +89,10 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
   router.post('/upload', async (req, res) => {
     const token = req.get('X-Madar-Intake');
     const found = readTicket(db, token);
-    if (!found || found.ticket.kind !== 'upload' || uploading.has(found.key)) {
-      await drainRequestBody(req);
-      return denied(res);
+    if (!found || found.ticket.kind !== 'upload' || uploading.has(found.key) || !mayRedeemDropLink(db, found.ticket.issuer)) {
+      return sendErrorAfterDrain(req, res, 410, invalidResponse);
     }
-    const permitted = () => mayRedeemDropLink(db, found.ticket.issuer);
-    if (!permitted()) { await drainRequestBody(req); return denied(res); }
-    const mayCommit = (lock = false) => readTicket(db, token, lock) && permitted();
+    const mayCommit = (lock = false) => readTicket(db, token, lock) && mayRedeemDropLink(db, found.ticket.issuer);
     uploading.add(found.key);
     let upload: UploadRecord | undefined;
     try {
@@ -136,7 +134,7 @@ export function externalIntakeRouter(db: NewsroomDatabase, config: AppConfig) {
       return res.status(201).json({ success: true });
     } catch (error) {
       if (upload) removeUpload(db, config.dataDir, upload.id);
-      return res.status(error instanceof UploadError ? error.status : 500).json({
+      return sendErrorAfterDrain(req, res, error instanceof UploadError ? error.status : 500, {
         success: false, error: error instanceof UploadError ? error.message : 'تعذر استلام الملف.',
       });
     } finally { uploading.delete(found.key); }

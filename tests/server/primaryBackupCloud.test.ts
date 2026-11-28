@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createTestServer } from '../helpers';
 import { createFullBackup } from '../../src/server/backupDelivery';
+import { rehearseBackup } from '../../src/server/databaseRecovery';
 import { listAllBackupFiles, primaryBackupReadiness } from '../../src/server/primaryBackupStorage';
 
 const fake = vi.hoisted(() => ({
@@ -72,6 +73,11 @@ it('publishes a verified Dropbox backup and independently copies managed remote-
   await expect(server.db.verifyBackup(complete.file.fileName)).resolves.toMatchObject({ valid: true });
   expect(await fs.readdir(path.join(server.dir, 'backup-staging'))).toEqual([]);
   expect(listAllBackupFiles(server.db)).toEqual([complete.file]);
+  const scratch = path.join(server.dir, 'rehearsals');
+  await expect(rehearseBackup(server.db, complete.file.fileName, scratch)).resolves.toMatchObject({ mediaVerified: true });
+  await fs.writeFile(path.join(folder, 'uploads', 'remote.txt'), 'MEDIA');
+  await expect(rehearseBackup(server.db, complete.file.fileName, scratch)).rejects.toThrow('SHA-256 checksum mismatch');
+  expect(await fs.readdir(scratch)).toEqual([]);
 });
 
 it('reuses a verified Google Drive carrier and removes a failed delivery without imposing a local fallback', async () => {
@@ -92,4 +98,9 @@ it('reuses a verified Google Drive carrier and removes a failed delivery without
   expect(await fs.readdir(path.join(server.dir, 'backup-staging'))).toEqual([]);
   expect(listAllBackupFiles(server.db)).toEqual([]);
   expect(JSON.parse(server.db.getMeta('backup_last_delivery') || '{}')).toMatchObject({ status: 'failed' });
+
+  fake.run.mockImplementation(original);
+  const recovered = await createFullBackup(server.db, config, 'auto');
+  await expect(rehearseBackup(server.db, recovered.file.fileName, path.join(server.dir, 'rehearsals')))
+    .resolves.toMatchObject({ mediaVerified: true });
 });

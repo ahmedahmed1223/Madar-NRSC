@@ -22,7 +22,8 @@ import { cleanupBackupStaging, createFullBackup } from './src/server/backupDeliv
 import { deploymentWarnings, scanDemoPasswords } from './src/server/deploymentChecks';
 import { cleanupRehearsals, databaseOperationLock, DatabaseOperationBusy } from './src/server/databaseRecovery';
 import { reconcileBackupIncidents } from './src/server/backupIncidents';
-import { backupStatus, nextBackupDelayMs } from './src/server/databaseDiagnostics';
+import { backupStatus } from './src/server/databaseDiagnostics';
+import { startBackupSchedule } from './src/server/backupSchedule';
 import { changeBus } from './src/server/sync';
 import { recordJob, registerJob, trackJob } from './src/server/jobs';
 import { runStorageSync } from './src/server/storage';
@@ -86,7 +87,7 @@ async function main() {
 
   // Housekeeping: expired sessions, old tombstones, scheduled backups.
   const timers: NodeJS.Timeout[] = [];
-  const backupSchedule = { stopped: false };
+  let stopBackupSchedule: (() => void) | undefined;
   const backgroundJobs = new Map<string, Promise<unknown>>();
   let shuttingDown = false;
   const backgroundJob = (name: string, work: () => Promise<unknown>) => () => {
@@ -254,17 +255,8 @@ async function main() {
         logger.error('complete backup failed', { error: String(err) });
       } finally { await checkBackupIncidents(); }
     });
-    const scheduleNextBackup = () => {
-      if (backupSchedule.stopped) return;
-      const status = backupStatus(db, config.backupIntervalHours, config);
-      const delay = nextBackupDelayMs(config.backupIntervalHours, status.lastDelivery, status.lastAttempt);
-      if (delay === null) return;
-      timers.push(setTimeout(() => {
-        void backup().finally(scheduleNextBackup);
-      }, delay));
-    };
     // Schedule against the last complete delivery, so frequent restarts cannot keep resetting the interval.
-    scheduleNextBackup();
+    stopBackupSchedule = startBackupSchedule(() => backupStatus(db, config.backupIntervalHours, config), backup);
   }
 
   // Deployment settings that put production at risk: loud in the log, and listed in «مراقبة النظام».
@@ -283,8 +275,7 @@ async function main() {
     shuttingDown = true;
     app.locals.beginShutdown();
     logger.info('shutting down', { signal });
-    // The backup timer is recursive; prevent an in-flight backup from scheduling another run.
-    backupSchedule.stopped = true;
+    stopBackupSchedule?.();
     timers.forEach(clearInterval);
     stopMediaTranscription();
     const force = setTimeout(() => {

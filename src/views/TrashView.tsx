@@ -1,13 +1,37 @@
 import { useEffect, useState } from 'react';
-import { ArchiveRestore, RefreshCw } from 'lucide-react';
+import { ArchiveRestore, RefreshCw, Trash2 } from 'lucide-react';
+import { TrashLink } from '../components/layout/SectionTrashLink';
 import { formatDay } from '../shared/dateFormat';
-import { isTrashCollection, TRASH_SECTIONS, type TrashCollection, type TrashItem, type TrashPage } from '../shared/trash';
+import { isTrashCollection, isTrashScreen, TRASH_SCREEN_LABELS, TRASH_SECTIONS, type TrashItem, type TrashPage, type TrashScreen } from '../shared/trash';
+import { dataStore } from '../services/dataStore';
+import { RbacService } from '../services/rbacService';
 import { listTrash, restoreTrashItem } from '../services/trashClient';
+import type { User } from '../types';
 
 const messageOf = (error: unknown, fallback: string) => error instanceof Error && error.name !== 'TypeError' ? error.message : fallback;
 
-export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFocus: (id: TrashCollection | null) => void }) {
-  const collection = isTrashCollection(focusId) ? focusId : '';
+export function TrashView({ focusId, user, onOpen }: { focusId?: string | null; user: User; onOpen: (path: string) => void }) {
+  const available = new Set(RbacService.availableTrashCollections(user).map(key => TRASH_SECTIONS[key].screen));
+  const section = isTrashScreen(focusId) ? focusId : isTrashCollection(focusId) ? TRASH_SECTIONS[focusId].screen : null;
+  if (section && available.has(section)) return <SectionTrashView key={section} section={section} onOpen={onOpen} />;
+  return (
+    <section aria-labelledby="trash-title" className="mx-auto w-full max-w-6xl space-y-5">
+      <h1 id="trash-title" className="text-2xl font-bold text-slate-900">سلة المحذوفات</h1>
+      {focusId && <p role="alert" className="text-sm text-slate-700">سلة هذا القسم غير متاحة لحسابك.</p>}
+      <ul aria-label="سلال المحذوفات حسب القسم" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {[...available].map(screen => (
+          <li key={screen}>
+            <TrashLink path={'/trash/' + screen} onOpen={onOpen} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600">
+              <Trash2 className="size-4 shrink-0" aria-hidden="true" /> محذوفات {TRASH_SCREEN_LABELS[screen]}
+            </TrashLink>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SectionTrashView({ section, onOpen }: { section: TrashScreen; onOpen: (path: string) => void }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const [request, setRequest] = useState(0);
   const [page, setPage] = useState<TrashPage | null>(null);
@@ -20,7 +44,7 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
     const controller = new AbortController();
     setLoading(true);
     setListError('');
-    void listTrash(collection, cursor, controller.signal).then(result => {
+    void listTrash(section, cursor, controller.signal).then(result => {
       if (!controller.signal.aborted) setPage(previous => ({
         ...result,
         items: cursor ? [...(previous?.items ?? []), ...result.items] : result.items,
@@ -31,10 +55,9 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [collection, cursor, request]);
+  }, [section, cursor, request]);
 
-  const refresh = (nextCollection: TrashCollection | '' = collection) => {
-    if (nextCollection !== collection) onFocus(nextCollection || null);
+  const refresh = () => {
     setCursor(null);
     setPage(previous => previous && { ...previous, items: [], nextCursor: null });
     setFeedback(null);
@@ -47,6 +70,7 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
     setFeedback(null);
     try {
       await restoreTrashItem(item);
+      void dataStore.pull();
       setPage(previous => previous && {
         ...previous,
         items: previous.items.filter(row => row.collection !== item.collection || row.id !== item.id),
@@ -63,8 +87,10 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
     <section aria-labelledby="trash-title" className="mx-auto w-full max-w-6xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 id="trash-title" className="text-2xl font-bold text-slate-900">سلة المحذوفات</h1>
-          <p className="mt-2 text-sm text-slate-600">استعد السجلات المتاحة من الأقسام التي تديرها.</p>
+          <h1 id="trash-title" className="text-2xl font-bold text-slate-900">محذوفات {TRASH_SCREEN_LABELS[section]}</h1>
+          <TrashLink path={'/' + section} onOpen={onOpen} className="mt-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-blue-800 hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600">
+            العودة إلى {TRASH_SCREEN_LABELS[section]}
+          </TrashLink>
         </div>
         <button type="button" disabled={loading || !!restoring} onClick={() => refresh()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60">
           <RefreshCw className="size-4" aria-hidden="true" /> تحديث السلة
@@ -72,16 +98,6 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white" aria-busy={loading}>
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <label htmlFor="trash-section" className="text-sm font-semibold text-slate-800">القسم</label>
-          <select id="trash-section" value={collection} disabled={!!restoring} onChange={event => refresh(event.target.value as TrashCollection | '')}
-            className="min-h-11 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
-            <option value="">كل الأقسام المتاحة</option>
-            {collection && !page?.collections.includes(collection) && <option value={collection}>{TRASH_SECTIONS[collection].label}</option>}
-            {page?.collections.map(key => <option key={key} value={key}>{TRASH_SECTIONS[key].label}</option>)}
-          </select>
-        </div>
-
         {feedback && <p role={feedback.ok ? 'status' : 'alert'} className={`mx-4 mt-3 rounded-lg px-3 py-2 text-sm ${feedback.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-800'}`}>{feedback.message}</p>}
         {listError && <p role="alert" className="m-4 text-sm text-rose-800">{listError}</p>}
         {loading && <p role="status" className="px-4 py-5 text-sm text-slate-600">جارٍ تحميل السجلات المحذوفة…</p>}
@@ -95,7 +111,7 @@ export function TrashView({ focusId, onFocus }: { focusId?: string | null; onFoc
                 <li key={key} className="grid min-w-0 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-5">
                   <div className="min-w-0">
                     <h2 className="break-words text-sm font-bold text-slate-900">{item.title}</h2>
-                    <p className="mt-1 text-xs text-slate-600">{TRASH_SECTIONS[item.collection].label}</p>
+                    {page.collections.length > 1 && <p className="mt-1 text-xs text-slate-600">{TRASH_SECTIONS[item.collection].label}</p>}
                   </div>
                   <div className="text-xs text-slate-600">
                     <p>نُقل إلى السلة في <time dateTime={item.deletedAt}>{formatDay(new Date(item.deletedAt))}</time></p>

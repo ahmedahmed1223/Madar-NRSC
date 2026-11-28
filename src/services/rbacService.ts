@@ -15,7 +15,7 @@ import { COLLECTIONS } from '../shared/collections';
 import { dataStore } from './dataStore';
 import { roleInUseError } from './roleUsage';
 import { allowsModule, moduleForCollection, moduleSubject, moduleForScreen, type ModuleId } from '../shared/moduleAccess';
-import { TRASH_COLLECTIONS, TRASH_SECTIONS, type TrashCollection } from '../shared/trash';
+import { mayManageTrashCollection, TRASH_COLLECTIONS, TRASH_SECTIONS, type TrashCollection } from '../shared/trash';
 
 export * from '../shared/rbac';
 
@@ -116,13 +116,13 @@ export class RbacService {
 
   static availableTrashCollections(user: User): TrashCollection[] {
     const can = (permission: string) => this.hasPermission(user, permission);
-    const workOnly = assignedWorkOnly(can);
+    const leadsTasks = this.leadsDepartment(user);
     const role = findUserRole(user, this.getRoleDefinitions());
     return TRASH_COLLECTIONS.filter(collection => {
       const module = moduleForCollection(collection);
-      const { screen, permissions } = TRASH_SECTIONS[collection];
-      return (!workOnly || collection === 'productionCards') && (!module || this.canUseModule(user, module)) &&
-        permissions.some(can) && canOpenScreen(screen, role, can, user.role === 'SUPER_ADMIN');
+      const { screen } = TRASH_SECTIONS[collection];
+      return mayManageTrashCollection(collection, can, leadsTasks) && (!module || this.canUseModule(user, module)) &&
+        (screen === 'tasks' && leadsTasks || canOpenScreen(screen, role, can, user.role === 'SUPER_ADMIN'));
     });
   }
 

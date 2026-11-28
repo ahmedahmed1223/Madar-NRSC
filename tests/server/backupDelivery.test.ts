@@ -152,6 +152,37 @@ it('does not call a bundle complete when a referenced upload exists only in its 
   const created = await createFullBackup(server.db, config);
   expect(created.filesKeptElsewhere).toBe(1);
   expect(lastVerifiedExternalBackup(server.db, config)).toBeNull();
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const response = await admin.post('/api/v1/db/backups/rehearse').set('X-NRCS-Client', 'web').send({ fileName: created.file.fileName });
+  expect(response.status).toBe(200);
+  expect(response.body.data.mediaVerified).toBe(false);
+});
+
+it('checks the full bundle during a rehearsal and rejects same-size media corruption', async () => {
+  const media = path.join(server.dir, 'uploads', 'report.txt');
+  await fs.mkdir(path.dirname(media), { recursive: true });
+  await fs.writeFile(media, 'audio');
+  server.db.insertUpload({ id: 'report', storedName: 'report.txt', originalName: 'report.txt', mimeType: 'text/plain',
+    sizeBytes: 5, uploadedBy: 'usr-1', createdAt: new Date().toISOString() });
+  const backup = await createFullBackup(server.db, { backupRetention: 2 });
+  const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+  const rehearse = () => admin.post('/api/v1/db/backups/rehearse').set('X-NRCS-Client', 'web').send({ fileName: backup.file.fileName });
+
+  const good = await rehearse();
+  expect(good.status).toBe(200);
+  expect(good.body.data.mediaVerified).toBe(true);
+  const file = path.join(backup.bundle, 'uploads', 'report.txt');
+  await fs.writeFile(file, 'AUDIO');
+  expect((await rehearse()).status).toBe(400);
+  expect(await fs.readFile(media, 'utf8')).toBe('audio');
+  expect(await fs.readdir(path.join(server.dir, 'rehearsals'))).toEqual([]);
+
+  // A readable manifest must still account for all files referenced by the snapshot.
+  const manifestPath = path.join(backup.bundle, 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  manifest.files = manifest.files.filter((file: { path: string }) => file.path === 'newsroom.sqlite');
+  await fs.writeFile(manifestPath, JSON.stringify(manifest));
+  expect((await rehearse()).status).toBe(400);
 });
 
 it('detects tampering on bundled files and rejects unsafe manifest entries via SHA-256 verification', async () => {

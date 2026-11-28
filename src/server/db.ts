@@ -376,7 +376,8 @@ export class NewsroomDatabase {
   /** Fetches live bookings for a single resource via idx_bookings_resource_window. */
   listBookingsForResource(resourceId: string): EntityRow[] {
     const rows = this.db.prepare(`SELECT * FROM entities INDEXED BY idx_bookings_resource_window
-      WHERE collection = 'bookings' AND deleted = 0 AND json_extract(data, '$.resourceId') = ?`).all(resourceId) as RawEntityRow[];
+      WHERE collection = 'bookings' AND deleted = 0 AND json_extract(data, '$.resourceId') = ?
+      ORDER BY position ASC, id ASC`).all(resourceId) as RawEntityRow[];
     return rows.map(toEntityRow);
   }
 
@@ -706,6 +707,7 @@ export class NewsroomDatabase {
   duePersonalTaskReminders(now: string, limit = 100): EntityRow[] {
     const rows = this.db.prepare(`SELECT * FROM entities
       WHERE ${PENDING_PERSONAL_REMINDER} AND json_extract(data, '$.reminderAt') <= ?
+        AND json_extract(data, '$.deletedAt') IS NULL
         AND EXISTS (
           SELECT 1 FROM entities AS owner
           WHERE owner.collection = 'users' AND owner.deleted = 0
@@ -755,7 +757,8 @@ export class NewsroomDatabase {
   assignedWorkIds(userId: string): string[] {
     if (this.db instanceof PostgresDatabase) {
       const { rows } = this.db.query(`SELECT collection || ':' || id AS key FROM entities AS item WHERE deleted = 0 AND (
-        (collection = 'tasks' AND COALESCE(NULLIF(item.data::jsonb ->> 'assigneeId', ''), item.data::jsonb ->> 'assignedToId') = $1)
+        (collection = 'tasks' AND NULLIF(item.data::jsonb ->> 'deletedAt', '') IS NULL
+          AND COALESCE(NULLIF(item.data::jsonb ->> 'assigneeId', ''), item.data::jsonb ->> 'assignedToId') = $1)
         OR (collection = 'productionCards' AND (item.data::jsonb ->> 'ownerId' = $1 OR EXISTS (
           SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(item.data::jsonb -> 'steps') = 'array'
             THEN item.data::jsonb -> 'steps' ELSE '[]'::jsonb END) AS step
@@ -766,7 +769,8 @@ export class NewsroomDatabase {
     }
     const rows = this.db.prepare(`SELECT collection || ':' || id AS key FROM entities AS item
       WHERE deleted = 0 AND (
-        (collection = 'tasks' AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
+        (collection = 'tasks' AND NULLIF(json_extract(data, '$.deletedAt'), '') IS NULL
+          AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
         OR (collection = 'productionCards' AND (json_extract(data, '$.ownerId') = @user OR EXISTS (
           SELECT 1 FROM json_each(item.data, '$.steps') AS step WHERE step.type = 'object'
             AND json_extract(item.data, step.fullkey || '.assigneeId') = @user

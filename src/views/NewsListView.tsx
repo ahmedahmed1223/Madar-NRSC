@@ -24,7 +24,6 @@ import { ExportMenu, docContext } from '../components/common/ExportMenu';
 import { newsListDoc } from '../services/documents/builders';
 import { NEWS_STATUS_LABELS } from '../shared/newsWorkflow';
 import { NewsArchiveModal } from '../components/news/NewsArchiveModal';
-import { authClient } from '../services/authClient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Filter, Flame, CheckCircle, Clock, Eye, Edit2, Trash2, Archive, Send, CheckSquare, Square, Radio, X, Lock, RotateCcw, Undo2, BookOpen } from 'lucide-react';
 import { NewsItem, NewsStatus, NewsPriority, User, Category, NewsSource } from '../types';
@@ -55,7 +54,7 @@ interface NewsListViewProps {
   initialTab?: ListTab;
 }
 
-type ListTab = 'ALL' | NewsStatus | 'BREAKING' | 'TRASH';
+type ListTab = 'ALL' | NewsStatus | 'BREAKING';
 
 const NEWS_SORT_KEYS = ['updatedAt', 'title', 'category', 'priority', 'author', 'status'] as const;
 type NewsSortKey = (typeof NEWS_SORT_KEYS)[number];
@@ -93,12 +92,11 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   const { context: savedContext, save: saveContext } = useWorkContext(currentUser.id, initialTab);
   const textValue = (key: string, fallback = '') => typeof savedContext.definition[key] === 'string' ? savedContext.definition[key] : fallback;
   const savedTab = textValue('activeTab', initialTab);
-  const [activeTab, setActiveTab] = useState<ListTab>(() => ['ALL', 'BREAKING', 'TRASH', ...Object.keys(STATUS_RANK)].includes(savedTab) ? savedTab as ListTab : initialTab);
+  const [activeTab, setActiveTab] = useState<ListTab>(() => ['ALL', 'BREAKING', ...Object.keys(STATUS_RANK)].includes(savedTab) ? savedTab as ListTab : initialTab);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [page, setPage] = useState(() => Number.isInteger(savedContext.page) && savedContext.page >= 0 ? savedContext.page : 0);
   const [locks, setLocks] = useState<EditLock[]>(() => apiService.getEditLocks());
-  const [deletedNews, setDeletedNews] = useState<NewsItem[]>(() => apiService.getDeletedNews());
   const [searchQuery, setSearchQuery] = useState(() => textValue('searchQuery'));
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -159,7 +157,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       dataStore.subscribe((evt) => {
         if (evt.type !== 'data-changed') return;
         if (evt.collections.includes('editLocks')) setLocks(apiService.getEditLocks());
-        if (evt.collections.includes('news')) setDeletedNews(apiService.getDeletedNews());
       }),
     []
   );
@@ -173,13 +170,12 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
   }, [locks, currentUser.id]);
 
   // Filter logic
-  const trashDays = apiService.getSettings().trashRetentionDays?.news ?? authClient.getSession()?.trashRetentionDays ?? 0;
-  const sourceList = activeTab === 'TRASH' ? deletedNews : newsList || [];
+  const sourceList = newsList || [];
   const [sort, toggleSort] = usePersistentSort<NewsSortKey>('nrcs_sort_news', { key: 'updatedAt', dir: 'desc' }, NEWS_SORT_KEYS);
   const filteredNews = sortList(sourceList.filter((item) => {
     if (activeTab === 'BREAKING') {
       if (!isBreakingLive(item)) return false;
-    } else if (activeTab !== 'ALL' && activeTab !== 'TRASH' && item.status !== activeTab) return false;
+    } else if (activeTab !== 'ALL' && item.status !== activeTab) return false;
     if (categoryIds && !categoryIds.has(item.categoryId || resolveCategoryId(categories, item.categoryName || ''))) return false;
     if (selectedSource !== 'ALL' && item.sourceId !== selectedSource) return false;
     if (selectedPriority !== 'ALL' && item.priority !== selectedPriority) return false;
@@ -289,15 +285,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
     if (!leavingRef.current) saveContext(contextRef.current);
   }, [activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate, currentPage, saveContext]);
 
-
-  const handleRestore = (id: string) => {
-    try {
-      apiService.restoreNews(id);
-      setDeletedNews(apiService.getDeletedNews());
-    } catch (err: any) {
-      notify({ type: 'warning', message: err.message });
-    }
-  };
 
   // Narrowing filters beyond search and «أخباري فقط»; their count shows on the «الفلاتر» button.
   const activeFilterCount = [authorId !== 'ALL', !!fromDate, !!toDate, selectedCategory !== 'ALL', selectedSource !== 'ALL', selectedPriority !== 'ALL'].filter(Boolean).length;
@@ -437,17 +424,9 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           { id: 'PUBLISHED', label: 'منشور', count: countBy('PUBLISHED'), tone: 'emerald' },
           { id: 'BREAKING', label: 'عاجل على الهواء', count: (newsList || []).filter((n) => isBreakingLive(n)).length, tone: 'red', secondary: true },
           { id: 'ARCHIVED', label: 'أرشيف', count: countBy('ARCHIVED'), tone: 'slate', secondary: true },
-          ...(canDelete ? [{ id: 'TRASH' as ListTab, label: 'سلة المحذوفات', count: deletedNews.length, tone: 'slate' as const, secondary: true }] : []),
         ]}
       />
 
-
-
-      {activeTab === 'TRASH' && trashDays > 0 && (
-        <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-600">
-          تُحذف المواد نهائياً من السلة تلقائياً بعد {trashDays} يوماً من نقلها إليها.
-        </div>
-      )}
 
       {/* Filter Toolbar */}
       <div className="py-3 border-y border-slate-200 flex flex-wrap items-center gap-3">
@@ -597,7 +576,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                 id: 'list',
                 label: 'قائمة الأخبار المعروضة',
                 hint: `${countLabel(filteredNews.length, AR.news)} حسب البحث والفلاتر الحالية`,
-                build: () => newsListDoc(filteredNews, activeTab === 'ALL' ? 'كل الأخبار' : activeTab === 'BREAKING' ? 'العاجل' : activeTab === 'TRASH' ? 'سلة المحذوفات' : NEWS_STATUS_LABELS[activeTab as NewsStatus] || '', docContext()),
+                build: () => newsListDoc(filteredNews, activeTab === 'ALL' ? 'كل الأخبار' : activeTab === 'BREAKING' ? 'العاجل' : NEWS_STATUS_LABELS[activeTab as NewsStatus] || '', docContext()),
               },
             ]}
           />
@@ -607,7 +586,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
       <SavedNewsFilters key={currentUser.id} userId={currentUser.id}
         definition={{ activeTab, searchQuery, selectedCategory, selectedSource, selectedPriority, onlyMine, authorId, fromDate, toDate }}
         onApply={filter => {
-          setActiveTab(filter.activeTab); setSearchQuery(filter.searchQuery);
+          setActiveTab(filter.activeTab === 'TRASH' ? 'ALL' : filter.activeTab); setSearchQuery(filter.searchQuery);
           setSelectedCategory(resolveCategoryId(categories, filter.selectedCategory));
           setSelectedSource(filter.selectedSource || 'ALL'); setSelectedPriority(filter.selectedPriority);
           setOnlyMine(filter.onlyMine); setAuthorId(filter.authorId);
@@ -626,7 +605,7 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
           </div>
         </section>
       )}
-      {selectedIds.length > 0 && activeTab !== 'TRASH' && (
+      {selectedIds.length > 0 && (
           <div className="bg-slate-900 text-white px-4 py-3 rounded-lg flex flex-wrap items-center justify-between gap-4 text-xs shadow-md animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
             <span role="status" aria-live="polite" className="font-bold tabular-nums">{bulkSubmitting ? 'جارٍ تأكيد الإجراء...' : `تم تحديد ${countLabel(selectedIds.length, AR.news)}`}</span>
@@ -928,17 +907,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {activeTab === 'TRASH' ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRestore(item.id)}
-                              className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center rounded-lg transition-colors text-blue-700 hover:bg-blue-50"
-                              title="استعادة الخبر من سلة المحذوفات"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <>
                           {/* Edit */}
                           <button
                             type="button"
@@ -1020,8 +988,6 @@ const NewsListContent: React.FC<NewsListViewProps> = ({
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          )}
-                            </>
                           )}
                         </div>
                       </td>

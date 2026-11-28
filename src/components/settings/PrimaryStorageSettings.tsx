@@ -16,12 +16,13 @@ function available(field: PrimaryField, target: PrimaryStorageTarget, status: St
   return !!status?.[target].connected;
 }
 
-export function PrimaryStorageSettings({ settings, status, backups, disabled, onChange }: {
+export function PrimaryStorageSettings({ settings, status, backups, disabled, onChange, onScheduleChange }: {
   settings: ResolvedStorageSettings;
   status: StorageStatus | null;
   backups: BackupPrimaryReadiness | null;
   disabled: boolean;
   onChange: (field: PrimaryField, target: PrimaryStorageTarget) => void;
+  onScheduleChange: (enabled: boolean) => void;
 }) {
   const remote = settings.primaryMedia !== 'local' || settings.primaryBackups !== 'local';
   return (
@@ -40,6 +41,14 @@ export function PrimaryStorageSettings({ settings, status, backups, disabled, on
           </label>
         ))}
       </div>
+      <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-800">
+        <input type="checkbox" checked={settings.scheduledBackups} onChange={event => onScheduleChange(event.target.checked)}
+          aria-describedby="backup-schedule-description" className="size-5 accent-blue-700" />
+        تشغيل النسخ الاحتياطية المجدولة
+      </label>
+      <p id="backup-schedule-description" className="text-xs leading-relaxed text-slate-600">
+        عند الإيقاف، يمكنك إنشاء نسخة يدويًا من «قاعدة البيانات» باستخدام الوجهة المحددة أعلاه، وتبقى النسخ الموجودة متاحة.
+      </p>
       {remote && <p className="text-sm leading-relaxed text-slate-700">تحتفظ الوجهة البعيدة المختارة وحدها بالملفات الدائمة لهذا النوع. يحتاج اكتمال الحفظ إلى اتصال بالوجهة وتُستخدم مساحة مرحلية مؤقتة أثناء النقل.</p>}
       <p className="text-xs leading-relaxed text-slate-600">للوسائط، اربط خدمة التخزين أدناه أو صِل NAS بخادم مدار. تحتاج النسخ الاحتياطية السحابية إلى وجهة rclone مهيأة على الخادم.</p>
     </fieldset>

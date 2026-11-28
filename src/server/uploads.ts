@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
 import { newId } from '../shared/ids';
 import type { NewsroomDatabase, UploadRecord } from './db';
 import { logger } from './logger';
@@ -26,7 +26,7 @@ export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
 
 export const MEDIA_FILE_URL_PREFIX = '/api/v1/media/files/';
 
-const MAX_DRAIN_BYTES = 16 * 1024 * 1024;
+export { drainRequestBody, sendErrorAfterDrain } from './requestBody';
 
 export class UploadError extends Error {
   constructor(public status: number, message: string) {
@@ -44,87 +44,21 @@ export function uploadsDir(dataDir: string) {
 }
 
 /**
- * Safely drains an unread incoming request body before sending an early error
- * response so Node's HTTP server does not reset the TCP socket (`ECONNRESET`)
- * while the client is still transmitting upload bytes.
- */
-export function drainRequestBody(req: Request, maxWaitMs = 5000, maxBytes = MAX_DRAIN_BYTES): Promise<boolean> {
-  if (req.complete || req.readableEnded || req.destroyed) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    let settled = false;
-    let drained = 0;
-    const finish = (completed: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      req.off('data', onData);
-      req.off('end', onEnd);
-      req.off('close', onClose);
-      req.off('aborted', onClose);
-      req.off('error', onClose);
-      resolve(completed);
-    };
-    const onData = (chunk: Buffer | string) => {
-      drained += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-      if (drained > maxBytes) {
-        req.pause();
-        finish(false);
-      }
-    };
-    const onEnd = () => finish(true);
-    const onClose = () => finish(Boolean(req.complete || req.readableEnded));
-    const timeout = setTimeout(() => finish(false), maxWaitMs);
-    timeout.unref();
-    req.on('data', onData);
-    req.once('end', onEnd);
-    req.once('close', onClose);
-    req.once('aborted', onClose);
-    req.once('error', onClose);
-    req.resume();
-  });
-}
-
-/**
- * Sends a JSON error response only after any unread request body has been
- * safely drained, preventing intermittent `ECONNRESET` on rejected uploads.
- */
-export function sendErrorAfterDrain(
-  req: Request,
-  res: Response,
-  status: number,
-  body: Record<string, unknown>,
-): void {
-  if (req.complete || req.readableEnded || req.destroyed) {
-    if (!res.headersSent && !res.destroyed) res.status(status).json(body);
-    return;
-  }
-  void drainRequestBody(req).then((completed) => {
-    if (res.headersSent || res.destroyed) return;
-    if (!completed) res.setHeader('Connection', 'close');
-    res.status(status).json(body);
-  });
-}
-
-async function rejectUpload(req: Request, error: UploadError): Promise<never> {
-  await drainRequestBody(req);
-  throw error;
-}
-
-/**
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
+ * The caller handles draining when sending an error response.
  */
 export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, options: { allowed?: Record<string, string>; scope?: 'chat'; persistence?: StagedUploadPersistence } = {}): Promise<UploadRecord> {
   const allowed = options.allowed ?? ALLOWED_UPLOAD_TYPES;
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = Object.prototype.hasOwnProperty.call(allowed, mimeType) ? allowed[mimeType] : undefined;
   if (!ext) {
-    return rejectUpload(req, new UploadError(415, 'نوع الملف غير مدعوم'));
+    return Promise.reject(new UploadError(415, 'نوع الملف غير مدعوم'));
   }
 
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    return rejectUpload(req, new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
+    return Promise.reject(new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
   }
 
   let originalName = 'file';
@@ -153,8 +87,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
       req.unpipe(out);
       out.once('close', () => fs.rm(tempPath, { force: true }, () => undefined));
       out.destroy();
-      // Drain the rest of the body so the client receives the error response.
-      void rejectUpload(req, err).catch(reject);
+      reject(err);
     };
 
     req.on('data', (chunk: Buffer) => {

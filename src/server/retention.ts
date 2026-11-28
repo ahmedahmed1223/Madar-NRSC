@@ -1,6 +1,6 @@
 import type { NewsroomDatabase } from './db';
 import { SINGLETON_ID, type CollectionName } from '../shared/collections';
-import { TRASH_COLLECTIONS, trashRetentionError, type TrashCollection } from '../shared/trash';
+import { isTaskTrashCollection, TRASH_COLLECTIONS, trashRetentionError, type TrashCollection } from '../shared/trash';
 import { logger } from './logger';
 import { changeBus } from './sync';
 import { removeUnreferencedMediaUpload, uploadIdFromMedia } from './uploads';
@@ -16,6 +16,7 @@ export interface RetentionConfig {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRASH_RETENTION_START = 'trash_retention_started_at';
+const TASK_TRASH_RETENTION_START = 'task_trash_retention_started_at';
 const previouslyTimed: readonly TrashCollection[] = ['news', 'stories', 'programs', 'episodes', 'guests', 'media', 'diary', 'resources', 'bookings'];
 
 export interface TrashRetentionPolicy {
@@ -25,17 +26,21 @@ export interface TrashRetentionPolicy {
 
 /** Keep deletions made before this feature recoverable when no policy previously applied. */
 export function initializeTrashRetention(db: NewsroomDatabase): void {
-  if (!db.getMeta(TRASH_RETENTION_START)) db.setMeta(TRASH_RETENTION_START, new Date().toISOString());
+  const now = new Date().toISOString();
+  if (!db.getMeta(TRASH_RETENTION_START)) db.setMeta(TRASH_RETENTION_START, now);
+  if (!db.getMeta(TASK_TRASH_RETENTION_START)) db.setMeta(TASK_TRASH_RETENTION_START, now);
 }
 
 export function readTrashRetention(db: NewsroomDatabase, defaultDays: number): TrashRetentionPolicy {
   const overrides = db.getRow('settings', SINGLETON_ID)?.d?.trashRetentionDays;
-  const startedAt = db.getMeta(TRASH_RETENTION_START) || new Date().toISOString();
+  const now = new Date().toISOString();
+  const startedAt = db.getMeta(TRASH_RETENTION_START) || now;
+  const taskStartedAt = db.getMeta(TASK_TRASH_RETENTION_START) || now;
   const byCollection = Object.fromEntries(TRASH_COLLECTIONS.map(collection => {
     const override: unknown = overrides?.[collection];
     if (typeof override === 'number' && !trashRetentionError({ [collection]: override })) return [collection, { days: override }];
     if (previouslyTimed.includes(collection)) return [collection, { days: defaultDays }];
-    return [collection, { days: defaultDays, activeSince: startedAt }];
+    return [collection, { days: defaultDays, activeSince: isTaskTrashCollection(collection) ? taskStartedAt : startedAt }];
   })) as TrashRetentionPolicy['byCollection'];
   return { defaultDays, byCollection };
 }

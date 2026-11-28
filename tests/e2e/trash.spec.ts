@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { openNav, openSettingsSection, signIn } from './helpers';
 
-test('administrator filters and restores deleted programs and guests', async ({ browser }) => {
+test('administrator opens distinct program and guest bins and restores their records', async ({ browser }) => {
   const admin = await signIn(browser, 'admin@akhbar.tv');
   const { page } = admin;
   const fixtures = [
-    { collection: 'programs', field: 'name', title: 'برنامج اختبار الاستعادة' },
-    { collection: 'guests', field: 'fullName', title: 'ضيف اختبار الاستعادة' },
+    { collection: 'programs', section: 'البرامج', field: 'name', title: 'برنامج اختبار الاستعادة' },
+    { collection: 'guests', section: 'الضيوف', field: 'fullName', title: 'ضيف اختبار الاستعادة' },
   ].map(entry => ({ ...entry, id: `trash-${entry.collection}-${Date.now()}` }));
   const sync = (ops: unknown[]) => page.request.post('/api/v1/data/sync', {
     headers: { 'X-NRCS-Client': 'web' }, data: { ops },
@@ -27,16 +27,23 @@ test('administrator filters and restores deleted programs and guests', async ({ 
     expect(deleted.results.every((result: { ok: boolean }) => result.ok)).toBe(true);
 
     await openNav(page, 'سلة المحذوفات');
-    const trash = page.getByRole('region', { name: 'سلة المحذوفات' });
-    const section = trash.getByRole('combobox', { name: 'القسم' });
-    await expect(trash.getByText(fixtures[0].title, { exact: true })).toBeVisible();
-    await expect(trash.getByText(fixtures[1].title, { exact: true })).toBeVisible();
-    await page.setViewportSize({ width: 375, height: 812 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const directory = page.getByRole('region', { name: 'سلة المحذوفات' });
+    for (const fixture of fixtures) {
+      await expect(directory.getByText(fixture.title, { exact: true })).toHaveCount(0);
+      await expect(directory.getByRole('link', { name: 'محذوفات ' + fixture.section })).toBeVisible();
+    }
 
     for (const fixture of fixtures) {
-      await section.selectOption(fixture.collection);
-      await expect(trash.getByRole('listitem')).toHaveCount(1);
+      await openNav(page, fixture.section);
+      const name = 'محذوفات ' + fixture.section;
+      await page.getByRole('link', { name }).click();
+      const trash = page.getByRole('region', { name, exact: true });
+      await expect(trash.getByText(fixture.title, { exact: true })).toBeVisible();
+      const other = fixtures.find(entry => entry.id !== fixture.id)!;
+      await expect(trash.getByText(other.title, { exact: true })).toHaveCount(0);
+      await page.setViewportSize({ width: 375, height: 812 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.setViewportSize({ width: 1440, height: 900 });
       await trash.getByRole('button', { name: `استعادة ${fixture.title}` }).click();
       await expect(trash.getByRole('status')).toContainText(fixture.title);
       await expect(trash.getByRole('button', { name: `استعادة ${fixture.title}` })).toHaveCount(0);
@@ -56,6 +63,33 @@ test('administrator filters and restores deleted programs and guests', async ({ 
     } finally {
       await admin.close();
     }
+  }
+});
+
+
+test('news, program preparation, assignments and both task areas link to their own recycle bins', async ({ browser }) => {
+  const admin = await signIn(browser, 'admin@akhbar.tv');
+  const { page } = admin;
+  try {
+    for (const [path, label] of [
+      ['news', 'الأخبار'],
+      ['episodes', 'الحلقات'],
+      ['cards', 'التكليفات'],
+      ['tasks', 'مهام العمل'],
+      ['personal-tasks', 'المهام الشخصية'],
+    ]) {
+      await page.goto('/' + path);
+      const title = 'محذوفات ' + label;
+      await page.getByRole('link', { name: title, exact: true }).click();
+      await expect(page).toHaveURL(new RegExp('/trash/' + path + '$'));
+      const section = page.getByRole('region', { name: title, exact: true });
+      await expect(section.getByRole('combobox', { name: 'القسم' })).toHaveCount(0);
+      await section.getByRole('link', { name: 'العودة إلى ' + label }).click();
+      await expect(page).toHaveURL(new RegExp('/' + path + '$'));
+    }
+    expect(admin.errors).toEqual([]);
+  } finally {
+    await admin.close();
   }
 });
 

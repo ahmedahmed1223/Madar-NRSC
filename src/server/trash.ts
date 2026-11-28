@@ -1,9 +1,8 @@
-import { assignedWorkOnly } from '../shared/assignedWork';
 import { ENTITY_ID_PATTERN, type CollectionName } from '../shared/collections';
 import { moduleForCollection } from '../shared/moduleAccess';
 import { findUserRole } from '../shared/rbac';
 import { canOpenScreen } from '../shared/screens';
-import { isTrashCollection, TRASH_COLLECTIONS, TRASH_SECTIONS, type TrashCollection, type TrashItem, type TrashPage } from '../shared/trash';
+import { isTrashCollection, mayManageTrashCollection, TRASH_COLLECTIONS, TRASH_SECTIONS, type TrashCollection, type TrashItem, type TrashPage, type TrashScreen } from '../shared/trash';
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase, TrashPagePosition } from './db';
 import { moduleAllowed } from './moduleAccess';
@@ -15,12 +14,12 @@ const SCAN_SIZE = 100;
 
 export function trashScope(auth: AuthContext): TrashCollection[] {
   const role = findUserRole(auth.user, auth.roles);
+  const leadsTasks = !!auth.departmentTaskMembers?.();
   return TRASH_COLLECTIONS.filter(collection => {
-    if (assignedWorkOnly(auth.can) && collection !== 'productionCards') return false;
-    const { screen, permissions } = TRASH_SECTIONS[collection];
+    const { screen } = TRASH_SECTIONS[collection];
     const module = moduleForCollection(collection);
-    return permissions.some(auth.can) && (!module || moduleAllowed(auth, module)) &&
-      canOpenScreen(screen, role, auth.can, auth.user.role === 'SUPER_ADMIN');
+    return mayManageTrashCollection(collection, auth.can, leadsTasks) && (!module || moduleAllowed(auth, module)) &&
+      (screen === 'tasks' && leadsTasks || canOpenScreen(screen, role, auth.can, auth.user.role === 'SUPER_ADMIN'));
   });
 }
 
@@ -31,7 +30,7 @@ export function canRestoreTrashRecord(auth: AuthContext, collection: TrashCollec
     !POLICIES[collection]({ auth, collection, kind: 'delete', before: data, after: null, list });
 }
 
-export function decodeTrashCursor(value: unknown): TrashPagePosition | null | undefined {
+export function decodeTrashCursor(value: unknown): (TrashPagePosition & { collection: TrashCollection }) | null | undefined {
   if (value === undefined) return null;
   if (typeof value !== 'string' || value.length > 450 || !/^[A-Za-z0-9_-]+$/.test(value)) return undefined;
   const [deletedAt = '', collection, id = '', ...rest] = Buffer.from(value, 'base64url').toString('utf8').split('~');
@@ -39,10 +38,12 @@ export function decodeTrashCursor(value: unknown): TrashPagePosition | null | un
   return { deletedAt, collection, id };
 }
 
-export function readTrashPage(db: NewsroomDatabase, auth: AuthContext, collection: TrashCollection | undefined,
+export function readTrashPage(db: NewsroomDatabase, auth: AuthContext, scope: { collection?: TrashCollection; section?: TrashScreen },
   after: TrashPagePosition | null, retention: TrashRetentionPolicy): TrashPage {
   const collections = trashScope(auth);
-  const selected = collection ? collections.filter(item => item === collection) : collections;
+  const { section, collection } = scope;
+  if (!section && !collection) return { items: [], collections, nextCursor: null, retentionDays: retention.defaultDays };
+  const selected = collections.filter(item => (!section || TRASH_SECTIONS[item].screen === section) && (!collection || item === collection));
   const items: TrashItem[] = [];
   const recordsByCollection = new Map<CollectionName, ReturnType<NonNullable<PolicyInput['list']>>>();
   const list = (target: CollectionName) => {
@@ -75,5 +76,5 @@ export function readTrashPage(db: NewsroomDatabase, auth: AuthContext, collectio
     const last = items[items.length - 1];
     nextCursor = Buffer.from(`${last.deletedAt}~${last.collection}~${last.id}`).toString('base64url');
   }
-  return { items, collections, nextCursor, retentionDays: retention.defaultDays };
+  return { items, collections: section ? selected : collections, nextCursor, retentionDays: retention.defaultDays };
 }

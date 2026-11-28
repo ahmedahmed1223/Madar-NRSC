@@ -5,7 +5,8 @@ import Database from 'better-sqlite3';
 import type { NewsroomDatabase } from './db';
 import type { BackupRehearsal } from '../shared/databaseDiagnostics';
 import { APP_VERSION } from '../shared/releaseVersion';
-import { fetchPrimaryBackupSnapshot, readPrimaryBackup, withPrimaryBackupStaging } from './primaryBackupStorage';
+import { backupHash, fetchPrimaryBackupSnapshot, primaryBackupBundleReader, readPrimaryBackup, withPrimaryBackupStaging } from './primaryBackupStorage';
+import { verifyBackupBundle, type BackupSnapshotInventory } from './backupBundleVerification';
 
 export class DatabaseOperationBusy extends Error {}
 export class DatabaseOperationLock {
@@ -71,7 +72,7 @@ export async function withBackupSource<T>(db: NewsroomDatabase, fileName: string
 }
 
 export async function withStableBackup<T>(db: NewsroomDatabase, fileName: string, tempRoot: string,
-  work: (source: string, sha256: string) => Promise<T>): Promise<T> {
+  work: (source: string, sha256: string, directory: string, primary: ReturnType<typeof readPrimaryBackup>) => Promise<T>): Promise<T> {
   const primary = readPrimaryBackup(db.dataDir, fileName);
   ensureRoot(tempRoot);
   const directory = await fs.promises.mkdtemp(path.join(tempRoot, 'rehearsal-'));
@@ -79,29 +80,48 @@ export async function withStableBackup<T>(db: NewsroomDatabase, fileName: string
     const copy = path.join(directory, 'snapshot.sqlite');
     if (primary) {
       await fetchPrimaryBackupSnapshot(db.dataDir, primary, copy);
-      return await work(copy, primary.sha256);
+      return await work(copy, primary.sha256, directory, primary);
     }
     await fs.promises.copyFile(db.backupFilePath(fileName), copy, fs.constants.COPYFILE_EXCL);
-    const hash = crypto.createHash('sha256');
-    for await (const chunk of fs.createReadStream(copy)) hash.update(chunk);
-    return await work(copy, hash.digest('hex'));
+    return await work(copy, await backupHash(copy), directory, primary);
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }
 }
 
 export async function rehearseBackup(db: NewsroomDatabase, fileName: string, tempRoot: string): Promise<BackupRehearsal> {
-  const result = await withStableBackup<BackupRehearsal>(db, fileName, tempRoot, async (source, sha256) => {
+  const result = await withStableBackup<BackupRehearsal>(db, fileName, tempRoot, async (source, sha256, directory, primary) => {
+    const bundle = primary ? directory : db.backupFilePath(fileName) + '.bundle';
+    // Older standalone snapshots have no associated media bundle.
+    const exists = primary || await fs.promises.lstat(bundle).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    const bytes = exists ? (await fs.promises.stat(source)).size : 0;
+    // The isolated probe can migrate an older snapshot before checking compatibility.
     const probe = new Database(source, { fileMustExist: true });
+    const counts: Record<string, number> = {};
+    let uploads: BackupSnapshotInventory['uploads'] | undefined;
     try {
       if (probe.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('Invalid snapshot');
       db.checkBackupSchema(probe);
       const rows = probe.prepare('SELECT collection, COUNT(*) AS count FROM entities WHERE deleted = 0 GROUP BY collection').all() as { collection: string; count: number }[];
-      const counts: Record<string, number> = {};
       for (const row of rows) if (db.isKnownCollection(row.collection)) counts[row.collection] = row.count;
-      return { fileName, sha256, checkedAt: new Date().toISOString(), version: BACKUP_REHEARSAL_VERSION, compatible: true, counts,
-        mediaVerified: false };
+      if (exists) {
+        const columns = probe.pragma('table_info(uploads)') as { name: string }[];
+        const evictable = columns.some(column => column.name === 'local_evicted');
+        uploads = probe.prepare('SELECT stored_name, size_bytes' + (evictable ? ', local_evicted' : '') + ' FROM uploads').all() as BackupSnapshotInventory['uploads'];
+      }
     } finally { probe.close(); }
+    let mediaVerified = false;
+    if (uploads) {
+      const fetchFile = primary ? await primaryBackupBundleReader(db.dataDir, primary) : undefined;
+      const inventory = { sha256, bytes, uploads };
+      const verified = await verifyBackupBundle(bundle, { inventory, fetchFile });
+      if (verified.valid === false) throw new Error(verified.reason);
+      mediaVerified = verified.mediaVerified;
+    }
+    return { fileName, sha256, checkedAt: new Date().toISOString(), version: BACKUP_REHEARSAL_VERSION, compatible: true, counts, mediaVerified };
   });
   // Evidence survives restart without writing to the newsroom database being rehearsed.
   await recordRehearsal(db.dataDir, result);

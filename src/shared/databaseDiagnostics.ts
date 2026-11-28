@@ -23,7 +23,7 @@ export interface BackupIncident { id: 'snapshot-failure' | 'delivery-failure' | 
 export interface BackupVerification { valid: true; fileName: string; checkedAt: string; sha256: string }
 export interface BackupRehearsal {
   fileName: string; sha256: string; checkedAt: string; version: string;
-  compatible: true; counts: Record<string, number>; mediaVerified: false;
+  compatible: true; counts: Record<string, number>; mediaVerified: boolean;
 }
 export interface DatabaseDiagnosticReport {
   journalHealth: 'ok' | 'degraded' | 'memory';

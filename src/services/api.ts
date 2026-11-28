@@ -467,13 +467,13 @@ export class ApiService {
   }
 
   static deleteTask(taskId: string, user?: User): void {
-    if (!RbacService.hasPermission(user || this.getCurrentUser(), 'tasks.create_assign')) {
+    const currentUser = user || this.getCurrentUser();
+    if (!RbacService.hasPermission(currentUser, 'tasks.create_assign') && !RbacService.leadsDepartment(currentUser)) {
       throw new Error('صلاحياتك لا تسمح بحذف المهام');
     }
     const all = this.getTasks();
     const filtered = all.filter((t) => t.id !== taskId);
     setStored(STORAGE_KEYS.TASKS, filtered);
-    const currentUser = user || this.getCurrentUser();
     this.logActivity('حذف مهمة', 'TASK', taskId, 'مهمة محذوفة', `قام ${currentUser.fullName} بحذف المهمة.`);
   }
 

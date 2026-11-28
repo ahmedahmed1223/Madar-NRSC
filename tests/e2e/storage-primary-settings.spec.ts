@@ -7,6 +7,7 @@ for (const { device, width, height } of [{ device: 'desktop', width: 1440, heigh
     const { page } = admin;
     const mediaTarget = device === 'desktop' ? 'dropbox' : 'nas';
     const backupTarget = device === 'desktop' ? 'nas' : 'gdrive';
+    const scheduledBackups = device !== 'desktop';
     try {
       page.setDefaultTimeout(10_000);
       const status = (await (await page.request.get('/api/v1/storage/status')).json()).data;
@@ -23,10 +24,17 @@ for (const { device, width, height } of [{ device: 'desktop', width: 1440, heigh
       await openSettingsSection(page, 'التخزين');
       await page.getByRole('combobox', { name: 'التخزين الأساسي للوسائط', exact: true }).selectOption(mediaTarget);
       await page.getByRole('combobox', { name: 'التخزين الأساسي للنسخ الاحتياطية', exact: true }).selectOption(backupTarget);
+      const schedule = page.getByRole('checkbox', { name: 'تشغيل النسخ الاحتياطية المجدولة' });
+      await schedule.setChecked(scheduledBackups);
       await page.getByRole('button', { name: 'حفظ إعدادات التخزين' }).click();
       await expect(page.getByRole('status').filter({ hasText: 'حُفظت إعدادات التخزين.' })).toBeVisible();
       const settings = (await (await page.request.get('/api/v1/data')).json()).collections.settings[0].d;
-      expect(settings.storage).toMatchObject({ primaryMedia: mediaTarget, primaryBackups: backupTarget });
+      expect(settings.storage).toMatchObject({
+        primaryMedia: mediaTarget, primaryBackups: backupTarget, scheduledBackups,
+      });
+      await page.reload();
+      await openSettingsSection(page, 'التخزين');
+      await expect(schedule).toHaveJSProperty('checked', scheduledBackups);
       await page.getByRole('button', { name: 'فحص أذونات القراءة والكتابة' }).click();
       const toast = page.getByRole('alert').filter({ hasText: 'الإذن غير ممنوح' });
       await expect(toast).toBeVisible();

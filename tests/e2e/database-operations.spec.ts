@@ -34,6 +34,7 @@ test('database manager creates, verifies and downloads a selected snapshot and s
     await row.getByRole('button', { name: 'تجربة الاستعادة' }).click();
     await expect(page.getByRole('heading', { name: 'نتيجة تجربة الاستعادة' })).toBeVisible();
     await expect(page.getByText('لم تتغير قاعدة البيانات الحالية')).toBeVisible();
+    await expect(page.getByText('تمت مطابقة بصمات جميع ملفات الوسائط المشمولة في هذه النسخة.')).toBeVisible();
     const restore = row.getByRole('button', { name: 'استعادة هذه النسخة' });
     await restore.click();
     let dialog = page.getByRole('dialog', { name: 'تأكيد استعادة قاعدة البيانات' });

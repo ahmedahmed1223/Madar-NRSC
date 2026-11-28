@@ -67,7 +67,7 @@ import { moduleAvailability, moduleAllowed, moduleAllowsRecord } from './moduleA
 import { linkedMediaAsset, linkedMediaIds } from './linkedMedia';
 import { matchesQuery } from '../shared/search';
 import { episodeGuestList, guestKey } from '../shared/episodePlan';
-import { isTrashCollection, type TrashCollection } from '../shared/trash';
+import { isTaskTrashCollection, isTrashCollection, type TrashCollection } from '../shared/trash';
 import { canRestoreTrashRecord, trashScope } from './trash';
 import {
   SyncReject,
@@ -180,7 +180,8 @@ export class SyncService {
     return createHash('sha256').update(access).digest('base64url');
   }
 
-  private visible(auth: AuthContext, row: EntityRow): boolean {
+  private visible(auth: AuthContext, row: EntityRow, includeTaskTrash = false): boolean {
+    if (!includeTaskTrash && isTaskTrashCollection(row.c) && row.d?.deletedAt) return false;
     if (row.c === 'media' && !moduleAllowed(auth, 'media')) {
       return row.deleted ? auth.can('media.view') && linkedMediaIds(this.db, auth).has(row.id) : !!linkedMediaAsset(this.db, auth, row.id);
     }
@@ -197,6 +198,9 @@ export class SyncService {
   }
 
   private readableRow(auth: AuthContext, row: EntityRow): EntityRow {
+    if (isTaskTrashCollection(row.c) && row.d?.deletedAt) {
+      return { c: row.c, id: row.id, v: row.v, p: row.p, deleted: true };
+    }
     if (row.c === 'settings' && row.d?.moduleAccess && !auth.can('system.settings')) {
       const { moduleAccess: _moduleAccess, ...settings } = row.d;
       return { ...row, d: settings };
@@ -458,7 +462,7 @@ export class SyncService {
       rev,
       reset: false as const,
       changes: rows.flatMap((r): EntityRow[] => {
-        if (this.visible(auth, r)) return [this.readableRow(auth, r)];
+        if (this.visible(auth, r, true)) return [this.readableRow(auth, r)];
         if (r.c === 'requests' && supportTrack(r.d?.type) && r.d.history?.some((entry: { redirectedFromId?: string }) => entry.redirectedFromId === auth.user.id)) {
           return [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }];
         }
@@ -532,6 +536,7 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
+        const taskTrash = isTaskTrashCollection(collection);
         if (collection === 'media' && before?.deletedAt && !restore && op.op === 'upsert') {
           return { ok: false, code: 'FORBIDDEN', message: 'استعد المادة من سلة المحذوفات قبل تعديلها' } as SyncOpResult;
         }
@@ -547,7 +552,7 @@ export class SyncService {
           }
           op = { ...op, d: { ...before, deletedAt: null } };
         } else if (!current && op.op === 'upsert' && typeof op.baseV === 'number' && op.baseV > 0 && isTrashCollection(collection)) {
-          // A stale edit or recovery from the old News tab must not re-create a purged record.
+          // A stale edit must not re-create a purged record.
           return { ok: false, code: 'NOT_FOUND', message: 'لم يعد السجل موجوداً' } as SyncOpResult;
         }
         const module = moduleForRecord(collection, id, before, key => !!this.lookup('episodes', key)) ??
@@ -568,7 +573,13 @@ export class SyncService {
             return { ok: false, code: 'CONFLICT', message: 'حُذف هذا السجل؛ أنشئ سجلًا جديدًا' } as SyncOpResult;
           }
         }
-        if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current)) {
+        if (taskTrash && !restore && op.op === 'upsert' && (before?.deletedAt || (isPlainObject(op.d) && op.d.deletedAt))) {
+          if (current && !this.visible(auth, current, true)) {
+            return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' } as SyncOpResult;
+          }
+          return { ok: false, code: 'FORBIDDEN', message: 'استخدم سلة المحذوفات لاستعادة المهمة' } as SyncOpResult;
+        }
+        if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current, restore)) {
           return { ok: false, code: 'FORBIDDEN', message: 'هذه المادة الإنتاجية غير متاحة لك' } as SyncOpResult;
         }
         const bulletinBase = collection === 'bulletinStories' && current && op.op === 'upsert' && isPlainObject(op.d) &&
@@ -600,6 +611,17 @@ export class SyncService {
           if (!current) return { ok: true, row: { c: collection, id, v: 0, p: 0, deleted: true } } as SyncOpResult;
           const denied = POLICIES[collection]({ auth, collection, kind: 'delete', before, after: null, list: this.listData });
           if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
+          if (taskTrash) {
+            if (!before.deletedAt && op.baseV !== undefined && op.baseV !== current.v) {
+              return { ok: false, code: 'CONFLICT', message: 'تغيّر السجل؛ راجع النسخة الحالية قبل حذفه', current } as SyncOpResult;
+            }
+            if (before.deletedAt) return { ok: true, row: this.readableRow(auth, current) } as SyncOpResult;
+            const after = { ...before, deletedAt: new Date().toISOString() };
+            const row = this.db.writeRow(collection, id, after, current.p, auth.user.id);
+            if (collection === 'tasks') updateWorkReminders(this.db, collection, id, null);
+            this.auditLifecycle(collection, before, after, auth, ip);
+            return { ok: true, row: this.readableRow(auth, row) } as SyncOpResult;
+          }
           if (collection === 'users') {
             this.db.deleteCredentials(id);
             this.db.deleteUserSessions(id);

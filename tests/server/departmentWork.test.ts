@@ -55,6 +55,30 @@ it('shares only the configured department team’s work summaries and revokes th
   ]));
   expect(new Set(data.body.data.items.map(({ assigneeId }: { assigneeId: string }) => assigneeId))).toEqual(new Set([driver.id]));
   expect(JSON.stringify(data.body.data)).not.toMatch(/عمل داخلي للاستديو|محتوى داخلي غير لازم/);
+
+  const removeTask = async (agent: typeof head, id: string) => {
+    const current = db.getRow('tasks', id)!;
+    const result = await agent.post('/api/v1/data/sync').set('X-NRCS-Client', 'web')
+      .send({ ops: [{ c: 'tasks', id, op: 'delete', baseV: current.v }] }).expect(200);
+    expect(result.body.results[0]).toMatchObject({ ok: true, row: { id, deleted: true } });
+    return result.body.results[0].row.v;
+  };
+  const restoreTask = (agent: typeof head, id: string, baseV: number) => agent
+    .post('/api/v1/trash/tasks/' + id + '/restore').set('X-NRCS-Client', 'web').send({ baseV });
+  const transportVersion = await removeTask(head, 'transport-task');
+  const studioVersion = await removeTask(child, 'studio-task');
+  const trashIds = async (agent: typeof head) => {
+    const response = await agent.get('/api/v1/trash?section=tasks').expect(200);
+    return response.body.data.items.map((item: { id: string }) => item.id);
+  };
+  expect(await trashIds(head)).toEqual(['transport-task']);
+  expect(await trashIds(child)).toEqual(['studio-task']);
+  expect(await trashIds(worker)).toEqual([]);
+  await restoreTask(head, 'studio-task', studioVersion).expect(404);
+  await restoreTask(child, 'transport-task', transportVersion).expect(404);
+  await restoreTask(head, 'transport-task', transportVersion).expect(200);
+  await restoreTask(child, 'studio-task', studioVersion).expect(200);
+
   const childData = await child.get('/api/v1/work/department').expect(200);
   expect(childData.body.data.items).toEqual(expect.arrayContaining([
     expect.objectContaining({ entityId: 'studio-task', assigneeId: outside.id }),

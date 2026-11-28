@@ -95,7 +95,7 @@ import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } fro
 import type { CollectionName, SyncOp } from '../shared/collections';
 import { mayManageTemplate, publishedWorkflow, type PublishedWorkflow } from '../shared/workflowPublication';
 import { CardMergeError, cardMergeCandidates } from './cardConsolidation';
-import { isTrashCollection } from '../shared/trash';
+import { isTrashCollection, isTrashScreen, TRASH_SECTIONS } from '../shared/trash';
 import { decodeTrashCursor, readTrashPage } from './trash';
 import { initializeTrashRetention, readTrashRetention } from './retention';
 
@@ -865,12 +865,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   app.get('/api/v1/trash', requireAuth, (req, res) => {
-    const requestedCollection = req.query.collection;
+    res.setHeader('Cache-Control', 'no-store');
+    const { collection: requestedCollection, section: requestedSection } = req.query;
     const collection = isTrashCollection(requestedCollection) ? requestedCollection : undefined;
-    if (requestedCollection !== undefined && collection === undefined) throw new HttpError(400, 'قسم سلة المحذوفات غير صالح');
+    const section = isTrashScreen(requestedSection) ? requestedSection : undefined;
+    if ((requestedCollection !== undefined && !collection) || (requestedSection !== undefined && !section) ||
+      (collection && section && TRASH_SECTIONS[collection].screen !== section)) {
+      throw new HttpError(400, 'قسم سلة المحذوفات غير صالح');
+    }
     const after = decodeTrashCursor(req.query.cursor);
-    if (after === undefined) throw new HttpError(400, 'مؤشر سلة المحذوفات غير صالح');
-    const data = readTrashPage(db, req.auth!, collection, after, readTrashRetention(db, config.retention.trashDays));
+    if (after === undefined || after && (
+      collection && after.collection !== collection || section && TRASH_SECTIONS[after.collection].screen !== section ||
+      !collection && !section
+    )) throw new HttpError(400, 'مؤشر سلة المحذوفات غير صالح');
+    const data = readTrashPage(db, req.auth!, { collection, section }, after, readTrashRetention(db, config.retention.trashDays));
     res.json({ success: true, data });
   });
 

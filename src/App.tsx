@@ -1238,7 +1238,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
-            {activeNav === 'trash' && <TrashView key={focusId || 'all'} focusId={focusId} onFocus={setFocusId} />}
+            {activeNav === 'trash' && <TrashView focusId={focusId} user={currentUser} onOpen={openLink} />}
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (

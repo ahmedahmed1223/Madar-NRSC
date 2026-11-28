@@ -52,12 +52,18 @@ export const storageClient = {
   async verifyDropbox(check: DropboxCheck): Promise<DropboxVerification> {
     return (await apiFetch<{ data: DropboxVerification }>('/api/v1/storage/dropbox/verify', { method: 'POST', json: { check } })).data;
   },
+  async dropboxTeamMembers(credentials: { appKey: string; appSecret: string; refreshToken: string }, cursor?: string): Promise<{ members: DropboxTeamMember[]; cursor?: string }> {
+    return (await apiFetch<{ data: { members: DropboxTeamMember[]; cursor?: string } }>('/api/v1/storage/dropbox/team-members', {
+      method: 'POST', json: { ...credentials, cursor }, signal: AbortSignal.timeout(15_000),
+    })).data;
+  },
   async dropboxAuthorizeUrl(appKey: string): Promise<string> {
     return (await apiFetch<{ data: { url: string } }>('/api/v1/storage/dropbox/authorize-url', { method: 'POST', json: { appKey } })).data.url;
   },
-  async connectDropbox(appKey: string, appSecret: string, credential: string | { refreshToken: string }): Promise<StorageStatus> {
+  async connectDropbox(appKey: string, appSecret: string, credential: string | { refreshToken: string }, teamMemberId?: string): Promise<StorageStatus> {
     const authorization = typeof credential === 'string' ? { code: credential } : credential;
-    return (await apiFetch<{ data: StorageStatus }>('/api/v1/storage/dropbox/connect', { method: 'POST', json: { appKey, appSecret, ...authorization }, signal: AbortSignal.timeout(22_000) })).data;
+    const account = teamMemberId ? { accountMode: 'member', teamMemberId } : {};
+    return (await apiFetch<{ data: StorageStatus }>('/api/v1/storage/dropbox/connect', { method: 'POST', json: { appKey, appSecret, ...authorization, ...account }, signal: AbortSignal.timeout(27_000) })).data;
   },
   async disconnect(provider: CloudProviderId): Promise<StorageStatus> {
     return (await apiFetch<{ data: StorageStatus }>(`/api/v1/storage/${provider}/disconnect`, { method: 'POST', json: {} })).data;
@@ -81,3 +87,4 @@ export const storageClient = {
     return (await apiFetch<{ data: { status: StorageStatus } }>('/api/v1/storage/sync-now', { method: 'POST', json: {} })).data.status;
   },
 };
+import type { DropboxTeamMember } from '../shared/dropboxAuthorization';

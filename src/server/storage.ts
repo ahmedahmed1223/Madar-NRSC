@@ -12,8 +12,9 @@ import type { NewsroomDatabase, UploadRecord } from './db';
 import { logger } from './logger';
 import { requirePermission } from './auth';
 import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, mediaUploadIsTrashed, type StagedUploadPersistence, UploadError, uploadsDir } from './uploads';
-import { DropboxClient, DropboxError, authorizeUrl as dropboxAuthorizeUrl, dropboxPath, exchangeAuthorizationCode } from './dropbox';
-import { validDropboxAppKey } from '../shared/dropboxAuthorization';
+import { DropboxClient, DropboxError, authorizeUrl as dropboxAuthorizeUrl, dropboxMissingScope, dropboxPath, exchangeAuthorizationCode, type DropboxCredentials } from './dropbox';
+import { validDropboxAppKey, validDropboxTeamMemberId } from '../shared/dropboxAuthorization';
+import { dropboxTeamDirectory } from './dropboxTeamDirectory';
 import { DriveClient, DriveError, driveAuthorizeUrl, exchangeDriveCode } from './gdrive';
 import { newId } from '../shared/ids';
 import {
@@ -81,11 +82,20 @@ function readMetaJson<T>(db: NewsroomDatabase, key: string): T | null {
   }
 }
 
-export function dropboxCredentials(db: NewsroomDatabase, env = process.env): StoredCreds<{ appKey: string; appSecret: string; refreshToken: string }> & { fromEnv: boolean } | null {
+export function dropboxCredentials(db: NewsroomDatabase, env = process.env): StoredCreds<DropboxCredentials> & { fromEnv: boolean } | null {
   if (env.DROPBOX_APP_KEY && env.DROPBOX_APP_SECRET && env.DROPBOX_REFRESH_TOKEN) {
-    return { creds: { appKey: env.DROPBOX_APP_KEY, appSecret: env.DROPBOX_APP_SECRET, refreshToken: env.DROPBOX_REFRESH_TOKEN }, fromEnv: true };
+    return {
+      creds: {
+        appKey: env.DROPBOX_APP_KEY,
+        appSecret: env.DROPBOX_APP_SECRET,
+        refreshToken: env.DROPBOX_REFRESH_TOKEN,
+        teamMemberId: env.DROPBOX_TEAM_MEMBER_ID?.trim() || undefined,
+        teamRootNamespaceId: env.DROPBOX_TEAM_NAMESPACE_ID?.trim() || undefined,
+      },
+      fromEnv: true,
+    };
   }
-  const stored = readMetaJson<StoredCreds<any>>(db, 'storage.dropbox.credentials');
+  const stored = readMetaJson<StoredCreds<DropboxCredentials>>(db, 'storage.dropbox.credentials');
   return stored?.creds?.refreshToken ? { ...stored, fromEnv: false } : null;
 }
 
@@ -102,7 +112,7 @@ const clients: { dropbox?: { key: string; client: DropboxClient }; gdrive?: { ke
 function dropboxClient(db: NewsroomDatabase): DropboxClient | null {
   const c = dropboxCredentials(db);
   if (!c) return null;
-  const key = c.creds.refreshToken;
+  const key = hashToken(JSON.stringify(c.creds));
   if (clients.dropbox?.key !== key) clients.dropbox = { key, client: new DropboxClient(c.creds) };
   return clients.dropbox.client;
 }
@@ -118,7 +128,9 @@ async function dropboxCheck(
     if (!(err instanceof DropboxError)) return 'unavailable';
     if (err.status === 429 || err.status >= 500) return 'unavailable';
     const detail = err.summary || '';
-    if (/^(invalid_scope|missing_scope)(\/|$)/.test(detail)) return 'missing_scope';
+    if (dropboxMissingScope(err)) return 'missing_scope';
+    if (detail === 'invalid_team_member') return 'invalid_team_member';
+    if (detail === 'invalid_root') return 'root_changed';
     if (kind === 'folder') {
       if (err.status === 404 || /^path\/(not_found|not_folder)(\/|$)/.test(detail)) return 'folder_missing';
       if (err.status === 403 || /^path\/no_permission(\/|$)/.test(detail)) return 'folder_denied';
@@ -489,7 +501,11 @@ export function storageStatus(db: NewsroomDatabase, req: Request): StorageStatus
   return {
     primaryMedia: s.primaryMedia,
     primaryBackups: s.primaryBackups,
-    dropbox: { enabled: s.dropbox.enabled, connected: !!dbx, managedByEnvironment: !!dbx?.fromEnv, account: dbx?.account, root: dropboxPath(s.dropbox.rootPath) || '/', lastError: lastErrors.dropbox },
+    dropbox: {
+      enabled: s.dropbox.enabled, connected: !!dbx, managedByEnvironment: !!dbx?.fromEnv, account: dbx?.account,
+      accountMode: dbx ? (dbx.creds.teamMemberId && !dbx.creds.automaticTeamMember ? 'member' : 'automatic') : undefined,
+      root: dropboxPath(s.dropbox.rootPath) || '/', lastError: lastErrors.dropbox,
+    },
     gdrive: { enabled: s.gdrive.enabled, connected: !!gd, managedByEnvironment: !!gd?.fromEnv, account: gd?.account, root: s.gdrive.rootFolderId ? `مجلد ${s.gdrive.rootFolderId.slice(0, 8)}…` : s.gdrive.rootName, lastError: lastErrors.gdrive },
     share: {
       enabled: s.share.enabled,
@@ -559,25 +575,33 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
 
   // --- Dropbox --------------------------------------------------------------
 
+  app.post('/api/v1/storage/dropbox/team-members', admin, dropboxTeamDirectory(() => dropboxCredentials(db)?.creds));
+
   app.post('/api/v1/storage/dropbox/verify', admin, wrap(async (req: Request, res: Response) => {
     const check = req.body?.check;
     if (check !== 'connection' && check !== 'permissions') throw new HttpError(400, 'فحص Dropbox غير صالح');
     const root = dropboxPath(settingsOf(db).dropbox.rootPath);
     const creds = dropboxCredentials(db)?.creds;
     const data: DropboxVerification = { credentials: 'not_configured' };
-    if (check === 'connection') data.root = root || '/';
+    data.root = root || '/';
     if (creds?.appKey && creds.appSecret && creds.refreshToken) {
       // Use a fresh client so a cached access token cannot hide stale saved credentials.
       const client = new DropboxClient(creds);
       const signal = AbortSignal.timeout(10_000);
-      data.credentials = await dropboxCheck(() => client.verifyCredentials(signal), 'credentials');
+      data.credentials = await dropboxCheck(async () => {
+        const account = await client.account(signal);
+        data.account = account.name;
+        data.teamMemberId = account.teamMemberId;
+      }, 'credentials');
       if (data.credentials === 'verified') {
-        if (check === 'connection') {
-          data.folder = await dropboxCheck(() => client.list(root, 1, signal), 'folder');
-        } else {
+        data.folder = await dropboxCheck(() => client.list(root, 1, signal), 'folder');
+        if (check === 'permissions' && data.folder === 'verified') {
           [data.read, data.write] = await Promise.all([
             dropboxCheck(() => client.verifyScope('files.content.read', signal), 'scope'),
-            dropboxCheck(() => client.verifyScope('files.content.write', signal), 'scope'),
+            dropboxCheck(async () => {
+              await client.verifyScope('files.content.write', signal);
+              if (data.teamMemberId) await client.verifyFolderWriteAccess(root, signal);
+            }, 'folder'),
           ]);
         }
       }
@@ -603,26 +627,53 @@ export function registerStorageRoutes(app: Express, deps: Deps) {
       if (!appKey || !appSecret) throw new HttpError(400, 'أدخل App key وApp secret للتطبيق.');
       if (Boolean(code) === Boolean(suppliedToken) || suppliedToken.length > 4096) throw new HttpError(400, 'أدخل رمز الموافقة أو Refresh token وفق طريقة الربط التي اخترتها.');
       if (!validDropboxAppKey(appKey)) throw new HttpError(400, 'مفتاح تطبيق Dropbox غير صالح');
-      let refreshToken = suppliedToken;
+      const accountMode = req.body?.accountMode === undefined ? 'automatic' : req.body.accountMode;
+      const teamMemberId = typeof req.body?.teamMemberId === 'string' ? req.body.teamMemberId.trim() : undefined;
+      if (accountMode !== 'automatic' && accountMode !== 'member') throw new HttpError(400, 'طريقة اختيار حساب Dropbox غير صالحة.');
+      if (accountMode === 'member' && !validDropboxTeamMemberId(teamMemberId)) throw new HttpError(400, 'أدخل معرّف عضو فريق Dropbox بصيغة dbmid:.');
+      const creds: DropboxCredentials = { appKey, appSecret, refreshToken: suppliedToken, teamMemberId: accountMode === 'member' ? teamMemberId : undefined };
+      const settings = settingsOf(db);
+      const root = dropboxPath(settings.dropbox.rootPath);
       let client: DropboxClient;
+      let account: Awaited<ReturnType<DropboxClient['account']>>;
+      let folderNeedsSetup = false;
       try {
-        if (code) ({ refreshToken } = await exchangeAuthorizationCode(appKey, appSecret, code));
-        client = new DropboxClient({ appKey, appSecret, refreshToken });
-        if (suppliedToken) await client.verifyCredentials(AbortSignal.timeout(12_000));
+        if (code) ({ refreshToken: creds.refreshToken } = await exchangeAuthorizationCode(appKey, appSecret, code));
+        client = new DropboxClient(creds);
+        const signal = AbortSignal.timeout(12_000);
+        account = await client.account(signal);
+        try {
+          await client.list(root, 1, signal);
+        } catch (err) {
+          if (!root || !(err instanceof DropboxError) || !/^path\/(not_found|not_folder)(\/|$)/.test(err.summary || '')) throw err;
+          // A new connection can be saved before the library folder exists.
+          await client.list('', 1, signal);
+          folderNeedsSetup = true;
+        }
+        await client.verifyScope('files.content.read', signal);
+        if (settings.dropbox.enabled || settings.primaryMedia === 'dropbox') {
+          await client.verifyScope('files.content.write', signal);
+          if (account.teamMemberId && !folderNeedsSetup) await client.verifyFolderWriteAccess(root, signal);
+        }
       } catch (err) {
         if (err instanceof DropboxError) {
-          if (suppliedToken && (err.summary === 'invalid_client' || err.status === 401)) throw new HttpError(400, 'لم يقبل Dropbox بيانات التطبيق. راجع App key وApp secret.');
+          if (suppliedToken && err.summary === 'invalid_client') throw new HttpError(400, 'لم يقبل Dropbox بيانات التطبيق. راجع App key وApp secret.');
           if (suppliedToken && err.summary === 'invalid_grant') throw new HttpError(400, 'تعذر تجديد الوصول. تحقق أن Refresh token ساري المفعول وصادر للتطبيق نفسه.');
+          if (/^path\/no_permission(\/|$)/.test(err.summary || '')) throw new HttpError(400, 'الحساب المختار لا يملك الإذن المطلوب في مجلد Dropbox المحفوظ.');
           throw new HttpError(err.status >= 500 || err.status === 429 ? 503 : 400, err.message);
         }
         throw new HttpError(503, 'تعذر اتصال الخادم بـ Dropbox. تحقق من اتصال الخادم بالإنترنت وأعد المحاولة.');
       }
-      const account = await client.account(AbortSignal.timeout(4_000)).catch(() => ({ name: 'Dropbox' }));
-      db.setMeta('storage.dropbox.credentials', JSON.stringify({ creds: { appKey, appSecret, refreshToken }, account: account.name, connectedAt: new Date().toISOString() }));
-      clients.dropbox = { key: refreshToken, client };
+      creds.teamMemberId = account.teamMemberId;
+      creds.teamRootNamespaceId = account.rootNamespaceId;
+      creds.automaticTeamMember = account.teamMemberId && accountMode === 'automatic' ? true : undefined;
+      db.setMeta('storage.dropbox.credentials', JSON.stringify({ creds, account: account.name, connectedAt: new Date().toISOString() }));
+      clients.dropbox = { key: hashToken(JSON.stringify(creds)), client };
       delete lastErrors.dropbox;
       audit(req.auth!.user, 'STORAGE_CONNECTED', 'SETTINGS', 'dropbox', 'SECURITY', `ربط Dropbox بحساب ${account.name}`, req.ip);
-      res.json({ success: true, data: storageStatus(db, req) });
+      const status = storageStatus(db, req);
+      if (folderNeedsSetup) status.dropbox.folderNeedsSetup = true;
+      res.json({ success: true, data: status });
     })
   );
 

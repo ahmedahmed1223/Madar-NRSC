@@ -297,19 +297,33 @@ export async function publishPrimaryBackup(db: BackupDb, carrier: BackupCarrier,
   return destination;
 }
 
-export async function fetchPrimaryBackupSnapshot(dataDir: string, entry: Entry, output: string) {
+export async function primaryBackupBundleReader(dataDir: string, entry: Entry) {
   const artifact = await artifactPath(dataDir, entry.carrier, entry.artifact);
-  if (entry.carrier.kind === 'nas') {
-    const root = await fsp.lstat(artifact);
-    const source = path.join(artifact, 'newsroom.sqlite');
-    const stat = await fsp.lstat(source);
-    if (!root.isDirectory() || root.isSymbolicLink() || !stat.isFile() || stat.isSymbolicLink() || stat.size !== entry.file.sizeBytes) {
-      throw new Error('Invalid primary backup artifact');
-    }
-    await fsp.copyFile(source, output, constants.COPYFILE_EXCL);
-  } else {
-    await run('rclone', ['copyto', artifact + '/newsroom.sqlite', output, '--immutable'], transfer);
+  if (entry.carrier.kind !== 'nas') {
+    return async (relative: string, output: string, maxBytes: number) => {
+      // Leave one byte of headroom above the accepted size so exact-length transfers can complete.
+      await run('rclone', ['copyto', artifact + '/' + relative, output, '--immutable',
+        '--max-transfer', (maxBytes + 1) + 'B', '--retries', '1'], transfer);
+      if ((await fsp.stat(output)).size > maxBytes) throw new Error('Oversized backup artifact');
+    };
   }
+  const root = await fsp.lstat(artifact);
+  if (!root.isDirectory() || root.isSymbolicLink()) throw new Error('Invalid primary backup artifact');
+  return async (relative: string, output: string, maxBytes: number) => {
+    const source = path.join(artifact, relative);
+    if (relative.startsWith('uploads/')) {
+      const uploads = await fsp.lstat(path.join(artifact, 'uploads'));
+      if (!uploads.isDirectory() || uploads.isSymbolicLink()) throw new Error('Invalid primary backup uploads');
+    }
+    const stat = await fsp.lstat(source);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maxBytes) throw new Error('Invalid primary backup file');
+    await fsp.copyFile(source, output, constants.COPYFILE_EXCL);
+  };
+}
+
+export async function fetchPrimaryBackupSnapshot(dataDir: string, entry: Entry, output: string) {
+  const fetch = await primaryBackupBundleReader(dataDir, entry);
+  await fetch('newsroom.sqlite', output, entry.file.sizeBytes);
   if ((await fsp.stat(output)).size !== entry.file.sizeBytes) throw new Error('Incomplete primary backup snapshot');
   await assertHash(output, entry.sha256);
 }
