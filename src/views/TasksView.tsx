@@ -14,7 +14,7 @@ import { ENTITY_ID_PATTERN } from '../shared/collections';
 import { Plus, Clock, User as UserIcon, Search, Trash2, Edit2, Link2, ChevronDown, CheckSquare, X } from 'lucide-react';
 import { confirmDialog, promptDialog } from '../services/dialogs';
 import { takeMessageTask, type MessageTaskOrigin } from '../services/messageWorkspace';
-import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
+import { TASK_BOARD_COLUMNS, TASK_PERIOD_OPTIONS, TASK_STATUS_OPTIONS, RELATED_ENTITY_LABELS, canChangeTaskStatus, isMyTask, relatedTaskPath, taskListPageWithStatuses, taskPeriodMatcher, taskStatusChoices, type TaskPeriod, type TaskView } from '../services/taskBoard';
 import { EditorialTask, TaskStatus, NewsPriority, User } from '../types';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { assignmentScope } from '../shared/assignmentScope';
@@ -421,6 +421,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     return aRank - bRank || (aRank === 2 ? compareForBoard(a, b, true) : cmp(dueTime(a), dueTime(b)) || compareForBoard(a, b, false));
   });
   const taskListPage = useIncremental(listTasks, 50, `${searchQuery}|${selectedStatus}|${priorityFilter}|${assigneeFilter}|${overdueOnly}|${period}|${mineOnly}|${assignedOnly}`);
+  const visibleListTasks = activeTab === 'LIST' ? taskListPageWithStatuses(listTasks, taskListPage.visible.length) : [];
   const selectedDeadline = dueDate ? Date.parse(fromLocalInputValue(dueDate)) : NaN;
   const pastDueOpenTask = Number.isFinite(selectedDeadline) && selectedDeadline < now
     && !isTaskClosed(status);
@@ -787,7 +788,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </td>
                 </tr>
               )}
-              {taskListPage.visible.map((t) => (
+              {visibleListTasks.map((t) => (
                 <tr role="row" key={t.id} data-task-id={t.id} tabIndex={-1} className={`@max-[54rem]/task-list:grid @max-[54rem]/task-list:grid-cols-2 @max-[54rem]/task-list:gap-x-3 @max-[54rem]/task-list:gap-y-2.5 @max-[54rem]/task-list:p-3 hover:bg-slate-50/70 ${focusId === t.id ? 'bg-blue-50' : ''}`}>
                   <td role="cell" className="min-w-0 @max-[54rem]/task-list:col-span-2 @min-[54rem]/task-list:px-4 @min-[54rem]/task-list:py-3 font-bold text-slate-800 wrap-anywhere">
                     <div className="space-y-1">

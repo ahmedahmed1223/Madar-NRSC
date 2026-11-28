@@ -36,6 +36,25 @@ export function taskStatusChoices(
   return TASK_STATUS_OPTIONS.filter((option) => allowed.has(option.value));
 }
 
+/** Keep one ranked task per visible status represented as the list grows. */
+export function taskListPageWithStatuses<T extends Pick<EditorialTask, 'status'>>(ranked: T[], limit: number): T[] {
+  if (ranked.length <= limit) return ranked;
+
+  const firstByStatus = new Map<TaskStatus, T>();
+  for (const task of ranked) {
+    const status = normalizeTaskStatus(task.status);
+    if (!firstByStatus.has(status)) firstByStatus.set(status, task);
+  }
+  if (firstByStatus.size > limit) return ranked.slice(0, limit);
+
+  const visible = new Set(firstByStatus.values());
+  for (const task of ranked) {
+    if (visible.size >= limit) break;
+    visible.add(task);
+  }
+  return ranked.filter(task => visible.has(task));
+}
+
 export const TASK_PERIOD_OPTIONS = [
   { value: 'ALL', label: 'كل المواعيد' },
   { value: 'TODAY', label: 'اليوم' },

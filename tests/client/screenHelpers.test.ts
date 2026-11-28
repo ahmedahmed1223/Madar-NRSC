@@ -1,5 +1,6 @@
+import type { TaskStatus } from '../../src/types';
 import { describe, expect, it } from 'vitest';
-import { canChangeTaskStatus, isMyTask, relatedTaskPath, TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, taskPeriodMatcher, taskStatusChoices } from '../../src/services/taskBoard';
+import { canChangeTaskStatus, isMyTask, relatedTaskPath, TASK_BOARD_COLUMNS, TASK_STATUS_OPTIONS, taskListPageWithStatuses, taskPeriodMatcher, taskStatusChoices } from '../../src/services/taskBoard';
 import { roleHolders, roleInUseError } from '../../src/services/roleUsage';
 import { normalizeOverrides, overrideStateOf, sameOverrides, setOverride } from '../../src/services/permissionOverrides';
 import { computeEffectivePermissions, type RoleDefinition } from '../../src/shared/rbac';
@@ -161,4 +162,22 @@ describe('log filters', () => {
   it('lists the people found in the rows once each', () => {
     expect(logUsers(rows, userOf, (r) => r.userName)).toHaveLength(2);
   });
+});
+
+it('keeps every loaded task status on the first list page and preserves rank across show more', () => {
+  const ranked: { id: string; status: TaskStatus }[] = [
+    { id: 'review', status: 'IN_REVIEW' },
+    { id: 'blocked', status: 'BLOCKED' },
+    { id: 'progress', status: 'IN_PROGRESS' },
+    ...Array.from({ length: 50 }, (_, index) => ({ id: 'open-' + index, status: 'TODO' as const })),
+    { id: 'legacy-complete', status: 'DONE' },
+    { id: 'another-complete', status: 'COMPLETED' },
+    { id: 'cancelled', status: 'CANCELLED' },
+  ];
+  const first = taskListPageWithStatuses(ranked, 50);
+  expect(first).toEqual([...ranked.slice(0, 48), ranked[53], ranked[55]]);
+
+  const expanded = taskListPageWithStatuses(ranked, 55);
+  expect(expanded).toEqual([...ranked.slice(0, 54), ranked[55]]);
+  expect(taskListPageWithStatuses(ranked, 100)).toEqual(ranked);
 });
