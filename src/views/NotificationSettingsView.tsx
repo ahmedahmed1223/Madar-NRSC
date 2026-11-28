@@ -6,6 +6,7 @@ import { notify } from '../services/notify';
 import { confirmSaved } from '../services/confirmSave';
 import { currentPushSubscription, disablePush, enablePush, pushSupport } from '../services/push';
 import { useLiveData } from '../hooks/useLiveData';
+import { NotificationHistory } from '../components/layout/NotificationHistory';
 import { DEFAULT_CHANNELS, MAX_WATCH_WORDS, normalizeWatchPhrase, NOTIFICATION_CATEGORIES, NotificationCategory, NotificationPrefs, wantsDelivery } from '../shared/notifications';
 
 type Delivery = Awaited<ReturnType<typeof apiService.getDeliveryStatus>>;
@@ -168,6 +169,8 @@ function AccountNotificationSettings({ currentUser }: { currentUser: User }) {
           {saving ? 'بانتظار تأكيد الخادم…' : 'حفظ الإعدادات'}
         </button>
       </div>
+
+      <NotificationHistory currentUser={currentUser} />
 
       <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3" aria-labelledby="news-watch-words-heading">
         <h2 id="news-watch-words-heading" className="text-sm font-bold text-slate-800 flex items-center gap-2">

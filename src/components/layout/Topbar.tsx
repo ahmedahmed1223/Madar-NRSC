@@ -30,7 +30,7 @@ import { User, AppNotification } from '../../types';
 import { ApiService } from '../../services/api';
 import { intercomCommand, intercomState, routeChanged } from '../../services/uiEvents';
 import { TwoFactorModal } from '../auth/TwoFactorModal';
-import { NotificationDropdown } from './NotificationDropdown';
+import { NotificationInbox } from './NotificationInbox';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { dataStore } from '../../services/dataStore';
 import { RbacService } from '../../services/rbacService';
@@ -363,7 +363,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             )}
           </button>
 
-          {isNotifOpen && <NotificationDropdown
+          {isNotifOpen && <NotificationInbox
             inbox={inbox}
             userId={userId}
             storageFailed={storageFailed}
