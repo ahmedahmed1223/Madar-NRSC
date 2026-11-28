@@ -5,7 +5,6 @@ import { newId } from '../shared/ids';
 import {
   INITIAL_ACTIVITY_LOGS,
   INITIAL_AUDIT_LOGS,
-  INITIAL_BREAKING_NEWS,
   INITIAL_CATEGORIES,
   INITIAL_EPISODES,
   INITIAL_GUESTS,
@@ -44,7 +43,6 @@ const BASE_COLLECTIONS: [CollectionName, any[]][] = [
 export const DEMO_COLLECTIONS: [CollectionName, any[]][] = [
   ['news', INITIAL_NEWS],
   ['stories', INITIAL_STORIES],
-  ['breaking', INITIAL_BREAKING_NEWS],
   ['programs', INITIAL_PROGRAMS],
   ['episodes', INITIAL_EPISODES],
   ['guests', INITIAL_GUESTS],

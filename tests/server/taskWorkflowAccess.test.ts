@@ -85,3 +85,48 @@ it('validates the task workflow on the server, and rejects client-written timing
   expect((await send(agent, 'tasks', task.id, { ...completed.d, status: 'IN_PROGRESS' }, completed.v)).ok).toBe(false);
   expect((await send(manager, 'tasks', task.id, { ...completed.d, status: 'IN_PROGRESS' }, completed.v)).ok).toBe(true);
 });
+
+it('canonicalizes DONE to COMPLETED and strips legacy assignedToId/assignedToName on server write', async () => {
+  const { user } = await driver();
+  const manager = await loginAgent(server.app, 'admin@akhbar.tv');
+  const created = await send(manager, 'tasks', 'legacy-write-task', {
+    id: 'legacy-write-task',
+    title: 'مهمة قديمة',
+    status: 'DONE',
+    priority: 'NORMAL',
+    assignedToId: user.id,
+    assignedToName: 'اسم قديم',
+  });
+  expect(created.ok).toBe(true);
+  expect(created.row.d.status).toBe('COMPLETED');
+  expect(created.row.d.assigneeId).toBe(user.id);
+  expect(created.row.d.assigneeName).toBe(user.fullName);
+  expect(created.row.d.assignedToId).toBeUndefined();
+  expect(created.row.d.assignedToName).toBeUndefined();
+  const stored = server.db.getRow('tasks', 'legacy-write-task')!.d;
+  expect(stored.status).toBe('COMPLETED');
+  expect(stored.assignedToId).toBeUndefined();
+  expect(stored.assignedToName).toBeUndefined();
+});
+
+it('lets a non-manager assignee progress a pre-existing legacy task row with assignedToId/assignedToName and strips legacy fields', async () => {
+  const { user, agent } = await driver();
+  server.db.writeRow('tasks', 'legacy-assigned-task', {
+    id: 'legacy-assigned-task',
+    title: 'تغطية قديمة',
+    status: 'TODO',
+    priority: 'NORMAL',
+    assignedToId: user.id,
+    assignedToName: 'اسم قديم',
+  }, 1, null);
+  const existing = server.db.getRow('tasks', 'legacy-assigned-task')!;
+  const progressed = await send(agent, 'tasks', existing.id, { ...existing.d, status: 'IN_PROGRESS' }, existing.v);
+  expect(progressed.ok, progressed.message).toBe(true);
+  expect(progressed.row.d.status).toBe('IN_PROGRESS');
+  expect(progressed.row.d.assigneeId).toBe(user.id);
+  expect(progressed.row.d.assigneeName).toBe(user.fullName);
+  expect(progressed.row.d.assignedToId).toBeUndefined();
+  expect(progressed.row.d.assignedToName).toBeUndefined();
+});
+
+

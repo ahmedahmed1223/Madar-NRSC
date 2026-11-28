@@ -14,6 +14,7 @@ import { ApprovalChainEditor } from '../components/bulletins/ApprovalChainEditor
 import { embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { matchesQuery } from '../shared/search';
 import React, { useEffect, useRef, useState } from 'react';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import { dataStore } from '../services/dataStore';
 import {
   ArrowDown,
@@ -125,6 +126,20 @@ export const BulletinRundownView: React.FC<Props> = ({ bulletinId, currentUser, 
   const [picked, setPicked] = useState<string[]>([]);
   const [copyFrom, setCopyFrom] = useState('');
   const [meta, setMeta] = useState<(Omit<Bulletin, 'plannedSeconds' | 'anchors'> & { minutes: string; anchorsText: string }) | null>(null);
+  const metaDirty = Boolean(
+    meta &&
+      bulletin &&
+      (meta.title !== bulletin.title ||
+        meta.kind !== bulletin.kind ||
+        meta.date !== bulletin.date ||
+        meta.startTime !== bulletin.startTime ||
+        meta.minutes !== String(Math.round(bulletin.plannedSeconds / 60)) ||
+        meta.anchorsText !== bulletin.anchors.join('، ') ||
+        (meta.studioName || '') !== (bulletin.studioName || '') ||
+        (meta.editorId || '') !== (bulletin.editorId || '') ||
+        JSON.stringify(meta.approvalSteps || []) !== JSON.stringify(bulletin.approvalSteps || []))
+  );
+  useUnsavedChangesGuard(metaDirty);
   const [prompter, setPrompter] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const pendingStories = useRef(new Set<string>());

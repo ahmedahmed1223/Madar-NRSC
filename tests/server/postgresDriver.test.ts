@@ -41,6 +41,18 @@ describe('PostgreSQL statement bindings', () => {
     expect(compilePostgresStatement('SELECT * FROM user_credentials WHERE email = ?').text)
       .toBe('SELECT * FROM user_credentials WHERE lower(email) = lower($1)');
   });
+
+  it('compiles indexed booking and foreign-key json_extract queries to matching PostgreSQL expressions', async () => {
+    const { compilePostgresStatement } = await import('../../src/server/postgres/statements');
+    expect(compilePostgresStatement(`SELECT * FROM entities INDEXED BY idx_bookings_resource_window WHERE collection = 'bookings' AND deleted = 0 AND json_extract(data, '$.resourceId') = ?`).text)
+      .toBe(`SELECT * FROM entities WHERE collection = 'bookings' AND deleted = 0 AND (data::json ->> 'resourceId') = $1`);
+    expect(compilePostgresStatement(`SELECT * FROM entities INDEXED BY idx_entities_category_id WHERE collection IN ('news', 'stories') AND collection = ? AND deleted = 0 AND json_extract(data, '$.categoryId') = ?`).text)
+      .toBe(`SELECT * FROM entities WHERE collection IN ('news', 'stories') AND collection = $1 AND deleted = 0 AND (data::json ->> 'categoryId') = $2`);
+    expect(compilePostgresStatement(`SELECT * FROM entities INDEXED BY idx_entities_source_id WHERE collection IN ('news', 'wires') AND collection = ? AND deleted = 0 AND json_extract(data, '$.sourceId') = ?`).text)
+      .toBe(`SELECT * FROM entities WHERE collection IN ('news', 'wires') AND collection = $1 AND deleted = 0 AND (data::json ->> 'sourceId') = $2`);
+    expect(compilePostgresStatement(`SELECT * FROM entities INDEXED BY idx_entities_program_type_id WHERE collection = 'programs' AND collection = ? AND deleted = 0 AND json_extract(data, '$.typeId') = ?`).text)
+      .toBe(`SELECT * FROM entities WHERE collection = 'programs' AND collection = $1 AND deleted = 0 AND (data::json ->> 'typeId') = $2`);
+  });
 });
 
 describe('PostgreSQL worker startup', () => {
@@ -68,9 +80,13 @@ describe.skipIf(!testUrl)('PostgreSQL wire integration', () => {
     const db = new PostgresDatabase(testUrl!, { schema });
     try {
       initializePostgresSchema(db);
-      // Simulate schema 1, then check that both later migrations preserve stored data.
+      // Simulate schema 1, then check that all later migrations preserve stored data.
       db.exec(`
         DROP INDEX idx_news_scheduled;
+        DROP INDEX idx_bookings_resource_window;
+        DROP INDEX idx_entities_category_id;
+        DROP INDEX idx_entities_source_id;
+        DROP INDEX idx_entities_program_type_id;
         ALTER TABLE uploads DROP COLUMN remote_primary;
         DELETE FROM schema_migrations WHERE version >= 2;
         INSERT INTO meta(key, value) VALUES ('migration-check', 'preserve');
@@ -79,9 +95,12 @@ describe.skipIf(!testUrl)('PostgreSQL wire integration', () => {
       `);
       initializePostgresSchema(db);
       expect(db.query('SELECT version FROM schema_migrations ORDER BY version').rows)
-        .toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+        .toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
       expect(db.query("SELECT value FROM meta WHERE key = 'migration-check'").rows).toEqual([{ value: 'preserve' }]);
-      expect(db.query("SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'idx_news_scheduled'", [schema]).rows).toHaveLength(1);
+      expect(db.query(`SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND indexname IN (
+        'idx_news_scheduled', 'idx_bookings_resource_window', 'idx_entities_category_id',
+        'idx_entities_source_id', 'idx_entities_program_type_id'
+      )`, [schema]).rows).toHaveLength(5);
       expect(db.query('SELECT id, remote_primary FROM uploads').rows).toEqual([{ id: 'old-upload', remote_primary: 0 }]);
       const tables = db.query<{ tablename: string }>(
         'SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = $1 ORDER BY tablename', [schema],

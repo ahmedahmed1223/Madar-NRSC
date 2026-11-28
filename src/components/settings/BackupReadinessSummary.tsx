@@ -15,6 +15,7 @@ export function BackupReadinessEvidence({ data }: { data: BackupStatus }) {
     <div className="rounded-lg bg-slate-50 p-3"><dt className="font-bold">آخر لقطة لقاعدة البيانات</dt>
       <dd className="mt-1 break-words">{data.lastSnapshotAt ? when(data.lastSnapshotAt) : 'لا توجد لقطة مسجلة'}</dd>
       {data.overdue && <dd className="mt-1 text-xs font-bold text-amber-800">تأخر النسخ الدوري</dd>}
+      {data.intervalHours === 0 && <dd className="mt-1 text-xs text-slate-700">النسخ الاحتياطي المجدول متوقف</dd>}
     </div>
     <div className="rounded-lg bg-slate-50 p-3"><dt className="font-bold">آخر نسخة كاملة محققة خارج مجلد البيانات</dt>
       <dd className="mt-1 break-words">{verified ? `${when(verified.at)} · ${target}` : 'لا يوجد تسليم كامل موثّق إلى الوجهة الحالية'}</dd>
@@ -22,7 +23,7 @@ export function BackupReadinessEvidence({ data }: { data: BackupStatus }) {
     </div>
     <div className="rounded-lg bg-slate-50 p-3"><dt className="font-bold">آخر تجربة لاستعادة القاعدة</dt>
       <dd className="mt-1 break-words">{data.lastRehearsal ? when(data.lastRehearsal.at) : 'لا توجد تجربة مسجلة'}</dd>
-      <dd className="mt-1 text-xs text-slate-600">تتحقق التجربة من قاعدة البيانات في نسخة معزولة.</dd>
+      <dd className="mt-1 text-xs text-slate-600">تفحص التجربة قاعدة البيانات في نسخة معزولة وتطابق بصمات الوسائط المضمّنة عند وجود حزمة.</dd>
     </div>
   </dl>;
 }

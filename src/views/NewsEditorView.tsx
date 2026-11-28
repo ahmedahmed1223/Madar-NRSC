@@ -5,7 +5,6 @@ import { spokenReadTime } from '../shared/readTime';
 import { dataStore, QUEUED_MESSAGE } from '../services/dataStore';
 import { claimReview, passQuality, releaseReview, closeBreakingRequest } from '../services/newsReview';
 import { activeReviewClaim, canRequestBreaking, canReviewNews, claimDenial, isQualityPassed, qualityPassDenial } from '../shared/newsWorkflow';
-import { NewsTemplatePicker } from '../components/editor/NewsTemplatePicker';
 import { categoryTree } from '../shared/newsCategories';
 import { digitalApprovalStatus, digitalCopyOf, digitalPackageError, hasDigitalCopy } from '../shared/digitalPublishing';
 import { emptyEditorialPublishing } from '../shared/editorialStylebook';
@@ -15,47 +14,33 @@ import { PronunciationPanel } from '../components/rundown/PronunciationPanel';
 import { NewsCorrectionsPanel } from '../components/editor/NewsCorrectionsPanel';
 import { matchingPronunciations } from '../shared/pronunciation';
 import { confirmDialog, promptDialog } from '../services/dialogs';
-import { GlossaryDatalist } from '../components/editor/WritingAids';
 import { ProofreadButton } from '../components/editor/WritingAids';
 import { contentDenial, embargoLabel, isUnderEmbargo } from '../shared/newsWorkflow';
 import { toLocalInputValue, fromLocalInputValue } from '../shared/dates';
-import { ExportMenu, docContext } from '../components/common/ExportMenu';
-import { newsStoryDoc } from '../services/documents/builders';
-import { CommentThread } from '../components/comments/CommentThread';
-import { AttachmentsPanel } from '../components/media/AttachmentsPanel';
 import { RequestFormPage, RequestDraft } from '../components/requests/RequestFormPage';
 import { MessageOriginLabel } from '../components/messages/MessageOriginLabel';
 import { apiService } from '../services/api';
 import { countLabel } from '../shared/arabicPlural';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { NewsVideosEditor } from '../components/news/NewsVideosEditor';
+import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import { NewsVideo, primaryVideoUrl, videosError, videosOf } from '../shared/newsVideos';
 import {
   Save,
-  Settings2,
   Send,
   CheckCircle,
   Radio,
   ArrowRight,
   Flame,
-  Image as ImageIcon,
-  Video,
-  Tag,
-  MapPin,
-  Calendar,
   AlertTriangle,
   History,
   Info,
   Clock,
   Copy,
-  Sparkles,
   RotateCcw,
-  Bot,
   X,
   Wand2,
   Check,
   Lock,
-  ArrowLeftRight,
   ShieldCheck,
   Hand,
   SkipForward,
@@ -68,7 +53,6 @@ import { Badge } from '../components/common/Badge';
 import { RbacService } from '../services/rbacService';
 import { useNewsEditLock } from '../hooks/useNewsEditLock';
 import { NewsHistoryModal } from '../components/news/NewsHistoryModal';
-import { Modal } from '../components/common/Modal';
 import { NEWS_STATUS_LABELS, availableTransitions, canEditNewsContent, transitionDenial } from '../shared/newsWorkflow';
 import type { Story, NewsDraftSeed } from '../types';
 import { LowerThirdGeneratorModal } from '../components/editor/LowerThirdGeneratorModal';
@@ -76,13 +60,9 @@ import { AiNewsCoPilotModal } from '../components/editor/AiNewsCoPilotModal';
 import { wordDiff, type DiffRun } from '../shared/textDiff';
 import { plainText } from '../shared/bulletins';
 import { CoverageOverlap } from '../components/news/CoverageOverlap';
-
-const WORKFLOW_ACTION_LABELS: Record<string, string> = {
-  QUALITY_PASSED: 'اجتازت التدقيق',
-  REVIEW_CLAIMED: 'استلم المراجعة',
-  REVIEW_RELEASED: 'أعاد الخبر إلى طابور المراجعة',
-  BREAKING_REQUESTED: 'أرسله عاجلاً من الميدان',
-};
+import { NewsMetadataPanel } from '../components/editor/NewsMetadataPanel';
+import { NewsBroadcastToolsBar } from '../components/editor/NewsBroadcastToolsBar';
+import { NewsStatusTransitionModal } from '../components/editor/NewsStatusTransitionModal';
 
 interface NewsEditorViewProps {
   newsItem?: NewsItem | null;
@@ -187,32 +167,6 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   // A secondary preview: closed until the editor asks for it, open from the start for breaking news.
   const [tickerChoice, setTickerChoice] = useState<boolean | null>(null);
   const showTickerPreview = tickerChoice ?? isBreaking;
-
-  const LOCATION_PRESETS = [
-    'الرياض',
-    'القدس',
-    'واشنطن',
-    'لندن',
-    'القاهرة',
-    'دبي',
-    'بيروت',
-    'جنيف',
-    'باريس',
-    'إسطنبول',
-    'غزة',
-    'موسكو',
-  ];
-
-  const TRENDING_TAGS = [
-    'عاجل',
-    'اقتصاد',
-    'الشرق_الأوسط',
-    'تقنية',
-    'بيان_رسمي',
-    'مؤتمر_صحفي',
-    'قمة_عربية',
-    'أسواق_المال',
-  ];
 
   const LEAD_STARTERS = [
     'عاجل: أفادت مصادر رسمية مطلعة...',
@@ -319,16 +273,7 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
   };
 
   // Closing or reloading the tab with unsaved text asks first (the local recovery copy stays as a safety net).
-  useEffect(() => {
-    if (!isDirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      persistDraftRef.current();
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [isDirty]);
+  useUnsavedChangesGuard(isDirty, { onBeforeUnload: () => persistDraftRef.current() });
 
   const clearDraft = () => {
     try {
@@ -1297,99 +1242,29 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
       </details>}
 
       {/* Broadcast Timing & Production Tools Banner (in review mode the text comes first) */}
-      {!reviewMode && <div className="text-slate-800 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
-              <Clock className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-500 block">زمن الإلقاء (المقدمة والنص):</span>
-              <strong className="text-sm tabular-nums text-emerald-700">{textStats.label}</strong>
-            </div>
-          </div>
-
-          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-
-          <div>
-            <span className="text-xs text-slate-500 block">الكلمات المقروءة:</span>
-            <span className="tabular-nums font-bold text-slate-800">{countLabel(textStats.words, { one: 'كلمة واحدة', two: 'كلمتان', few: 'كلمات', many: 'كلمة' })}</span>
-          </div>
-
-          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-
-          <div>
-            <span className="text-xs text-slate-500 block">عدد الأحرف:</span>
-            <span className="tabular-nums text-slate-700">{countLabel(textStats.chars, { one: 'حرف واحد', two: 'حرفان', few: 'أحرف', many: 'حرفاً' })}</span>
-          </div>
-        </div>
-
-        {/* Broadcast Helper Tools */}
-        <details className="w-full sm:w-auto">
-          <summary className="min-h-11 flex items-center gap-2 cursor-pointer text-sm font-semibold text-slate-700 rounded-lg px-2 hover:bg-slate-100">
-            <Settings2 className="w-4 h-4" /> أدوات الخبر
-          </summary>
-        <div className="flex flex-wrap items-center gap-2 pt-2">
-            <NewsTemplatePicker content={content} onChange={setContent} disabled={!canEditContent || saving} />
-          {canUseEditorialAi && <button
-            type="button"
-            onClick={() => setIsAiCopilotOpen(true)}
-            disabled={!canEditContent || saving}
-            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300 disabled:opacity-40"
-            title="المساعد التحريري الذكي للصياغة والتدقيق والاقتراحات"
-          >
-            <Bot className="w-3.5 h-3.5 text-blue-600" />
-            المساعد الذكي
-          </button>}
-
-          <button
-            type="button"
-            onClick={() => setIsCgModalOpen(true)}
-            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
-            title="توليد وسوم شارات الجرافيكس التلفزيوني وعناوين الشاشة"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            مولد الشارات
-          </button>
-
-          {newsItem?.id && can('requests.create') && (
-            <button
-              type="button"
-              onClick={() => setRequestDraft({ link: { kind: 'news', newsId: newsItem.id, title: newsItem.title }, title: '' })}
-              className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
-              title="طلب مونتاج أو جرافيك أو غيرها لهذا الخبر"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              طلب من قسم
-            </button>
-          )}
-
-          {newsItem?.id && (
-            <ExportMenu
-              label="تصدير الخبر"
-              items={[
-                {
-                  id: 'story',
-                  label: 'نسخة الخبر',
-                  hint: 'البيانات والموجز والنص ومسار الاعتماد (بالنص الحالي في المحرر)',
-                  build: () => newsStoryDoc({ ...newsItem, title, shortTitle, summary, content, priority, locationName, keywords }, docContext()),
-                },
-              ]}
-            />
-          )}
-
-          <button
-            type="button"
-            onClick={handleCopyPrompterText}
-            className="flex items-center gap-1.5 min-h-9 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-300"
-            title="نسخ نص الملقن المباشر للمذيع"
-          >
-            {copiedPrompter ? <CheckCircle className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
-            {copiedPrompter ? 'تم نسخ نص الملقن' : 'نسخ للأوتوكيو'}
-          </button>
-        </div>
-        </details>
-      </div>}
+      {!reviewMode && (
+        <NewsBroadcastToolsBar
+          textStats={textStats}
+          content={content}
+          onContentChange={setContent}
+          canEditContent={canEditContent}
+          saving={saving}
+          canUseEditorialAi={canUseEditorialAi}
+          onOpenAiCopilot={() => setIsAiCopilotOpen(true)}
+          onOpenCgModal={() => setIsCgModalOpen(true)}
+          newsItem={newsItem}
+          canCreateRequest={can('requests.create')}
+          onCreateRequest={setRequestDraft}
+          title={title}
+          shortTitle={shortTitle}
+          summary={summary}
+          priority={priority}
+          locationName={locationName}
+          keywords={keywords}
+          copiedPrompter={copiedPrompter}
+          onCopyPrompterText={handleCopyPrompterText}
+        />
+      )}
 
       {/* Main Grid: Content Area & Metadata Sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1769,513 +1644,63 @@ export const NewsEditorView: React.FC<NewsEditorViewProps> = ({
         </div>
 
         {/* Right 1 Col: Editorial Metadata & Publishing Controls */}
-        <div className="space-y-5">
-          {/* Publishing & Category Box */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
-              البيانات الوصفية والتصنيف
-            </h3>
-
-            {/* Breaking News Toggle (goes on air once the story is published) */}
-            {can('news.breaking_push') && (
-            <div className="p-3 bg-red-50/70 border border-red-200 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Flame className="w-5 h-5 text-red-600 animate-pulse" />
-                <div>
-                  <span className="text-xs font-bold text-red-900 block">خبر عاجل للبث</span>
-                  <span className="text-2xs text-red-700 block">يظهر على شريط العاجل عند نشره ولمدة 4 ساعات</span>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                aria-label="خبر عاجل للبث"
-                disabled={ro}
-                checked={isBreaking}
-                onChange={(e) => setIsBreaking(e.target.checked)}
-                className="w-5 h-5 text-red-600 rounded-md focus:ring-red-500 cursor-pointer"
-              />
-            </div>
-            )}
-
-            {/* Link to a running coverage (story) */}
-            <div>
-              <label htmlFor="news-story-select" className="block text-xs font-bold text-slate-700 mb-1">القصة / التغطية المرتبطة</label>
-              <select
-                id="news-story-select"
-                disabled={ro}
-                value={storyId}
-                onChange={(e) => setStoryId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
-              >
-                <option value="">— بدون قصة —</option>
-                {stories
-                  .filter((st) => st.status !== 'ARCHIVED' || st.id === storyId)
-                  .map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.title}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            {/* Category */}
-            <div>
-              <label htmlFor="news-category-select" className="block text-xs font-bold text-slate-700 mb-1">تصنيف الخبر *</label>
-              <select
-                id="news-category-select"
-                disabled={ro}
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              >
-                {categoryOptions.map(({ category, path }) => (
-                  <option key={category.id} value={category.id}>
-                    {path}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Source */}
-            <div>
-              <label htmlFor="news-source-select" className="block text-xs font-bold text-slate-700 mb-1">مصدر الخبر *</label>
-              <select
-                id="news-source-select"
-                disabled={ro}
-                value={sourceId}
-                onChange={(e) => setSourceId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
-              >
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.type})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Priority */}
-            <div>
-              <label htmlFor="news-priority-select" className="block text-xs font-bold text-slate-700 mb-1">الأولوية والخطورة</label>
-              <select
-                id="news-priority-select"
-                disabled={ro}
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as NewsPriority)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs bg-white font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              >
-                <option value="URGENT">🔴 عاجل جداً</option>
-                <option value="HIGH">🟠 أولوية عالية</option>
-                <option value="NORMAL">🔵 أولوية عادية</option>
-                <option value="LOW">⚪ أولوية منخفضة</option>
-              </select>
-            </div>
-
-            {/* Location & Event Date with Quick-Select Chips */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="news-location-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                    مكان الحدث والمكتب
-                  </label>
-                  {locationName && !ro && (
-                    <button
-                      type="button"
-                      onClick={() => setLocationName('')}
-                      className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                    >
-                      مسح
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    id="news-location-input"
-                    type="text"
-                    list="newsroom-glossary"
-                    readOnly={ro}
-                    value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
-                    placeholder="مثال: الرياض، القاهرة، جنيف..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  />
-                  <GlossaryDatalist id="newsroom-glossary" />
-                </div>
-                {/* Location Quick Presets */}
-                {!ro && <div className="mt-1.5 flex flex-wrap gap-1">
-                  {LOCATION_PRESETS.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      onClick={() => setLocationName(loc)}
-                      className={`text-2xs min-h-6 px-2 py-0.5 rounded-md transition-all ${
-                        locationName === loc
-                          ? 'bg-blue-600 text-white font-bold'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {loc}
-                    </button>
-                  ))}
-                </div>}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="news-event-date-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                    تاريخ وتوقيت وقوع الحدث
-                  </label>
-                  {!ro && <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setEventDate(toLocalInputValue(new Date()))}
-                      className="text-2xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
-                    >
-                      الآن
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEventDate(toLocalInputValue(new Date(Date.now() - 30 * 60000)))
-                      }
-                      className="text-2xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded hover:bg-slate-200"
-                    >
-                      -30د
-                    </button>
-                  </div>}
-                </div>
-                <input
-                  id="news-event-date-input"
-                  type="datetime-local"
-                  value={eventDate}
-                  readOnly={ro}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  dir="ltr"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Team discussion */}
-          {newsItem?.id && (
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-              <CommentThread target={{ kind: 'news', id: newsItem.id, title: newsItem.title }} currentUser={currentUser} />
-            </div>
-          )}
-
-          {/* Workflow Timeline */}
-          {newsItem && newsItem.workflowLogs && newsItem.workflowLogs.length > 0 && (
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-200 pb-2">
-                <History className="w-4 h-4 text-slate-500" />
-                سجل الاعتماد والمراجعة
-              </h3>
-              <div className="relative pl-2 pr-4 space-y-4 before:content-[''] before:absolute before:right-2 before:top-2 before:bottom-0 before:w-0.5 before:bg-slate-200">
-                {newsItem.workflowLogs.map((log) => (
-                  <div key={log.id} className="relative flex items-start gap-3 text-xs">
-                    <span className="absolute -right-[19px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white shadow-xs" />
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <strong className="text-slate-800 font-semibold">{log.changedBy.name}</strong>
-                        <span className="text-2xs text-slate-500 font-mono">
-                          {new Date(log.timestamp).toLocaleString(appLocale(), { ...zoneOptions(),
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </span>
-                      </div>
-                      {log.action ? (
-                        <p className="text-2xs font-bold text-emerald-800">{WORKFLOW_ACTION_LABELS[log.action] || log.action}</p>
-                      ) : (
-                        <p className="text-2xs text-slate-600">
-                          غيّر الحالة إلى:{' '}
-                          <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">
-                            {NEWS_STATUS_LABELS[log.toStatus] || log.toStatus}
-                          </span>
-                        </p>
-                      )}
-                      {log.comment && (
-                        <p className="text-2xs text-slate-500 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
-                          "{log.comment}"
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Media Links & Presets */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
-              الوسائط المرفقة وسيرفرات البث
-            </h3>
-
-            <AttachmentsPanel
-              mediaIds={mediaIds}
-              onChange={setMediaIds}
-              currentUser={currentUser}
-              directUpload
-              readOnly={!canEditContent}
-              onRequestMontage={
-                newsItem?.id
-                  ? (m) =>
-                      setRequestDraft({
-                        type: 'MONTAGE',
-                        title: `مونتاج: ${m.title || m.fileName}`,
-                        details: `المادة الخام في المكتبة: ${m.title || m.fileName}`,
-                        sourceMediaIds: [m.id],
-                        link: { kind: 'news', newsId: newsItem.id, title: newsItem.title },
-                      })
-                  : undefined
-              }
-            />
-
-            {/* Image URL */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="news-image-url-input" className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
-                  رابط الصورة البارزة (URL)
-                </label>
-                {mainImageUrl && !ro && (
-                  <button
-                    type="button"
-                    onClick={() => setMainImageUrl('')}
-                    className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                  >
-                    مسح
-                  </button>
-                )}
-              </div>
-
-              <input
-                id="news-image-url-input"
-                type="url"
-                inputMode="url"
-                autoCapitalize="none"
-                spellCheck="false"
-                value={mainImageUrl}
-                readOnly={ro}
-                onChange={(e) => setMainImageUrl(e.target.value)}
-                placeholder="https://...jpg"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-left font-mono text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                dir="ltr"
-              />
-
-              {/* Recent images from the media library */}
-              {IMAGE_PRESETS.length > 0 && !ro && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                <span className="text-2xs text-slate-500 font-bold">من مكتبة الوسائط:</span>
-                {IMAGE_PRESETS.map((img) => (
-                  <button
-                    key={img.label}
-                    type="button"
-                    onClick={() => setMainImageUrl(img.url)}
-                    className="text-2xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 px-2 py-0.5 rounded-md transition-colors"
-                  >
-                    {img.label}
-                  </button>
-                ))}
-              </div>
-              )}
-
-              {mainImageUrl && (
-                <div className="relative mt-2 rounded-xl overflow-hidden border border-slate-200 group">
-                  <img
-                    src={mainImageUrl}
-                    alt="معاينة الصورة"
-                    className="w-full h-32 object-cover"
-                  />
-                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-2xs text-white rounded">
-                    إطار 16:9
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Video clips in playout order */}
-            <div>
-              <p className="block text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
-                <Video className="w-3.5 h-3.5 text-slate-500" />
-                مقاطع الفيديو (بترتيب العرض)
-              </p>
-              <NewsVideosEditor videos={videos} onChange={setVideos} disabled={!canEditContent} />
-            </div>
-          </div>
-
-          {/* Keywords / Tags with Trending Suggestions */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <label htmlFor="news-tag-input" className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-                <Tag className="w-3.5 h-3.5 text-blue-500" />
-                الكلمات المفتاحية والوسوم
-              </label>
-              {keywords.length > 0 && !ro && (
-                <button
-                  type="button"
-                  onClick={() => setKeywords([])}
-                  className="inline-flex items-center min-h-6 px-1.5 rounded-md text-2xs text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                >
-                  مسح الكل
-                </button>
-              )}
-            </div>
-
-            {!ro && <div className="relative">
-              <input
-                id="news-tag-input"
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleAddTag}
-                placeholder="اكتب الوسم واضغط Enter للإضافة..."
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>}
-
-            {/* Trending Suggestions */}
-            {!ro && <div>
-              <span className="text-2xs text-slate-500 font-bold block mb-1">
-                وسوم مقترحة وشائعة:
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {TRENDING_TAGS.map((t) => {
-                  const alreadyAdded = keywords.includes(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        if (!alreadyAdded) {
-                          setKeywords((prev) => [...prev, t]);
-                        }
-                      }}
-                      disabled={alreadyAdded}
-                      className={`text-2xs px-2 py-0.5 rounded-full transition-all flex items-center gap-0.5 ${
-                        alreadyAdded
-                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
-                          : 'bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium'
-                      }`}
-                    >
-                      <span>#{t}</span>
-                      {alreadyAdded && <Check className="w-2.5 h-2.5 text-slate-500" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>}
-
-            {ro && keywords.length === 0 && <p className="text-2xs text-slate-500">لا وسوم.</p>}
-
-            {/* Active Tags */}
-            {keywords.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
-                {keywords.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-600 text-white shadow-2xs"
-                  >
-                    <span>#{tag}</span>
-                    {!ro && <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="hover:text-amber-200 text-white"
-                      title="حذف الوسم"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <NewsMetadataPanel
+          newsItem={newsItem}
+          currentUser={currentUser}
+          ro={ro}
+          canEditContent={canEditContent}
+          canBreakingPush={can('news.breaking_push')}
+          isBreaking={isBreaking}
+          onBreakingChange={setIsBreaking}
+          stories={stories}
+          storyId={storyId}
+          onStoryIdChange={setStoryId}
+          categoryOptions={categoryOptions}
+          categoryId={categoryId}
+          onCategoryIdChange={setCategoryId}
+          sources={sources}
+          sourceId={sourceId}
+          onSourceIdChange={setSourceId}
+          priority={priority}
+          onPriorityChange={setPriority}
+          locationName={locationName}
+          onLocationNameChange={setLocationName}
+          eventDate={eventDate}
+          onEventDateChange={setEventDate}
+          mediaIds={mediaIds}
+          onMediaIdsChange={setMediaIds}
+          onRequestMontage={setRequestDraft}
+          mainImageUrl={mainImageUrl}
+          onMainImageUrlChange={setMainImageUrl}
+          imagePresets={IMAGE_PRESETS}
+          videos={videos}
+          onVideosChange={setVideos}
+          keywords={keywords}
+          onKeywordsChange={setKeywords}
+          tagInput={tagInput}
+          onTagInputChange={setTagInput}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+        />
       </div>
 
       {/* Status Transition Comment Modal: returning and rejecting say plainly what each does */}
-      <Modal isOpen={showCommentModal} onClose={() => { if (!statusSubmitting) setShowCommentModal(false); }}
-        title={dialogCopy.title} maxWidth="md">
-          <div className="space-y-4 text-right" aria-busy={statusSubmitting}>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {dialogCopy.explain}
-              {isDirty && canEditContent && <span className="block mt-1 text-amber-700 font-semibold">سيتم حفظ تعديلاتك غير المحفوظة أولاً.</span>}
-            </p>
-            {pendingStatus === 'SCHEDULED' && (
-              <div>
-                <label htmlFor="schedule-at-input" className="block text-xs font-bold text-slate-700 mb-1">موعد النشر (بتوقيت جهازك)</label>
-                <input
-                  id="schedule-at-input"
-                  type="datetime-local"
-                  value={scheduleAt}
-                  min={toLocalInputValue()}
-                  onChange={(e) => setScheduleAt(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
-                  dir="ltr"
-                />
-                <p className="text-2xs text-slate-500 mt-1">ينشر الخادم الخبر تلقائياً في هذا الموعد حتى لو لم يكن أحد متصلاً.</p>
-              </div>
-            )}
-            <label htmlFor="status-transition-comment" className="block text-sm font-semibold text-slate-700">
-              {dialogCopy.label}
-            </label>
-            {dialogCopy.reasons.length > 0 && (
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="أسباب جاهزة">
-                {dialogCopy.reasons.map((reason) => (
-                  <button
-                    key={reason}
-                    type="button"
-                    disabled={statusSubmitting}
-                    onClick={() => setStatusComment((prev) => (prev.includes(reason) ? prev : prev.trim() ? `${prev.trim()}، ${reason}` : reason))}
-                    className="min-h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs text-slate-700"
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-            )}
-            <textarea
-              id="status-transition-comment"
-              rows={3}
-              value={statusComment}
-              disabled={statusSubmitting}
-              onChange={(e) => setStatusComment(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.repeat && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void handleConfirmStatus();
-                }
-              }}
-              aria-keyshortcuts="Control+Enter Meta+Enter"
-              placeholder={dialogCopy.placeholder}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowCommentModal(false)}
-                disabled={statusSubmitting}
-                className="min-h-11 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmStatus}
-                disabled={statusSubmitting || (needsComment && !statusComment.trim()) || scheduleInvalid}
-                className={`min-h-11 px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-xs disabled:opacity-50 ${pendingStatus === 'REJECTED' ? 'bg-red-700 hover:bg-red-800' : 'bg-blue-600 hover:bg-blue-700'}`}
-              >
-                {statusSubmitting ? 'جارٍ تأكيد التحديث...' : dialogCopy.confirm}
-              </button>
-            </div>
-          </div>
-      </Modal>
+      <NewsStatusTransitionModal
+        isOpen={showCommentModal}
+        onClose={() => setShowCommentModal(false)}
+        statusSubmitting={statusSubmitting}
+        dialogCopy={dialogCopy}
+        isDirty={isDirty}
+        canEditContent={canEditContent}
+        pendingStatus={pendingStatus}
+        scheduleAt={scheduleAt}
+        onScheduleAtChange={setScheduleAt}
+        statusComment={statusComment}
+        onStatusCommentChange={setStatusComment}
+        needsComment={needsComment}
+        scheduleInvalid={scheduleInvalid}
+        onConfirmStatus={handleConfirmStatus}
+      />
 
       {newsItem?.id && (
         <NewsHistoryModal

@@ -373,6 +373,20 @@ describe('Dropbox', () => {
     await admin.post('/api/v1/storage/dropbox/disconnect').set(H).send({}).expect(200);
   });
 
+  it('saves Dropbox authorization before the configured media folder is created', async () => {
+    const admin = await loginAgent(server.app, 'admin@akhbar.tv');
+    await saveSettings(admin, s => ({ ...s, storage: { dropbox: { enabled: false, rootPath: '/missing' } } }));
+    try {
+      const connected = await admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'samplekey', appSecret: 's', refreshToken: 'rt' }).expect(200);
+      expect(connected.body.data.dropbox).toMatchObject({ connected: true, folderNeedsSetup: true });
+      const check = await admin.post('/api/v1/storage/dropbox/verify').set(H).send({ check: 'connection' }).expect(200);
+      expect(check.body.data).toMatchObject({ credentials: 'verified', folder: 'folder_missing' });
+    } finally {
+      await admin.post('/api/v1/storage/dropbox/disconnect').set(H).send({}).expect(200);
+      await saveSettings(admin, s => ({ ...s, storage: undefined }));
+    }
+  });
+
   it('connects with a code, copies attached uploads, frees the server copy and still serves the file', async () => {
     const admin = await loginAgent(server.app, 'admin@akhbar.tv');
     const ok = await admin.post('/api/v1/storage/dropbox/connect').set(H).send({ appKey: 'abcde12345', appSecret: 's', code: 'good-code' });

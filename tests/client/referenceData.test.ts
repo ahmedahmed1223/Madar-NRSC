@@ -5,6 +5,7 @@ const memory = new Map<string, unknown>();
 vi.mock('../../src/services/dataStore', () => ({
   dataStore: {
     get: (key: string, fallback: unknown) => (memory.has(key) ? structuredClone(memory.get(key)) : fallback),
+    getSnapshot: (key: string, fallback: unknown) => (memory.has(key) ? memory.get(key) : fallback),
     set: (key: string, value: unknown) => void memory.set(key, structuredClone(value)),
     subscribe: () => () => undefined,
   },

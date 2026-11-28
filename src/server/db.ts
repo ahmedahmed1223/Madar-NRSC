@@ -347,6 +347,53 @@ export class NewsroomDatabase {
     return rows.map(toEntityRow);
   }
 
+  private static readonly JSON_FIELD_PREDICATES: Record<'categoryId' | 'sourceId' | 'typeId', {
+    expr: string;
+    index: string;
+    indexedCollections: readonly CollectionName[];
+    predicate: string;
+  }> = {
+    categoryId: {
+      expr: "json_extract(data, '$.categoryId')",
+      index: 'idx_entities_category_id',
+      indexedCollections: ['news', 'stories'],
+      predicate: "collection IN ('news', 'stories')",
+    },
+    sourceId: {
+      expr: "json_extract(data, '$.sourceId')",
+      index: 'idx_entities_source_id',
+      indexedCollections: ['news', 'wires'],
+      predicate: "collection IN ('news', 'wires')",
+    },
+    typeId: {
+      expr: "json_extract(data, '$.typeId')",
+      index: 'idx_entities_program_type_id',
+      indexedCollections: ['programs'],
+      predicate: "collection = 'programs'",
+    },
+  };
+
+  /** Fetches live bookings for a single resource via idx_bookings_resource_window. */
+  listBookingsForResource(resourceId: string): EntityRow[] {
+    const rows = this.db.prepare(`SELECT * FROM entities INDEXED BY idx_bookings_resource_window
+      WHERE collection = 'bookings' AND deleted = 0 AND json_extract(data, '$.resourceId') = ?
+      ORDER BY position ASC, id ASC`).all(resourceId) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
+  /** Fetches live rows matching an allowlisted JSON foreign-key field without scanning the collection. */
+  listByJsonField(collection: CollectionName, field: 'categoryId' | 'sourceId' | 'typeId', value: string): EntityRow[] {
+    const spec = NewsroomDatabase.JSON_FIELD_PREDICATES[field];
+    if (!spec) throw new Error(`Unsupported indexed JSON field: ${String(field)}`);
+    const useIndex = spec.indexedCollections.includes(collection);
+    const rows = (useIndex
+      ? this.db.prepare(`SELECT * FROM entities INDEXED BY ${spec.index}
+          WHERE ${spec.predicate} AND collection = ? AND deleted = 0 AND ${spec.expr} = ?`).all(collection, value)
+      : this.db.prepare(`SELECT * FROM entities
+          WHERE collection = ? AND deleted = 0 AND ${spec.expr} = ?`).all(collection, value)) as RawEntityRow[];
+    return rows.map(toEntityRow);
+  }
+
   listTrashPageAfter(collections: readonly CollectionName[], after: TrashPagePosition | null, limit: number) {
     if (collections.length === 0) return [];
     const date = "CAST(json_extract(data, '$.deletedAt') AS TEXT)";
@@ -660,6 +707,7 @@ export class NewsroomDatabase {
   duePersonalTaskReminders(now: string, limit = 100): EntityRow[] {
     const rows = this.db.prepare(`SELECT * FROM entities
       WHERE ${PENDING_PERSONAL_REMINDER} AND json_extract(data, '$.reminderAt') <= ?
+        AND json_extract(data, '$.deletedAt') IS NULL
         AND EXISTS (
           SELECT 1 FROM entities AS owner
           WHERE owner.collection = 'users' AND owner.deleted = 0
@@ -709,7 +757,8 @@ export class NewsroomDatabase {
   assignedWorkIds(userId: string): string[] {
     if (this.db instanceof PostgresDatabase) {
       const { rows } = this.db.query(`SELECT collection || ':' || id AS key FROM entities AS item WHERE deleted = 0 AND (
-        (collection = 'tasks' AND COALESCE(NULLIF(item.data::jsonb ->> 'assigneeId', ''), item.data::jsonb ->> 'assignedToId') = $1)
+        (collection = 'tasks' AND NULLIF(item.data::jsonb ->> 'deletedAt', '') IS NULL
+          AND COALESCE(NULLIF(item.data::jsonb ->> 'assigneeId', ''), item.data::jsonb ->> 'assignedToId') = $1)
         OR (collection = 'productionCards' AND (item.data::jsonb ->> 'ownerId' = $1 OR EXISTS (
           SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(item.data::jsonb -> 'steps') = 'array'
             THEN item.data::jsonb -> 'steps' ELSE '[]'::jsonb END) AS step
@@ -720,7 +769,8 @@ export class NewsroomDatabase {
     }
     const rows = this.db.prepare(`SELECT collection || ':' || id AS key FROM entities AS item
       WHERE deleted = 0 AND (
-        (collection = 'tasks' AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
+        (collection = 'tasks' AND NULLIF(json_extract(data, '$.deletedAt'), '') IS NULL
+          AND COALESCE(NULLIF(json_extract(data, '$.assigneeId'), ''), json_extract(data, '$.assignedToId')) = @user)
         OR (collection = 'productionCards' AND (json_extract(data, '$.ownerId') = @user OR EXISTS (
           SELECT 1 FROM json_each(item.data, '$.steps') AS step WHERE step.type = 'object'
             AND json_extract(item.data, step.fullkey || '.assigneeId') = @user

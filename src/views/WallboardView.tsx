@@ -5,7 +5,7 @@ import { appLocale, zoneOptions } from '../shared/dateFormat';
 import { stationTimeZone } from '../shared/dates';
 import { isBreakingLive } from '../shared/newsWorkflow';
 import { secondsUntilStart } from '../shared/stationTime';
-import { normalizeTaskStatus } from '../shared/taskWorkflow';
+import { isTaskClosed } from '../shared/taskWorkflow';
 import { mmss } from '../shared/bulletins';
 
 export function WallboardView() {
@@ -31,7 +31,7 @@ export function WallboardView() {
       ? [{ show, remaining }] : [];
   }).sort((a, b) => a.remaining - b.remaining).slice(0, 3);
   const breaking = data.news.filter(item => isBreakingLive(item, now)).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')).slice(0, 3);
-  const lateTasks = data.tasks.filter(task => !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(task.status)) && Date.parse(task.dueDate || '') < now);
+  const lateTasks = data.tasks.filter(task => !isTaskClosed(task.status) && Date.parse(task.dueDate || '') < now);
   const lateCards = data.cards.filter(card => card.status === 'OPEN' && Date.parse(card.dueAt || card.airAt || '') < now);
   const liveReports = live.flatMap(session => {
     const show = data.shows.find(item => item.id === session.episodeId);

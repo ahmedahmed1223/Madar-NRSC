@@ -1,5 +1,6 @@
 import type { NewsroomDatabase } from './db';
 import type { BackupStatus } from '../shared/databaseDiagnostics';
+import { storageOf } from '../shared/storage';
 import { backupIncidents } from './backupIncidents';
 import { lastVerifiedExternalBackup } from './backupDelivery';
 import { readRehearsalEvidence } from './databaseRecovery';
@@ -38,13 +39,18 @@ export function nextBackupDelayMs(
 }
 
 export function backupStatus(db: NewsroomDatabase, intervalHours: number, destinations: BackupTransportConfig = {}): BackupStatus {
+  const effectiveInterval = scheduledBackupInterval(db, intervalHours);
   const files = listAllBackupFiles(db);
   const lastSnapshotAt = files[0]?.createdAt || null;
   const lastAttempt = attempt(db.getMeta('backup_last_attempt'));
   const lastDelivery = attempt(db.getMeta('backup_last_delivery'));
   const lastCompleteDeliveryAt = lastDelivery?.status === 'ok' ? Date.parse(lastDelivery.at) : NaN;
-  return { lastSnapshotAt, count: files.length, intervalHours, incidents: backupIncidents(db),
-    overdue: intervalHours > 0 && (!Number.isFinite(lastCompleteDeliveryAt) || Date.now() - lastCompleteDeliveryAt > intervalHours * 3600000),
+  return { lastSnapshotAt, count: files.length, intervalHours: effectiveInterval, incidents: backupIncidents(db),
+    overdue: effectiveInterval > 0 && (!Number.isFinite(lastCompleteDeliveryAt) || Date.now() - lastCompleteDeliveryAt > effectiveInterval * 3600000),
     lastAttempt, lastDelivery,
     lastVerifiedExternal: lastVerifiedExternalBackup(db, destinations), lastRehearsal: rehearsal(readRehearsalEvidence(db.dataDir)) };
+}
+
+export function scheduledBackupInterval(db: NewsroomDatabase, serverIntervalHours: number): number {
+  return storageOf(db.getRow('settings', 'singleton')?.d).scheduledBackups ? serverIntervalHours : 0;
 }

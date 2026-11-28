@@ -27,6 +27,8 @@ const RETURN_MESSAGES: Record<string, { ok: boolean; text: string }> = {
 };
 
 const DROPBOX_CHECK_MESSAGES: Record<DropboxCheckStatus, string> = {
+  invalid_team_member: 'عضو الفريق غير متاح. اختر عضوًا نشطًا وتحقق من تفويضه.',
+  root_changed: 'تغيّر جذر مساحة Dropbox. راجع مسارات المكتبة ثم جدّد الربط.',
   verified: 'تم التحقق',
   not_configured: 'بيانات الربط غير محفوظة أو غير مكتملة',
   invalid_credentials: 'تعذر تأكيد بيانات الربط. تحقق من مفاتيح التطبيق أو أعد التفويض.',
@@ -55,6 +57,17 @@ function DropboxCheckRow({ label, result }: { label: React.ReactNode; result: Dr
       <dd><StatusChip ok={result === 'verified'} warn={result !== 'verified'}>{DROPBOX_CHECK_MESSAGES[result]}</StatusChip></dd>
     </div>
   );
+}
+
+function DropboxCheckAccount({ result }: { result: DropboxVerification }) {
+  if (!result.account) return null;
+  return <div className="flex flex-wrap items-baseline gap-2 text-sm">
+    <dt className="font-semibold text-slate-700">الحساب الذي فحصه مدار</dt>
+    <dd className="min-w-0 break-words">
+      <bdi>{result.account}</bdi>
+      {result.teamMemberId && <bdi className="ms-2 break-all text-xs text-slate-600">{result.teamMemberId}</bdi>}
+    </dd>
+  </div>;
 }
 
 /**
@@ -168,7 +181,7 @@ export function StorageSettings() {
     ];
     const problem = checks.find(item => item.status && item.status !== 'verified');
     setMessage(problem?.status ? { ok: false, text: problem.label + ' · ' + DROPBOX_CHECK_MESSAGES[problem.status] } : {
-      ok: true, text: check === 'connection' ? 'نجح فحص الاتصال بمجلد Dropbox.' : 'نجح فحص أذونات القراءة والكتابة في Dropbox.',
+      ok: true, text: check === 'connection' ? 'نجح فحص الاتصال بمجلد Dropbox.' : 'تحقّق مدار من تفويض التطبيق للقراءة والكتابة في Dropbox.',
     });
   });
   const connectionCheck = dropboxChecks.connection;
@@ -179,7 +192,9 @@ export function StorageSettings() {
     <form onSubmit={save} className="py-4 space-y-8" aria-label="التخزين">
       <section aria-labelledby="storage-overview" className="space-y-3">
         <h2 id="storage-overview" className="text-lg font-bold text-slate-900">التخزين</h2>
-        <PrimaryStorageSettings settings={settings} status={status} backups={backupReadiness} disabled={saving} onChange={(key, value) => setSettings(previous => ({ ...previous, [key]: value }))} />
+        <PrimaryStorageSettings settings={settings} status={status} backups={backupReadiness} disabled={saving}
+          onChange={(key, value) => setSettings(previous => ({ ...previous, [key]: value }))}
+          onScheduleChange={scheduledBackups => setSettings(previous => ({ ...previous, scheduledBackups }))} />
         <p className="text-sm text-slate-600 max-w-3xl leading-6">
           عند اختيار خادم مدار للوسائط، تعمل خيارات النسخ الإضافية إلى الخدمات المربوطة أدناه. يمكن تصفّح الملفات الموجودة أصلًا في الخدمة وإضافتها إلى المكتبة من مكانها.
         </p>
@@ -251,12 +266,15 @@ export function StorageSettings() {
             {connectionCheck && (
               <dl className="space-y-1">
                 <DropboxCheckRow label="تجديد تفويض Dropbox" result={connectionCheck.credentials} />
+                <DropboxCheckAccount result={connectionCheck} />
                 {connectionCheck.folder && <DropboxCheckRow label={<>عرض محتويات المجلد <bdi>{connectionCheck.root}</bdi></>} result={connectionCheck.folder} />}
               </dl>
             )}
             {permissionCheck && (
               <dl className="space-y-1">
                 {permissionCheck.credentials !== 'verified' && <DropboxCheckRow label="تجديد تفويض فحص الأذونات" result={permissionCheck.credentials} />}
+                <DropboxCheckAccount result={permissionCheck} />
+                {permissionCheck.folder && <DropboxCheckRow label={<>الوصول إلى المجلد <bdi>{permissionCheck.root}</bdi></>} result={permissionCheck.folder} />}
                 {permissionCheck.read && <DropboxCheckRow label="تفويض قراءة الملفات" result={permissionCheck.read} />}
                 {permissionCheck.write && <DropboxCheckRow label="تفويض كتابة الملفات" result={permissionCheck.write} />}
               </dl>

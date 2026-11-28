@@ -37,6 +37,15 @@ describe('screens a role opens', () => {
     expect(canOpenScreen('database', {}, (p) => p !== 'system.settings')).toBe(false);
   });
 
+  it('strictly restricts tests diagnostics screen to SUPER_ADMIN or system.database_manage', () => {
+    expect(canOpenScreen('tests', role('SUPER_ADMIN'), canOf('SUPER_ADMIN'), true)).toBe(true);
+    expect(canOpenScreen('tests', { screens: [] }, (p) => p === 'system.database_manage')).toBe(true);
+    expect(canOpenScreen('tests', { screens: ['settings'] }, (p) => p === 'system.settings' || p === 'system.self_healing')).toBe(false);
+    expect(canOpenScreen('tests', role('MAIN_STATION_MANAGER'), canOf('MAIN_STATION_MANAGER'))).toBe(false);
+    expect(canOpenScreen('tests', role('EDITOR'), canOf('EDITOR'))).toBe(false);
+    expect(canOpenScreen('tests', role('JOURNALIST'), canOf('JOURNALIST'))).toBe(false);
+  });
+
   it('validates a stored list', () => {
     expect(screensError(undefined)).toBeNull();
     expect(screensError(['news', 'media'])).toBeNull();

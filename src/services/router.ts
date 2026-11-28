@@ -166,7 +166,7 @@ const TITLES: Record<string, string> = {
   users: 'المستخدمون والصلاحيات',
   settings: 'الإعدادات',
   database: 'قاعدة البيانات',
-  tests: 'الاختبارات',
+  tests: 'تشخيص وحالة النظام',
   alerts: 'تنبيهات المصادر',
   help: 'المساعدة',
   guide: 'دليل الاستخدام',

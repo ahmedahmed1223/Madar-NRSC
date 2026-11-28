@@ -30,7 +30,7 @@ it('creates and verifies a primary NAS backup without keeping a local snapshot o
   expect(list.body.data).toContainEqual(expect.objectContaining({ fileName }));
   expect((await admin.post('/api/v1/db/backups/verify').set(headers).send({ fileName })).status).toBe(200);
   const rehearsal = await admin.post('/api/v1/db/backups/rehearse').set(headers).send({ fileName });
-  expect(rehearsal.body.data).toMatchObject({ fileName, compatible: true });
+  expect(rehearsal.body.data).toMatchObject({ fileName, compatible: true, mediaVerified: true });
   const status = await admin.get('/api/v1/db/backup-status');
   expect(status.body.data).toMatchObject({ primaryTarget: 'nas', primaryConfigured: true, primaryDestinations: { nas: true },
     lastVerifiedExternal: { fileName, targets: ['directory'] } });
@@ -62,6 +62,21 @@ it('rejects an unavailable selected destination without creating a local fallbac
   expect(await fs.readdir(server.db.backupsDir)).toEqual([]);
   await expect(fs.stat(unavailable)).rejects.toThrow();
   expect(JSON.parse(server.db.getMeta('backup_last_delivery') || '{}')).toMatchObject({ status: 'failed' });
+});
+
+it('reports a paused schedule while manual backup still uses the selected carrier', async () => {
+  const settings = server.db.getRow('settings', 'singleton')!;
+  server.db.writeRow('settings', settings.id, { ...settings.d, storage: {
+    ...settings.d.storage, scheduledBackups: false,
+  } }, settings.p, null);
+  const config = { ...server.config, backupIntervalHours: 24, backupNasDirectory: destination };
+  const { app } = createApp(server.db, config);
+  const admin = await loginAgent(app, 'admin@akhbar.tv');
+  const status = await admin.get('/api/v1/db/backup-status');
+  expect(status.body.data).toMatchObject({ intervalHours: 0, overdue: false, primaryTarget: 'nas' });
+  expect((await admin.post('/api/v1/db/backups').set(headers)).status).toBe(200);
+  expect(await fs.readdir(path.join(destination, '.madar-backups'))).toHaveLength(1);
+  expect(await fs.readdir(server.db.backupsDir)).toEqual([]);
 });
 
 it('does not count the legacy secondary Docker volume as a selected NAS carrier', async () => {

@@ -42,7 +42,7 @@ export const PROGRAM_STATUS_LABELS: Record<string, string> = {
 };
 
 /** Tasks marked DONE (older data) and COMPLETED are the same state. */
-export const normalizeTaskStatus = (s: string | undefined): string => (s === 'DONE' ? 'COMPLETED' : s || 'TODO');
+export { normalizeTaskStatus } from './taskWorkflow';
 
 /** Any known status code in Arabic (falls back to the code itself only if it is unknown). */
 export function statusLabel(code: string | undefined, kind?: 'news' | 'episode' | 'task' | 'program'): string {

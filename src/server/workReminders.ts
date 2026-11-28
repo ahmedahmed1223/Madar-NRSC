@@ -1,6 +1,7 @@
 import { stepReceiptDeadline, stepReceiptPending } from '../shared/cardExecution';
+import { taskAssigneeId } from '../shared/assignedWork';
 import { isStepOpen, stepTypeName, stepTypesOf, type ProductionCard } from '../shared/productionCards';
-import { normalizeTaskStatus } from '../shared/taskWorkflow';
+import { isTaskClosed } from '../shared/taskWorkflow';
 import { workReminderEnabled, workReminderInstant } from '../shared/workReminders';
 import type { EditorialTask } from '../types';
 import type { NewsroomDatabase } from './db';
@@ -33,7 +34,7 @@ export function updateWorkReminders(db: NewsroomDatabase, collection: WorkRemind
   if (value && workReminderEnabled(options)) {
     if (collection === 'tasks') {
       const task = value as EditorialTask;
-      add('task', task.assigneeId || task.assignedToId, task.dueDate, !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(task.status)));
+      add('task', taskAssigneeId(task), task.dueDate, !isTaskClosed(task.status));
     } else {
       const card = value as ProductionCard;
       const open = card.status === 'OPEN';

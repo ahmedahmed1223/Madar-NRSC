@@ -9,7 +9,8 @@ import { apiService } from '../../services/api';
 import { dataStore } from '../../services/dataStore';
 import { isRequestClosed } from '../../shared/production';
 import { isStepOpen } from '../../shared/productionCards';
-import { normalizeTaskStatus } from '../../shared/labels';
+import { taskAssigneeId } from '../../shared/assignedWork';
+import { isTaskClosed } from '../../shared/taskWorkflow';
 
 interface NotificationDropdownProps {
   inbox: ReturnType<typeof groupNotifications>;
@@ -31,7 +32,7 @@ function noticeAction(path: string | null, userId: string) {
   if (!id) return null;
   if (view === 'tasks') {
     const task = apiService.getTasks().find(item => item.id === id);
-    if (task && (task.assigneeId || task.assignedToId) === userId && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(task.status))) {
+    if (task && taskAssigneeId(task) === userId && !isTaskClosed(task.status)) {
       return { owner: task.assigneeName || task.assignedToName, dueAt: task.dueDate };
     }
   } else if (view === 'requests') {

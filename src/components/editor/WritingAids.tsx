@@ -120,7 +120,7 @@ export const ProofreadButton: React.FC<{
                   <p className="text-2xs text-slate-500 truncate">…{source.slice(Math.max(0, i.start - 25), i.end + 25).replace(/\u0001/g, ' ')}…</p>
                   <div className="flex gap-1.5">
                     {onFix && (
-                      <button type="button" onClick={() => onFix(result.fixOne(i))} className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-2xs font-bold">
+                      <button type="button" onClick={() => onFix(result.fixOne(i))} className="min-h-11 sm:min-h-7 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold">
                         إصلاح
                       </button>
                     )}

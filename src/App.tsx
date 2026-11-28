@@ -237,6 +237,22 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
   // Some child views read smaller collections directly from the store on render.
   const [, renderCollectionReaders] = useState(0);
   useEffect(() => {
+    const appStateCollections: ReadonlySet<CollectionName> = new Set([
+      'users',
+      'broadcastState',
+      'programTypes',
+      'stories',
+      'news',
+      'programs',
+      'episodes',
+      'guests',
+      'tasks',
+      'media',
+      'auditLogs',
+      'categories',
+      'sources',
+      'wires',
+    ]);
     const refreshData = (changed?: ReadonlySet<CollectionName>) => {
       const includes = (...names: CollectionName[]) => !changed || names.some(name => changed.has(name));
       if (includes('settings')) {
@@ -266,7 +282,9 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
       if (includes('categories')) setCategories(apiService.getCategories());
       if (includes('sources')) setSources(apiService.getNewsSources());
       if (includes('wires')) setWires(apiService.getWires());
-      if (changed) renderCollectionReaders(revision => revision + 1);
+      if (changed && [...changed].some((name) => !appStateCollections.has(name))) {
+        renderCollectionReaders(revision => revision + 1);
+      }
     };
 
     refreshData();
@@ -1220,7 +1238,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
               />
             )}
 
-            {activeNav === 'trash' && <TrashView key={focusId || 'all'} focusId={focusId} onFocus={setFocusId} />}
+            {activeNav === 'trash' && <TrashView focusId={focusId} user={currentUser} onOpen={openLink} />}
             {activeNav === 'audit' && <AuditLogsView logs={auditLogs} />}
 
             {activeNav === 'users' && (
@@ -1229,12 +1247,12 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {['settings', 'database', 'tests'].includes(activeNav) && (
               <div className="space-y-5">
-                {(RbacService.hasPermission(currentUser, 'system.database_manage') || RbacService.hasPermission(currentUser, 'system.self_healing')) && (
+                {(currentUser.role === 'SUPER_ADMIN' || RbacService.hasPermission(currentUser, 'system.database_manage')) && (
                   <div className="grid grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] gap-1.5 sm:flex sm:flex-wrap" role="tablist" aria-label="أقسام الإعدادات">
                     {[
                       { id: 'settings', label: 'الإعدادات العامة', show: RbacService.hasPermission(currentUser, 'system.settings') },
                       { id: 'database', label: 'النسخ الاحتياطي وقاعدة البيانات', show: RbacService.hasPermission(currentUser, 'system.database_manage') },
-                      { id: 'tests', label: 'حالة النظام', show: RbacService.hasPermission(currentUser, 'system.self_healing') },
+                      { id: 'tests', label: 'تشخيص وحالة النظام', show: currentUser.role === 'SUPER_ADMIN' || RbacService.hasPermission(currentUser, 'system.database_manage') },
                     ]
                       .filter((t) => t.show)
                       .map((t) => (
@@ -1275,7 +1293,7 @@ export default function App({ onLogout, onChangePassword }: AppProps) {
 
             {activeNav === 'database' && <DatabaseManagerView />}
 
-            {activeNav === 'tests' && <TestingView />}
+            {activeNav === 'tests' && (currentUser.role === 'SUPER_ADMIN' || RbacService.hasPermission(currentUser, 'system.database_manage')) && <TestingView />}
               </div>
             )}
 

@@ -1,6 +1,6 @@
 import type { AuthContext } from './auth';
 import type { NewsroomDatabase } from './db';
-import { assignedWorkOnly } from '../shared/assignedWork';
+import { assignedWorkOnly, taskAssigneeId } from '../shared/assignedWork';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
 import type { DepartmentWork, DepartmentWorkItem, DepartmentWorkMember } from '../shared/departmentWork';
 import { cardState, type ProductionCard } from '../shared/productionCards';
@@ -33,7 +33,7 @@ function departmentWorkSnapshot(db: NewsroomDatabase) {
   const tasks = new Map<string, EditorialTask[]>();
   const cards = new Map<string, ProductionCard[]>();
   for (const { id, d } of db.listCollection('tasks')) {
-    const assignee = d.assigneeId || d.assignedToId;
+    const assignee = taskAssigneeId(d);
     if (assignee && !d.deletedAt) addWork(tasks, assignee, { ...d, id });
   }
   for (const { id, d } of db.listCollection('productionCards')) {

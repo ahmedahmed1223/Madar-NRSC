@@ -59,6 +59,8 @@ import { EditorialTask, Episode, NewsItem, User } from '../../types';
 import { cardsAwaitingMyDecision, isManagerRole, reviewableNews } from '../../shared/managerToday';
 import { stationsOf } from '../../shared/stations';
 import { trapTab } from '../../shared/focus';
+import { taskAssigneeId } from '../../shared/assignedWork';
+import { isTaskClosed } from '../../shared/taskWorkflow';
 
 /**
  * The rail's counts are personal: my open tasks, the stories I can actually review (none for
@@ -70,7 +72,7 @@ export function personalBadgeCounts(user: User | null | undefined, news: NewsIte
   const stationOf = new Map(apiService.getUsers().map((u) => [u.id, u.stationId]));
   return {
     news: reviewableNews(news, user, { canReview, stations: stationsOf(apiService.getSettings()), stationOf: (id) => stationOf.get(id) }).length,
-    tasks: tasks.filter((t) => (t.assigneeId || t.assignedToId) === user.id && !['COMPLETED', 'DONE', 'CANCELLED'].includes(t.status)).length,
+    tasks: tasks.filter((t) => taskAssigneeId(t) === user.id && !isTaskClosed(t.status)).length,
     episodes: episodes.filter((e) => e.status === 'READY_FOR_BROADCAST').length,
   };
 }

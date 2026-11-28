@@ -32,9 +32,14 @@ const TRANSITIONS: Record<CanonicalTaskStatus, readonly CanonicalTaskStatus[]> =
   CANCELLED: ['TODO', 'IN_PROGRESS'],
 };
 
-export function normalizeTaskStatus(status?: TaskStatus): CanonicalTaskStatus {
+export function normalizeTaskStatus(status?: string): CanonicalTaskStatus {
   if (status === 'DONE') return 'COMPLETED';
-  return status && Object.hasOwn(TRANSITIONS, status) ? status : 'TODO';
+  return status && Object.hasOwn(TRANSITIONS, status) ? (status as CanonicalTaskStatus) : 'TODO';
+}
+
+export function isTaskClosed(status?: string): boolean {
+  const normalized = normalizeTaskStatus(status);
+  return normalized === 'COMPLETED' || normalized === 'CANCELLED';
 }
 
 export function taskWorkflowOptions(status: TaskStatus | undefined, rules: TaskWorkflowRules | undefined, canManage: boolean): CanonicalTaskStatus[] {
@@ -81,7 +86,7 @@ export function stampTaskWorkflow(before: EditorialTask | null, after: Editorial
   const previous = normalizeTaskStatus(before?.status);
   const prior = before?.execution;
   const running = next === 'IN_PROGRESS';
-  const finished = next === 'COMPLETED' || next === 'CANCELLED';
+  const finished = isTaskClosed(next);
   const reason = next === 'BLOCKED' && typeof after.blockedReason === 'string' ? after.blockedReason.trim() || undefined : undefined;
   const execution: TaskExecution = {
     activeSeconds: (prior?.activeSeconds || 0) + (running ? 0 : secondsSince(prior?.runningSince, Date.parse(now))),
@@ -92,7 +97,8 @@ export function stampTaskWorkflow(before: EditorialTask | null, after: Editorial
   const statusHistory = !before || previous !== next || (next === 'BLOCKED' && reason !== before.blockedReason)
     ? [...(before?.statusHistory || []).slice(-99), { status: next, at: now, byId: actorId, ...(reason ? { reason } : {}) }]
     : before.statusHistory;
-  return { ...after, execution, blockedReason: reason, statusHistory };
+  const status = after.status === 'DONE' ? 'COMPLETED' : after.status;
+  return { ...after, status, execution, blockedReason: reason, statusHistory };
 }
 
 export function taskTiming(task: Pick<EditorialTask, 'execution'>, now = Date.now()) {

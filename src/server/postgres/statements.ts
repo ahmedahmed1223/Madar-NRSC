@@ -10,7 +10,7 @@ function adaptNewsroomSql(text: string): string {
       "(json_build_array($1, data::json -> 'keywords'))::text")
     .replace(/\bjson_extract\(((?:[a-z_]\w*\.)?\w+),\s*'\$\.(\w+)'\)/gi, (_match, column: string, key: string) =>
       flags.has(key) ? `madar_json_flag(${column}, '${key}')` : `(${column}::json ->> '${key}')`)
-    .replace(/\s+INDEXED BY idx_news_archive_updated\b/g, '')
+    .replace(/\s+INDEXED BY \w+\b/g, '')
     .replace(/\binstr\(/g, 'strpos(')
     .replace(/ AS ([a-z]\w*[A-Z]\w*)/g, ' AS "$1"')
     .replace(/\bCAST\(value AS INTEGER\)/g, 'CAST(value AS BIGINT)')

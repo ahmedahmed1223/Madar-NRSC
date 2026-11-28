@@ -7,7 +7,8 @@ import { isStepOpen, type ProductionCard } from './productionCards';
 import { SHIFTS, type RosterEntry, type ShiftId } from './roster';
 import { bulletinSlot, episodeSlot, episodeWindow, scheduledBulletinSlot } from './schedule';
 import type { Station, StationGroup } from './stations';
-import { normalizeTaskStatus } from './taskWorkflow';
+import { taskAssigneeId } from './assignedWork';
+import { isTaskClosed } from './taskWorkflow';
 
 const CRITICAL_DEPARTMENTS = ['newsroom', 'control', 'montage'] as const;
 const MINUTES_PER_DAY = 24 * 60;
@@ -111,7 +112,7 @@ export function shiftCoverageGaps({ date, stations, departments, users, episodes
     if (weekStart <= entry.date && entry.date <= weekEnd) tally(nearbyShifts, entry.userId);
   }
   for (const task of tasks) {
-    if (!task.deletedAt && !['COMPLETED', 'CANCELLED'].includes(normalizeTaskStatus(task.status))) tally(workload, task.assigneeId || task.assignedToId);
+    if (!task.deletedAt && !isTaskClosed(task.status)) tally(workload, taskAssigneeId(task));
   }
   for (const card of cards) {
     if (card.deletedAt || card.status !== 'OPEN') continue;

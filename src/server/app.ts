@@ -19,7 +19,7 @@ import { withBackupSource, databaseOperationLock, DatabaseOperationBusy, rehears
 import { DatabaseConfirmations, ConfirmationFailures } from './databaseConfirmation';
 import { reconcileBackupIncidents } from './backupIncidents';
 import { createRateLimiter } from './rateLimit';
-import { changeBus, isValidCollectionPageCursor, MAX_OPS_PER_REQUEST, SyncService } from './sync';
+import { changeBus, createRevCoalescer, isValidCollectionPageCursor, MAX_OPS_PER_REQUEST, SyncService } from './sync';
 import { canRead } from './policy';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { canPinAnnouncement, canonicalMessageChannel } from '../shared/chat';
@@ -41,7 +41,7 @@ import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp';
 import { OfflineAirError, prepareOfflinePacket } from './offlineAir';
 import { importOfflineSession } from './offlineAirSessions';
 import { applyOfflineDraft, offlineDraftTarget } from './offlineAirDrafts';
-import { MEDIA_FILE_URL_PREFIX, UploadError, mediaUploadIsTrashed, receiveUpload, uploadsDir } from './uploads';
+import { MEDIA_FILE_URL_PREFIX, UploadError, mediaUploadIsTrashed, receiveUpload, sendErrorAfterDrain, uploadsDir } from './uploads';
 import { externalIntakeRouter } from './externalIntake';
 import { databaseEngineStatus, readDatabaseEngineState, scheduleDatabaseEngine } from './databaseEngineState';
 import { createResumableUploadRouter } from './resumableUploads';
@@ -95,7 +95,7 @@ import { CHAT_UPLOAD_TYPES, canReadMessage, isInlineChatType, parseChannel } fro
 import type { CollectionName, SyncOp } from '../shared/collections';
 import { mayManageTemplate, publishedWorkflow, type PublishedWorkflow } from '../shared/workflowPublication';
 import { CardMergeError, cardMergeCandidates } from './cardConsolidation';
-import { isTrashCollection } from '../shared/trash';
+import { isTrashCollection, isTrashScreen, TRASH_SECTIONS } from '../shared/trash';
 import { decodeTrashCursor, readTrashPage } from './trash';
 import { initializeTrashRetention, readTrashRetention } from './retention';
 
@@ -865,12 +865,20 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   });
 
   app.get('/api/v1/trash', requireAuth, (req, res) => {
-    const requestedCollection = req.query.collection;
+    res.setHeader('Cache-Control', 'no-store');
+    const { collection: requestedCollection, section: requestedSection } = req.query;
     const collection = isTrashCollection(requestedCollection) ? requestedCollection : undefined;
-    if (requestedCollection !== undefined && collection === undefined) throw new HttpError(400, 'قسم سلة المحذوفات غير صالح');
+    const section = isTrashScreen(requestedSection) ? requestedSection : undefined;
+    if ((requestedCollection !== undefined && !collection) || (requestedSection !== undefined && !section) ||
+      (collection && section && TRASH_SECTIONS[collection].screen !== section)) {
+      throw new HttpError(400, 'قسم سلة المحذوفات غير صالح');
+    }
     const after = decodeTrashCursor(req.query.cursor);
-    if (after === undefined) throw new HttpError(400, 'مؤشر سلة المحذوفات غير صالح');
-    const data = readTrashPage(db, req.auth!, collection, after, readTrashRetention(db, config.retention.trashDays));
+    if (after === undefined || after && (
+      collection && after.collection !== collection || section && TRASH_SECTIONS[after.collection].screen !== section ||
+      !collection && !section
+    )) throw new HttpError(400, 'مؤشر سلة المحذوفات غير صالح');
+    const data = readTrashPage(db, req.auth!, { collection, section }, after, readTrashRetention(db, config.retention.trashDays));
     res.json({ success: true, data });
   });
 
@@ -925,13 +933,15 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
     const write = (message: string) => {
       if (!res.destroyed && !res.writableEnded && !res.write(message)) res.destroy();
     };
-    const onRev = (rev: number) => write(`event: rev\ndata: ${rev}\n\n`);
+    const revCoalescer = createRevCoalescer((rev) => write(`event: rev\ndata: ${rev}\n\n`));
+    const onRev = (rev: number) => revCoalescer.push(rev);
     const heartbeat = setInterval(() => write(': ping\n\n'), 25_000);
     const cleanup = () => {
       if (!streams.delete(res)) return;
       const remaining = (streamsByUser.get(userId) ?? 1) - 1;
       if (remaining) streamsByUser.set(userId, remaining);
       else streamsByUser.delete(userId);
+      revCoalescer.cancel();
       clearInterval(heartbeat);
       changeBus.off('rev', onRev);
     };
@@ -1695,16 +1705,19 @@ export function createApp(db: NewsroomDatabase, config: AppConfig) {
   // Central error handler: never leak internals to clients.
   app.use('/api', (err: any, req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof HttpError) {
-      return res.status(err.status).json({ success: false, error: err.message, code: err.code });
+      sendErrorAfterDrain(req, res, err.status, { success: false, error: err.message, code: err.code });
+      return;
     }
     if (err?.type === 'entity.too.large') {
-      return res.status(413).json({ success: false, error: 'حجم الطلب أكبر من المسموح', code: 'TOO_LARGE' });
+      sendErrorAfterDrain(req, res, 413, { success: false, error: 'حجم الطلب أكبر من المسموح', code: 'TOO_LARGE' });
+      return;
     }
     if (err?.type === 'entity.parse.failed') {
-      return res.status(400).json({ success: false, error: 'صيغة JSON غير صالحة', code: 'BAD_JSON' });
+      sendErrorAfterDrain(req, res, 400, { success: false, error: 'صيغة JSON غير صالحة', code: 'BAD_JSON' });
+      return;
     }
     logger.error('unhandled error', { path: req.originalUrl, error: String(err?.stack || err) });
-    res.status(500).json({ success: false, error: 'حدث خطأ داخلي في الخادم', code: 'INTERNAL' });
+    sendErrorAfterDrain(req, res, 500, { success: false, error: 'حدث خطأ داخلي في الخادم', code: 'INTERNAL' });
   });
 
   return { app, limiters: { apiLimiter, loginAccountLimiter, loginIpLimiter, aiLimiter } };

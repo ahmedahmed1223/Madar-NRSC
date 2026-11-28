@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type Request } from 'express';
 import { newId } from '../shared/ids';
-import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, type StagedUploadPersistence, UploadError, uploadsDir } from './uploads';
+import { ALLOWED_UPLOAD_TYPES, MEDIA_FILE_URL_PREFIX, sendErrorAfterDrain, type StagedUploadPersistence, UploadError, uploadsDir } from './uploads';
 import type { NewsroomDatabase, UploadRecord } from './db';
 import { logger } from './logger';
 
@@ -194,12 +194,12 @@ export function createResumableUploadRouter(
     res.sendStatus(204);
   });
 
-  const errors: ErrorRequestHandler = (error, _req, res, _next) => {
-    if (error instanceof UploadError) { res.status(error.status).json({ error: error.message }); return; }
-    if (error?.status === 413) { res.status(413).json({ error: 'حجم جزء الرفع أكبر من الحد المسموح' }); return; }
-    if (error?.status === 415) { res.status(415).json({ error: 'نوع تحميل جزء الرفع غير مدعوم' }); return; }
+  const errors: ErrorRequestHandler = (error, req, res, _next) => {
+    if (error instanceof UploadError) { sendErrorAfterDrain(req, res, error.status, { error: error.message }); return; }
+    if (error?.status === 413) { sendErrorAfterDrain(req, res, 413, { error: 'حجم جزء الرفع أكبر من الحد المسموح' }); return; }
+    if (error?.status === 415) { sendErrorAfterDrain(req, res, 415, { error: 'نوع تحميل جزء الرفع غير مدعوم' }); return; }
     logger.warn('resumable upload failed', { error: String(error) });
-    res.status(500).json({ error: 'تعذر حفظ جزء الرفع' });
+    sendErrorAfterDrain(req, res, 500, { error: 'تعذر حفظ جزء الرفع' });
   };
   router.use(errors);
   return router;

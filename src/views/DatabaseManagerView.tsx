@@ -595,7 +595,10 @@ export const DatabaseManagerView: React.FC = () => {
           {rehearsal && <section className="border-y border-slate-200 py-4 space-y-2 text-sm" aria-label="نتيجة تجربة الاستعادة">
             <h3 className="font-bold">نتيجة تجربة الاستعادة</h3>
             <p className="text-emerald-800">لم تتغير قاعدة البيانات الحالية</p>
-            <p>نسخة سليمة ومتوافقة مع الإصدار {rehearsal.version}. لم يتم التحقق من ملفات الوسائط أو الخدمات الخارجية.</p>
+            <p>قاعدة البيانات سليمة ومتوافقة مع الإصدار {rehearsal.version}.</p>
+            <p>{rehearsal.mediaVerified
+              ? 'تمت مطابقة بصمات جميع ملفات الوسائط المشمولة في هذه النسخة.'
+              : 'نتيجة قاعدة البيانات متاحة. لم تشمل التجربة التحقق من جميع ملفات الوسائط.'}</p>
             <p dir="ltr" className="text-xs font-mono break-all">SHA-256: {rehearsal.sha256}</p>
             <dl className="flex flex-wrap gap-4">{Object.entries(rehearsal.counts).map(([name, count]) => <div key={name} className="flex gap-2"><dt dir="ltr">{name}</dt><dd>{count}</dd></div>)}</dl>
           </section>}

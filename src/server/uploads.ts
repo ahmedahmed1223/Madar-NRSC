@@ -26,6 +26,8 @@ export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
 
 export const MEDIA_FILE_URL_PREFIX = '/api/v1/media/files/';
 
+export { drainRequestBody, sendErrorAfterDrain } from './requestBody';
+
 export class UploadError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -41,41 +43,22 @@ export function uploadsDir(dataDir: string) {
   return path.join(dataDir, 'uploads');
 }
 
-function rejectUpload(req: Request, error: UploadError): Promise<never> {
-  if (req.complete || req.destroyed) return Promise.reject(error);
-  return new Promise((_, reject) => {
-    // Finish draining before the response closes; otherwise an in-flight body can reset the socket.
-    const finish = () => {
-      clearTimeout(timeout);
-      req.off('end', finish);
-      req.off('aborted', finish);
-      req.off('error', finish);
-      reject(error);
-    };
-    const timeout = setTimeout(finish, 5000);
-    timeout.unref();
-    req.once('end', finish);
-    req.once('aborted', finish);
-    req.once('error', finish);
-    req.resume();
-  });
-}
-
 /**
  * Streams the raw request body to disk (never buffered in memory), enforcing
  * the size limit while bytes arrive. The file becomes visible only once complete.
+ * The caller handles draining when sending an error response.
  */
 export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: string, maxBytes: number, userId: string, options: { allowed?: Record<string, string>; scope?: 'chat'; persistence?: StagedUploadPersistence } = {}): Promise<UploadRecord> {
   const allowed = options.allowed ?? ALLOWED_UPLOAD_TYPES;
   const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = Object.prototype.hasOwnProperty.call(allowed, mimeType) ? allowed[mimeType] : undefined;
   if (!ext) {
-    return rejectUpload(req, new UploadError(415, 'نوع الملف غير مدعوم'));
+    return Promise.reject(new UploadError(415, 'نوع الملف غير مدعوم'));
   }
 
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    return rejectUpload(req, new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
+    return Promise.reject(new UploadError(413, 'حجم الملف أكبر من الحد المسموح'));
   }
 
   let originalName = 'file';
@@ -104,8 +87,7 @@ export function receiveUpload(req: Request, db: NewsroomDatabase, dataDir: strin
       req.unpipe(out);
       out.once('close', () => fs.rm(tempPath, { force: true }, () => undefined));
       out.destroy();
-      // Drain the rest of the body so the client receives the error response.
-      void rejectUpload(req, err).catch(reject);
+      reject(err);
     };
 
     req.on('data', (chunk: Buffer) => {

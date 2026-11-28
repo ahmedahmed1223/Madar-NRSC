@@ -10,6 +10,7 @@ import { cardWorkflowAccess } from '../shared/workflowAccess';
 import { cardProductionAssignment, type ProductionCard } from '../shared/productionCards';
 import { assignedWorkOnly } from '../shared/assignedWork';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
+import { sendErrorAfterDrain } from './uploads';
 
 export const SESSION_COOKIE = 'nrcs_sid';
 export const CSRF_HEADER = 'x-nrcs-client';
@@ -201,15 +202,22 @@ export function sessionMiddleware(db: NewsroomDatabase, config: AppConfig) {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.auth) return res.status(401).json({ success: false, error: 'يجب تسجيل الدخول أولاً', code: 'UNAUTHENTICATED' });
+  if (!req.auth) {
+    sendErrorAfterDrain(req, res, 401, { success: false, error: 'يجب تسجيل الدخول أولاً', code: 'UNAUTHENTICATED' });
+    return;
+  }
   next();
 }
 
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) return res.status(401).json({ success: false, error: 'يجب تسجيل الدخول أولاً', code: 'UNAUTHENTICATED' });
+    if (!req.auth) {
+      sendErrorAfterDrain(req, res, 401, { success: false, error: 'يجب تسجيل الدخول أولاً', code: 'UNAUTHENTICATED' });
+      return;
+    }
     if (!req.auth.can(permission)) {
-      return res.status(403).json({ success: false, error: 'لا تملك صلاحية تنفيذ هذا الإجراء', code: 'FORBIDDEN' });
+      sendErrorAfterDrain(req, res, 403, { success: false, error: 'لا تملك صلاحية تنفيذ هذا الإجراء', code: 'FORBIDDEN' });
+      return;
     }
     next();
   };
@@ -223,7 +231,8 @@ export function requirePermission(permission: string) {
 export function csrfGuard(req: Request, res: Response, next: NextFunction) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   if (req.get(CSRF_HEADER) !== 'web') {
-    return res.status(403).json({ success: false, error: 'طلب غير موثوق (CSRF)', code: 'CSRF' });
+    sendErrorAfterDrain(req, res, 403, { success: false, error: 'طلب غير موثوق (CSRF)', code: 'CSRF' });
+    return;
   }
   next();
 }

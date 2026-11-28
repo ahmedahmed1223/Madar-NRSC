@@ -213,7 +213,7 @@ const OpenMediaPicker: React.FC<Omit<MediaPickerProps, 'isOpen'>> = ({ onClose, 
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="min-h-11 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                className="min-h-11 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
               >
                 {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 {uploading ? 'إضافة ملفات أخرى' : 'رفع ملفات جديدة'}

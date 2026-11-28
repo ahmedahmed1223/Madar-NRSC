@@ -1089,7 +1089,7 @@ export const MediaLibraryView: React.FC<MediaLibraryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setPreviewAsset(null)}
-                className="px-4 py-1.5 text-xs font-bold bg-slate-800 text-white hover:bg-slate-900 rounded-xl"
+                className="min-h-11 sm:min-h-10 px-4 py-1.5 text-xs font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl"
               >
                 إغلاق
               </button>

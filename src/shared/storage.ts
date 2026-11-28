@@ -11,6 +11,8 @@
  * Secrets (Dropbox keys, the bridge token) never live here: these settings sync to every browser.
  */
 
+import type { DropboxAccountMode } from './dropboxAuthorization';
+
 export type CloudProviderId = 'dropbox' | 'gdrive';
 export type CopyTarget = CloudProviderId | 'share';
 export type PrimaryStorageTarget = 'local' | CloudProviderId | 'nas';
@@ -49,6 +51,7 @@ export interface ShareStorageSettings {
 export interface StorageSettings {
   primaryMedia?: PrimaryStorageTarget;
   primaryBackups?: PrimaryStorageTarget;
+  scheduledBackups?: boolean;
   /** Keep the server's copy once the cloud holds the file (off frees the server's disk). */
   keepLocalCopy?: boolean;
   dropbox?: DropboxStorageSettings;
@@ -59,6 +62,7 @@ export interface StorageSettings {
 export interface ResolvedStorageSettings {
   primaryMedia: PrimaryStorageTarget;
   primaryBackups: PrimaryStorageTarget;
+  scheduledBackups: boolean;
   keepLocalCopy: boolean;
   dropbox: DropboxStorageSettings;
   gdrive: DriveStorageSettings;
@@ -70,6 +74,7 @@ export const DEFAULT_LOCAL_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0
 export const DEFAULT_STORAGE: ResolvedStorageSettings = {
   primaryMedia: 'local',
   primaryBackups: 'local',
+  scheduledBackups: true,
   keepLocalCopy: true,
   dropbox: { enabled: false, rootPath: '/مدار' },
   gdrive: { enabled: false, rootName: 'مدار', rootFolderId: '' },
@@ -81,6 +86,7 @@ export function storageOf(settings: { storage?: StorageSettings } | null | undef
   return {
     primaryMedia: s.primaryMedia ?? DEFAULT_STORAGE.primaryMedia,
     primaryBackups: s.primaryBackups ?? DEFAULT_STORAGE.primaryBackups,
+    scheduledBackups: s.scheduledBackups ?? DEFAULT_STORAGE.scheduledBackups,
     keepLocalCopy: s.keepLocalCopy ?? DEFAULT_STORAGE.keepLocalCopy,
     dropbox: { ...DEFAULT_STORAGE.dropbox, ...(s.dropbox || {}) },
     gdrive: { ...DEFAULT_STORAGE.gdrive, ...(s.gdrive || {}) },
@@ -103,7 +109,7 @@ export interface CloudStatus {
 export interface StorageStatus {
   primaryMedia?: PrimaryStorageTarget;
   primaryBackups?: PrimaryStorageTarget;
-  dropbox: CloudStatus;
+  dropbox: CloudStatus & { accountMode?: DropboxAccountMode; folderNeedsSetup?: boolean };
   gdrive: CloudStatus;
   share: {
     enabled: boolean;
@@ -137,10 +143,12 @@ export interface StorageLocations {
 
 export type DropboxCheck = 'connection' | 'permissions';
 
-export type DropboxCheckStatus = 'verified' | 'not_configured' | 'invalid_credentials' | 'missing_scope' | 'folder_missing' | 'folder_denied' | 'unavailable' | 'failed';
+export type DropboxCheckStatus = 'verified' | 'not_configured' | 'invalid_credentials' | 'invalid_team_member' | 'root_changed' | 'missing_scope' | 'folder_missing' | 'folder_denied' | 'unavailable' | 'failed';
 
 export interface DropboxVerification {
   credentials: DropboxCheckStatus;
+  account?: string;
+  teamMemberId?: string;
   root?: string;
   folder?: DropboxCheckStatus;
   read?: DropboxCheckStatus;
@@ -155,6 +163,7 @@ export function validateStorage(value: unknown): string | null {
     if (target !== undefined && (typeof target !== 'string' || !Object.hasOwn(PRIMARY_STORAGE_NAMES, target))) return 'وجهة التخزين الأساسي غير صالحة';
   }
   if (v.keepLocalCopy !== undefined && typeof v.keepLocalCopy !== 'boolean') return 'إعدادات التخزين غير صالحة';
+  if (v.scheduledBackups !== undefined && typeof v.scheduledBackups !== 'boolean') return 'إعداد النسخ الاحتياطي المجدول غير صالح';
   if (v.dropbox) {
     if (typeof v.dropbox.enabled !== 'boolean') return 'إعدادات Dropbox غير صالحة';
     if (typeof v.dropbox.rootPath !== 'string' || v.dropbox.rootPath.length > 200 || /(^|[\\/])\.\.([\\/]|$)/.test(v.dropbox.rootPath)) {

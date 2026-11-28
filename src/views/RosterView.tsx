@@ -226,7 +226,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ users, currentUser, onNa
                   });
                   setMessage({ ok: true, text: n ? `نُسخت ${n} مناوبة إلى الأسبوع التالي` : 'لا شيء جديد للنسخ' });
                 }}
-                className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+                className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-10 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
               >
                 <Copy className="w-3.5 h-3.5" />
                 نسخ للأسبوع التالي

@@ -5,7 +5,6 @@ import {
   COLLECTIONS,
   COLLECTION_NAMES,
   CollectionName,
-  EDIT_LOCK_TTL_MS,
   HISTORY_COLLECTIONS,
   LOCKABLE_COLLECTIONS,
   MERGE_COLLECTIONS,
@@ -30,11 +29,9 @@ import { buildAuthContext, type AuthContext } from './auth';
 import type { CollectionPagePosition, NewsroomDatabase } from './db';
 import { canRead, POLICIES, WriteKind } from './policy';
 import { mediaUploadIsTrashed, removeUnreferencedMediaUpload, uploadIdFromMedia } from './uploads';
-import { DeptRequest, requestStatusName, requestTypeOf } from '../shared/production';
-import { supportTrack } from '../shared/trackSupport';
 import { sanitizeWorkSections } from '../shared/workContext';
 import { preparePersonalTask } from '../shared/personalTasks';
-import { stampTaskWorkflow } from '../shared/taskWorkflow';
+import { normalizeTaskStatus, stampTaskWorkflow } from '../shared/taskWorkflow';
 import { captureBroadcastPlan } from './broadcastArchive';
 import { stampBulletinMediaReview } from './bulletinMediaReview';
 import { reconcileBulletinStory } from './bulletinStoryVersions';
@@ -42,41 +39,59 @@ import { cueBulletinExclusion } from './bulletinLiveExclusions';
 import { notifyBulletinSourceCorrections } from './bulletinSourceCorrectionNotices';
 import { stampGuestBookingTimes } from '../shared/coverageOverlap';
 import { updateWorkReminders } from './workReminders';
-import { assignedWorkOnly } from '../shared/assignedWork';
+import { assignedWorkOnly, taskAssigneeId } from '../shared/assignedWork';
 import { departmentTaskIds } from './departmentWork';
-import { departmentIdOf, departmentsOf, findDepartmentId } from '../shared/departments';
-import { onDutyAt, RosterEntry } from '../shared/roster';
+import { applyDepartmentSettings, departmentIdOf } from '../shared/departments';
+import { supportTrack } from '../shared/trackSupport';
 import { newId } from '../shared/ids';
-import { commentLink, TeamComment } from '../shared/comments';
-import { approvalStepName, approvalStepsOf, canActOnStep, findShow, isApprover, nextApprovalStep, storyContentChanged, type ApprovalStep, type StoryApproval } from '../shared/bulletins';
-import { evaluatePermission, type RoleDefinition } from '../shared/rbac';
+import { findShow } from '../shared/bulletins';
+import type { RoleDefinition } from '../shared/rbac';
 import { statusLabel } from '../shared/labels';
-import { alertForNewsKeywords, localStamp, writeNotification } from './notifications';
-import type { NotificationCategory } from '../shared/notifications';
-import { bookingConflicts, resourceKindName, type Booking } from '../shared/planning';
+import { alertForNewsKeywords, localStamp } from './notifications';
+import { bookingConflicts, type Booking } from '../shared/planning';
 import { mergeCardChanges, stepTypesOf } from '../shared/productionCards';
 import { publishMessageWorkAttachments, readableActionMessage } from './messageActions';
 import { messageActionOrigin } from '../shared/messageActions';
 import { recordOneTimeMediaUse } from './mediaUsage';
 import { newAutoTranscriptionJob } from './autoMediaTranscription';
 import { archiveRemovedStations, managedScopeError, rememberStationSettings, stationGroupsOf, stationsArchiveOf, stationsOf } from '../shared/stations';
-import { applyDepartmentSettings, departmentHead } from '../shared/departments';
 import { roleAuditEntries, settingsAuditEntries, userAuditEntries, type AuditEntryDraft } from '../shared/auditTrail';
 import { mergeCardOutputs } from './cardConsolidation';
 import { stampWorkflowPublication } from '../shared/workflowPublication';
 import { cardWorkflowAccess, cardWorkflowTrack, workflowAccess } from '../shared/workflowAccess';
 import { WORKFLOW_TRACKS } from '../shared/workflowTracks';
-import { cardNotices, stampCard, type CardNoticeContext } from './cards';
-import { parseChannel, type ChatMessage, type Conversation } from '../shared/chat';
+import { cardNotices, stampCard } from './cards';
 import { prepareDigitalPackage } from '../shared/digitalPublishing';
-import { presenterReading } from '../shared/presenterTiming';
-import { moduleForLink, moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
-import { moduleAvailability, moduleAllowed, moduleAllowedForUser, moduleAllowsRecord } from './moduleAccess';
+import { moduleForRecord, MODULE_UNAVAILABLE } from '../shared/moduleAccess';
+import { moduleAvailability, moduleAllowed, moduleAllowsRecord } from './moduleAccess';
 import { linkedMediaAsset, linkedMediaIds } from './linkedMedia';
 import { matchesQuery } from '../shared/search';
 import { episodeGuestList, guestKey } from '../shared/episodePlan';
-import { isTrashCollection, type TrashCollection } from '../shared/trash';
+import { isTaskTrashCollection, isTrashCollection, type TrashCollection } from '../shared/trash';
 import { canRestoreTrashRecord, trashScope } from './trash';
+import {
+  SyncReject,
+  isPlainObject,
+  stampRequest,
+  stampOnAir,
+  stampBulletinStory,
+  stampCue,
+  stamp,
+  stampMessage,
+  propagateReferenceRename,
+} from './syncStampers';
+import {
+  notifyUser,
+  cardPeopleContext,
+  settleCardNotifications,
+  notifyBulletinStory,
+  notifyMessage,
+  notifyComment,
+  notifyRequest,
+  notifyNewsWorkflow,
+  notifyDiary,
+  notifyBooking,
+} from './syncNotifications';
 
 export const MAX_OPS_PER_REQUEST = 500;
 export const MAX_ENTITY_BYTES = 512 * 1024;
@@ -104,242 +119,33 @@ export const MAX_CHANGES_PER_POLL = 5000;
 export const changeBus = new EventEmitter();
 changeBus.setMaxListeners(0);
 
-/** Thrown inside a write transaction to reject one op (the transaction rolls back). */
-class SyncReject extends Error {
-  constructor(public code: 'FORBIDDEN' | 'INVALID', message: string) {
-    super(message);
-  }
-}
+export const SSE_REV_COALESCE_MS = 80;
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
+/** Micro-batches rapid `changeBus` revision bursts into one flush with the latest revision. */
+export function createRevCoalescer(flush: (rev: number) => void, delayMs = SSE_REV_COALESCE_MS) {
+  let pendingRev: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** Requester, department, history and assignee of a request are decided by the server. */
-function stampRequest(before: any, after: any, auth: AuthContext) {
-  const now = new Date().toISOString();
-  const by = { byId: auth.user.id, byName: auth.user.fullName, at: now };
-  if (!before) {
-    const { assigneeId: _a, assigneeName: _n, resultMediaId: _r, proposedById: _proposer, proposedDueAt: _proposal, ...rest } = after;
-    return {
-      ...rest,
-      status: 'OPEN',
-      priority: after.priority === 'URGENT' ? 'URGENT' : 'NORMAL',
-      departmentId: requestTypeOf(after.type)?.departmentId ?? after.departmentId,
-      requesterId: auth.user.id,
-      requesterName: auth.user.fullName,
-      requesterDepartmentId: departmentIdOf(auth.user),
-      createdAt: now,
-      updatedAt: now,
-      history: [{ status: 'OPEN', ...by }],
-    };
-  }
-  const next: any = {
-    ...after,
-    requesterId: before.requesterId,
-    requesterName: before.requesterName,
-    requesterDepartmentId: before.requesterDepartmentId,
-    departmentId: before.departmentId,
-    createdAt: before.createdAt,
-    updatedAt: now,
-    history: before.history || [],
-    assigneeId: before.assigneeId,
-    assigneeName: before.assigneeName,
-    addressedToId: before.addressedToId,
-    addressedToName: before.addressedToName,
-    proposedById: before.proposedById,
+  const push = (rev: number) => {
+    pendingRev = rev;
+    if (timer !== null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const latest = pendingRev;
+      pendingRev = null;
+      if (latest !== null) flush(latest);
+    }, delayMs);
   };
-  if (after.proposedDueAt !== before.proposedDueAt) {
-    next.proposedById = after.proposedDueAt ? auth.user.id : undefined;
-    const note = after.proposedDueAt ? `اقتُرح موعد بديل: ${localStamp(after.proposedDueAt)}` : after.dueAt !== before.dueAt ? 'اعتُمد الموعد البديل' : 'رُفض الموعد البديل';
-    next.history = [...next.history, { status: after.status, ...by, note }];
-  }
-  if (['DONE', 'REJECTED', 'CANCELLED'].includes(after.status) || (after.dueAt !== before.dueAt && after.proposedDueAt)) {
-    next.proposedDueAt = undefined;
-    next.proposedById = undefined;
-  }
-  if (after.status !== before.status) {
-    next.history = [...next.history, { status: after.status, ...by, note: after.status === 'REJECTED' ? after.resolution : undefined }];
-    if (after.status === 'ACCEPTED' && before.status === 'OPEN') {
-      next.assigneeId = auth.user.id;
-      next.assigneeName = auth.user.fullName;
+
+  const cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
     }
-    if (after.status === 'OPEN') {
-      next.assigneeId = undefined;
-      next.assigneeName = undefined;
-    }
-    if ((after.status === 'DONE' || after.status === 'REJECTED') && !next.assigneeId) {
-      next.assigneeId = auth.user.id;
-      next.assigneeName = auth.user.fullName;
-    }
-  }
-  return next;
-}
-
-/** Live timings use server time so every screen counts down from the same moment. */
-function stampOnAir(before: any, after: any, auth: AuthContext, episode: any) {
-  const now = new Date().toISOString();
-  const startEntry = (segmentId: string) => {
-    const segment = (episode?.rundown || []).find((s: any) => s.id === segmentId);
-    return { segmentId, title: segment?.title || '', startedAt: now, reading: presenterReading(segment, episode?.presenterName) };
+    pendingRev = null;
   };
-  const base = {
-    id: after.id,
-    episodeId: after.episodeId,
-    episodeTitle: episode?.title || '',
-    programName: episode?.programName || '',
-    status: after.status,
-    currentSegmentId: after.currentSegmentId,
-    operatorId: auth.user.id,
-    operatorName: auth.user.fullName,
-    ...(before?.correctionRequests?.length ? { correctionRequests: before.correctionRequests } : {}),
-  };
-  const starting = !before || (before.status === 'ENDED' && after.status === 'LIVE');
-  if (starting) {
-    return { ...base, startedAt: now, segmentStartedAt: now, log: [startEntry(after.currentSegmentId)] };
-  }
-  const log = [...(before.log || [])];
-  const closeLast = () => {
-    if (log.length && !log[log.length - 1].endedAt) log[log.length - 1] = { ...log[log.length - 1], endedAt: now };
-  };
-  let segmentStartedAt = before.segmentStartedAt;
-  if (before.status === 'LIVE' && after.status === 'LIVE' && after.currentSegmentId !== before.currentSegmentId) {
-    closeLast();
-    log.push(startEntry(after.currentSegmentId));
-    segmentStartedAt = now;
-  }
-  let endedAt = before.endedAt;
-  if (before.status === 'LIVE' && after.status === 'ENDED') {
-    closeLast();
-    endedAt = now;
-  }
-  return { ...base, startedAt: before.startedAt, segmentStartedAt, endedAt, log };
-}
 
-/**
- * Server-owned story fields: the writer, and the approval. Editing the copy of an approved
- * story sends it back for approval unless the approver made the edit.
- */
-function stampBulletinStory(before: any, after: any, auth: AuthContext, bulletin: any) {
-  const now = new Date().toISOString();
-  const actor = { id: auth.user.id, canApprove: auth.can('bulletins.approve'), canEdit: auth.can('bulletins.edit'), role: auth.user.role };
-  const steps = approvalStepsOf(bulletin);
-  // Sign-offs are the server's record: the client never sets them directly.
-  let approvals: StoryApproval[] = [...(before?.approvals || [])].filter((a: StoryApproval) => steps.some((s) => s.id === a.stepId));
-  let status: string = before ? after.status : after.status === 'APPROVED' ? 'DRAFT' : after.status || 'DRAFT';
-
-  // Changing the copy (by anyone but whoever gives the next sign-off) restarts the chain.
-  if (before && ((before.newsUpdatedAt !== after.newsUpdatedAt) || (storyContentChanged(before, after) && !isApprover(bulletin, actor, before)))) {
-    approvals = [];
-    if (status === 'APPROVED') status = 'READY';
-  }
-  if (status === 'DRAFT') approvals = [];
-
-  if (status === 'APPROVED' && (before?.status !== 'APPROVED' || nextApprovalStep(bulletin, { approvals }))) {
-    const next = nextApprovalStep(bulletin, { approvals });
-    if (next && canActOnStep(next, bulletin, actor)) {
-      approvals = [...approvals, { stepId: next.id, byId: auth.user.id, byName: auth.user.fullName, at: now }];
-      // More sign-offs to come: the story waits (ready) for the next approver.
-      if (nextApprovalStep(bulletin, { approvals })) status = 'READY';
-    }
-    // Otherwise it stays «APPROVED» here so the policy refuses it, naming the pending step.
-  }
-
-  const next: any = {
-    ...after,
-    status,
-    approvals,
-    writerId: before?.writerId ?? auth.user.id,
-    writerName: before?.writerName ?? auth.user.fullName,
-    createdAt: before?.createdAt ?? now,
-    updatedAt: now,
-    approvedById: before?.approvedById,
-    approvedByName: before?.approvedByName,
-    approvedAt: before?.approvedAt,
-  };
-  if (status === 'APPROVED' && before?.status !== 'APPROVED') {
-    next.approvedById = auth.user.id;
-    next.approvedByName = auth.user.fullName;
-    next.approvedAt = now;
-  }
-  if (status !== 'APPROVED') {
-    next.approvedById = undefined;
-    next.approvedByName = undefined;
-    next.approvedAt = undefined;
-  }
-  if (status !== 'DRAFT') next.returnNote = undefined;
-  next.remoteGuest = after.remoteGuest ? {
-    guestId: after.remoteGuest.guestId,
-    confirmed: after.remoteGuest.confirmed,
-    confirmedAt: after.remoteGuest.confirmed
-      ? (before?.remoteGuest?.confirmed && before.remoteGuest.guestId === after.remoteGuest.guestId ? before.remoteGuest.confirmedAt || now : now)
-      : undefined,
-    check: after.remoteGuest.confirmed && before?.remoteGuest?.confirmed && before.remoteGuest.guestId === after.remoteGuest.guestId ? before.remoteGuest.check : undefined,
-  } : undefined;
-  return next;
-}
-
-function stampCue(before: any, after: any, auth: AuthContext) {
-  const now = new Date().toISOString();
-  if (!before) {
-    return {
-      ...after,
-      message: String(after.message || '').trim(),
-      level: ['info', 'standby', 'urgent'].includes(after.level) ? after.level : 'info',
-      fromId: auth.user.id,
-      fromName: auth.user.fullName,
-      createdAt: now,
-      acks: [],
-    };
-  }
-  const acks = [...(before.acks || [])];
-  if (!acks.some((a: any) => a.userId === auth.user.id)) acks.push({ userId: auth.user.id, userName: auth.user.fullName, at: now });
-  return { ...before, acks };
-}
-
-/** Server-authoritative fields: clients cannot forge who did what, from where, or when. */
-function stamp(collection: CollectionName, data: any, auth: AuthContext, ip: string | undefined) {
-  const now = new Date().toISOString();
-  if (collection === 'auditLogs') {
-    return {
-      ...data,
-      userId: auth.user.id,
-      userName: auth.user.fullName,
-      userRole: auth.user.role,
-      ipAddress: ip ?? 'unknown',
-      timestamp: now,
-    };
-  }
-  if (collection === 'messages') {
-    return { ...data, userId: auth.user.id, userName: auth.user.fullName, userRole: auth.user.role, userAvatar: auth.user.avatarUrl, timestamp: now };
-  }
-  if (collection === 'editLocks') {
-    return {
-      id: data.id,
-      collection: data.collection,
-      entityId: data.entityId,
-      userId: auth.user.id,
-      userName: auth.user.fullName,
-      acquiredAt: now,
-      expiresAt: new Date(Date.now() + EDIT_LOCK_TTL_MS).toISOString(),
-    };
-  }
-  if (collection === 'broadcastState') {
-    return data.liveLock
-      ? { ...data, lockedById: auth.user.id, lockedByName: auth.user.fullName, lockedAt: now }
-      : { liveLock: false };
-  }
-  if (collection === 'activityLogs') {
-    return {
-      ...data,
-      userId: auth.user.id,
-      userName: auth.user.fullName,
-      userRole: auth.user.role,
-      userAvatar: auth.user.avatarUrl,
-      timestamp: now,
-    };
-  }
-  return data;
+  return { push, cancel };
 }
 
 // These rows all carry working content or parent-specific broadcast state.
@@ -374,7 +180,8 @@ export class SyncService {
     return createHash('sha256').update(access).digest('base64url');
   }
 
-  private visible(auth: AuthContext, row: EntityRow): boolean {
+  private visible(auth: AuthContext, row: EntityRow, includeTaskTrash = false): boolean {
+    if (!includeTaskTrash && isTaskTrashCollection(row.c) && row.d?.deletedAt) return false;
     if (row.c === 'media' && !moduleAllowed(auth, 'media')) {
       return row.deleted ? auth.can('media.view') && linkedMediaIds(this.db, auth).has(row.id) : !!linkedMediaAsset(this.db, auth, row.id);
     }
@@ -391,6 +198,9 @@ export class SyncService {
   }
 
   private readableRow(auth: AuthContext, row: EntityRow): EntityRow {
+    if (isTaskTrashCollection(row.c) && row.d?.deletedAt) {
+      return { c: row.c, id: row.id, v: row.v, p: row.p, deleted: true };
+    }
     if (row.c === 'settings' && row.d?.moduleAccess && !auth.can('system.settings')) {
       const { moduleAccess: _moduleAccess, ...settings } = row.d;
       return { ...row, d: settings };
@@ -467,39 +277,6 @@ export class SyncService {
     return { rows, cursor: nextCursor, hasMore: decodedNext !== undefined && this.nextVisibleExists(auth, collection, decodedNext) };
   }
 
-  private notify(userId: string, title: string, message: string, linkUrl: string, category: NotificationCategory = 'assignment', urgent = false, senderId?: string) {
-    const module = moduleForLink(linkUrl);
-    if (module && !moduleAllowedForUser(this.db, module, userId)) return;
-    writeNotification(this.db, { userId, title, message, linkUrl, category, urgent, type: 'TASK', senderId });
-  }
-
-  /** Colleagues as card notices need them: station, role, department and what they may do on cards. */
-  private cardPeople(settings: any): CardNoticeContext {
-    const roles = this.listData('roles') as RoleDefinition[];
-    const departments = departmentsOf(settings);
-    const people = this.listData('users')
-      .filter((u: any) => u && u.isActive !== false && !u.deletedAt)
-      .map((u: any) => ({
-        id: u.id,
-        stationId: u.stationId,
-        managedStationIds: u.managedStationIds,
-        managedGroupIds: u.managedGroupIds,
-        role: u.role,
-        departmentId: findDepartmentId(u, departments),
-        canManage: evaluatePermission(u, 'cards.manage', roles, departments),
-        canWork: evaluatePermission(u, 'cards.work', roles, departments),
-      }));
-    return { people, stations: stationsOf(settings) };
-  }
-
-  /** A deleted card leaves no unread notices behind: they point at nothing. */
-  private settleCardNotifications(cardId: string) {
-    const link = `/cards/${cardId}`;
-    for (const row of this.db.listCollection('notifications')) {
-      if (row.d && row.d.linkUrl === link && !row.d.isRead) this.db.writeRow('notifications', row.id, { ...row.d, isRead: true }, row.p, null);
-    }
-  }
-
   /** Server-side audit trail for the main records: who created, changed status, deleted or restored what. */
   private auditLifecycle(collection: CollectionName, before: any, after: any, auth: AuthContext, ip?: string) {
     const NAMES: Partial<Record<CollectionName, string>> = {
@@ -557,227 +334,6 @@ export class SyncService {
     else if (collection === 'broadcastState' && !!before?.liveLock !== !!after?.liveLock) {
       this.writeAudit([{ actionType: after?.liveLock ? 'BROADCAST_LOCK' : 'BROADCAST_UNLOCK', targetEntity: 'BROADCAST', targetId: 'live-lock', severity: 'WARNING', details: after?.liveLock ? 'تفعيل قفل البث المباشر' : 'رفع قفل البث المباشر' }], auth, ip);
     }
-  }
-
-  /** Who can give this sign-off (for notifications). */
-  private approversFor(step: ApprovalStep, bulletin: any): string[] {
-    if (step.kind === 'USER') return step.userId ? [step.userId] : [];
-    if (step.kind === 'BULLETIN_EDITOR' && bulletin.editorId) return [bulletin.editorId];
-    const roles = this.listData('roles') as RoleDefinition[];
-    return this.listData('users')
-      .filter((u: any) => u.isActive !== false && !u.deletedAt)
-      .filter((u: any) => (step.kind === 'ROLE' ? u.role === step.roleCode : evaluatePermission(u, 'bulletins.approve', roles, departmentsOf(this.db.getRow('settings', SINGLETON_ID)?.d))))
-      .map((u: any) => u.id)
-      .slice(0, 20);
-  }
-
-  /** Whoever gives the next sign-off hears when a story waits for them; the writer hears when it comes back. */
-  private notifyBulletinStory(before: any, after: any, auth: AuthContext) {
-    const bulletin = this.db.getRow('bulletins', String(after.bulletinId))?.d;
-    if (!bulletin) return;
-    const link = `/bulletins/${bulletin.id}`;
-    const approvalsGrew = (after.approvals?.length || 0) > (before?.approvals?.length || 0);
-    if (after.status === 'READY' && (before?.status !== 'READY' || approvalsGrew)) {
-      const next = nextApprovalStep(bulletin, after);
-      if (next) {
-        const progress = approvalsGrew ? ` (اعتمدها ${auth.user.fullName}، بانتظارك الآن)` : '';
-        for (const userId of this.approversFor(next, bulletin)) {
-          if (userId === auth.user.id) continue;
-          this.notify(userId, `قصة بانتظار اعتمادك: ${after.slug}`, `${bulletin.title} — ${approvalStepName(next, bulletin)}${progress}`, link, 'bulletin');
-        }
-      }
-    }
-    if (before?.status === after.status) return;
-    if (after.status === 'DRAFT' && before?.status && after.writerId && after.writerId !== auth.user.id) {
-      this.notify(after.writerId, `أُعيدت قصة للتعديل: ${after.slug}`, `${bulletin.title}${after.returnNote ? ` — ${after.returnNote}` : ''}`, link, 'bulletin');
-    }
-    if (after.status === 'APPROVED' && after.writerId && after.writerId !== auth.user.id) {
-      this.notify(after.writerId, `اعتُمدت قصتك: ${after.slug}`, bulletin.title, link, 'bulletin');
-    }
-  }
-
-  /**
-   * What the server decides about a message: who may read a private one (the two people of a
-   * direct conversation, or the group's members at this moment) and the facts of each attached
-   * file, which must be an upload of the sender.
-   */
-  private stampMessage(message: any, auth: AuthContext): ChatMessage {
-    const channel = parseChannel(message.channel)!;
-    const to =
-      channel.kind === 'dm'
-        ? channel.userIds
-        : channel.kind === 'group'
-          ? (this.db.getRow('conversations', channel.id)?.d as Conversation | undefined)?.memberIds
-          : undefined;
-    const attachments = ((message.attachments as { id: string }[] | undefined) || []).map(({ id }) => {
-      const upload = this.db.getUpload(id);
-      if (!upload || upload.uploadedBy !== auth.user.id) throw new SyncReject('INVALID', 'المرفق غير موجود أو ليس من رفعك');
-      return { id, name: upload.originalName, mimeType: upload.mimeType, size: upload.sizeBytes };
-    });
-    const { attachments: _a, to: _t, ref, ...rest } = message;
-    return {
-      ...rest,
-      text: String(message.text).trim(),
-      isUrgent: message.isUrgent === true || undefined,
-      ...(attachments.length ? { attachments } : {}),
-      ...(ref ? { ref: { kind: ref.kind, id: ref.id, title: String(ref.title).trim() } } : {}),
-      ...(to ? { to: [...to] } : {}),
-    };
-  }
-
-  /** People of a private conversation hear about a new message: once per conversation until they read it, and always when it is urgent. */
-  private notifyMessage(message: ChatMessage) {
-    if (!message.to) return;
-    const channel = parseChannel(message.channel)!;
-    const linkUrl = `/messages/${encodeURIComponent(message.channel)}`;
-    const waiting = new Set(this.listData('notifications').filter((n: any) => n.linkUrl === linkUrl && !n.isRead).map((n: any) => n.userId));
-    const group = channel.kind === 'group' ? (this.db.getRow('conversations', channel.id)?.d as Conversation | undefined)?.name : undefined;
-    const body = message.text || (message.attachments?.length ? `أرسل ${message.attachments.length === 1 ? 'ملفاً' : 'ملفات'}: ${message.attachments.map((a) => a.name).join('، ')}` : '');
-    for (const userId of message.to) {
-      if (userId === message.userId || (waiting.has(userId) && !message.isUrgent)) continue;
-      this.notify(userId, group ? `${group}: ${message.userName}` : `رسالة من ${message.userName}`, body.slice(0, 200), linkUrl, 'message', message.isUrgent === true, message.userId);
-    }
-  }
-
-  /** Mentioned colleagues, and the story's author, hear about a new comment. */
-  private notifyComment(c: TeamComment, auth: AuthContext) {
-    const recipients = new Map<string, string>();
-    c.mentions.forEach((id) => recipients.set(id, `${c.authorName} أشار إليك`));
-    if (c.target.kind === 'news') {
-      const authorId = this.db.getRow('news', c.target.id)?.d?.authorId;
-      if (authorId && !recipients.has(authorId)) recipients.set(authorId, `تعليق جديد من ${c.authorName} على خبرك`);
-    }
-    recipients.delete(auth.user.id);
-    for (const [userId, title] of recipients) {
-      writeNotification(this.db, { userId, title, message: `«${c.target.title}»: ${c.text.slice(0, 140)}`, linkUrl: commentLink(c.target), category: 'mention', type: 'SYSTEM' });
-    }
-  }
-
-  /** Tells the right people about a request: the target department's on-duty staff, or the requester. */
-  private notifyRequest(before: any, after: DeptRequest, auth: AuthContext) {
-    const type = requestTypeOf(after.type);
-    const recipients = new Set<string>();
-    let title = '';
-    if (!before && after.addressedToId) {
-      recipients.add(after.addressedToId);
-      title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}تكليف ${type?.name || ''} باسمك`;
-    } else if (before && supportTrack(after.type) && before.addressedToId !== after.addressedToId && after.addressedToId) {
-      recipients.add(after.addressedToId);
-      recipients.add(after.requesterId);
-      title = `أُعيد توجيه طلب المساندة إلى ${after.addressedToName}`;
-    } else if (!before) {
-      const onDuty = onDutyAt(this.listData('roster') as RosterEntry[], Date.now(), after.departmentId).map((e) => e.userId);
-      const members = this.listData('users')
-        .filter((u: any) => u.isActive !== false && departmentIdOf(u) === after.departmentId)
-        .map((u: any) => u.id);
-      (onDuty.length ? onDuty : members).forEach((id) => recipients.add(id));
-      // The head of the department (or of the department above it) always hears about new requests.
-      const head = departmentHead(after.departmentId);
-      if (head && this.db.getRow('users', head)?.d?.isActive !== false) recipients.add(head);
-      title = `${after.priority === 'URGENT' ? 'عاجل — ' : ''}طلب ${type?.name || ''} جديد`;
-    } else if (before.status !== after.status) {
-      recipients.add(after.requesterId);
-      if (after.status === 'CANCELLED' && after.assigneeId) recipients.add(after.assigneeId);
-      title = `طلب ${type?.name || ''}: ${requestStatusName(after.status)}`;
-    } else if ((before.proposedDueAt || null) !== (after.proposedDueAt || null)) {
-      if (after.proposedDueAt) {
-        recipients.add(after.requesterId);
-        title = 'اقتراح موعد بديل لتسليم الطلب';
-      } else if (before.proposedById) {
-        recipients.add(before.proposedById);
-        title = after.dueAt === before.proposedDueAt ? 'اعتُمد الموعد البديل للطلب' : 'أُغلق اقتراح الموعد البديل';
-      }
-    } else {
-      return;
-    }
-    recipients.delete(auth.user.id);
-    for (const userId of recipients) {
-      writeNotification(this.db, {
-        userId,
-        title,
-        message: `${after.title} — ${after.requesterName}${after.link?.title ? ` (${after.link.title})` : ''}`,
-        linkUrl: `/requests/${encodeURIComponent(after.id)}`,
-        senderId: auth.user.id,
-        category: after.addressedToId && !before ? 'assignment' : 'request',
-        urgent: after.priority === 'URGENT',
-        type: 'TASK',
-      });
-    }
-  }
-
-  /** The writer hears when an editor sends a story back, approves, publishes or rejects it. */
-  private notifyNewsWorkflow(before: any, after: any, auth: AuthContext) {
-    // A quality pass reaches the approvers: the story is ready for their decision.
-    const passes = (logs: any[] | undefined) => (logs || []).filter((l: any) => l?.action === 'QUALITY_PASSED').length;
-    if (before && passes(after.workflowLogs) > passes(before.workflowLogs) && after.status === 'UNDER_REVIEW') {
-      const roles = auth.roles;
-      for (const row of this.db.listCollection('users')) {
-        const u = row.d;
-        if (!u || u.id === auth.user.id || u.isActive === false || u.deletedAt || !evaluatePermission(u, 'news.approve', roles, departmentsOf(this.db.getRow('settings', SINGLETON_ID)?.d))) continue;
-        writeNotification(this.db, {
-          userId: u.id,
-          title: `اجتاز التدقيق وينتظر الاعتماد — ${auth.user.fullName}`,
-          message: `«${after.title}»`,
-          linkUrl: `/news/${after.id}`,
-          category: 'news',
-        });
-      }
-    }
-    if (!before || before.status === after.status || !after.authorId || after.authorId === auth.user.id) return;
-    const note = [...(after.workflowLogs || [])].reverse().find((l: any) => l.toStatus === after.status)?.comment;
-    const titles: Record<string, string> = {
-      NEEDS_REVISION: 'أُعيد خبرك للتعديل',
-      APPROVED: 'اعتُمد خبرك',
-      PUBLISHED: 'نُشر خبرك',
-      SCHEDULED: 'جُدول نشر خبرك',
-      REJECTED: 'رُفض خبرك',
-    };
-    const title = titles[after.status];
-    if (!title) return;
-    writeNotification(this.db, {
-      userId: after.authorId,
-      title: `${title} — ${auth.user.fullName}`,
-      message: `«${after.title}»${note ? `: ${String(note).slice(0, 200)}` : ''}`,
-      linkUrl: `/news/${after.id}`,
-      category: 'news',
-      type: after.status === 'NEEDS_REVISION' || after.status === 'REJECTED' ? 'NEWS_REJECTED' : 'NEWS_APPROVED',
-    });
-  }
-
-  /** Newly assigned colleagues hear about a diary entry; everyone assigned hears when its time moves. */
-  private notifyDiary(before: any, after: any, auth: AuthContext) {
-    const prev = new Set<string>(before?.assigneeIds || []);
-    const moved = before && (before.date !== after.date || before.startTime !== after.startTime);
-    for (const userId of after.assigneeIds || []) {
-      if (userId === auth.user.id) continue;
-      const isNew = !prev.has(userId);
-      if (!isNew && !moved) continue;
-      writeNotification(this.db, {
-        userId,
-        title: isNew ? `تكليف بتغطية: ${after.title}` : `تغيّر موعد: ${after.title}`,
-        message: `${after.date}${after.startTime ? ` ${after.startTime}` : ''}${after.location ? ` — ${after.location}` : ''} (${auth.user.fullName})`,
-        linkUrl: `/diary/${after.id}`,
-        category: 'diary',
-        urgent: after.priority === 'HIGH',
-      });
-    }
-  }
-
-  /** The person using a booked resource hears about it (unless they booked it themselves). */
-  private notifyBooking(before: any, after: Booking, auth: AuthContext) {
-    const who = after.assigneeId;
-    if (!who || who === auth.user.id) return;
-    const changed = !before || before.assigneeId !== who || before.start !== after.start || before.end !== after.end || before.status !== after.status;
-    if (!changed) return;
-    const resource = this.db.getRow('resources', after.resourceId)?.d;
-    const when = `${localStamp(after.start)}–${localStamp(after.end, false)}`;
-    writeNotification(this.db, {
-      userId: who,
-      title: after.status === 'CANCELLED' ? `أُلغي حجز: ${resource?.name || ''}` : `${before ? 'تعديل حجز' : 'حجز باسمك'}: ${resource?.name || resourceKindName(resource?.kind)}`,
-      message: `${after.title} — ${when} (${auth.user.fullName})`,
-      linkUrl: `/bookings/${after.id}`,
-      category: 'booking',
-    });
   }
 
   /** Departments, station groups and the station archive follow the stored settings (shared helpers read them). */
@@ -906,7 +462,7 @@ export class SyncService {
       rev,
       reset: false as const,
       changes: rows.flatMap((r): EntityRow[] => {
-        if (this.visible(auth, r)) return [this.readableRow(auth, r)];
+        if (this.visible(auth, r, true)) return [this.readableRow(auth, r)];
         if (r.c === 'requests' && supportTrack(r.d?.type) && r.d.history?.some((entry: { redirectedFromId?: string }) => entry.redirectedFromId === auth.user.id)) {
           return [{ c: r.c, id: r.id, v: r.v, p: r.p, deleted: true }];
         }
@@ -980,6 +536,7 @@ export class SyncService {
         const current = this.db.getRow(collection, id);
         if (collection === 'shiftHandovers' || collection === 'handoverReceipts') return { ok: false, code: 'FORBIDDEN', message: 'استخدم مسار تسليم الوردية المخصص' } as SyncOpResult;
         const before = current?.d ?? null;
+        const taskTrash = isTaskTrashCollection(collection);
         if (collection === 'media' && before?.deletedAt && !restore && op.op === 'upsert') {
           return { ok: false, code: 'FORBIDDEN', message: 'استعد المادة من سلة المحذوفات قبل تعديلها' } as SyncOpResult;
         }
@@ -995,7 +552,7 @@ export class SyncService {
           }
           op = { ...op, d: { ...before, deletedAt: null } };
         } else if (!current && op.op === 'upsert' && typeof op.baseV === 'number' && op.baseV > 0 && isTrashCollection(collection)) {
-          // A stale edit or recovery from the old News tab must not re-create a purged record.
+          // A stale edit must not re-create a purged record.
           return { ok: false, code: 'NOT_FOUND', message: 'لم يعد السجل موجوداً' } as SyncOpResult;
         }
         const module = moduleForRecord(collection, id, before, key => !!this.lookup('episodes', key)) ??
@@ -1016,7 +573,13 @@ export class SyncService {
             return { ok: false, code: 'CONFLICT', message: 'حُذف هذا السجل؛ أنشئ سجلًا جديدًا' } as SyncOpResult;
           }
         }
-        if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current)) {
+        if (taskTrash && !restore && op.op === 'upsert' && (before?.deletedAt || (isPlainObject(op.d) && op.d.deletedAt))) {
+          if (current && !this.visible(auth, current, true)) {
+            return { ok: false, code: 'FORBIDDEN', message: 'لا يمكن الوصول إلى هذا السجل' } as SyncOpResult;
+          }
+          return { ok: false, code: 'FORBIDDEN', message: 'استخدم سلة المحذوفات لاستعادة المهمة' } as SyncOpResult;
+        }
+        if (current && PRODUCTION_READ_BOUND.has(collection) && !this.visible(auth, current, restore)) {
           return { ok: false, code: 'FORBIDDEN', message: 'هذه المادة الإنتاجية غير متاحة لك' } as SyncOpResult;
         }
         const bulletinBase = collection === 'bulletinStories' && current && op.op === 'upsert' && isPlainObject(op.d) &&
@@ -1048,6 +611,17 @@ export class SyncService {
           if (!current) return { ok: true, row: { c: collection, id, v: 0, p: 0, deleted: true } } as SyncOpResult;
           const denied = POLICIES[collection]({ auth, collection, kind: 'delete', before, after: null, list: this.listData });
           if (denied) return { ok: false, code: 'FORBIDDEN', message: denied, current } as SyncOpResult;
+          if (taskTrash) {
+            if (!before.deletedAt && op.baseV !== undefined && op.baseV !== current.v) {
+              return { ok: false, code: 'CONFLICT', message: 'تغيّر السجل؛ راجع النسخة الحالية قبل حذفه', current } as SyncOpResult;
+            }
+            if (before.deletedAt) return { ok: true, row: this.readableRow(auth, current) } as SyncOpResult;
+            const after = { ...before, deletedAt: new Date().toISOString() };
+            const row = this.db.writeRow(collection, id, after, current.p, auth.user.id);
+            if (collection === 'tasks') updateWorkReminders(this.db, collection, id, null);
+            this.auditLifecycle(collection, before, after, auth, ip);
+            return { ok: true, row: this.readableRow(auth, row) } as SyncOpResult;
+          }
           if (collection === 'users') {
             this.db.deleteCredentials(id);
             this.db.deleteUserSessions(id);
@@ -1167,12 +741,23 @@ export class SyncService {
         if (collection === 'cues') after = stampCue(before, after, auth);
         if (collection === 'notifications') after = { ...after, senderId: before ? before.senderId : auth.user.id };
           if (collection === 'tasks') {
-            const member = this.db.getRow('users', String(after.assigneeId || after.assignedToId))?.d;
-            const finished = after.status === 'DONE' || after.status === 'COMPLETED';
+            const assigneeId = taskAssigneeId(after);
+            const member = assigneeId ? this.db.getRow('users', String(assigneeId))?.d : null;
+            const status = after.status === 'DONE' ? 'COMPLETED' : after.status;
+            const finished = status === 'COMPLETED';
             const now = new Date().toISOString();
+            const { assignedToId: _legacyId, assignedToName: _legacyName, ...canonicalTask } = after;
             // Completion time is the server's, so output can be measured per period.
-            after = stampTaskWorkflow(before, { ...after, creatorId: before?.creatorId || auth.user.id, creatorName: before?.creatorName || auth.user.fullName, createdAt: before?.createdAt || now,
-              assigneeName: member?.fullName || after.assigneeName, completedAt: finished ? before?.completedAt || now : undefined }, auth.user.id, now);
+            after = stampTaskWorkflow(before, {
+              ...canonicalTask,
+              status,
+              assigneeId,
+              assigneeName: member?.fullName || after.assigneeName || after.assignedToName,
+              creatorId: before?.creatorId || auth.user.id,
+              creatorName: before?.creatorName || auth.user.fullName,
+              createdAt: before?.createdAt || now,
+              completedAt: finished ? before?.completedAt || now : undefined,
+            }, auth.user.id, now);
           }
           if (collection === 'reviewThreads') {
             const now = new Date().toISOString();
@@ -1248,7 +833,7 @@ export class SyncService {
           if (prepared.error) return { ok: false, code: 'FORBIDDEN', message: prepared.error, current } as SyncOpResult;
           after = { ...after, digitalPackage: prepared.value };
         }
-        if (collection === 'messages') after = this.stampMessage(after, auth);
+        if (collection === 'messages') after = stampMessage(this.db, after, auth);
         if (collection === 'conversations') {
           const now = new Date().toISOString();
           after = { ...after, name: String(after.name).trim(), ownerId: before?.ownerId || auth.user.id, ownerName: before?.ownerName || auth.user.fullName, createdAt: before?.createdAt || now, updatedAt: now };
@@ -1307,7 +892,7 @@ export class SyncService {
           const resource = this.db.getRow('resources', String(after.resourceId))?.d;
           if (!resource || resource.deletedAt) throw new SyncReject('INVALID', 'المورد غير موجود');
           if (resource.isActive === false && (!before || before.resourceId !== after.resourceId)) throw new SyncReject('INVALID', `${resource.name} خارج الخدمة حالياً`);
-          const clash = bookingConflicts(after, this.listData('bookings') as Booking[])[0];
+          const clash = bookingConflicts(after, this.db.listBookingsForResource(String(after.resourceId)).map((r) => r.d) as Booking[])[0];
           if (clash) {
             throw new SyncReject('INVALID', `${resource.name} محجوز في هذا الوقت: «${clash.title}» (${localStamp(clash.start)}–${localStamp(clash.end, false)}) باسم ${clash.bookedByName || 'زميل'}`);
           }
@@ -1346,28 +931,29 @@ export class SyncService {
         if (collection === 'productionCards' || (collection === 'tasks' && (before?.reminderOptions || after.reminderOptions))) {
           updateWorkReminders(this.db, collection, id, after.deletedAt ? null : row.d);
         }
-        if (collection === 'requests' && !after.deletedAt) this.notifyRequest(before, after, auth);
+        if (collection === 'requests' && !after.deletedAt) notifyRequest(this.db, before, after, auth);
         if (collection === 'productionCards' && !after.deletedAt) {
           const settings = this.db.getRow('settings', SINGLETON_ID)?.d;
-          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(settings), this.cardPeople(settings))) {
-            this.notify(n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent, auth.user.id);
+          for (const n of cardNotices(before, after, auth.user.id, auth.user.fullName, stepTypesOf(settings), cardPeopleContext(this.db, settings))) {
+            notifyUser(this.db, n.userId, n.title, n.message, `/cards/${after.id}`, 'assignment', n.urgent, auth.user.id);
           }
         }
-        if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) this.settleCardNotifications(id);
-          if (collection === 'tasks' && !after.deletedAt) {
-            const assignee = after.assigneeId || after.assignedToId;
-            const assigned = assignee && assignee !== (before?.assigneeId || before?.assignedToId);
-            const deadline = before && after.dueDate !== before.dueDate;
-            const status = before && after.status !== before.status && ['BLOCKED', 'IN_REVIEW', 'DONE', 'COMPLETED'].includes(after.status);
-            const recipients = new Set<string>();
-            if ((assigned || deadline) && assignee) recipients.add(assignee);
-            if (status && after.creatorId) recipients.add(after.creatorId);
-            for (const uid of recipients) if (uid !== auth.user.id) this.notify(uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment', false, auth.user.id);
-          }
-        if (collection === 'comments' && !before && !after.deletedAt) this.notifyComment(after, auth);
-        if (collection === 'messages' && !before) this.notifyMessage(after);
+        if (collection === 'productionCards' && after.deletedAt && !before?.deletedAt) settleCardNotifications(this.db, id);
+        if (collection === 'tasks' && !after.deletedAt) {
+          const assignee = taskAssigneeId(after);
+          const assigned = assignee && assignee !== taskAssigneeId(before);
+          const deadline = before && after.dueDate !== before.dueDate;
+          const nextStatus = normalizeTaskStatus(after.status);
+          const status = before && nextStatus !== normalizeTaskStatus(before.status) && ['BLOCKED', 'IN_REVIEW', 'COMPLETED'].includes(nextStatus);
+          const recipients = new Set<string>();
+          if ((assigned || deadline) && assignee) recipients.add(assignee);
+          if (status && after.creatorId) recipients.add(after.creatorId);
+          for (const uid of recipients) if (uid !== auth.user.id) notifyUser(this.db, uid, assigned ? 'مهمة تحريرية جديدة مسندة إليك' : `تحديث التكليف: ${after.title}`, `${after.title} — ${after.status}`, `/tasks/${after.id}`, 'assignment', false, auth.user.id);
+        }
+        if (collection === 'comments' && !before && !after.deletedAt) notifyComment(this.db, after, auth);
+        if (collection === 'messages' && !before) notifyMessage(this.db, after);
         if (collection === 'bulletinStories' && !after.deletedAt) {
-          this.notifyBulletinStory(before, after, auth);
+          notifyBulletinStory(this.db, before, after, auth);
           cueBulletinExclusion(this.db, before, after, auth.user);
         }
         if (collection === 'bulletinStories' && (!before || ['rank', 'floated', 'killed', 'newsId', 'deletedAt'].some(field => before[field] !== after[field]))) {
@@ -1377,13 +963,13 @@ export class SyncService {
         this.auditLifecycle(collection, before, after, auth, ip);
         this.auditAdministration(collection, before, after, auth, ip);
         if (collection === 'news' && !after.deletedAt) {
-          this.notifyNewsWorkflow(before, after, auth);
+          notifyNewsWorkflow(this.db, before, after, auth);
           alertForNewsKeywords(this.db, before, row.d);
         }
-        if (collection === 'diary' && !after.deletedAt) this.notifyDiary(before, after, auth);
-        if (collection === 'bookings' && !after.deletedAt) this.notifyBooking(before, after, auth);
+        if (collection === 'diary' && !after.deletedAt) notifyDiary(this.db, before, after, auth);
+        if (collection === 'bookings' && !after.deletedAt) notifyBooking(this.db, before, after, auth);
         if (collection === 'bulletins' && !after.deletedAt && after.editorId && after.editorId !== before?.editorId && after.editorId !== auth.user.id) {
-          this.notify(after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, `/bulletins/${after.id}`, 'bulletin');
+          notifyUser(this.db, after.editorId, `أنت محرر النشرة: ${after.title}`, `${after.date} ${after.startTime} — تعتمد قصصها قبل الهواء`, `/bulletins/${after.id}`, 'bulletin');
         }
         if (collection === 'onAir') {
           if (after.status === 'LIVE') recordOneTimeMediaUse(this.db, { showId: after.episodeId, startedAt: after.startedAt, segmentId: after.currentSegmentId, recordedAt: after.segmentStartedAt }, auth.user.id);
@@ -1403,34 +989,7 @@ export class SyncService {
           }
         }
 
-        // Category renames are propagated by the server (system write): the renamer may lack
-        // rights on every story, and stories may be locked by their editors.
-        if (collection === 'categories' && before && before.nameAr !== after.nameAr) {
-          for (const target of ['news', 'stories'] as const) {
-            for (const ref of this.db.listCollection(target)) {
-              if (ref.d?.categoryId === id && ref.d.categoryName !== after.nameAr) {
-                this.db.writeRow(target, ref.id, { ...ref.d, categoryName: after.nameAr }, ref.p, null);
-              }
-            }
-          }
-        }
-        // Source renames follow the same rule: news and agency wires carry the name for display.
-        if (collection === 'sources' && before && before.name !== after.name && typeof after.name === 'string') {
-          for (const target of ['news', 'wires'] as const) {
-            for (const ref of this.db.listCollection(target)) {
-              if (ref.d?.sourceId === id && ref.d.sourceName !== after.name) {
-                this.db.writeRow(target, ref.id, { ...ref.d, sourceName: after.name }, ref.p, null);
-              }
-            }
-          }
-        }
-        if (collection === 'programTypes' && before && before.nameAr !== after.nameAr && typeof after.nameAr === 'string') {
-          for (const ref of this.db.listCollection('programs')) {
-            if (ref.d?.typeId === id && ref.d.typeName !== after.nameAr) {
-              this.db.writeRow('programs', ref.id, { ...ref.d, typeName: after.nameAr }, ref.p, null);
-            }
-          }
-        }
+        propagateReferenceRename(this.db, collection, id, before, after);
 
         if (collection === 'users') {
           if (before && before.email !== after.email) this.db.updateCredentialEmail(id, String(after.email).toLowerCase());

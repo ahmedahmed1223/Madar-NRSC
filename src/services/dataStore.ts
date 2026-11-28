@@ -158,7 +158,15 @@ interface PersistedJournal {
 const BATCH_SIZE = 200;
 const POLL_FALLBACK_MS = 30_000;
 
-const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
+const EMPTY_LIST: readonly unknown[] = Object.freeze([]);
+const clone = <T>(v: T): T => {
+  if (v === undefined || v === null || typeof v !== 'object') return v;
+  try {
+    return structuredClone(v);
+  } catch {
+    return JSON.parse(JSON.stringify(v));
+  }
+};
 const keyOf = (c: CollectionName, id: string) => `${c}\u0000${id}`;
 
 /**
@@ -654,6 +662,21 @@ export class DataStore {
     this.afterLocalChange(c);
   }
 
+  /** Zero-copy read snapshot; callers MUST NOT mutate the returned collection in place. */
+  getSnapshot<T>(storageKey: string, fallback: T): T {
+    const c = collectionForStorageKey(storageKey);
+    if (!c) return fallback;
+    const module = moduleForCollection(c);
+    if (module && c !== 'media' && this.modules?.[module] === false) {
+      return COLLECTIONS[c].kind === 'list' ? (EMPTY_LIST as unknown as T) : fallback;
+    }
+    const value = this.data.get(c);
+    if (value === undefined || value === null) {
+      return COLLECTIONS[c].kind === 'list' ? (EMPTY_LIST as unknown as T) : fallback;
+    }
+    return value as T;
+  }
+
   /** Deep copy, so callers may mutate freely before calling set(). */
   get<T>(storageKey: string, fallback: T): T {
     const c = collectionForStorageKey(storageKey);
@@ -1075,23 +1098,25 @@ export class DataStore {
       this.data.set(c, clone(row.d));
       return;
     }
-    const list: any[] = this.data.get(c) || [];
-    const idx = list.findIndex((it) => it.id === row.id);
+    const prev: any[] = this.data.get(c) || [];
+    const next = prev.slice();
+    const idx = next.findIndex((it) => it.id === row.id);
     if (idx !== -1) {
-      list[idx] = clone(row.d);
+      next[idx] = clone(row.d);
+      this.data.set(c, next);
       return;
     }
     // Insert by position.
-    let at = list.length;
-    for (let i = 0; i < list.length; i++) {
-      const p = metaMap.get(list[i].id)?.p ?? 0;
+    let at = next.length;
+    for (let i = 0; i < next.length; i++) {
+      const p = metaMap.get(next[i].id)?.p ?? 0;
       if (p > row.p) {
         at = i;
         break;
       }
     }
-    list.splice(at, 0, clone(row.d));
-    this.data.set(c, list);
+    next.splice(at, 0, clone(row.d));
+    this.data.set(c, next);
   }
 
   private removeLocal(c: CollectionName, id: string) {

@@ -93,9 +93,8 @@ test('administrator checks Dropbox and restores a media upload from trash', asyn
     await expect(page.getByRole('button', { name: `معاينة المادة: ${title}` })).toHaveCount(0);
     await expect.poll(async () => (await page.request.get(fileUrl)).status()).toBe(404);
 
-    await openNav(page, 'سلة المحذوفات');
-    const trash = page.getByRole('region', { name: 'سلة المحذوفات' });
-    await trash.getByRole('combobox', { name: 'القسم' }).selectOption('media');
+    await page.getByRole('link', { name: 'محذوفات مكتبة الوسائط' }).click();
+    const trash = page.getByRole('region', { name: 'محذوفات مكتبة الوسائط' });
     await trash.getByRole('button', { name: `استعادة ${title}` }).click();
     await expect(trash.getByRole('status')).toContainText(title);
     const restored = await page.request.get(fileUrl);

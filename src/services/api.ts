@@ -1,21 +1,16 @@
-import { appLocale, zoneOptions } from '../shared/dateFormat';
-import { pronunciationDraftConflict } from '../shared/pronunciation';
-import { savedNewsFilterError, type SavedNewsFilterInput, type SavedNewsFilterRow } from '../shared/savedNewsFilters';
 import type { NewsArchiveFilters } from '../shared/newsArchive';
-import { CATEGORY_HAS_CHILDREN, categoryParentError } from '../shared/newsCategories';
-import type { PersonalNote, WorkspacePreferences } from '../shared/personalWorkspace';
-import { preparePersonalTask, type PersonalTask, type PersonalTaskInput } from '../shared/personalTasks';
+import type { PersonalNote } from '../shared/personalWorkspace';
+import type { PersonalTask, PersonalTaskInput } from '../shared/personalTasks';
 import { assignmentScope } from '../shared/assignmentScope';
-import { handlesSupport, supportRecipient, supportTrack } from '../shared/trackSupport';
 import { departmentsOf, departmentWorkScope } from '../shared/departments';
-import { sanitizeWorkSections, type WorkSectionPreferences } from '../shared/workContext';
-import { savedFilterRequest } from './savedNewsFilterTransport';
+import type { WorkSectionPreferences } from '../shared/workContext';
 import { handoverRequest } from './handoverTransport';
 import type { HandoverDraftInput, HandoverRow } from '../shared/shiftHandovers';
 import type { EntityRow, SyncOpResult } from '../shared/collections';
 import type { BackupStatus, BackupVerification, BackupRehearsal, DatabaseDiagnosticReport, RecentServerErrors } from '../shared/databaseDiagnostics';
 import { reviewThreadError, type ReviewThread } from '../shared/reviewThreads';
 import { createSearchIndex, matchesSearch, parseQuery, prepareText, scorePrepared, type SearchIndex } from '../shared/arabicSearch';
+import type { SavedNewsFilterInput, SavedNewsFilterRow } from '../shared/savedNewsFilters';
 import {
   NewsItem,
   Story,
@@ -42,138 +37,34 @@ import {
   WireItem,
 } from '../types';
 
-import { INITIAL_SETTINGS } from './mockData';
-import { settingsError } from '../shared/settings';
 import { dataStore } from './dataStore';
 import { authClient } from './authClient';
 import { apiFetch, downloadDatabaseFile } from './http';
 import { newId } from '../shared/ids';
-
-export interface WireFeedStatus {
-  sourceId: string;
-  sourceName: string;
-  feedUrl: string;
-  ok: boolean;
-  message: string;
-  added: number;
-  itemCount: number;
-  checkedAt: string;
-}
-
-export interface NewsArchivePage {
-  total: number;
-  page: number;
-  pageSize: number;
-  activeDays: number;
-  items: {
-    id: string;
-    title: string;
-    summary: string;
-    status: string;
-    categoryName: string;
-    authorName: string;
-    publishDate: string | null;
-    updatedAt: string;
-  }[];
-  /** «هل تقصد»: a corrected query that finds more, when this one found little or nothing. */
-  suggestion?: string;
-}
-
-export interface WireStatusInfo {
-  pollMinutes: number;
-  retentionDays: number;
-  feeds: WireFeedStatus[];
-}
-import { addDaysIso, localDateString } from '../shared/dates';
+import { addDaysIso } from '../shared/dates';
 import { RosterEntry, rosterEntryError, rosterEntryId } from '../shared/roster';
-import { DeptRequest, requestChangeError, requestTypeOf } from '../shared/production';
+import type { DeptRequest } from '../shared/production';
 import { chatReadsError, conversationChangeError, messageError, type ChatAttachment, type ChatReads, type ChatRef, type Conversation } from '../shared/chat';
-import { cardChangeError, cardContextOf, sendBackCard, timeLogMinutes, type CardActor, type CardStep, type ProductionCard } from '../shared/productionCards';
-import { cardWorkflowAccess, workflowAccess } from '../shared/workflowAccess';
-import { mayManageTemplate } from '../shared/workflowPublication';
-import { WORKFLOW_TRACKS } from '../shared/workflowTracks';
-import { templateChangeError, type WorkflowTemplate } from '../shared/workflowTemplates';
-import { applyDepartmentSettings, departmentIdOf, findDepartmentId } from '../shared/departments';
-import { rememberStationSettings } from '../shared/stations';
+import type { CardActor, CardStep, ProductionCard } from '../shared/productionCards';
+import type { WorkflowTemplate } from '../shared/workflowTemplates';
 import { canControlOnAir, Cue, OnAirState, PRESENTER_INSTRUCTION_MS } from '../shared/onair';
-import {
-  Bulletin,
-  bulletinAsShow,
-  bulletinError,
-  BulletinFormat,
-  bulletinFromFormat,
-  BulletinStory,
-  byRank,
-  formatError,
-  isApprover,
-  nextApprovalStep,
-  isScheduledOn,
-  rankBetween,
-  scheduledBulletinId,
-  storyContentChanged,
-  storyError,
-  storyStatusError,
-} from '../shared/bulletins';
-import { scheduledBulletinExists } from '../shared/bulletinReadiness';
+import type { Bulletin, BulletinFormat, BulletinStory } from '../shared/bulletins';
 import { CommentTarget, commentError, TeamComment } from '../shared/comments';
 import { defaultPrefs, NotificationPrefs, prefsError, requiresNotificationAcknowledgment } from '../shared/notifications';
-import { Booking, bookingConflicts, bookingError, DiaryEntry, diaryError, Resource } from '../shared/planning';
+import type { Booking, DiaryEntry, Resource } from '../shared/planning';
 import { COLLECTIONS, BroadcastState, ChatMessage, EditLock, isLockActive, isOwnLock, lockIdFor } from '../shared/collections';
-
-export interface NewsRevision {
-  version: number;
-  data: NewsItem;
-  changedBy: string | null;
-  changedByName: string | null;
-  changedAt: string;
-}
 import { RbacService } from './rbacService';
 export { formatSecondsToTime, parseTimeToSeconds, recalculateRundown } from '../shared/rundown';
-import { recalculateRundown } from '../shared/rundown';
-import {
-  DEFAULT_BREAKING_HOURS,
-  NEWS_INITIAL_STATUSES,
-  NEWS_STATUS_LABELS,
-  canEditNewsContent,
-  isBreakingLive,
-  makeNewsSlug,
-  transitionDenial,
-  contentDenial,
-} from '../shared/newsWorkflow';
-
+import { taskAssigneeId } from '../shared/assignedWork';
+import { normalizeTaskStatus } from '../shared/taskWorkflow';
 import { selfHealingService } from './selfHealingService';
 
-// Storage keys of the server-synchronised collections (see src/shared/collections.ts).
-const STORAGE_KEYS = {
-  USERS: COLLECTIONS.users.storageKey,
-  NEWS: COLLECTIONS.news.storageKey,
-  STORIES: COLLECTIONS.stories.storageKey,
-  BREAKING: COLLECTIONS.breaking.storageKey,
-  PROGRAMS: COLLECTIONS.programs.storageKey,
-  EPISODES: COLLECTIONS.episodes.storageKey,
-  GUESTS: COLLECTIONS.guests.storageKey,
-  TASKS: COLLECTIONS.tasks.storageKey,
-  MEDIA: COLLECTIONS.media.storageKey,
-  CATEGORIES: COLLECTIONS.categories.storageKey,
-  SOURCES: COLLECTIONS.sources.storageKey,
-  PROGRAM_TYPES: COLLECTIONS.programTypes.storageKey,
-  NOTIFICATIONS: COLLECTIONS.notifications.storageKey,
-  ACTIVITY_LOGS: COLLECTIONS.activityLogs.storageKey,
-  AUDIT_LOGS: COLLECTIONS.auditLogs.storageKey,
-  SETTINGS: COLLECTIONS.settings.storageKey,
-};
+import { ApiDomainDeps, getSnapshot, getStored, setStored, STORAGE_KEYS } from './domains/storeContext';
+import { createReferenceApi } from './domains/referenceApi';
+import { createNewsApi, type NewsArchivePage, type NewsRevision, type WireFeedStatus, type WireStatusInfo } from './domains/newsApi';
+import { createProductionApi, type EpisodeSummaries, type GuestEpisodeSummary } from './domains/productionApi';
 
-/**
- * Reads come from the in-memory mirror of the server database; writes are diffed
- * and synchronised to SQLite on the server (with conflict detection).
- */
-function getStored<T>(key: string, defaultVal: T): T {
-  return dataStore.get<T>(key, defaultVal);
-}
-
-function setStored<T>(key: string, val: T): void {
-  dataStore.set(key, val);
-}
+export type { WireFeedStatus, NewsArchivePage, WireStatusInfo, NewsRevision, GuestEpisodeSummary, EpisodeSummaries };
 
 // Role-based permission checker
 export function hasPermission(
@@ -269,27 +160,21 @@ export interface GlobalSearchResult {
   cards: ProductionCard[];
 }
 
-export interface GuestEpisodeSummary {
-  totalAppearances: number;
-  lastAppearanceDate?: string;
-  appearanceHistory: NonNullable<Guest['appearanceHistory']>;
-  monthlyAppearanceCounts: Record<string, number>;
-}
-
-export interface EpisodeSummaries {
-  available: boolean;
-  programCounts: Record<string, number>;
-  guestSummaries: Record<string, GuestEpisodeSummary>;
-}
+const domainDeps: ApiDomainDeps = {
+  getCurrentUser: () => ApiService.getCurrentUser(),
+  getUsers: () => ApiService.getUsers(),
+  getSettings: () => ApiService.getSettings(),
+  getOnAirStates: () => ApiService.getOnAirStates(),
+  logActivity: (action, entityType, entityId, entityTitle, summaryAr) =>
+    ApiService.logActivity(action, entityType, entityId, entityTitle, summaryAr),
+};
+const referenceApi = createReferenceApi(domainDeps);
+const newsApi = createNewsApi(domainDeps);
+const productionApi = createProductionApi(domainDeps);
 
 export class ApiService {
-  static async getEpisodeSummaries(signal?: AbortSignal): Promise<EpisodeSummaries> {
-    const { data } = await apiFetch<{ data: EpisodeSummaries }>('/api/v1/data/episode-summaries', { signal });
-    return {
-      ...data,
-      programCounts: Object.assign(Object.create(null), data.programCounts),
-      guestSummaries: Object.assign(Object.create(null), data.guestSummaries),
-    };
+  static getEpisodeSummaries(signal?: AbortSignal): Promise<EpisodeSummaries> {
+    return productionApi.getEpisodeSummaries(signal);
   }
 
   static async getShiftHandovers(signal?: AbortSignal): Promise<HandoverRow[]> {
@@ -317,13 +202,13 @@ export class ApiService {
     return (await handoverRequest<{ row: HandoverRow }>(`/api/v1/shift-handovers/${encodeURIComponent(id)}/remind`, { method: 'POST', json: {} }, signal)).row;
   }
   static getNewsCorrections(): import('../shared/newsCorrections').NewsCorrection[] {
-    return getStored(COLLECTIONS.newsCorrections.storageKey, []);
+    return newsApi.getNewsCorrections();
   }
-  static async correctionContext(newsId: string): Promise<{ newsVersion: number; newsTitle: string; newsText: string; records: import('../shared/newsCorrections').NewsCorrection[]; historyVersions: number[] }> {
-    return (await apiFetch(`/api/v1/news/${encodeURIComponent(newsId)}/corrections`)).data;
+  static correctionContext(newsId: string): Promise<{ newsVersion: number; newsTitle: string; newsText: string; records: import('../shared/newsCorrections').NewsCorrection[]; historyVersions: number[] }> {
+    return newsApi.correctionContext(newsId);
   }
-  static async registerNewsCorrection(input: import('../shared/newsCorrections').CreateCorrectionInput): Promise<import('../shared/newsCorrections').NewsCorrection> {
-    return (await apiFetch(`/api/v1/news/${encodeURIComponent(input.newsId)}/corrections`, { method: 'POST', json: input })).data;
+  static registerNewsCorrection(input: import('../shared/newsCorrections').CreateCorrectionInput): Promise<import('../shared/newsCorrections').NewsCorrection> {
+    return newsApi.registerNewsCorrection(input);
   }
   // --- AUTH & CURRENT USER ---
   /** The signed-in user (kept fresh from the synchronised users collection). */
@@ -335,7 +220,7 @@ export class ApiService {
   }
 
   static getUsers(): User[] {
-    return getStored<User[]>(STORAGE_KEYS.USERS, []);
+    return getSnapshot<User[]>(STORAGE_KEYS.USERS, []);
   }
 
   static getUserById(id: string): User | undefined {
@@ -351,7 +236,7 @@ export class ApiService {
   }
 
   static saveUser(user: Partial<User> & { id?: string }): User {
-    const users = this.getUsers();
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, []);
     if (user.id) {
       const idx = users.findIndex((u) => u.id === user.id);
       if (idx !== -1) {
@@ -403,7 +288,7 @@ export class ApiService {
   }
 
   static toggleUserStatus(id: string): User | null {
-    const users = this.getUsers();
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, []);
     const current = this.getCurrentUser();
     if (current.id === id) {
       throw new Error('لا يمكن تجميد حسابك النشط');
@@ -417,562 +302,41 @@ export class ApiService {
   }
 
   // --- NEWS CRUD & WORKFLOW ---
-  static getNews(): NewsItem[] {
-    const items = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    return items.filter((n) => !n.deletedAt);
+  static getNews(): NewsItem[] { return newsApi.getNews(); }
+  static getNewsById(id: string): NewsItem | undefined { return newsApi.getNewsById(id); }
+  static saveNews(newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, user?: User): NewsItem { return newsApi.saveNews(newsData, user); }
+  static updateNewsStatus(newsId: string, toStatus: NewsStatus, userOrComment?: User | string, optionalComment?: string, opts: { scheduledDate?: string } = {}): NewsItem {
+    return newsApi.updateNewsStatus(newsId, toStatus, userOrComment, optionalComment, opts);
   }
-
-  static getNewsById(id: string): NewsItem | undefined {
-    return this.getNews().find((n) => n.id === id);
-  }
-
-  /**
-   * Creates or edits a story's content. Status is never changed here (use updateNewsStatus),
-   * so saving text can't silently move a story backwards in the workflow.
-   * `expectedUpdatedAt` is the version the editor loaded; a newer copy means a colleague saved meanwhile.
-   */
-  static saveNews(newsData: Partial<NewsItem> & { expectedUpdatedAt?: string }, user?: User): NewsItem {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const currentUser = user || this.getCurrentUser();
-    const can = (perm: string) => RbacService.hasPermission(currentUser, perm);
-    const now = new Date().toISOString();
-    const { expectedUpdatedAt, ...data } = newsData;
-
-    if (data.id) {
-      const idx = all.findIndex((n) => n.id === data.id);
-      if (idx !== -1) {
-        const old = all[idx];
-        if (expectedUpdatedAt && old.updatedAt && old.updatedAt !== expectedUpdatedAt) {
-          throw new Error('عدّل زميل هذا الخبر بعد أن فتحته. حمّل أحدث نسخة من سجل النسخ أو أعد فتح الخبر قبل الحفظ.');
-        }
-        if (!canEditNewsContent(can, currentUser.id, old)) {
-          throw new Error(
-            old.status === 'PUBLISHED' || old.status === 'APPROVED'
-              ? 'لا يمكنك تعديل خبر معتمد أو منشور دون صلاحية الاعتماد أو النشر.'
-              : 'صلاحياتك لا تسمح بتعديل هذا الخبر.'
-          );
-        }
-        if (data.isBreaking !== undefined && !!data.isBreaking !== !!old.isBreaking && !can('news.breaking_push')) {
-          throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها.');
-        }
-        const { status: _ignoredStatus, workflowLogs: _ignoredLogs, authorId: _a, authorName: _n, ...editable } = data;
-        const updated: NewsItem = { ...old, ...editable, updatedAt: now };
-        if (data.title && data.title !== old.title) updated.slug = makeNewsSlug(data.title, old.id);
-        if (updated.isBreaking && !old.isBreaking && !updated.breakingUntil) {
-          updated.breakingUntil = new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString();
-        }
-        all[idx] = updated;
-        setStored(STORAGE_KEYS.NEWS, all);
-        this.logActivity('تعديل خبر', 'NEWS', updated.id, updated.title, `قام ${currentUser.fullName} بتحديث محتوى الخبر.`);
-        return updated;
-      }
-    }
-
-    if (!can('news.create')) throw new Error('صلاحياتك لا تسمح بإنشاء الأخبار.');
-    const initialStatus: NewsStatus = NEWS_INITIAL_STATUSES.includes(data.status as NewsStatus) ? (data.status as NewsStatus) : 'DRAFT';
-    if (data.isBreaking && !can('news.breaking_push')) {
-      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة.');
-    }
-
-    const newsId = data.id && !all.some((n) => n.id === data.id) ? data.id : newId('nws');
-    const title = data.title || 'خبر جديد بدون عنوان';
-    const newItem: NewsItem = {
-      id: newsId,
-      title,
-      shortTitle: data.shortTitle || title,
-      slug: makeNewsSlug(title, newsId),
-      content: data.content || '',
-      summary: data.summary || '',
-      mainImageUrl: data.mainImageUrl || '',
-      digitalPackage: data.digitalPackage,
-      videoUrl: data.videoUrl,
-      videos: data.videos,
-      storyId: data.storyId,
-      wireId: data.wireId,
-      diaryId: data.diaryId,
-      mediaIds: data.mediaIds || [],
-      sourceId: data.sourceId || '',
-      sourceName: data.sourceName || '',
-      categoryId: data.categoryId || '',
-      categoryName: data.categoryName || '',
-      authorId: currentUser.id,
-      authorName: currentUser.fullName,
-      priority: data.priority || this.getSettings().defaultNewsPriority || 'NORMAL',
-      status: initialStatus,
-      keywords: data.keywords || [],
-      locationName: data.locationName || '',
-      eventDate: data.eventDate || now,
-      isBreaking: !!data.isBreaking,
-      breakingUntil: data.isBreaking
-        ? data.breakingUntil || new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString()
-        : undefined,
-      internalNotes: data.internalNotes || '',
-      messageOrigin: data.messageOrigin,
-      workflowLogs: [
-        {
-          id: newId('log'),
-          newsId,
-          fromStatus: initialStatus,
-          toStatus: initialStatus,
-          changedBy: { id: currentUser.id, name: currentUser.fullName, role: currentUser.role },
-          comment: 'إنشاء الخبر لأول مرة',
-          timestamp: now,
-        },
-      ],
-      viewsCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    all.unshift(newItem);
-    setStored(STORAGE_KEYS.NEWS, all);
-    this.logActivity('إنشاء خبر', 'NEWS', newItem.id, newItem.title, `قام ${currentUser.fullName} بإنشاء خبر جديد.`);
-    return newItem;
-  }
-
-  /** Moves a story through the editorial workflow (validated against the shared rules). */
-  static updateNewsStatus(
-    newsId: string,
-    toStatus: NewsStatus,
-    userOrComment?: User | string,
-    optionalComment?: string,
-    opts: { scheduledDate?: string } = {}
-  ): NewsItem {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const idx = all.findIndex((n) => n.id === newsId);
-    if (idx === -1) throw new Error('الخبر غير موجود');
-
-    const currentUser = typeof userOrComment === 'object' && userOrComment !== null ? userOrComment : this.getCurrentUser();
-    const comment = typeof userOrComment === 'string' ? userOrComment : optionalComment;
-    const item = all[idx];
-    const fromStatus = item.status;
-    if (fromStatus === toStatus) return item;
-
-    const denial =
-      transitionDenial((perm) => RbacService.hasPermission(currentUser, perm), currentUser.id, item, toStatus) ||
-      contentDenial(item, toStatus)?.message ||
-      null;
-    if (denial) {
-      throw new Error(denial);
-    }
-
-    let scheduledDate: string | undefined;
-    if (toStatus === 'SCHEDULED') {
-      const when = opts.scheduledDate ? new Date(opts.scheduledDate) : null;
-      if (!when || !Number.isFinite(when.getTime())) throw new Error('حدد موعداً صالحاً للنشر المجدول');
-      if (when.getTime() < Date.now() - 60_000) throw new Error('موعد النشر المجدول يجب أن يكون في المستقبل');
-      scheduledDate = when.toISOString();
-    }
-
-    const now = new Date().toISOString();
-    const by = { id: currentUser.id, name: currentUser.fullName, role: currentUser.role };
-    const updated: NewsItem = {
-      ...item,
-      status: toStatus,
-      workflowLogs: [
-        ...(item.workflowLogs || []),
-        {
-          id: newId('log'),
-          newsId: item.id,
-          fromStatus,
-          toStatus,
-          changedBy: by,
-          comment:
-            comment ||
-            (scheduledDate
-              ? `جدولة النشر في ${new Date(scheduledDate).toLocaleString(appLocale(), zoneOptions())}`
-              : `تغيير الحالة إلى ${NEWS_STATUS_LABELS[toStatus]}`),
-          timestamp: now,
-        },
-      ],
-      editorId: ['APPROVED', 'PUBLISHED'].includes(toStatus) ? currentUser.id : item.editorId,
-      editorName: ['APPROVED', 'PUBLISHED'].includes(toStatus) ? currentUser.fullName : item.editorName,
-      updatedAt: now,
-    };
-    if (toStatus === 'SCHEDULED') updated.scheduledDate = scheduledDate;
-    else if (fromStatus === 'SCHEDULED') updated.scheduledDate = undefined; // schedule cancelled or published
-    if (toStatus === 'APPROVED' && fromStatus !== 'SCHEDULED') {
-      Object.assign(updated, { approvedById: by.id, approvedByName: by.name, approvedAt: now });
-    }
-    if (toStatus === 'PUBLISHED') {
-      Object.assign(updated, { publishedById: by.id, publishedByName: by.name });
-      if (!item.publishDate) updated.publishDate = now;
-      // A story flagged breaking goes on air for the standard window from the moment it is published.
-      if (updated.isBreaking) updated.breakingUntil = new Date(Date.now() + (this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS) * 3600_000).toISOString();
-    }
-    // Content that leaves the air also leaves the breaking ticker.
-    if (['ARCHIVED', 'UNPUBLISHED', 'REJECTED'].includes(toStatus)) {
-      updated.isBreaking = false;
-      updated.breakingUntil = undefined;
-    }
-
-    all[idx] = updated;
-    setStored(STORAGE_KEYS.NEWS, all);
-
-    this.logActivity(
-      'تحديث حالة الخبر',
-      'NEWS',
-      item.id,
-      item.title,
-      `قام ${currentUser.fullName} بنقل الخبر من [${NEWS_STATUS_LABELS[fromStatus] || fromStatus}] إلى [${NEWS_STATUS_LABELS[toStatus]}]`
-    );
-
-    return updated;
-  }
-
-  static deleteNews(newsId: string, user?: User): void {
-    const currentUser = user || this.getCurrentUser();
-    if (!RbacService.hasPermission(currentUser, 'news.delete')) throw new Error('صلاحياتك لا تسمح بحذف الأخبار.');
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const idx = all.findIndex((n) => n.id === newsId);
-    if (idx !== -1) {
-      all[idx] = { ...all[idx], deletedAt: new Date().toISOString(), isBreaking: false };
-      setStored(STORAGE_KEYS.NEWS, all);
-    }
-  }
+  static deleteNews(newsId: string, user?: User): void { return newsApi.deleteNews(newsId, user); }
 
   // --- BREAKING NEWS ---
-  // The story's own isBreaking/breakingUntil fields are the single source of truth.
-
-  /** Breaking items currently on air: published, flagged and not expired. */
-  static getActiveBreakingNews(): NewsItem[] {
-    return this.getNews().filter((n) => isBreakingLive(n));
-  }
-
-  /** Turns the breaking flag on (for `hours`) or off for a story. */
-  static setBreaking(newsId: string, on: boolean, hours = this.getSettings().breakingDurationHours ?? DEFAULT_BREAKING_HOURS): NewsItem {
-    const user = this.getCurrentUser();
-    if (!RbacService.hasPermission(user, 'news.breaking_push')) {
-      throw new Error('عذراً، صلاحياتك لا تسمح بإطلاق الأخبار العاجلة أو إيقافها.');
-    }
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const idx = all.findIndex((n) => n.id === newsId);
-    if (idx === -1) throw new Error('الخبر غير موجود');
-    if (on && all[idx].status !== 'PUBLISHED') throw new Error('يجب نشر الخبر قبل إطلاقه على شريط العاجل.');
-    all[idx] = {
-      ...all[idx],
-      isBreaking: on,
-      breakingUntil: on ? new Date(Date.now() + hours * 3600_000).toISOString() : undefined,
-      updatedAt: new Date().toISOString(),
-    };
-    setStored(STORAGE_KEYS.NEWS, all);
-    this.logActivity(on ? 'إطلاق خبر عاجل' : 'إيقاف خبر عاجل', 'NEWS', newsId, all[idx].title, on ? `عاجل لمدة ${hours} ساعات` : 'أُوقف من الشريط');
-    return all[idx];
-  }
+  static getActiveBreakingNews(): NewsItem[] { return newsApi.getActiveBreakingNews(); }
+  static setBreaking(newsId: string, on: boolean, hours?: number): NewsItem { return newsApi.setBreaking(newsId, on, hours); }
 
   // --- PROGRAMS & EPISODES ---
-  static getPrograms(): Program[] {
-    const items = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
-    // Episode counts are derived from the episodes themselves (never a stale stored counter).
-    const counts = new Map<string, number>();
-    getStored<Episode[]>(STORAGE_KEYS.EPISODES, []).forEach((e) => {
-      if (!e.deletedAt) counts.set(e.programId, (counts.get(e.programId) || 0) + 1);
-    });
-    return items.filter((p) => !p.deletedAt).map((p) => ({ ...p, episodesCount: counts.get(p.id) || 0 }));
-  }
-
-  static getProgramById(id: string): Program | undefined {
-    return this.getPrograms().find((p) => p.id === id);
-  }
-
-  static saveProgram(program: Partial<Program>, user?: User): Program {
-    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
-    const currentUser = user || this.getCurrentUser();
-    const now = new Date().toISOString();
-
-    if (program.id) {
-      const idx = all.findIndex((p) => p.id === program.id);
-      if (idx !== -1) {
-        all[idx] = { ...all[idx], ...program };
-        setStored(STORAGE_KEYS.PROGRAMS, all);
-        this.logActivity('تعديل برنامج', 'PROGRAM', program.id, all[idx].name, `تم تعديل بيانات برنامج: ${all[idx].name}`);
-        return all[idx];
-      }
-    }
-
-    const newPrg: Program = {
-      id: newId('prg'),
-      name: program.name || 'برنامج جديد',
-      shortName: program.shortName || program.name || '',
-      description: program.description || '',
-      coverImageUrl: program.coverImageUrl || '',
-      typeId: program.typeId || 'pt-1',
-      typeName: program.typeName || 'نشرة إخبارية',
-      presenterId: program.presenterId || currentUser.id,
-      presenterName: program.presenterName || currentUser.fullName,
-      producerId: program.producerId || currentUser.id,
-      producerName: program.producerName || currentUser.fullName,
-      teamMembers: program.teamMembers || [currentUser.fullName],
-      broadcastDays: program.broadcastDays || ['الأحد'],
-      broadcastTime: program.broadcastTime || '20:00',
-      durationMinutes: program.durationMinutes || 50,
-      channelName: program.channelName || 'القناة الإخبارية الأولى',
-      studioName: program.studioName || '',
-      status: 'ACTIVE',
-      episodesCount: 0,
-      createdAt: now,
-    };
-
-    all.unshift(newPrg);
-    setStored(STORAGE_KEYS.PROGRAMS, all);
-    this.logActivity('إنشاء برنامج', 'PROGRAM', newPrg.id, newPrg.name, `تم إضافة برنامج جديد: ${newPrg.name}`);
-    return newPrg;
-  }
-
-  static deleteProgram(id: string, user?: User): void {
-    const all = getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []);
-    const idx = all.findIndex((p) => p.id === id);
-    if (idx !== -1) {
-      const progName = all[idx].name;
-      all[idx].deletedAt = new Date().toISOString();
-      setStored(STORAGE_KEYS.PROGRAMS, all);
-      const currentUser = user || this.getCurrentUser();
-      this.logActivity('حذف برنامج', 'PROGRAM', id, progName, `قام ${currentUser.fullName} بحذف البرنامج: ${progName}`);
-    }
-  }
-
-  static getEpisodes(): Episode[] {
-    const items = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
-    // Episodes of a deleted program disappear with it (calendar, lists, search).
-    const deletedPrograms = new Set(getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => p.deletedAt).map((p) => p.id));
-    return items.filter((e) => !e.deletedAt && !deletedPrograms.has(e.programId));
-  }
-
-  static getEpisodeById(id: string): Episode | undefined {
-    return this.getEpisodes().find((e) => e.id === id);
-  }
-
-  static saveEpisode(episodeData: Partial<Episode>, user?: User): Episode {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
-    const currentUser = user || this.getCurrentUser();
-    const now = new Date().toISOString();
-
-    if (episodeData.id) {
-      const idx = all.findIndex((e) => e.id === episodeData.id);
-      if (idx !== -1) {
-        all[idx] = {
-          ...all[idx],
-          ...episodeData,
-          updatedAt: now,
-        };
-        setStored(STORAGE_KEYS.EPISODES, all);
-        this.logActivity('تعديل حلقة', 'EPISODE', all[idx].id, all[idx].title, `قام ${currentUser.fullName} بتحديث بيانات الحلقة.`);
-        return all[idx];
-      }
-    }
-
-    const newEp: Episode = {
-      ...(episodeData.topics ? { topics: episodeData.topics } : {}),
-      id: episodeData.id || newId('ep'),
-      programId: episodeData.programId || '',
-      programName: episodeData.programName || '',
-      seasonNumber: episodeData.seasonNumber || 1,
-      episodeNumber: episodeData.episodeNumber || 1,
-      title: episodeData.title || 'حلقة جديدة',
-      description: episodeData.description || '',
-      recordingDate: episodeData.recordingDate || localDateString(),
-      broadcastDate: episodeData.broadcastDate || localDateString(),
-      startTime: episodeData.startTime || '21:00',
-      endTime: episodeData.endTime || '21:50',
-      durationMinutes: episodeData.durationMinutes || 50,
-      presenterId: episodeData.presenterId || currentUser.id,
-      presenterName: episodeData.presenterName || currentUser.fullName,
-      producerId: episodeData.producerId || currentUser.id,
-      producerName: episodeData.producerName || currentUser.fullName,
-      directorName: episodeData.directorName || '',
-      studioName: episodeData.studioName || '',
-      introScript: episodeData.introScript || '',
-      discussionTopics: episodeData.discussionTopics || [],
-      status: episodeData.status || 'PLANNING',
-      guests: episodeData.guests || [],
-      questions: episodeData.questions || [],
-      rundown: recalculateRundown(episodeData.rundown || []),
-      linkedNewsIds: episodeData.linkedNewsIds || [],
-      attachments: episodeData.attachments || [],
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    all.unshift(newEp);
-    setStored(STORAGE_KEYS.EPISODES, all);
-    this.logActivity('إنشاء حلقة جديدة', 'EPISODE', newEp.id, newEp.title, `تم إنشاء حلقة جديدة برقم ${newEp.episodeNumber}`);
-    return newEp;
-  }
-
-  static deleteEpisode(id: string, user?: User): void {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
-    const idx = all.findIndex((e) => e.id === id);
-    if (idx !== -1) {
-      const epTitle = all[idx].title;
-      all[idx].deletedAt = new Date().toISOString();
-      setStored(STORAGE_KEYS.EPISODES, all);
-      const currentUser = user || this.getCurrentUser();
-      this.logActivity('حذف حلقة', 'EPISODE', id, epTitle, `قام ${currentUser.fullName} بحذف الحلقة: ${epTitle}`);
-    }
-  }
+  static getPrograms(): Program[] { return productionApi.getPrograms(); }
+  static getProgramById(id: string): Program | undefined { return productionApi.getProgramById(id); }
+  static saveProgram(program: Partial<Program>, user?: User): Program { return productionApi.saveProgram(program, user); }
+  static deleteProgram(id: string, user?: User): void { return productionApi.deleteProgram(id, user); }
+  static getEpisodes(): Episode[] { return productionApi.getEpisodes(); }
+  static getEpisodeById(id: string): Episode | undefined { return productionApi.getEpisodeById(id); }
+  static saveEpisode(episodeData: Partial<Episode>, user?: User): Episode { return productionApi.saveEpisode(episodeData, user); }
+  static deleteEpisode(id: string, user?: User): void { return productionApi.deleteEpisode(id, user); }
 
   // --- RUNDOWN MANAGEMENT ---
-  static updateEpisodeRundown(episodeId: string, rundown: RundownSegment[], user?: User): Episode {
-    const all = getStored<Episode[]>(STORAGE_KEYS.EPISODES, []);
-    const idx = all.findIndex((e) => e.id === episodeId);
-    if (idx === -1) throw new Error('الحلقة غير موجودة');
-
-    const calculated = recalculateRundown(rundown);
-    all[idx].rundown = calculated;
-    all[idx].updatedAt = new Date().toISOString();
-    setStored(STORAGE_KEYS.EPISODES, all);
-
-    const currentUser = user || this.getCurrentUser();
-    this.logActivity(
-      'تحديث جدول الرانداون',
-      'EPISODE',
-      episodeId,
-      all[idx].title,
-      `قام ${currentUser.fullName} بتحديث فقرات الرانداون (${calculated.length} فقرة)`
-    );
-
-    return all[idx];
-  }
-
-  static addRundownSegment(episodeId: string, segment: Partial<RundownSegment>): Episode {
-    const episode = this.getEpisodeById(episodeId);
-    if (!episode) throw new Error('الحلقة غير موجودة');
-
-    const newSegment: RundownSegment = {
-      id: newId('seg'),
-      episodeId,
-      orderIndex: (episode.rundown?.length || 0) + 1,
-      title: segment.title || 'فقرة جديدة',
-      segmentType: segment.segmentType || 'REPORT',
-      startTimeOffset: '00:00:00',
-      durationSeconds: segment.durationSeconds || 180,
-      endTimeOffset: '00:03:00',
-      presenterName: segment.presenterName || episode.presenterName,
-      guestId: segment.guestId,
-      guestName: segment.guestName,
-      scriptText: segment.scriptText || '',
-      videoAssetUrl: segment.videoAssetUrl,
-      newsId: segment.newsId,
-      newsTitle: segment.newsTitle,
-      notes: segment.notes || '',
-      isCompleted: false,
-    };
-
-    const updatedRundown = [...(episode.rundown || []), newSegment];
-    return this.updateEpisodeRundown(episodeId, updatedRundown);
-  }
-
-  static deleteRundownSegment(episodeId: string, segmentId: string): Episode {
-    const episode = this.getEpisodeById(episodeId);
-    if (!episode) throw new Error('الحلقة غير موجودة');
-
-    const filtered = (episode.rundown || []).filter((s) => s.id !== segmentId);
-    return this.updateEpisodeRundown(episodeId, filtered);
-  }
+  static updateEpisodeRundown(episodeId: string, rundown: RundownSegment[], user?: User): Episode { return productionApi.updateEpisodeRundown(episodeId, rundown, user); }
+  static addRundownSegment(episodeId: string, segment: Partial<RundownSegment>): Episode { return productionApi.addRundownSegment(episodeId, segment); }
+  static deleteRundownSegment(episodeId: string, segmentId: string): Episode { return productionApi.deleteRundownSegment(episodeId, segmentId); }
 
   // --- QUESTIONS & TOPICS ---
-  static saveEpisodeQuestion(episodeId: string, question: Partial<EpisodeQuestion>): Episode {
-    const episode = this.getEpisodeById(episodeId);
-    if (!episode) throw new Error('الحلقة غير موجودة');
-
-    const questions = [...(episode.questions || [])];
-    if (question.id) {
-      const qIdx = questions.findIndex((q) => q.id === question.id);
-      if (qIdx !== -1) {
-        questions[qIdx] = { ...questions[qIdx], ...question };
-      }
-    } else {
-      questions.push({
-        id: newId('q'),
-        episodeId,
-        topicName: question.topicName || 'محور عام',
-        questionText: question.questionText || '',
-        orderIndex: questions.length + 1,
-        assignedToName: question.assignedToName || '',
-        notes: question.notes || '',
-        isAsked: false,
-      });
-    }
-
-    return this.saveEpisode({ id: episodeId, questions });
-  }
-
-  static deleteEpisodeQuestion(episodeId: string, questionId: string): Episode {
-    const episode = this.getEpisodeById(episodeId);
-    if (!episode) throw new Error('الحلقة غير موجودة');
-
-    const questions = (episode.questions || []).filter((q) => q.id !== questionId);
-    return this.saveEpisode({ id: episodeId, questions });
-  }
+  static saveEpisodeQuestion(episodeId: string, question: Partial<EpisodeQuestion>): Episode { return productionApi.saveEpisodeQuestion(episodeId, question); }
+  static deleteEpisodeQuestion(episodeId: string, questionId: string): Episode { return productionApi.deleteEpisodeQuestion(episodeId, questionId); }
 
   // --- GUESTS ---
-  static getGuests(): Guest[] {
-    const items = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
-    // Appearances are derived from the episodes each guest is linked to (newest first).
-    const history = new Map<string, NonNullable<Guest['appearanceHistory']>>();
-    this.getEpisodes().forEach((e) =>
-      (e.guests || []).forEach((g: any) => {
-        const id = g.guestId || g.id;
-        if (!id) return;
-        const list = history.get(id) || [];
-        list.push({ episodeId: e.id, episodeTitle: e.title, programName: e.programName, date: e.broadcastDate });
-        history.set(id, list);
-      })
-    );
-    return items
-      .filter((g) => !g.deletedAt)
-      .map((g) => {
-        const appearances = (history.get(g.id) || []).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        return { ...g, appearanceHistory: appearances, totalAppearances: appearances.length, lastAppearanceDate: appearances[0]?.date };
-      });
-  }
-
-  static saveGuest(guest: Partial<Guest>, user?: User): Guest {
-    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
-    const currentUser = user || this.getCurrentUser();
-    const now = new Date().toISOString();
-
-    if (guest.id) {
-      const idx = all.findIndex((g) => g.id === guest.id);
-      if (idx !== -1) {
-        all[idx] = { ...all[idx], ...guest };
-        setStored(STORAGE_KEYS.GUESTS, all);
-        this.logActivity('تعديل ضيف', 'GUEST', all[idx].id, all[idx].fullName, `تم تحديث بيانات الضيف: ${all[idx].fullName}`);
-        return all[idx];
-      }
-    }
-
-    const newGuest: Guest = {
-      id: newId('gst'),
-      fullName: guest.fullName || 'ضيف جديد',
-      avatarUrl: guest.avatarUrl || '/avatar.svg',
-      organization: guest.organization || 'مستقل',
-      jobTitle: guest.jobTitle || 'خبير ومحلل',
-      specialty: guest.specialty || 'شؤون عامة',
-      phone: guest.phone || '',
-      email: guest.email || '',
-      notes: guest.notes || '',
-      totalAppearances: 0,
-      createdAt: now,
-    };
-
-    all.unshift(newGuest);
-    setStored(STORAGE_KEYS.GUESTS, all);
-    this.logActivity('إضافة ضيف', 'GUEST', newGuest.id, newGuest.fullName, `تم إضافة ضيف جديد إلى الأرشيف المركزي.`);
-    return newGuest;
-  }
-
-  static deleteGuest(id: string, user?: User): void {
-    const all = getStored<Guest[]>(STORAGE_KEYS.GUESTS, []);
-    const idx = all.findIndex((g) => g.id === id);
-    if (idx !== -1) {
-      const guestName = all[idx].fullName;
-      all[idx].deletedAt = new Date().toISOString();
-      setStored(STORAGE_KEYS.GUESTS, all);
-      const currentUser = user || this.getCurrentUser();
-      this.logActivity('حذف ضيف', 'GUEST', id, guestName, `قام ${currentUser.fullName} بحذف الضيف: ${guestName}`);
-    }
-  }
+  static getGuests(): Guest[] { return productionApi.getGuests(); }
+  static saveGuest(guest: Partial<Guest>, user?: User): Guest { return productionApi.saveGuest(guest, user); }
+  static deleteGuest(id: string, user?: User): void { return productionApi.deleteGuest(id, user); }
 
   // --- DUTY ROSTER ---
   static getRoster(): RosterEntry[] {
@@ -1024,15 +388,15 @@ export class ApiService {
 
   // --- TASKS ---
   static getTasks(): EditorialTask[] {
-    return getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
+    return getSnapshot<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
   }
 
   static saveTask(task: Partial<EditorialTask>, user?: User): EditorialTask {
-    const all = this.getTasks();
+    const all = getStored<EditorialTask[]>(STORAGE_KEYS.TASKS, []);
     const currentUser = user || this.getCurrentUser();
     const existingTask = task.id ? all.find((t) => t.id === task.id) : undefined;
-    const existingAssignee = existingTask?.assigneeId || existingTask?.assignedToId;
-    const nextAssignee = task.assigneeId || task.assignedToId || existingAssignee || currentUser.id;
+    const existingAssignee = taskAssigneeId(existingTask);
+    const nextAssignee = taskAssigneeId(task) || existingAssignee || currentUser.id;
     const users = this.getUsers();
     const recipient = users.find(member => member.id === nextAssignee);
     const settings = this.getSettings();
@@ -1052,11 +416,20 @@ export class ApiService {
       if (error) throw new Error(error);
     }
     const now = new Date().toISOString();
+    const { assignedToId: _legacyId, assignedToName: _legacyName, ...cleanTask } = task;
+    const nextAssigneeName = recipient?.fullName || task.assigneeName || task.assignedToName || existingTask?.assigneeName || existingTask?.assignedToName || currentUser.fullName;
 
     if (task.id) {
       const idx = all.findIndex((t) => t.id === task.id);
       if (idx !== -1) {
-        all[idx] = { ...all[idx], ...task, assigneeId: nextAssignee, assignedToId: nextAssignee };
+        const { assignedToId: _oldLegacyId, assignedToName: _oldLegacyName, ...existingClean } = all[idx];
+        all[idx] = {
+          ...existingClean,
+          ...cleanTask,
+          status: normalizeTaskStatus(cleanTask.status ?? existingClean.status),
+          assigneeId: nextAssignee,
+          assigneeName: nextAssigneeName,
+        };
         setStored(STORAGE_KEYS.TASKS, all);
         this.logActivity('تحديث مهمة', 'TASK', task.id, all[idx].title, `تحديث حالة المهمة إلى: ${all[idx].status}`);
         return all[idx];
@@ -1068,13 +441,12 @@ export class ApiService {
       title: task.title || 'مهمة جديدة',
       description: task.description || '',
       assigneeId: nextAssignee,
-      assignedToId: nextAssignee,
-      assigneeName: recipient?.fullName || task.assigneeName || currentUser.fullName,
+      assigneeName: nextAssigneeName,
       assigneeAvatar: task.assigneeAvatar,
       creatorId: currentUser.id,
       creatorName: currentUser.fullName,
       priority: task.priority || 'MEDIUM',
-      status: task.status || 'TODO',
+      status: normalizeTaskStatus(task.status),
       startDate: task.startDate || now,
       dueDate: task.dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       reminderOptions: task.reminderOptions,
@@ -1095,19 +467,19 @@ export class ApiService {
   }
 
   static deleteTask(taskId: string, user?: User): void {
-    if (!RbacService.hasPermission(user || this.getCurrentUser(), 'tasks.create_assign')) {
+    const currentUser = user || this.getCurrentUser();
+    if (!RbacService.hasPermission(currentUser, 'tasks.create_assign') && !RbacService.leadsDepartment(currentUser)) {
       throw new Error('صلاحياتك لا تسمح بحذف المهام');
     }
     const all = this.getTasks();
     const filtered = all.filter((t) => t.id !== taskId);
     setStored(STORAGE_KEYS.TASKS, filtered);
-    const currentUser = user || this.getCurrentUser();
     this.logActivity('حذف مهمة', 'TASK', taskId, 'مهمة محذوفة', `قام ${currentUser.fullName} بحذف المهمة.`);
   }
 
   // --- MEDIA ---
   static getMedia(): MediaFile[] {
-    return getStored<MediaFile[]>(STORAGE_KEYS.MEDIA, []).filter(asset => !asset.deletedAt);
+    return getSnapshot<MediaFile[]>(STORAGE_KEYS.MEDIA, []).filter(asset => !asset.deletedAt);
   }
 
   static getMediaAssets(): MediaFile[] {
@@ -1334,694 +706,87 @@ export class ApiService {
     });
   }
 
-  // --- REQUESTS BETWEEN DEPARTMENTS ---
   // --- BULLETINS ---
-  static getBulletins(): Bulletin[] {
-    return getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []).filter((b) => !b.deletedAt);
-  }
+  static getBulletins(): Bulletin[] { return productionApi.getBulletins(); }
+  static getBulletinStories(bulletinId?: string): BulletinStory[] { return productionApi.getBulletinStories(bulletinId); }
+  static getBulletinFormats(): BulletinFormat[] { return productionApi.getBulletinFormats(); }
+  static saveBulletin(data: Partial<Bulletin>): Bulletin { return productionApi.saveBulletin(data); }
+  static deleteBulletin(id: string): void { return productionApi.deleteBulletin(id); }
+  static saveBulletinStory(data: Partial<BulletinStory> & { bulletinId: string }, base?: EntityRow): BulletinStory { return productionApi.saveBulletinStory(data, base); }
+  static deleteBulletinStory(id: string): void { return productionApi.deleteBulletinStory(id); }
+  static moveBulletinStory(id: string, dir: -1 | 1): void { return productionApi.moveBulletinStory(id, dir); }
+  static copyStoriesToBulletin(storyIds: string[], bulletinId: string): number { return productionApi.copyStoriesToBulletin(storyIds, bulletinId); }
+  static saveBulletinFormat(data: Partial<BulletinFormat>): BulletinFormat { return productionApi.saveBulletinFormat(data); }
+  static deleteBulletinFormat(id: string): void { return productionApi.deleteBulletinFormat(id); }
+  static createBulletinFromFormat(formatId: string, date: string, opts: { scheduled?: boolean; overrides?: Partial<Bulletin> } = {}): Bulletin { return productionApi.createBulletinFromFormat(formatId, date, opts); }
+  static missingScheduledBulletins(date: string): BulletinFormat[] { return productionApi.missingScheduledBulletins(date); }
+  static getAirShows(): any[] { return productionApi.getAirShows(); }
 
-  static getBulletinStories(bulletinId?: string): BulletinStory[] {
-    return getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, [])
-      .filter((s) => !s.deletedAt && (!bulletinId || s.bulletinId === bulletinId))
-      .sort(byRank);
-  }
-
-  static getBulletinFormats(): BulletinFormat[] {
-    return getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []).filter((f) => !f.deletedAt);
-  }
-
-  private static bulletinActor() {
-    const me = this.getCurrentUser();
-    return { id: me.id, canApprove: RbacService.hasPermission(me, 'bulletins.approve'), canEdit: RbacService.hasPermission(me, 'bulletins.edit'), role: me.role };
-  }
-
-  static saveBulletin(data: Partial<Bulletin>): Bulletin {
-    const all = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
-    const now = new Date().toISOString();
-    const idx = data.id ? all.findIndex((b) => b.id === data.id) : -1;
-    const editor = data.editorId ? this.getUsers().find((u) => u.id === data.editorId) : undefined;
-    const next: Bulletin = {
-      ...(idx >= 0 ? all[idx] : { id: data.id || newId('bul'), status: 'PLANNING', anchors: [], createdAt: now }),
-      ...data,
-      ...(data.editorId !== undefined ? { editorName: editor?.fullName } : {}),
-      updatedAt: now,
-    } as Bulletin;
-    const err = bulletinError(next);
-    if (err) throw new Error(err);
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.bulletins.storageKey, all);
-    return next;
-  }
-
-  static deleteBulletin(id: string): void {
-    const all = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
-    setStored(COLLECTIONS.bulletins.storageKey, all.map((b) => (b.id === id ? { ...b, deletedAt: new Date().toISOString() } : b)));
-  }
-
-  /** Saves a story after the same checks the server applies (the server has the last word). */
-  static saveBulletinStory(data: Partial<BulletinStory> & { bulletinId: string }, base?: EntityRow): BulletinStory {
-    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
-    const now = new Date().toISOString();
-    const me = this.getCurrentUser();
-    const idx = data.id ? all.findIndex((x) => x.id === data.id) : -1;
-    if (base && (base.c !== 'bulletinStories' || base.id !== data.id || idx < 0)) throw new Error('نسخة القصة غير متاحة');
-    const before = base ? base.d as BulletinStory : idx >= 0 ? all[idx] : null;
-    const bulletin = this.getBulletins().find((b) => b.id === data.bulletinId);
-    const actor = this.bulletinActor();
-    const siblings = this.getBulletinStories(data.bulletinId);
-    const next: BulletinStory = {
-      ...(before || {
-        rank: rankBetween(siblings[siblings.length - 1]?.rank),
-        status: 'DRAFT',
-        script: '',
-        type: 'READER',
-        writerId: me.id,
-        writerName: me.fullName,
-        createdAt: now,
-      }),
-      ...data,
-      id: before?.id ?? data.id ?? newId('bst'),
-      updatedAt: now,
-    } as BulletinStory;
-    // Same approval chain as the server: one sign-off per step, in order.
-    const err = storyError(next) || storyStatusError(before, next, bulletin, actor) || (!actor.canEdit && !isApprover(bulletin, actor) ? 'صلاحياتك لا تسمح بتعديل قصص النشرة' : null);
-    if (err) throw new Error(err);
-    let approvals = [...(before?.approvals || [])];
-    if (before && storyContentChanged(before, next) && !isApprover(bulletin, actor, before)) {
-      approvals = [];
-      if (next.status === 'APPROVED') next.status = 'READY';
-    }
-    if (next.status === 'DRAFT') approvals = [];
-    if (next.status === 'APPROVED' && (before?.status !== 'APPROVED' || nextApprovalStep(bulletin, { approvals }))) {
-      const step = nextApprovalStep(bulletin, { approvals });
-      if (step) approvals = [...approvals, { stepId: step.id, byId: me.id, byName: me.fullName, at: now }];
-      // Keep the requested signoff transition: the server records the signature and
-      // returns READY when later steps remain. Sending READY here loses the signoff.
-    }
-    next.approvals = approvals;
-    if (next.status === 'APPROVED' && before?.status !== 'APPROVED') Object.assign(next, { approvedById: me.id, approvedByName: me.fullName, approvedAt: now });
-    if (next.status !== 'APPROVED') Object.assign(next, { approvedById: undefined, approvedByName: undefined, approvedAt: undefined });
-    if (base) dataStore.queueVersionedRow({ ...base, d: next });
-    else {
-      if (idx >= 0) all[idx] = next;
-      else all.push(next);
-      setStored(COLLECTIONS.bulletinStories.storageKey, all);
-    }
-    return next;
-  }
-
-  static deleteBulletinStory(id: string): void {
-    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
-    setStored(COLLECTIONS.bulletinStories.storageKey, all.map((x) => (x.id === id ? { ...x, deletedAt: new Date().toISOString() } : x)));
-  }
-
-  /** Moves a story up or down one place (only that story is rewritten). */
-  static moveBulletinStory(id: string, dir: -1 | 1): void {
-    const story = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).find((x) => x.id === id);
-    if (!story) return;
-    const list = this.getBulletinStories(story.bulletinId);
-    const i = list.findIndex((x) => x.id === id);
-    const j = i + dir;
-    if (j < 0 || j >= list.length) return;
-    const rank = dir < 0 ? rankBetween(list[j - 1]?.rank, list[j].rank) : rankBetween(list[j].rank, list[j + 1]?.rank);
-    this.saveBulletinStory({ id, bulletinId: story.bulletinId, rank });
-  }
-
-  /** Copies stories into another bulletin as fresh drafts (like copying a story to another rundown). */
-  static copyStoriesToBulletin(storyIds: string[], bulletinId: string): number {
-    const source = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []).filter((x) => storyIds.includes(x.id));
-    source.sort(byRank).forEach((x) => {
-      const { id: _id, rank: _r, status: _s, approvedById: _a, approvedByName: _n, approvedAt: _t, writerId: _w, writerName: _wn, createdAt: _c, floated: _f, killed: _k, approvals: _ap, returnNote: _rn, deletedAt: _d, ...rest } = x;
-      this.saveBulletinStory({ ...rest, bulletinId, sourceStoryId: x.id, status: 'DRAFT' });
-    });
-    return source.length;
-  }
-
-  static saveBulletinFormat(data: Partial<BulletinFormat>): BulletinFormat {
-    const all = getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []);
-    const now = new Date().toISOString();
-    const idx = data.id ? all.findIndex((f) => f.id === data.id) : -1;
-    const editor = data.editorId ? this.getUsers().find((u) => u.id === data.editorId) : undefined;
-    const next = {
-      ...(idx >= 0 ? all[idx] : { id: newId('fmt'), days: [], autoCreate: false, stories: [], anchors: [], createdAt: now }),
-      ...data,
-      ...(data.editorId !== undefined ? { editorName: editor?.fullName } : {}),
-      updatedAt: now,
-    } as BulletinFormat;
-    const err = formatError(next);
-    if (err) throw new Error(err);
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.bulletinFormats.storageKey, all);
-    return next;
-  }
-
-  static deleteBulletinFormat(id: string): void {
-    const all = getStored<BulletinFormat[]>(COLLECTIONS.bulletinFormats.storageKey, []);
-    setStored(COLLECTIONS.bulletinFormats.storageKey, all.map((f) => (f.id === id ? { ...f, deletedAt: new Date().toISOString() } : f)));
-  }
-
-  /** Creates a bulletin with its skeleton stories from a format (a stable id for scheduled days). */
-  static createBulletinFromFormat(formatId: string, date: string, opts: { scheduled?: boolean; overrides?: Partial<Bulletin> } = {}): Bulletin {
-    const f = this.getBulletinFormats().find((x) => x.id === formatId);
-    if (!f) throw new Error('القالب غير موجود');
-    const id = opts.scheduled ? scheduledBulletinId(f.id, date) : newId('bul');
-    const stored = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
-    // A scheduled day is matched by format and date too, not only by id (a hand-made or imported copy counts).
-    if (stored.some((b) => b.id === id) || (opts.scheduled && scheduledBulletinExists(f, date, stored))) throw new Error('هذه النشرة موجودة مسبقاً');
-    const { bulletin, stories } = bulletinFromFormat(f, date, id, newId);
-    const saved = this.saveBulletin({ ...bulletin, ...opts.overrides, id });
-    const all = getStored<BulletinStory[]>(COLLECTIONS.bulletinStories.storageKey, []);
-    const me = this.getCurrentUser();
-    setStored(COLLECTIONS.bulletinStories.storageKey, [...all, ...stories.map((x) => ({ ...x, writerId: me.id, writerName: me.fullName }))]);
-    return saved;
-  }
-
-  /** Scheduled bulletins for a day that have not been created yet. */
-  static missingScheduledBulletins(date: string): BulletinFormat[] {
-    const existing = getStored<Bulletin[]>(COLLECTIONS.bulletins.storageKey, []);
-    return this.getBulletinFormats().filter((f) => isScheduledOn(f, date) && !scheduledBulletinExists(f, date, existing));
-  }
-
-  /** Programme episodes and bulletins that can run in on-air mode. */
-  static getAirShows(): any[] {
-    const stories = this.getBulletinStories();
-    const current = new Map(this.getOnAirStates().filter(state => state.status === 'LIVE').map(state => [state.episodeId, state.currentSegmentId]));
-    return [
-      ...this.getEpisodes(),
-      ...this.getBulletins().map((b) => bulletinAsShow(b, stories.filter((x) => x.bulletinId === b.id), current.get(b.id))),
-    ];
-  }
-
-  static getRequests(): DeptRequest[] {
-    return getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).filter((r) => !r.deletedAt);
-  }
-
-  static createRequest(data: Pick<DeptRequest, 'type' | 'title'> & Partial<DeptRequest>): DeptRequest {
-    const me = this.getCurrentUser();
-    if (!RbacService.hasPermission(me, 'requests.create')) throw new Error('صلاحياتك لا تسمح بإرسال طلبات للأقسام');
-    const pending = data.id && getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []).find(r => r.id === data.id);
-    if (pending) return pending;
-    const type = requestTypeOf(data.type);
-    if (!type) throw new Error('نوع الطلب غير معروف');
-    if (!data.title?.trim()) throw new Error('عنوان الطلب مطلوب');
-    const now = new Date().toISOString();
-    const req: DeptRequest = {
-      id: data.id || newId('req'),
-      type: type.id,
-      ...(data.supportCardId ? { supportCardId: data.supportCardId } : {}),
-      departmentId: type.departmentId,
-      title: data.title.trim(),
-      details: data.details?.trim() || '',
-      priority: data.priority === 'URGENT' ? 'URGENT' : 'NORMAL',
-      status: 'OPEN',
-      requesterId: me.id,
-      requesterName: me.fullName,
-      link: data.link,
-      lines: data.lines?.filter((l) => l.trim()),
-      sourceMediaIds: type.id === 'MONTAGE' && data.sourceMediaIds?.length ? data.sourceMediaIds : undefined,
-      messageOrigin: data.messageOrigin,
-      dueAt: data.dueAt,
-      ...(data.addressedToId ? { addressedToId: data.addressedToId, addressedToName: data.addressedToName } : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
-    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
-    setStored(COLLECTIONS.requests.storageKey, [req, ...all]);
-    return req;
-  }
-
-  /** Applies a change after checking it with the same rules the server enforces. */
-  static updateRequest(id: string, changes: Partial<DeptRequest>): DeptRequest {
-    const me = this.getCurrentUser();
-    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
-    const idx = all.findIndex((r) => r.id === id);
-    if (idx === -1) throw new Error('الطلب غير موجود');
-    const before = all[idx];
-    const after: DeptRequest = { ...before, ...changes };
-    if (changes.status === 'ACCEPTED' && before.status === 'OPEN') {
-      after.assigneeId = me.id;
-      after.assigneeName = me.fullName;
-    }
-    const err = requestChangeError(before, after, {
-      id: me.id,
-      departmentId: departmentIdOf(me),
-      canManage: !supportTrack(before.type) && RbacService.hasPermission(me, 'requests.manage'),
-      handlesSupport: handlesSupport(before, me),
-      routesSupport: !!supportTrack(before.type) && supportRecipient(me, supportTrack(before.type)!, true),
-    });
-    if (err) throw new Error(err);
-    all[idx] = { ...after, updatedAt: new Date().toISOString() };
-    setStored(COLLECTIONS.requests.storageKey, all);
-    return all[idx];
-  }
-
-  static deleteRequest(id: string): void {
-    const all = getStored<DeptRequest[]>(COLLECTIONS.requests.storageKey, []);
-    setStored(COLLECTIONS.requests.storageKey, all.filter((r) => r.id !== id));
-  }
+  // --- REQUESTS BETWEEN DEPARTMENTS ---
+  static getRequests(): DeptRequest[] { return productionApi.getRequests(); }
+  static createRequest(data: Pick<DeptRequest, 'type' | 'title'> & Partial<DeptRequest>): DeptRequest { return productionApi.createRequest(data); }
+  static updateRequest(id: string, changes: Partial<DeptRequest>): DeptRequest { return productionApi.updateRequest(id, changes); }
+  static deleteRequest(id: string): void { return productionApi.deleteRequest(id); }
 
   // --- PRODUCTION CARDS ---
-  static getCards(): ProductionCard[] {
-    return getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []).filter((c) => !c.deletedAt);
-  }
-
-  static getCard(id: string): ProductionCard | undefined {
-    return this.getCards().find((c) => c.id === id);
-  }
-
-  /** What the signed-in colleague may do on cards (the server applies the same rules). */
-  static cardActor(card?: Pick<ProductionCard, 'kind' | 'target'> & Partial<Pick<ProductionCard, 'steps'>>, existing = true): CardActor {
-    const me = this.getCurrentUser();
-    const legacy = { view: RbacService.hasPermission(me, 'cards.view'), manage: RbacService.hasPermission(me, 'cards.manage'), work: RbacService.hasPermission(me, 'cards.work') };
-    const access = card ? cardWorkflowAccess(me, card, legacy, existing) : {
-      canManage: WORKFLOW_TRACKS.some(track => workflowAccess(me, track, legacy, existing).canManage),
-      canWork: WORKFLOW_TRACKS.some(track => workflowAccess(me, track, legacy, existing).canWork),
-    };
-    return { id: me.id, stationId: me.stationId, managedStationIds: me.managedStationIds, managedGroupIds: me.managedGroupIds, role: me.role, departmentId: findDepartmentId(me), ...access };
-  }
-
-  /** Creates or replaces a card after checking it with the rules the server enforces. */
-  static saveCard(card: ProductionCard): ProductionCard {
-    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
-    const idx = all.findIndex((c) => c.id === card.id);
-    const before = idx === -1 ? null : all[idx];
-    const error = cardChangeError(before, card, this.cardActor(card, !!before), cardContextOf(this.getSettings(), this.getUsers()));
-    if (error) throw new Error(error);
-    const saved = { ...card, updatedAt: new Date().toISOString() };
-    if (idx === -1) setStored(COLLECTIONS.productionCards.storageKey, [saved, ...all]);
-    else {
-      all[idx] = saved;
-      setStored(COLLECTIONS.productionCards.storageKey, all);
-    }
-    return saved;
-  }
-
-  static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard {
-    const card = this.getCard(id);
-    if (!card) throw new Error('التكليف غير موجود');
-    return this.saveCard(change(card));
-  }
-
-  static updateCardStep(cardId: string, stepId: string, changes: Partial<CardStep>): ProductionCard {
-    return this.updateCard(cardId, (card) => ({ ...card, steps: card.steps.map((s) => (s.id === stepId ? { ...s, ...changes } : s)) }));
-  }
-
-  /** Documents work on the card; the server records who wrote it, from which station and when. */
-  static addCardNote(cardId: string, text: string, stepId?: string, decision = false): ProductionCard {
-    const me = this.getCurrentUser();
-    return this.updateCard(cardId, (card) => ({
-      ...card,
-      log: [...(card.log || []), { id: newId('log'), kind: 'NOTE', text: text.trim(), stepId, ...(decision ? { decision: true } : {}), byId: me.id, byName: me.fullName, stationId: me.stationId, at: new Date().toISOString() }],
-    }));
-  }
-
-  /** Sends an earlier step back for rework with a reason (a reviewer, the owner or a supervisor). */
-  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string, dueAt?: string): ProductionCard {
-    return this.updateCard(cardId, (card) => {
-      const target = card.steps.find(step => step.id === targetStepId);
-      if (!target?.reviewerId) return sendBackCard(card, targetStepId, reason, fromStepId);
-      return { ...card, steps: card.steps.map(step => step.id === target.id
-        ? { ...step, status: step.assigneeId ? 'IN_PROGRESS' : 'TODO', returnedReason: reason.trim(), dueAt }
-        : step) };
-    });
-  }
-
-  /** Finishes a step; the minutes of this work session are added to the step's total, never replacing it. */
-  static finishCardStep(cardId: string, stepId: string, note: string | undefined, sessionMinutes?: number): ProductionCard {
-    const me = this.getCurrentUser();
-    return this.updateCard(cardId, (card) => {
-      const step = card.steps.find(item => item.id === stepId);
-      if (!step) throw new Error('المهمة غير موجودة');
-      const text = note?.trim() || undefined;
-      const review = !!step.reviewerId;
-      if (review && !text && !card.mediaIds?.length && !card.links?.length) throw new Error('أضف ملاحظة التسليم أو أرفق المخرجات قبل المراجعة');
-      const session = sessionMinutes && sessionMinutes > 0 ? [{ id: newId('tim'), minutes: Math.min(1440, Math.round(sessionMinutes)), byId: me.id, byName: me.fullName, at: new Date().toISOString() }] : [];
-      const finished: CardStep = {
-        ...step,
-        status: review ? 'IN_REVIEW' : 'DONE',
-        note: text,
-        blockedReason: undefined,
-        waitingOnId: undefined,
-        timeLog: session.length ? [...(step.timeLog || []), ...session] : step.timeLog,
-        spentMinutes: (step.spentMinutes || 0) + timeLogMinutes(session) || undefined,
-      };
-      return {
-        ...card,
-        steps: card.steps.map(item => item.id === stepId ? finished : item),
-        log: review ? [...(card.log || []), {
-          id: newId('log'), kind: 'NOTE', delivery: 'FINAL', stepId, text: text || 'أُرفقت مخرجات التسليم',
-          mediaIds: card.mediaIds, deliveryLinks: card.links,
-        }] : card.log,
-      };
-    });
-  }
-
-  static deleteCard(id: string): void {
-    if (!this.cardActor().canManage) throw new Error('حذف التكليفات لمسؤولي التكليف');
-    const all = getStored<ProductionCard[]>(COLLECTIONS.productionCards.storageKey, []);
-    setStored(COLLECTIONS.productionCards.storageKey, all.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
-  }
+  static getCards(): ProductionCard[] { return productionApi.getCards(); }
+  static getCard(id: string): ProductionCard | undefined { return productionApi.getCard(id); }
+  static cardActor(card?: Pick<ProductionCard, 'kind' | 'target'> & Partial<Pick<ProductionCard, 'steps'>>, existing = true): CardActor { return productionApi.cardActor(card, existing); }
+  static saveCard(card: ProductionCard): ProductionCard { return productionApi.saveCard(card); }
+  static updateCard(id: string, change: (card: ProductionCard) => ProductionCard): ProductionCard { return productionApi.updateCard(id, change); }
+  static updateCardStep(cardId: string, stepId: string, changes: Partial<CardStep>): ProductionCard { return productionApi.updateCardStep(cardId, stepId, changes); }
+  static addCardNote(cardId: string, text: string, stepId?: string, decision = false): ProductionCard { return productionApi.addCardNote(cardId, text, stepId, decision); }
+  static sendBackCardStep(cardId: string, targetStepId: string, reason: string, fromStepId?: string, dueAt?: string): ProductionCard { return productionApi.sendBackCardStep(cardId, targetStepId, reason, fromStepId, dueAt); }
+  static finishCardStep(cardId: string, stepId: string, note: string | undefined, sessionMinutes?: number): ProductionCard { return productionApi.finishCardStep(cardId, stepId, note, sessionMinutes); }
+  static deleteCard(id: string): void { return productionApi.deleteCard(id); }
 
   // --- WORKFLOW TEMPLATES (assignments are created from them) ---
-  static getWorkflowTemplates(): WorkflowTemplate[] {
-    return getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []).filter((t) => !t.deletedAt);
-  }
-
-  /** Creates or replaces a template after checking it with the rules the server enforces. */
-  static saveWorkflowTemplate(template: WorkflowTemplate): WorkflowTemplate {
-    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
-    const idx = all.findIndex((t) => t.id === template.id);
-    const before = idx === -1 ? null : all[idx];
-    const me = this.getCurrentUser();
-    const error = templateChangeError(before, template, mayManageTemplate(me, before || template, RbacService.hasPermission(me, 'cards.manage')));
-    if (error) throw new Error(error);
-    const saved = { ...template, name: template.name.trim(), updatedAt: new Date().toISOString() };
-    if (idx === -1) setStored(COLLECTIONS.workflowTemplates.storageKey, [saved, ...all]);
-    else {
-      all[idx] = saved;
-      setStored(COLLECTIONS.workflowTemplates.storageKey, all);
-    }
-    return saved;
-  }
-
-  static deleteWorkflowTemplate(id: string): void {
-    if (!this.cardActor().canManage) throw new Error('قوالب سير العمل لمسؤولي التكليف');
-    const all = getStored<WorkflowTemplate[]>(COLLECTIONS.workflowTemplates.storageKey, []);
-    setStored(COLLECTIONS.workflowTemplates.storageKey, all.map((t) => (t.id === id ? { ...t, deletedAt: new Date().toISOString() } : t)));
-  }
+  static getWorkflowTemplates(): WorkflowTemplate[] { return productionApi.getWorkflowTemplates(); }
+  static saveWorkflowTemplate(template: WorkflowTemplate): WorkflowTemplate { return productionApi.saveWorkflowTemplate(template); }
+  static deleteWorkflowTemplate(id: string): void { return productionApi.deleteWorkflowTemplate(id); }
 
   // --- TAXONOMY & CONFIG ---
-  static getCategories(): Category[] {
-    return getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
-  }
+  static getCategories(): Category[] { return referenceApi.getCategories(); }
 
   // --- STORIES ---
-  static getStories(): Story[] {
-    return getStored<Story[]>(STORAGE_KEYS.STORIES, []).filter((s) => !s.deletedAt);
-  }
+  static getStories(): Story[] { return newsApi.getStories(); }
+  static getStory(id: string): Story | undefined { return newsApi.getStory(id); }
+  static saveStory(data: Partial<Story>, currentUser: User): Story { return newsApi.saveStory(data, currentUser); }
+  static deleteStory(id: string, currentUser: User): void { return newsApi.deleteStory(id, currentUser); }
 
-  static getStory(id: string): Story | undefined {
-    return this.getStories().find((s) => s.id === id);
-  }
-
-  static saveStory(data: Partial<Story>, currentUser: User): Story {
-    if (!RbacService.hasPermission(currentUser, 'news.create') && !RbacService.hasPermission(currentUser, 'news.edit_any')) {
-      throw new Error('صلاحياتك لا تسمح بإدارة القصص الإخبارية');
-    }
-    const stories = getStored<Story[]>(STORAGE_KEYS.STORIES, []);
-    let savedStory: Story;
-    
-    if (data.id) {
-      const idx = stories.findIndex(s => s.id === data.id);
-      if (idx !== -1) {
-         savedStory = { ...stories[idx], ...data, updatedAt: new Date().toISOString() } as Story;
-         stories[idx] = savedStory;
-         this.logActivity('UPDATE', 'STORY', savedStory.id, savedStory.title, 'تحديث تغطية إخبارية');
-      } else {
-         throw new Error('Story not found');
-      }
-    } else {
-       savedStory = {
-         id: newId('s'),
-         ...data,
-         createdAt: new Date().toISOString(),
-         updatedAt: new Date().toISOString(),
-         createdBy: currentUser.id
-       } as Story;
-       stories.unshift(savedStory);
-       this.logActivity('CREATE', 'STORY', savedStory.id, savedStory.title, 'إنشاء تغطية إخبارية جديدة');
-    }
-
-    setStored(STORAGE_KEYS.STORIES, stories);
-    return savedStory;
-  }
-
-  static deleteStory(id: string, currentUser: User): void {
-    if (!RbacService.hasPermission(currentUser, 'news.delete')) throw new Error('صلاحياتك لا تسمح بحذف القصص الإخبارية');
-    const stories = getStored<Story[]>(STORAGE_KEYS.STORIES, []);
-    const idx = stories.findIndex((s) => s.id === id);
-    if (idx === -1) return;
-    stories[idx] = { ...stories[idx], deletedAt: new Date().toISOString() } as Story;
-    setStored(STORAGE_KEYS.STORIES, stories);
-    this.logActivity('DELETE', 'STORY', id, stories[idx].title, 'حذف قصة إخبارية');
-  }
-
-  static saveCategory(cat: Partial<Category>): Category {
-    const all = this.getCategories();
-    const existing = cat.id ? all.find((c) => c.id === cat.id) : undefined;
-    // A partial update (e.g. only orderIndex) keeps the stored colour.
-    const colorVal = cat.colorCode || cat.color || existing?.colorCode || existing?.color || '#2563eb';
-
-    if (cat.id) {
-      const idx = all.findIndex((c) => c.id === cat.id);
-      if (idx !== -1) {
-        const updated: Category = {
-          ...all[idx],
-          ...cat,
-          color: colorVal,
-          colorCode: colorVal,
-        };
-        const parentError = categoryParentError(updated, all);
-        if (parentError) throw new Error(parentError);
-        all[idx] = updated;
-        setStored(STORAGE_KEYS.CATEGORIES, all);
-
-        // News items pick up the new name from the server (see server sync), not from this client.
-        this.logActivity('تعديل قسم إخباري', 'CATEGORY', updated.id, updated.nameAr, `تم تحديث بيانات ولون تصنيف (${updated.nameAr})`);
-        return updated;
-      }
-    }
-
-    const newCat: Category = {
-      id: newId('cat'),
-      nameAr: cat.nameAr || 'قسم جديد',
-      parentId: cat.parentId,
-      nameEn: cat.nameEn || 'New Category',
-      slug: (cat.slug || cat.nameEn || 'new-cat').toLowerCase().replace(/\s+/g, '-'),
-      color: colorVal,
-      colorCode: colorVal,
-      description: cat.description || '',
-      orderIndex: cat.orderIndex || all.length + 1,
-    };
-    const parentError = categoryParentError(newCat, all);
-    if (parentError) throw new Error(parentError);
-    all.push(newCat);
-    setStored(STORAGE_KEYS.CATEGORIES, all);
-    this.logActivity('إضافة قسم إخباري جديد', 'CATEGORY', newCat.id, newCat.nameAr, `تم إنشاء تصنيف إخباري جديد (${newCat.nameAr}) باللون المخصص.`);
-    return newCat;
-  }
-
-  /** Active news/stories that still reference a category or source. */
-  private static countReferences(field: 'categoryId' | 'sourceId', id: string): number {
-    return [STORAGE_KEYS.NEWS, STORAGE_KEYS.STORIES]
-      .flatMap((key) => getStored<any[]>(key, []))
-      .filter((n) => !n.deletedAt && n[field] === id).length;
-  }
-
-  static deleteCategory(id: string): void {
-    const all = this.getCategories();
-    if (all.some(category => category.parentId === id)) throw new Error(CATEGORY_HAS_CHILDREN);
-    const inUse = this.countReferences('categoryId', id);
-    if (inUse > 0) throw new Error(`لا يمكن حذف القسم لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة`);
-    const target = all.find((c) => c.id === id);
-    const filtered = all.filter((c) => c.id !== id);
-    setStored(STORAGE_KEYS.CATEGORIES, filtered);
-    if (target) {
-      this.logActivity('حذف قسم إخباري', 'CATEGORY', target.id, target.nameAr, `تم حذف تصنيف (${target.nameAr}) من النظام.`);
-    }
-  }
-
-  static getSources(): NewsSource[] {
-    return getStored<NewsSource[]>(STORAGE_KEYS.SOURCES, []);
-  }
-
-  static getNewsSources(): NewsSource[] {
-    return this.getSources();
-  }
-
-  static getPronunciationTerms(): import('../shared/pronunciation').PronunciationTerm[] {
-    return getStored(COLLECTIONS.pronunciationTerms.storageKey, []);
-  }
-
-  static async getSavedNewsFilterRows(signal?: AbortSignal): Promise<SavedNewsFilterRow[]> {
-    const result = await savedFilterRequest<{ rows: SavedNewsFilterRow[] }>('/api/v1/saved-news-filters', {}, signal);
-    return result.rows;
-  }
-
-  static async saveSavedNewsFilter(value: SavedNewsFilterInput, baseV?: number, signal?: AbortSignal): Promise<SavedNewsFilterRow> {
-    const error = savedNewsFilterError(value);
-    if (error) throw new Error(error);
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('اتصل بالخادم لحفظ الفلتر');
-    const response = await savedFilterRequest<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
-      method: 'POST', json: { ops: [{ c: 'savedNewsFilters', op: 'upsert', id: value.id, d: value, baseV }] },
-    }, signal);
-    const result = response.results[0];
-    if (!result) throw new Error('لم يؤكد الخادم حفظ الفلتر');
-    if (result.ok === false) throw new Error(result.message || 'لم يؤكد الخادم حفظ الفلتر');
-    return result.row as SavedNewsFilterRow;
-  }
-
-  static async deleteSavedNewsFilter(id: string, baseV: number, signal?: AbortSignal): Promise<void> {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('اتصل بالخادم لحذف الفلتر');
-    const response = await savedFilterRequest<{ results: SyncOpResult[] }>('/api/v1/data/sync', {
-      method: 'POST', json: { ops: [{ c: 'savedNewsFilters', op: 'delete', id, baseV }] },
-    }, signal);
-    const result = response.results[0];
-    if (!result) throw new Error('لم يؤكد الخادم حذف الفلتر');
-    if (result.ok === false) throw new Error(result.message || 'لم يؤكد الخادم حذف الفلتر');
-  }
-
-  static async savePronunciationTerm(value: Partial<import('../shared/pronunciation').PronunciationTerm>, original?: import('../shared/pronunciation').PronunciationTerm) {
-    const all = this.getPronunciationTerms();
-    const index = all.findIndex(t => t.id === value.id);
-    if (value.id) {
-      if (!original || original.id !== value.id) throw new Error('راجع النسخة الحالية قبل حفظ النطق');
-      const conflict = pronunciationDraftConflict(original, index >= 0 ? all[index] : undefined);
-      if (conflict) throw new Error(conflict);
-    }
-    const next = { ...(index >= 0 ? all[index] : { id: newId('term'), note: '', enabled: true }), ...value } as import('../shared/pronunciation').PronunciationTerm;
-    if (index >= 0) all[index] = next; else all.push(next);
-    setStored(COLLECTIONS.pronunciationTerms.storageKey, all);
-    const outcome = await dataStore.awaitWrite('pronunciationTerms', next.id);
-    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حفظ النطق');
-    return this.getPronunciationTerms().find(t => t.id === next.id)!;
-  }
-
-  static async deletePronunciationTerm(id: string): Promise<void> {
-    setStored(COLLECTIONS.pronunciationTerms.storageKey, this.getPronunciationTerms().filter(t => t.id !== id));
-    const outcome = await dataStore.awaitWrite('pronunciationTerms', id);
-    if (!outcome.ok) throw new Error(outcome.message || 'لم يؤكد الخادم حذف النطق');
-  }
-
-  static saveSource(src: Partial<NewsSource>): NewsSource {
-    const all = this.getSources();
-    if (src.id) {
-      const idx = all.findIndex((s) => s.id === src.id);
-      if (idx !== -1) {
-        all[idx] = { ...all[idx], ...src };
-        setStored(STORAGE_KEYS.SOURCES, all);
-        return all[idx];
-      }
-    }
-    const newSrc: NewsSource = {
-      id: newId('src'),
-      name: src.name || 'مصدر جديد',
-      type: src.type || 'SPECIAL_SOURCE',
-      reliabilityScore: src.reliabilityScore || 4,
-      contactInfo: src.contactInfo || '',
-      notes: src.notes || '',
-      feedUrl: src.feedUrl?.trim() || undefined,
-      feedEnabled: !!src.feedEnabled && !!src.feedUrl?.trim(),
-    };
-    all.push(newSrc);
-    setStored(STORAGE_KEYS.SOURCES, all);
-    return newSrc;
-  }
-
-  static saveNewsSource(src: Partial<NewsSource>): NewsSource {
-    return this.saveSource(src);
-  }
-
-  static deleteSource(id: string): void {
-    const inUse = this.countReferences('sourceId', id);
-    if (inUse > 0) throw new Error(`لا يمكن حذف المصدر لأنه مرتبط بـ ${inUse} مادة إخبارية نشطة`);
-    const all = this.getSources();
-    const filtered = all.filter((s) => s.id !== id);
-    setStored(STORAGE_KEYS.SOURCES, filtered);
-  }
-
-  static deleteNewsSource(id: string): void {
-    this.deleteSource(id);
-  }
+  static saveCategory(cat: Partial<Category>): Category { return referenceApi.saveCategory(cat); }
+  static deleteCategory(id: string): void { return referenceApi.deleteCategory(id); }
+  static getSources(): NewsSource[] { return referenceApi.getSources(); }
+  static getNewsSources(): NewsSource[] { return referenceApi.getSources(); }
+  static getPronunciationTerms(): import('../shared/pronunciation').PronunciationTerm[] { return referenceApi.getPronunciationTerms(); }
+  static getSavedNewsFilterRows(signal?: AbortSignal): Promise<SavedNewsFilterRow[]> { return referenceApi.getSavedNewsFilterRows(signal); }
+  static saveSavedNewsFilter(value: SavedNewsFilterInput, baseV?: number, signal?: AbortSignal): Promise<SavedNewsFilterRow> { return referenceApi.saveSavedNewsFilter(value, baseV, signal); }
+  static deleteSavedNewsFilter(id: string, baseV: number, signal?: AbortSignal): Promise<void> { return referenceApi.deleteSavedNewsFilter(id, baseV, signal); }
+  static savePronunciationTerm(value: Partial<import('../shared/pronunciation').PronunciationTerm>, original?: import('../shared/pronunciation').PronunciationTerm) { return referenceApi.savePronunciationTerm(value, original); }
+  static deletePronunciationTerm(id: string): Promise<void> { return referenceApi.deletePronunciationTerm(id); }
+  static saveSource(src: Partial<NewsSource>): NewsSource { return referenceApi.saveSource(src); }
+  static saveNewsSource(src: Partial<NewsSource>): NewsSource { return referenceApi.saveSource(src); }
+  static deleteSource(id: string): void { return referenceApi.deleteSource(id); }
+  static deleteNewsSource(id: string): void { return referenceApi.deleteSource(id); }
 
   // --- NEWS ARCHIVE (settled news kept on the server only) ---
-  static async searchNewsArchive(query: string, page = 1, filters: NewsArchiveFilters = {}): Promise<NewsArchivePage> {
-    const params = new URLSearchParams({ q: query, page: String(page) });
-    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
-    const res = await apiFetch<{ data: NewsArchivePage }>(`/api/v1/archive/news?${params}`);
-    return res.data;
-  }
-
-  static getWorkspaceWorkSections(): WorkSectionPreferences | undefined {
-    const key = COLLECTIONS.workspacePrefs.storageKey;
-    return getStored<WorkspacePreferences[]>(key, []).find(({ id }) => id === this.getCurrentUser().id)?.workSections;
-  }
-
-  static saveWorkspaceWorkSections(sections: WorkSectionPreferences): void {
-    const userId = this.getCurrentUser().id;
-    setStored<WorkspacePreferences[]>(COLLECTIONS.workspacePrefs.storageKey, [{ id: userId, ownerId: userId,
-      workSections: sanitizeWorkSections(sections), updatedAt: new Date().toISOString() }]);
-  }
-
-  static getPersonalNotes(): PersonalNote[] {
-    const userId = this.getCurrentUser().id;
-    return getStored<PersonalNote[]>(COLLECTIONS.personalNotes.storageKey, []).filter(({ ownerId }) => ownerId === userId);
-  }
-
-  static savePersonalNote(input: Pick<PersonalNote, 'title' | 'body' | 'pinned'> & { id?: string }): PersonalNote {
-    const notes = this.getPersonalNotes();
-    const previous = notes.find(({ id }) => id === input.id);
-    const updatedAt = new Date().toISOString();
-    const saved: PersonalNote = { id: previous?.id || input.id || newId('note'), ownerId: this.getCurrentUser().id, title: input.title.trim(),
-      body: input.body, pinned: input.pinned, createdAt: previous?.createdAt || updatedAt, updatedAt };
-    setStored(COLLECTIONS.personalNotes.storageKey, [saved, ...notes.filter(({ id }) => id !== saved.id)]);
-    return saved;
-  }
-
-  static deletePersonalNote(id: string): void {
-    setStored(COLLECTIONS.personalNotes.storageKey, this.getPersonalNotes().filter((note) => note.id !== id));
-  }
-
-  static getPersonalTasks(): PersonalTask[] {
-    const ownerId = this.getCurrentUser().id;
-    return getStored<PersonalTask[]>(COLLECTIONS.personalTasks.storageKey, []).filter(task => task.ownerId === ownerId);
-  }
-
-  static savePersonalTask(id: string, input: PersonalTaskInput): PersonalTask {
-    const tasks = this.getPersonalTasks();
-    const saved = preparePersonalTask(id, this.getCurrentUser().id, input, tasks.find(task => task.id === id));
-    setStored(COLLECTIONS.personalTasks.storageKey, [saved, ...tasks.filter(task => task.id !== id)]);
-    return saved;
-  }
-
-  static deletePersonalTask(id: string): void {
-    setStored(COLLECTIONS.personalTasks.storageKey, this.getPersonalTasks().filter(task => task.id !== id));
-  }
-
-  static async getArchivedNews(id: string): Promise<NewsItem> {
-    const res = await apiFetch<{ data: NewsItem }>(`/api/v1/archive/news/${encodeURIComponent(id)}`);
-    return res.data;
-  }
-
-  /** Returns an archived story to the synced newsroom; resolves once it has arrived locally. */
-  static async reactivateArchivedNews(id: string): Promise<void> {
-    await apiFetch(`/api/v1/archive/news/${encodeURIComponent(id)}/reactivate`, { method: 'POST', json: {} });
-    await dataStore.pull();
-  }
+  static searchNewsArchive(query: string, page = 1, filters: NewsArchiveFilters = {}): Promise<NewsArchivePage> { return newsApi.searchNewsArchive(query, page, filters); }
+  static getWorkspaceWorkSections(): WorkSectionPreferences | undefined { return referenceApi.getWorkspaceWorkSections(); }
+  static saveWorkspaceWorkSections(sections: WorkSectionPreferences): void { return referenceApi.saveWorkspaceWorkSections(sections); }
+  static getPersonalNotes(): PersonalNote[] { return referenceApi.getPersonalNotes(); }
+  static savePersonalNote(input: Pick<PersonalNote, 'title' | 'body' | 'pinned'> & { id?: string }): PersonalNote { return referenceApi.savePersonalNote(input); }
+  static deletePersonalNote(id: string): void { return referenceApi.deletePersonalNote(id); }
+  static getPersonalTasks(): PersonalTask[] { return referenceApi.getPersonalTasks(); }
+  static savePersonalTask(id: string, input: PersonalTaskInput): PersonalTask { return referenceApi.savePersonalTask(id, input); }
+  static deletePersonalTask(id: string): void { return referenceApi.deletePersonalTask(id); }
+  static getArchivedNews(id: string): Promise<NewsItem> { return newsApi.getArchivedNews(id); }
+  static reactivateArchivedNews(id: string): Promise<void> { return newsApi.reactivateArchivedNews(id); }
 
   // --- AGENCY WIRES ---
-  static getWires(): WireItem[] {
-    return getStored<WireItem[]>(COLLECTIONS.wires.storageKey, []);
-  }
-
-  static async getWireStatus(): Promise<WireStatusInfo> {
-    const res = await apiFetch<{ data: WireStatusInfo }>('/api/v1/wires/status');
-    return res.data;
-  }
-
-  /** Polls every enabled feed now; new items arrive through the normal change feed. */
-  static async refreshWires(): Promise<WireFeedStatus[]> {
-    const res = await apiFetch<{ data: { feeds: WireFeedStatus[] } }>('/api/v1/wires/refresh', { method: 'POST', json: {} });
-    await dataStore.pull();
-    return res.data.feeds;
-  }
-
-  static async testFeed(url: string): Promise<{ title: string; itemCount: number; sample: string[] }> {
-    const res = await apiFetch<{ data: { title: string; itemCount: number; sample: string[] } }>('/api/v1/wires/test', { method: 'POST', json: { url } });
-    return res.data;
-  }
+  static getWires(): WireItem[] { return newsApi.getWires(); }
+  static getWireStatus(): Promise<WireStatusInfo> { return newsApi.getWireStatus(); }
+  static refreshWires(): Promise<WireFeedStatus[]> { return newsApi.refreshWires(); }
+  static testFeed(url: string): Promise<{ title: string; itemCount: number; sample: string[] }> { return newsApi.testFeed(url); }
 
   // --- NOTIFICATION PREFERENCES & DELIVERY ---
   static getMyNotificationPrefs(): NotificationPrefs {
@@ -2075,159 +840,27 @@ export class ApiService {
   }
 
   // --- PLANNING DIARY ---
-  static getDiary(): DiaryEntry[] {
-    return getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []).filter((e) => !e.deletedAt);
-  }
-
-  static saveDiaryEntry(data: Partial<DiaryEntry>): DiaryEntry {
-    const all = getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []);
-    const now = new Date().toISOString();
-    const idx = data.id ? all.findIndex((e) => e.id === data.id) : -1;
-    const next = {
-      ...(idx >= 0
-        ? all[idx]
-        : { id: newId('diary'), kind: 'EVENT', coverage: 'UNDECIDED', priority: 'NORMAL', assigneeIds: [], createdAt: now, createdById: this.getCurrentUser().id, createdByName: this.getCurrentUser().fullName }),
-      ...data,
-      updatedAt: now,
-    } as DiaryEntry;
-    const err = diaryError(next);
-    if (err) throw new Error(err);
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.diary.storageKey, all);
-    return next;
-  }
-
-  static deleteDiaryEntry(id: string): void {
-    const all = getStored<DiaryEntry[]>(COLLECTIONS.diary.storageKey, []);
-    setStored(COLLECTIONS.diary.storageKey, all.map((e) => (e.id === id ? { ...e, deletedAt: new Date().toISOString() } : e)));
-  }
-
-  static getProductionPeople(): import('../shared/productionPeople').ProductionPerson[] {
-    return getStored(COLLECTIONS.productionPeople.storageKey, []);
-  }
-
-  static saveProductionPerson(data: Partial<import('../shared/productionPeople').ProductionPerson>): import('../shared/productionPeople').ProductionPerson {
-    const all = this.getProductionPeople();
-    const now = new Date().toISOString();
-    const idx = data.id ? all.findIndex(p => p.id === data.id) : -1;
-    const next = { ...(idx >= 0 ? all[idx] : { id: data.id || newId('person'), roles: ['PRESENTER'], active: true, createdAt: now }), ...data, name: data.name?.trim(), updatedAt: now } as import('../shared/productionPeople').ProductionPerson;
-    if (idx >= 0) all[idx] = next; else all.push(next);
-    setStored(COLLECTIONS.productionPeople.storageKey, all);
-    return next;
-  }
+  static getDiary(): DiaryEntry[] { return referenceApi.getDiary(); }
+  static saveDiaryEntry(data: Partial<DiaryEntry>): DiaryEntry { return referenceApi.saveDiaryEntry(data); }
+  static deleteDiaryEntry(id: string): void { return referenceApi.deleteDiaryEntry(id); }
+  static getProductionPeople(): import('../shared/productionPeople').ProductionPerson[] { return referenceApi.getProductionPeople(); }
+  static saveProductionPerson(data: Partial<import('../shared/productionPeople').ProductionPerson>): import('../shared/productionPeople').ProductionPerson { return referenceApi.saveProductionPerson(data); }
 
   // --- RESOURCES & BOOKINGS ---
-  static getResources(includeInactive = true): Resource[] {
-    return getStored<Resource[]>(COLLECTIONS.resources.storageKey, []).filter((r) => !r.deletedAt && (includeInactive || r.isActive !== false));
-  }
-
-  static saveResource(data: Partial<Resource>): Resource {
-    const all = getStored<Resource[]>(COLLECTIONS.resources.storageKey, []);
-    const now = new Date().toISOString();
-    const idx = data.id ? all.findIndex((r) => r.id === data.id) : -1;
-    const next = { ...(idx >= 0 ? all[idx] : { id: newId('res'), kind: 'STUDIO', isActive: true, createdAt: now }), ...data, updatedAt: now } as Resource;
-    if (!next.name?.trim()) throw new Error('اسم المورد مطلوب');
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.resources.storageKey, all);
-    return next;
-  }
-
-  static deleteResource(id: string): void {
-    if (this.getBookings().some((b) => b.resourceId === id && b.status !== 'CANCELLED' && Date.parse(b.end) > Date.now())) {
-      throw new Error('للمورد حجوزات قادمة؛ ألغها أو عطّل المورد بدلاً من حذفه');
-    }
-    const all = getStored<Resource[]>(COLLECTIONS.resources.storageKey, []);
-    setStored(COLLECTIONS.resources.storageKey, all.map((r) => (r.id === id ? { ...r, deletedAt: new Date().toISOString() } : r)));
-  }
-
-  static getBookings(): Booking[] {
-    return getStored<Booking[]>(COLLECTIONS.bookings.storageKey, []).filter((b) => !b.deletedAt);
-  }
-
-  static saveBooking(data: Partial<Booking>): Booking {
-    const all = getStored<Booking[]>(COLLECTIONS.bookings.storageKey, []);
-    const now = new Date().toISOString();
-    const me = this.getCurrentUser();
-    const idx = data.id ? all.findIndex((b) => b.id === data.id) : -1;
-    const next = {
-      ...(idx >= 0 ? all[idx] : { id: newId('bkg'), status: 'CONFIRMED', createdAt: now, bookedById: me.id, bookedByName: me.fullName }),
-      ...data,
-      updatedAt: now,
-    } as Booking;
-    if (!next.assigneeId) next.assigneeId = next.bookedById;
-    const err = bookingError(next);
-    if (err) throw new Error(err);
-    const clash = bookingConflicts(next, this.getBookings())[0];
-    if (clash) {
-      const res = this.getResources().find((r) => r.id === next.resourceId);
-      const t = (iso: string) => new Date(iso).toLocaleTimeString(appLocale(), { ...zoneOptions(), hour: '2-digit', minute: '2-digit' });
-      throw new Error(`${res?.name || 'المورد'} محجوز في هذا الوقت: «${clash.title}» (${t(clash.start)}–${t(clash.end)}) باسم ${clash.bookedByName || 'زميل'}`);
-    }
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(COLLECTIONS.bookings.storageKey, all);
-    return next;
-  }
-
-  static cancelBooking(id: string): void {
-    const b = this.getBookings().find((x) => x.id === id);
-    if (b) this.saveBooking({ ...b, status: 'CANCELLED' });
-  }
-
-  static getProgramTypes(): ProgramType[] {
-    return getStored<ProgramType[]>(STORAGE_KEYS.PROGRAM_TYPES, []);
-  }
-
-  /** Adds or renames a program type. Programs pick up a new name from the server (see server sync). */
-  static saveProgramType(data: Partial<ProgramType>): ProgramType {
-    const nameAr = (data.nameAr ?? '').trim();
-    if (!nameAr) throw new Error('اسم نوع البرنامج مطلوب');
-    if (nameAr.length > 80) throw new Error('اسم نوع البرنامج حتى 80 حرفاً');
-    const all = this.getProgramTypes();
-    const key = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
-    if (all.some((t) => t.id !== data.id && key(t.nameAr || t.name || '') === key(nameAr))) throw new Error('يوجد نوع برنامج بالاسم نفسه');
-    const idx = data.id ? all.findIndex((t) => t.id === data.id) : -1;
-    const next: ProgramType = { ...(idx >= 0 ? all[idx] : { id: data.id || newId('ptype') }), ...data, nameAr, name: nameAr };
-    if (idx >= 0) all[idx] = next;
-    else all.push(next);
-    setStored(STORAGE_KEYS.PROGRAM_TYPES, all);
-    return next;
-  }
-
-  /** Programs (not deleted) still classified under a program type. */
-  static countProgramsOfType(id: string): number {
-    return getStored<Program[]>(STORAGE_KEYS.PROGRAMS, []).filter((p) => !p.deletedAt && p.typeId === id).length;
-  }
-
-  static deleteProgramType(id: string): void {
-    const inUse = this.countProgramsOfType(id);
-    if (inUse > 0) {
-      const count = inUse === 1 ? 'برنامج واحد' : inUse === 2 ? 'برنامجين' : inUse <= 10 ? `${inUse} برامج` : `${inUse} برنامجاً`;
-      throw new Error(`لا يمكن حذف نوع البرنامج لأنه مستخدم في ${count}؛ انقل البرامج إلى نوع آخر أولاً`);
-    }
-    setStored(STORAGE_KEYS.PROGRAM_TYPES, this.getProgramTypes().filter((t) => t.id !== id));
-  }
+  static getResources(includeInactive = true): Resource[] { return referenceApi.getResources(includeInactive); }
+  static saveResource(data: Partial<Resource>): Resource { return referenceApi.saveResource(data); }
+  static deleteResource(id: string): void { return referenceApi.deleteResource(id); }
+  static getBookings(): Booking[] { return referenceApi.getBookings(); }
+  static saveBooking(data: Partial<Booking>): Booking { return referenceApi.saveBooking(data); }
+  static cancelBooking(id: string): void { return referenceApi.cancelBooking(id); }
+  static getProgramTypes(): ProgramType[] { return referenceApi.getProgramTypes(); }
+  static saveProgramType(data: Partial<ProgramType>): ProgramType { return referenceApi.saveProgramType(data); }
+  static countProgramsOfType(id: string): number { return referenceApi.countProgramsOfType(id); }
+  static deleteProgramType(id: string): void { return referenceApi.deleteProgramType(id); }
 
   // --- SETTINGS ---
-  static getSettings(): SystemSettings {
-    const settings = getStored<SystemSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
-    // Department names, station groups and removed stations' names follow the shared settings everywhere.
-    applyDepartmentSettings(settings);
-    rememberStationSettings(settings);
-    return settings;
-  }
-
-  static saveSettings(settings: Partial<SystemSettings>): SystemSettings {
-    const current = this.getSettings();
-    const updated = { ...current, ...settings };
-    const error = settingsError(updated, current);
-    if (error) throw new Error(error);
-    setStored(STORAGE_KEYS.SETTINGS, updated);
-    // Settings are audited by the server only after an accepted write.
-    return updated;
-  }
+  static getSettings(): SystemSettings { return referenceApi.getSettings(); }
+  static saveSettings(settings: Partial<SystemSettings>): SystemSettings { return referenceApi.saveSettings(settings); }
 
   // --- STORY EDIT LOCKS ---
   static getEditLocks(): EditLock[] {
@@ -2301,30 +934,13 @@ export class ApiService {
   }
 
   // --- REVISION HISTORY & TRASH ---
-  static async getNewsHistory(newsId: string): Promise<NewsRevision[]> {
-    const res = await apiFetch<{ data: NewsRevision[] }>(`/api/v1/history/news/${encodeURIComponent(newsId)}`);
-    return res.data;
-  }
-
-  static getDeletedNews(): NewsItem[] {
-    return getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []).filter((n) => !!n.deletedAt);
-  }
-
-  static restoreNews(newsId: string): NewsItem {
-    const all = getStored<NewsItem[]>(STORAGE_KEYS.NEWS, []);
-    const idx = all.findIndex((n) => n.id === newsId);
-    if (idx === -1) throw new Error('الخبر غير موجود');
-    if (!RbacService.hasPermission(this.getCurrentUser(), 'news.delete')) {
-      throw new Error('صلاحياتك لا تسمح باستعادة الأخبار المحذوفة');
-    }
-    all[idx] = { ...all[idx], deletedAt: null, updatedAt: new Date().toISOString() };
-    setStored(STORAGE_KEYS.NEWS, all);
-    return all[idx];
-  }
+  static getNewsHistory(newsId: string): Promise<NewsRevision[]> { return newsApi.getNewsHistory(newsId); }
+  static getDeletedNews(): NewsItem[] { return newsApi.getDeletedNews(); }
+  static restoreNews(newsId: string): NewsItem { return newsApi.restoreNews(newsId); }
 
   // --- SHARED BROADCAST STATE ---
   static getBroadcastState(): BroadcastState {
-    return getStored<BroadcastState>(COLLECTIONS.broadcastState.storageKey, { liveLock: false });
+    return getSnapshot<BroadcastState>(COLLECTIONS.broadcastState.storageKey, { liveLock: false });
   }
 
   /** On-air lock shared by all workstations; the server blocks deleting programs/episodes while set. */
@@ -2344,7 +960,7 @@ export class ApiService {
   // --- INTERNAL CHAT ---
   /** Messages oldest-first (the server stores newest first). */
   static getMessages(): (ChatMessage & { isUrgent?: boolean })[] {
-    return [...getStored<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
+    return [...getSnapshot<ChatMessage[]>(COLLECTIONS.messages.storageKey, [])].reverse();
   }
 
   static sendMessage(channel: ChatMessage['channel'], text: string, isUrgent = false, extra: { attachments?: ChatAttachment[]; ref?: ChatRef } = {}): string {
@@ -2507,7 +1123,7 @@ export class ApiService {
   }
 
   static getAuditLogs(): AuditLog[] {
-    return getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
+    return getSnapshot<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
   }
 
   // Audit entries are written by the server alone (see src/server/sync.ts and the auditLogs policy).
@@ -2605,15 +1221,13 @@ export class ApiService {
   }
 
   /** Colleagues, general managers and open card steps still belonging to a station. */
-  static async getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number; localDepartments?: { id: string; name: string }[] }> {
-    return (await apiFetch<{ data: any }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/usage`)).data;
+  static getStationUsage(stationId: string): Promise<{ members: { id: string; fullName: string }[]; managers: { id: string; fullName: string }[]; openSteps: { cardId: string; cardTitle: string; stepId: string; assigneeName?: string }[]; openCardsOwned: number; localDepartments?: { id: string; name: string }[] }> {
+    return referenceApi.getStationUsage(stationId);
   }
 
   /** Removes a station on the server, moving its colleagues and open work to `replacementId`. */
-  static async removeStation(stationId: string, replacementId?: string): Promise<{ movedUsers: number; movedSteps: number }> {
-    const res = (await apiFetch<{ data: { movedUsers: number; movedSteps: number } }>(`/api/v1/admin/stations/${encodeURIComponent(stationId)}/remove`, { method: 'POST', json: { replacementId } })).data;
-    await dataStore.pull();
-    return res;
+  static removeStation(stationId: string, replacementId?: string): Promise<{ movedUsers: number; movedSteps: number }> {
+    return referenceApi.removeStation(stationId, replacementId);
   }
 
   static async createBackup(): Promise<DbBackupFileInfo | null> {

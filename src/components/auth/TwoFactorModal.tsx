@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 import { ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { authClient } from '../../services/authClient';
@@ -55,6 +54,7 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose,
     run(async () => {
       const res = await authClient.setupTwoFactor(password);
       setSecret(res.secret);
+      const { default: QRCode } = await import('qrcode');
       setQrDataUrl(await QRCode.toDataURL(res.otpauthUrl, { margin: 1, width: 200 }));
       setStep('scan');
     });

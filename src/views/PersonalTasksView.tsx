@@ -111,8 +111,8 @@ export function PersonalTasksView({ userId, focusId, onClearFocus }: {
   };
 
   const remove = async (task: PersonalTask) => {
-    if (await confirmDialog({ title: 'حذف المهمة الشخصية', message: `حذف «${task.title}» وإلغاء موعد تذكيرها؟`, confirmLabel: 'حذف', danger: true })) {
-      void write(task.id, () => apiService.deletePersonalTask(task.id), 'حُذفت المهمة الشخصية.', () => { if (focusId) onClearFocus(); });
+    if (await confirmDialog({ title: 'حذف المهمة الشخصية', message: `نقل «${task.title}» إلى سلة محذوفات المهام الشخصية؟ يتوقف تذكيرها أثناء وجودها في السلة.`, confirmLabel: 'حذف', danger: true })) {
+      void write(task.id, () => apiService.deletePersonalTask(task.id), 'نُقلت المهمة إلى سلة محذوفات المهام الشخصية.', () => { if (focusId) onClearFocus(); });
     }
   };
   const copyTask = async (task: PersonalTask, trigger: HTMLButtonElement) => {

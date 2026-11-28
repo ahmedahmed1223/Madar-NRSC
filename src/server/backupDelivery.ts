@@ -134,9 +134,12 @@ async function buildBundle(db: NewsroomDatabase, source: string, staging: string
   }
   const database = path.join(staging, 'newsroom.sqlite');
   files.push({ path: 'newsroom.sqlite', bytes: (await fs.stat(database)).size, sha256: await digest(database) });
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   await fs.writeFile(path.join(staging, 'manifest.json'), JSON.stringify({ format: 1, origin, createdAt: new Date().toISOString(), files, ...(elsewhere ? { filesKeptElsewhere: elsewhere } : {}) }, null, 2), { flag: 'wx' });
   return { files, uploads: uploads.length, filesKeptElsewhere: elsewhere };
 }
+
+export { verifyBackupBundle, type BackupBundleVerification } from './backupBundleVerification';
 
 async function copyExternal(bundle: string, directory: string, name: string, origin: string, files: BundleFile[]) {
   const pending = path.join(directory, `${name}.pending-${origin}`);

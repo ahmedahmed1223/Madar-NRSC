@@ -165,10 +165,10 @@ export const NewsHistoryModal: React.FC<NewsHistoryModalProps> = ({ isOpen, onCl
                 {!isCurrent && current && (
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                     <div role="group" aria-label="طريقة العرض" className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-xs font-bold">
-                      <button type="button" aria-pressed={compare} onClick={() => setCompare(true)} className={`min-h-9 px-3 inline-flex items-center gap-1 ${compare ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`}>
+                      <button type="button" aria-pressed={compare} onClick={() => setCompare(true)} className={`min-h-11 sm:min-h-10 px-3 inline-flex items-center gap-1 ${compare ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
                         <GitCompare className="w-3.5 h-3.5" /> الفرق عن النسخة الحالية
                       </button>
-                      <button type="button" aria-pressed={!compare} onClick={() => setCompare(false)} className={`min-h-9 px-3 ${!compare ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`}>
+                      <button type="button" aria-pressed={!compare} onClick={() => setCompare(false)} className={`min-h-11 sm:min-h-10 px-3 ${!compare ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
                         نص هذه النسخة
                       </button>
                     </div>
