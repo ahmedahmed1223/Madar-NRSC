@@ -24,8 +24,20 @@ for (const width of [390, 1440]) test(`correction conflict retains input and req
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/corrections-${width}.png` });
     await page.addScriptTag({ content: axeSource });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     for (const theme of ['light', 'dark']) {
-      await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
+      const fieldTransitions = await page.evaluate(theme => {
+        const root = document.documentElement;
+        root.classList.add('theme-transition');
+        root.classList.toggle('dark', theme === 'dark');
+        const panel = document.querySelector('[aria-label="سجل التصحيحات"]')!;
+        return Array.from(panel.querySelectorAll('select, textarea'), field => getComputedStyle(field).transitionProperty);
+      }, theme);
+      expect(fieldTransitions).toEqual(['none', 'none', 'none']);
+      await page.evaluate(async () => {
+        document.documentElement.classList.remove('theme-transition');
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      });
       expect(await page.evaluate(async () => (await (window as any).axe.run('[aria-label="سجل التصحيحات"]', { runOnly: ['wcag2a', 'wcag2aa'] })).violations.map((v: any) => v.id))).toEqual([]);
       await page.screenshot({ path: `test-results/corrections-${width}-${theme}.png` });
     }

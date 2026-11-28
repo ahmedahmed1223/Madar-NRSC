@@ -2,14 +2,15 @@ import { expect, test } from '@playwright/test';
 import { openNav, signIn } from './helpers';
 
 test('planning diary: the desk plans, the reporter is assigned and writes the story', async ({ browser }) => {
-  const editor = await signIn(browser, 'editor@akhbar.tv');
+  const editor = await signIn(browser, 'editor@akhbar.tv', { timezoneId: 'UTC' });
+  // The station has entered the new day while the editor's device is still on the previous date.
+  const nearMidnight = new Date('2026-11-27T22:30:00Z');
+  await editor.page.clock.setFixedTime(nearMidnight);
   await openNav(editor.page, 'أجندة التغطية');
   await expect(editor.page.getByRole('heading', { name: 'أجندة التغطية' })).toBeVisible();
-  await expect(editor.page.getByText('مؤتمر صحفي لوزير الطاقة').first()).toBeVisible();
-
-  // A new event, assigned to the reporter.
   await editor.page.getByRole('button', { name: 'حدث جديد' }).click();
   const form = editor.page.locator('#form-page-root');
+  await expect(form.locator('input[type="date"]')).toHaveValue('2026-11-28');
   await form.getByLabel('العنوان').fill('زيارة رئيس الوزراء لمحطة التحلية');
   await form.getByLabel('من (اختياري)').fill('10:30');
   await form.getByLabel('قرار التغطية').selectOption('COVER');
@@ -17,7 +18,9 @@ test('planning diary: the desk plans, the reporter is assigned and writes the st
   await form.getByRole('button', { name: 'حفظ' }).click();
   await expect(editor.page.getByText('زيارة رئيس الوزراء لمحطة التحلية')).toBeVisible();
 
-  const reporter = await signIn(browser, 'reporter@akhbar.tv');
+  const reporter = await signIn(browser, 'reporter@akhbar.tv', { timezoneId: 'UTC' });
+  await reporter.page.clock.setFixedTime(nearMidnight);
+  await reporter.page.reload();
   // My Work shows the coverage assignment, the bell has the notification.
   await expect(reporter.page.getByTestId('my-plan')).toContainText('زيارة رئيس الوزراء');
   await reporter.page.getByRole('button', { name: /الإشعارات|التنبيهات/ }).first().click();
