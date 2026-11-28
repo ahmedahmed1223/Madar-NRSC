@@ -18,11 +18,14 @@ test('system navigation, contextual trash, role-aware tours and private pinned n
     await page.keyboard.press('Escape');
 
     await page.goto('/media');
-    await page.getByRole('link', { name: 'محذوفات ملفات الوسائط' }).click();
+    const mediaTrash = 'محذوفات مكتبة الوسائط';
+    await page.getByRole('link', { name: mediaTrash, exact: true }).click();
+    const mediaTrashHeading = page.getByRole('heading', { name: mediaTrash, exact: true });
     await expect(page).toHaveURL(/\/trash\/media$/);
-    await expect(page.getByLabel('القسم', { exact: true })).toHaveValue('media');
+    await expect(mediaTrashHeading).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel('القسم', { exact: true })).toHaveValue('media');
+    await expect(page).toHaveURL(/\/trash\/media$/);
+    await expect(mediaTrashHeading).toBeVisible();
 
     await page.goto('/personal-notes');
     await page.getByRole('button', { name: 'ملاحظة جديدة' }).click();
