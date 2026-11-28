@@ -71,6 +71,82 @@ test('department permission drafts, full review, save, conflict and cancellation
   } finally { await page.context().close(); }
 });
 
+
+test('a background permissions refresh preserves a new draft and its original version', async ({ browser }) => {
+  const { page } = await signIn(browser, 'admin@akhbar.tv');
+  const endpoint = '/api/v1/admin/permissions';
+  const pattern = '**' + endpoint;
+  const headers = { 'X-NRCS-Client': 'web' };
+  let releaseResponse!: () => void;
+  const heldResponse = new Promise<void>(resolve => { releaseResponse = resolve; });
+  let buffered = false;
+  let originalPermissions: string[] | undefined;
+  let externalChange = false;
+
+  try {
+    await openNav(page, 'المستخدمون والصلاحيات');
+    await page.getByRole('tab', { name: 'مساحة الصلاحيات', exact: true }).click();
+    await page.getByRole('button', { name: 'قسم', exact: true }).click();
+    await page.locator('#permission-target').selectOption('newsroom');
+    await page.getByRole('searchbox', { name: 'بحث في الصلاحيات' }).fill('news.publish');
+    await page.getByRole('button', { name: /نشر فوري للبث الرقمي/ }).click();
+    const deny = page.getByRole('button', { name: 'منع', exact: true });
+    await expect(deny).toHaveAttribute('aria-pressed', 'false');
+
+    const original = (await (await page.request.get(endpoint)).json()).data;
+    const department = original.departments.find((item: { id: string }) => item.id === 'newsroom');
+    originalPermissions = department.permissionOverrides ?? [];
+    const externalPermissions = [
+      ...originalPermissions!.filter(code => code !== 'media.upload' && code !== '!media.upload'),
+      originalPermissions!.includes('media.upload') ? '!media.upload' : 'media.upload',
+    ];
+
+    await page.route(pattern, async route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const response = await route.fetch();
+      buffered = true;
+      await heldResponse;
+      await route.fulfill({ response });
+    });
+    const external = await page.request.put(endpoint, { headers, data: {
+      version: original.version, kind: 'department', id: 'newsroom', permissions: externalPermissions,
+    } });
+    externalChange = external.ok();
+    expect(externalChange).toBe(true);
+    await expect.poll(() => buffered).toBe(true);
+
+    await deny.click();
+    await expect(deny).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('تغييرات غير محفوظة', { exact: true })).toBeVisible();
+
+    const refreshArrived = page.waitForResponse(response => response.url().endsWith(endpoint) && response.request().method() === 'GET');
+    releaseResponse();
+    await refreshArrived;
+
+    const review = page.getByRole('button', { name: 'مراجعة ثم حفظ' });
+    await expect(review).toBeEnabled();
+    await review.click();
+    const submitted = page.waitForRequest(request => request.url().endsWith(endpoint) && request.method() === 'PUT');
+    await page.getByRole('button', { name: 'تأكيد الحفظ' }).click();
+    expect((await submitted).postDataJSON()).toMatchObject({
+      version: original.version, permissions: expect.arrayContaining(['!news.publish']),
+    });
+    await expect(page.getByRole('alert')).toContainText('تعارض في نسخة الصلاحيات');
+  } finally {
+    releaseResponse();
+    try {
+      if (externalChange) {
+        const current = (await (await page.request.get(endpoint)).json()).data;
+        await page.request.put(endpoint, { headers, data: {
+          version: current.version, kind: 'department', id: 'newsroom', permissions: originalPermissions,
+        } });
+      }
+    } finally {
+      await page.context().close();
+    }
+  }
+});
+
 test('phone editor blocks administrative department grants and guards unsaved navigation', async ({ browser }) => {
   const session = await signIn(browser, 'admin@akhbar.tv', { viewport: { width: 402, height: 874 } });
   const { page } = session;
