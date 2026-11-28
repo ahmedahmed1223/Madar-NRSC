@@ -90,7 +90,8 @@ test('a saved news keyword opens the incoming story from the bell', async ({ bro
     const bell = page.getByRole('button', { name: /^الإشعارات/ });
     await expect(bell).toHaveAccessibleName(/غير مقروء/);
     await bell.click();
-    await page.getByRole('button', { name: /خبر يطابق.*أُوبك/ }).click();
+    await page.getByRole('region', { name: 'مركز الإشعارات التحريرية', exact: true })
+      .getByRole('button', { name: /خبر يطابق.*أُوبك/ }).click();
     await expect(page).toHaveURL(/\/news\/story-personal-keyword$/);
     await expect(page.getByRole('textbox', { name: /العنوان الرئيسي للمادة الصحفية/ })).toHaveValue('اتفقت أوبك على موعد الاجتماع');
   } finally {
