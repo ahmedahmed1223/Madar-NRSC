@@ -112,8 +112,10 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const loadingRef = useRef(false);
+  const refreshingRef = useRef(false);
+  const snapshotRequest = useRef(0);
   const refreshRequested = useRef(false);
-  const loadSnapshotRef = useRef<() => Promise<boolean>>(async () => false);
+  const loadSnapshotRef = useRef<(background?: boolean) => Promise<boolean>>(async () => false);
   onDirtyRef.current = onDirtyChange;
 
   const dirty = useMemo(() => {
@@ -126,26 +128,41 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
     onDirtyRef.current?.(dirty);
   }, [dirty]);
 
-  const loadSnapshot = async () => {
-    if (!canManage || loadingRef.current || savingRef.current) return false;
-    loadingRef.current = true;
-    setLoading(true);
-    setError('');
-    setConflict(false);
+  const loadSnapshot = async (background = false) => {
+    if (!canManage || loadingRef.current || savingRef.current ||
+        (background && (dirtyRef.current || refreshingRef.current))) return false;
+    const request = background ? snapshotRequest.current : ++snapshotRequest.current;
+    if (background) refreshingRef.current = true;
+    else {
+      loadingRef.current = true;
+      setLoading(true);
+      setError('');
+      setConflict(false);
+    }
     try {
       const response = await apiFetch<SnapshotResponse>('/api/v1/admin/permissions', { method: 'GET' });
+      // A draft or newer operation owns the workspace once it starts.
+      if (request !== snapshotRequest.current) return false;
+      if (background && dirtyRef.current) {
+        refreshRequested.current = true;
+        return false;
+      }
       if (!response?.success || !response.data) throw new Error('لم تُرجع الخدمة بيانات الصلاحيات.');
+      if (background && response.data.version === snapshot?.version) return true;
       setSnapshot(response.data);
       setDraft(response.data);
-      setTargetId((current) => current && (kind === 'role' ? response.data.roles.some((item) => item.id === current) : kind === 'department' ? response.data.departments.some((item) => item.id === current) : response.data.users.some((item) => item.id === current)) ? current : getFirstTarget(response.data, kind));
       dirtyRef.current = false;
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'تعذر تحميل بيانات الصلاحيات.');
+      if (background) refreshRequested.current = true;
+      else setError(cause instanceof Error ? cause.message : 'تعذر تحميل بيانات الصلاحيات.');
       return false;
     } finally {
-      setLoading(false);
-      loadingRef.current = false;
+      if (background) refreshingRef.current = false;
+      else {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   };
   loadSnapshotRef.current = loadSnapshot;
@@ -161,9 +178,9 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
         // after their sync acknowledgement, not before the write reaches it.
         if (!event.remote) return;
       } else if (event.type !== 'sync-status' || event.pending !== 0) return;
-      if (refreshRequested.current && !dirtyRef.current && !savingRef.current && !loadingRef.current) {
+      if (refreshRequested.current && !dirtyRef.current && !savingRef.current && !loadingRef.current && !refreshingRef.current) {
         refreshRequested.current = false;
-        void loadSnapshotRef.current();
+        void loadSnapshotRef.current(true);
       }
     });
   }, [canManage]);
@@ -203,7 +220,10 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
   };
 
   useEffect(() => {
-    if (targetOptions.length && !targetOptions.some((option) => option.id === targetId)) setTargetId(targetOptions[0].id);
+    if (!targetOptions.some((option) => option.id === targetId)) {
+      const first = targetOptions[0]?.id ?? '';
+      if (first !== targetId) setTargetId(first);
+    }
   }, [targetOptions, targetId]);
 
   const visiblePermissions = useMemo(() => ALL_PERMISSIONS.filter((item) => {
@@ -281,6 +301,10 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
     setSavedMessage('');
     // Inform route-level guards before control returns to the browser event loop.
     const nextDirty = !sameList(permissionList(snapshot, kind, targetId), permissionList(updated, kind, targetId));
+    if (nextDirty && refreshingRef.current) {
+      snapshotRequest.current += 1;
+      refreshRequested.current = true;
+    }
     dirtyRef.current = nextDirty;
     onDirtyRef.current?.(nextDirty);
   };
@@ -352,6 +376,7 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
 
   const save = async () => {
     if (!snapshot || !draft || !dirty || savingRef.current || loadingRef.current) return;
+    snapshotRequest.current += 1;
     savingRef.current = true;
     setSaving(true);
     setReviewOpen(false);
@@ -362,6 +387,7 @@ export const PermissionsWorkspace: React.FC<PermissionsWorkspaceProps> = ({
       if (!response?.success || !response.data) throw new Error('لم تُرجع الخدمة نسخة الصلاحيات المحدّثة.');
       setSnapshot(response.data);
       setDraft(response.data);
+      setConflict(false);
       dirtyRef.current = false;
       onDirtyRef.current?.(false);
       setSavedMessage('تم حفظ الصلاحيات بنجاح.');
